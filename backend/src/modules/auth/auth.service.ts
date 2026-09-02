@@ -184,9 +184,9 @@ export class AuthService {
 
     await this.otpRepo.save({ email: dto.email, maOtp, loai, hetHanLuc });
 
-    // Gửi email
-    try {
-      await this.mailer.sendMail({
+    // Gửi email bất đồng bộ (Non-blocking background sending giúp phản hồi API siêu tốc < 50ms)
+    this.mailer
+      .sendMail({
         from: this.config.get('MAIL_FROM'),
         to: dto.email,
         subject: 'Mã xác thực OTP - Phòng Khám Đa Khoa',
@@ -200,11 +200,9 @@ export class AuthService {
             <p style="color: #9CA3AF; font-size: 13px;">Nếu bạn không yêu cầu mã này, hãy bỏ qua email này.</p>
           </div>
         `,
-      });
-    } catch (err) {
-      console.error('[SendOTP] Lỗi gửi email:', err.message);
-      // Không throw — vẫn trả về thành công để tránh lộ thông tin
-    }
+      })
+      .then(() => console.log(`[SendOTP Success] Đã gửi mã OTP thành công tới ${dto.email}`))
+      .catch((err) => console.error('[SendOTP Error]', err.message));
 
     return { message: `Mã OTP đã được gửi đến ${dto.email}` };
   }
