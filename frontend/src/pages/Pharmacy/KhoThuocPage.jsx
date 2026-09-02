@@ -31,8 +31,8 @@ export default function KhoThuocPage() {
   const handleDelete = async (id, tenThuoc) => {
     if (!window.confirm(`Bạn có chắc chắn muốn xóa thuốc "${tenThuoc}" khỏi danh mục?`)) return;
     try {
-      await apiDel(`/nha-thuoc/thuoc/${id}`);
-      alert('Xóa thuốc thành công!');
+      const res = await apiDel(`/nha-thuoc/thuoc/${id}`);
+      alert(res?.message || 'Thao tác thành công!');
       fetchData();
     } catch (err) {
       alert(err?.error?.message || err?.message || 'Không thể xóa thuốc này');
