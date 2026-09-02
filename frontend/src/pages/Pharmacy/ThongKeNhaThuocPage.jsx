@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { MedButton } from '../../design-system/components/Button/MedButton';
@@ -8,8 +8,9 @@ import { apiGet } from '../../services/api';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDateTime } from '../../utils/formatDate';
 import {
-  BarChart3, AlertTriangle, Clock, DollarSign, Download, Printer, Search, Pill,
-  FileSpreadsheet, ShoppingCart, PlusCircle, ClipboardCheck, ArrowUpRight, TrendingUp, CheckCircle2
+  BarChart3, AlertTriangle, Clock, DollarSign, Printer, Search, Pill,
+  FileSpreadsheet, ShoppingCart, PlusCircle, ClipboardCheck, ArrowUpRight,
+  TrendingUp, CheckCircle2, Filter, RotateCcw, Calendar
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -18,12 +19,26 @@ import {
 
 export default function ThongKeNhaThuocPage() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState('all');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['thong-ke-nha-thuoc'],
-    queryFn: () => apiGet('/nha-thuoc/thong-ke'),
+  // State bộ lọc (Filter states)
+  const [timeFilter, setTimeFilter] = useState('7days'); // 'today' | '7days' | 'month' | 'quarter' | 'custom'
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'con_hang' | 'canh_bao' | 'het_hang' | 'can_date'
+  const [routeFilter, setRouteFilter] = useState('all'); // 'all' | 'Uống' | 'Tiêm' | 'Bôi ngoài da' | ...
+  const [search, setSearch] = useState('');
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['thong-ke-nha-thuoc', timeFilter, fromDate, toDate, statusFilter, routeFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (timeFilter) params.append('khoangThoiGian', timeFilter);
+      if (fromDate) params.append('tuNgay', fromDate);
+      if (toDate) params.append('denNgay', toDate);
+      if (statusFilter !== 'all') params.append('trangThai', statusFilter);
+      if (routeFilter !== 'all') params.append('duongDung', routeFilter);
+      return apiGet(`/nha-thuoc/thong-ke?${params.toString()}`);
+    },
   });
 
   const stats = data?.data || {
@@ -39,18 +54,56 @@ export default function ThongKeNhaThuocPage() {
     listThuoc: [],
   };
 
-  const filteredList = (stats.listThuoc || []).filter((t) =>
-    t.tenThuoc.toLowerCase().includes(search.toLowerCase()) ||
-    t.maThuoc.toLowerCase().includes(search.toLowerCase())
-  );
+  // Lọc danh sách thuốc trong bảng theo search, status & route
+  const filteredList = useMemo(() => {
+    return (stats.listThuoc || []).filter((t) => {
+      const matchSearch =
+        t.tenThuoc?.toLowerCase().includes(search.toLowerCase()) ||
+        t.maThuoc?.toLowerCase().includes(search.toLowerCase()) ||
+        t.maLo?.toLowerCase().includes(search.toLowerCase());
 
-  // Xuất file CSV báo cáo kho thuốc
+      const matchStatus =
+        statusFilter === 'all' ? true :
+        statusFilter === 'canh_bao' ? t.tonKhoTong > 0 && t.tonKhoTong <= 20 :
+        statusFilter === 'het_hang' ? t.tonKhoTong <= 0 :
+        statusFilter === 'con_hang' ? t.tonKhoTong > 20 : true;
+
+      const matchRoute =
+        routeFilter === 'all' ? true :
+        (t.duongDung || '').toLowerCase().includes(routeFilter.toLowerCase());
+
+      return matchSearch && matchStatus && matchRoute;
+    });
+  }, [stats.listThuoc, search, statusFilter, routeFilter]);
+
+  // Lọc bảng cảnh báo rủi ro theo trạng thái
+  const filteredCanhBao = useMemo(() => {
+    if (statusFilter === 'all') return stats.canhBaoRuiRo || [];
+    if (statusFilter === 'het_hang') return (stats.canhBaoRuiRo || []).filter(r => r.mucDo === 'nguy_cap');
+    if (statusFilter === 'canh_bao') return (stats.canhBaoRuiRo || []).filter(r => r.loaiRuiRo.includes('Tồn kho nguy cấp'));
+    if (statusFilter === 'can_date') return (stats.canhBaoRuiRo || []).filter(r => r.loaiRuiRo.includes('Cận hạn'));
+    return stats.canhBaoRuiRo || [];
+  }, [stats.canhBaoRuiRo, statusFilter]);
+
+  // Đặt lại toàn bộ bộ lọc
+  const handleResetFilter = () => {
+    setTimeFilter('7days');
+    setFromDate('');
+    setToDate('');
+    setStatusFilter('all');
+    setRouteFilter('all');
+    setSearch('');
+  };
+
+  // Xuất file CSV báo cáo kho thuốc đã lọc
   const handleExportCSV = () => {
-    const headers = ['Mã Thuốc', 'Tên Thuốc', 'Đơn Vị Tính', 'Đơn Giá (VNĐ)', 'Tồn Kho Tổng', 'Thành Tiền (VNĐ)', 'Trạng Thái'];
+    const headers = ['Mã Thuốc', 'Tên Thuốc', 'Đơn Vị Tính', 'Mã Lô', 'Hạn Sử Dụng', 'Đơn Giá (VNĐ)', 'Tồn Kho Tổng', 'Thành Tiền (VNĐ)', 'Trạng Thái'];
     const rows = filteredList.map((t) => [
       t.maThuoc,
       `"${t.tenThuoc}"`,
       t.donViTinh,
+      t.maLo || '---',
+      t.ngayHetHan || '---',
       t.giaBan,
       t.tonKhoTong,
       t.giaBan * t.tonKhoTong,
@@ -62,7 +115,7 @@ export default function ThongKeNhaThuocPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `Bao_Cao_Kho_Thuoc_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `Bao_Cao_Kho_Thuoc_${timeFilter}_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -83,7 +136,7 @@ export default function ThongKeNhaThuocPage() {
           </p>
         </div>
 
-        {/* Cụm nút thao tác nhanh (Quick Action Toolbar) */}
+        {/* Quick Actions */}
         <div className="flex flex-wrap items-center gap-2.5">
           <MedButton
             variant="secondary"
@@ -117,6 +170,117 @@ export default function ThongKeNhaThuocPage() {
           >
             Xuất Excel/CSV
           </MedButton>
+        </div>
+      </div>
+
+      {/* BỘ LỌC THỐNG KÊ TOÀN DIỆN (COMPREHENSIVE FILTER BAR) */}
+      <div className="rounded-2xl bg-white p-5 shadow-2xs border border-gray-200 space-y-4">
+        <div className="flex items-center justify-between border-b pb-3">
+          <div className="flex items-center gap-2 text-sm font-bold text-gray-800 uppercase tracking-wider">
+            <Filter className="h-4 w-4 text-primary-600" /> Bộ Lọc Thống Kê & Báo Cáo
+          </div>
+          <button
+            onClick={handleResetFilter}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-primary-600 transition-colors"
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Đặt lại bộ lọc
+          </button>
+        </div>
+
+        {/* Hàng 1: Bộ lọc thời gian nhanh */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-bold text-gray-600 mr-1 flex items-center gap-1">
+            <Calendar className="h-3.5 w-3.5 text-primary-500" /> Thời gian:
+          </span>
+          {[
+            { key: 'today', label: 'Hôm nay' },
+            { key: '7days', label: '7 ngày qua' },
+            { key: 'month', label: 'Tháng này' },
+            { key: 'quarter', label: 'Quý này' },
+            { key: 'custom', label: 'Tùy chỉnh ngày' },
+          ].map((item) => (
+            <button
+              key={item.key}
+              onClick={() => setTimeFilter(item.key)}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                timeFilter === item.key
+                  ? 'bg-primary-600 text-white shadow-xs'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+
+          {/* Chọn khoảng ngày tùy chỉnh */}
+          {timeFilter === 'custom' && (
+            <div className="flex items-center gap-2 ml-2">
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="rounded-lg border border-gray-300 p-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              />
+              <span className="text-gray-400">&rarr;</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="rounded-lg border border-gray-300 p-1.5 text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Hàng 2: Bộ lọc chi tiết theo Tiêu chí & Tìm kiếm */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+          {/* Trạng thái kho & rủi ro */}
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Trạng thái kho & Rủi ro</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 p-2 text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none bg-white"
+            >
+              <option value="all">Tất cả trạng thái kho</option>
+              <option value="con_hang">🟢 Còn hàng sẵn sàng (&gt; 20)</option>
+              <option value="canh_bao">🟡 Cảnh báo tồn ít (&le; 20)</option>
+              <option value="het_hang">🔴 Hết hàng (Tồn = 0)</option>
+              <option value="can_date">⏰ Lô cận hạn sử dụng (&le; 60 ngày)</option>
+            </select>
+          </div>
+
+          {/* Đường dùng thuốc */}
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Đường dùng thuốc</label>
+            <select
+              value={routeFilter}
+              onChange={(e) => setRouteFilter(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 p-2 text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none bg-white"
+            >
+              <option value="all">Tất cả đường dùng</option>
+              <option value="Uống">Đường uống</option>
+              <option value="Tiêm">Tiêm / Truyền dịch</option>
+              <option value="Bôi ngoài da">Bôi ngoài da</option>
+              <option value="Nhỏ mắt/mũi">Nhỏ mắt / mũi</option>
+              <option value="Đặt hậu môn">Đặt hậu môn</option>
+            </select>
+          </div>
+
+          {/* Tìm kiếm nhanh */}
+          <div>
+            <label className="block text-xs font-bold text-gray-700 mb-1">Tìm kiếm từ khóa</label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Tên thuốc, mã thuốc, mã lô..."
+                className="w-full rounded-lg border border-gray-300 py-2 pl-8 pr-3 text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -188,7 +352,7 @@ export default function ThongKeNhaThuocPage() {
         title="⚠️ Bảng Cảnh Báo Rủi Ro Tồn Kho & Cận Hạn Sử Dụng (Xử lý ngay)"
         subtitle="Danh sách các loại thuốc đã cạn kiệt hoặc các lô thuốc sắp hết hạn cần ưu tiên xử lý"
       >
-        {stats.canhBaoRuiRo && stats.canhBaoRuiRo.length > 0 ? (
+        {filteredCanhBao.length > 0 ? (
           <div className="overflow-x-auto rounded-xl border border-red-100">
             <table className="w-full text-left border-collapse">
               <thead className="bg-red-50/60 text-xs font-bold text-red-900 uppercase tracking-wider border-b border-red-100">
@@ -202,7 +366,7 @@ export default function ThongKeNhaThuocPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm">
-                {stats.canhBaoRuiRo.map((item) => (
+                {filteredCanhBao.map((item) => (
                   <tr key={item.id} className="hover:bg-red-50/30 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs font-bold text-gray-700">{item.maThuoc}</td>
                     <td className="px-4 py-3 font-semibold text-gray-900">{item.tenThuoc}</td>
@@ -229,8 +393,8 @@ export default function ThongKeNhaThuocPage() {
         ) : (
           <div className="p-6 text-center rounded-xl bg-emerald-50 border border-emerald-200">
             <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-600 mb-2" />
-            <p className="text-sm font-bold text-emerald-800">Kho thuốc an toàn</p>
-            <p className="text-xs text-emerald-600 mt-0.5">Không có loại thuốc nào cạn kiệt hay cận date quá mức quy định</p>
+            <p className="text-sm font-bold text-emerald-800">Kho thuốc an toàn theo tiêu chí lọc</p>
+            <p className="text-xs text-emerald-600 mt-0.5">Không có loại thuốc nào cạn kiệt hay cận date thuộc nhóm lọc đã chọn</p>
           </div>
         )}
       </MedCard>
@@ -239,7 +403,7 @@ export default function ThongKeNhaThuocPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top 10 thuốc xuất nhiều nhất (Biểu đồ cột ngang) */}
         <MedCard
-          title="Top 10 Thuốc Xuất Nhiều Nhất Trong Tuần"
+          title="Top 10 Thuốc Xuất Nhiều Nhất"
           subtitle="Giúp dược sĩ chủ động cắt liều sẵn và bố trí vị trí tiện lấy trên kệ"
         >
           {stats.top10Thuoc && stats.top10Thuoc.length > 0 ? (
@@ -263,13 +427,13 @@ export default function ThongKeNhaThuocPage() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <p className="text-sm text-gray-400 py-16 text-center">Chưa có giao dịch xuất thuốc trong tuần</p>
+            <p className="text-sm text-gray-400 py-16 text-center">Chưa có dữ liệu xuất thuốc theo bộ lọc</p>
           )}
         </MedCard>
 
         {/* Lưu lượng xuất/nhập kho (Biểu đồ đường) */}
         <MedCard
-          title="Lưu Lượng Xuất / Nhập Kho Trong Tuần"
+          title="Lưu Lượng Xuất / Nhập Kho"
           subtitle="Theo dõi tần suất giao dịch để điều phối nhân sự trực quầy giờ cao điểm"
         >
           <div className="h-80 w-full pt-2">
@@ -298,42 +462,45 @@ export default function ThongKeNhaThuocPage() {
         </MedCard>
       </div>
 
-      {/* 4. LỊCH SỬ GIAO DỊCH GẦN ĐÂY */}
+      {/* 4. BẢNG CHI TIẾT TỒN KHO & HẠN SỬ DỤNG THEO BỘ LỌC */}
       <MedCard
-        title="Lịch Sử Đơn Xuất Kho / Cấp Phát Gần Nhất"
-        subtitle="Tra cứu nhanh 5-10 đơn thuốc vừa xử lý khi bệnh nhân hoặc bác sĩ thắc mắc"
+        title={`Chi Tiết Danh Mục Tồn Kho Theo Bộ Lọc (${filteredList.length} loại thuốc)`}
+        subtitle="Tra cứu danh mục, tồn kho và hạn sử dụng từng loại thuốc đã được lọc"
       >
-        {stats.lichSuGiaoDich && stats.lichSuGiaoDich.length > 0 ? (
+        {filteredList.length > 0 ? (
           <div className="overflow-x-auto rounded-xl border border-gray-200">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse text-sm">
               <thead className="bg-gray-50 text-xs font-semibold text-gray-600 uppercase tracking-wider border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3">Mã Đơn Thuốc</th>
-                  <th className="px-4 py-3">Bác Sĩ Kê</th>
-                  <th className="px-4 py-3">Số Lượng Món</th>
-                  <th className="px-4 py-3">Thời Gian Kê</th>
+                  <th className="px-4 py-3">Mã Thuốc</th>
+                  <th className="px-4 py-3">Tên Thuốc</th>
+                  <th className="px-4 py-3 text-center">ĐVT</th>
+                  <th className="px-4 py-3">Mã Lô & HSD</th>
+                  <th className="px-4 py-3 text-right">Đơn Giá</th>
+                  <th className="px-4 py-3 text-center">Tồn Kho</th>
+                  <th className="px-4 py-3 text-right">Thành Tiền</th>
                   <th className="px-4 py-3 text-center">Trạng Thái</th>
-                  <th className="px-4 py-3 text-right">Chi Tiết</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 text-sm">
-                {stats.lichSuGiaoDich.map((dt) => (
-                  <tr key={dt.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-mono text-xs font-bold text-primary-700">{dt.maDonThuoc}</td>
-                    <td className="px-4 py-3 font-semibold text-gray-900">{dt.bacSi}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{dt.soMon} loại thuốc</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{formatDateTime(dt.ngayKe)}</td>
-                    <td className="px-4 py-3 text-center">
-                      <StatusBadge status={dt.trangThai} size="sm" />
+              <tbody className="divide-y divide-gray-100">
+                {filteredList.map((t) => (
+                  <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs font-bold text-primary-700">{t.maThuoc}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900">{t.tenThuoc}</td>
+                    <td className="px-4 py-3 text-center text-xs text-gray-600">{t.donViTinh}</td>
+                    <td className="px-4 py-3 text-xs">
+                      <div className="font-mono text-gray-800 font-bold">{t.maLo || '---'}</div>
+                      <div className="text-[11px] text-gray-500">HSD: {t.ngayHetHan || '---'}</div>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => navigate('/nha-thuoc/don-thuoc')}
-                        className="text-xs font-bold text-primary-600 hover:text-primary-700"
-                      >
-                        Xem chi tiết &rarr;
-                      </button>
+                    <td className="px-4 py-3 text-right font-medium text-gray-900">{formatCurrency(t.giaBan)}</td>
+                    <td className="px-4 py-3 text-center font-bold text-base">
+                      <span className={t.tonKhoTong <= 20 ? 'text-amber-600' : 'text-gray-900'}>
+                        {t.tonKhoTong}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-primary-700">{formatCurrency(t.giaBan * t.tonKhoTong)}</td>
+                    <td className="px-4 py-3 text-center">
+                      <StatusBadge status={t.trangThai} size="sm" />
                     </td>
                   </tr>
                 ))}
@@ -341,7 +508,7 @@ export default function ThongKeNhaThuocPage() {
             </table>
           </div>
         ) : (
-          <p className="text-sm text-gray-400 py-8 text-center">Chưa có lịch sử giao dịch gần đây</p>
+          <p className="text-sm text-gray-400 py-8 text-center">Không tìm thấy loại thuốc nào phù hợp với bộ lọc</p>
         )}
       </MedCard>
     </div>

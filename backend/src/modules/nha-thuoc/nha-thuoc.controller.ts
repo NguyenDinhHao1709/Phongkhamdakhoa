@@ -73,9 +73,15 @@ export class NhaThuocController {
 
   @Get('thong-ke')
   @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
-  @ApiOperation({ summary: 'Thống kê & Báo cáo kho thuốc' })
-  getThongKeNhaThuoc() {
-    return this.nhaThuocService.getThongKeNhaThuoc();
+  @ApiOperation({ summary: 'Thống kê & Báo cáo kho thuốc có bộ lọc' })
+  getThongKeNhaThuoc(
+    @Query('khoangThoiGian') khoangThoiGian?: string,
+    @Query('tuNgay') tuNgay?: string,
+    @Query('denNgay') denNgay?: string,
+    @Query('trangThai') trangThai?: string,
+    @Query('duongDung') duongDung?: string,
+  ) {
+    return this.nhaThuocService.getThongKeNhaThuoc({ khoangThoiGian, tuNgay, denNgay, trangThai, duongDung });
   }
 }
 

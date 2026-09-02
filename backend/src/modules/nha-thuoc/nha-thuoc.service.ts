@@ -402,9 +402,15 @@ export class NhaThuocService {
   }
 
   /**
-   * Thống kê & Báo cáo Toàn diện Nhà thuốc
+   * Thống kê & Báo cáo Toàn diện Nhà thuốc (Hỗ trợ Bộ lọc Thời gian, Trạng thái, Đường dùng)
    */
-  async getThongKeNhaThuoc() {
+  async getThongKeNhaThuoc(filter?: {
+    khoangThoiGian?: string;
+    tuNgay?: string;
+    denNgay?: string;
+    trangThai?: string;
+    duongDung?: string;
+  }) {
     const tongSoThuoc = await this.thuocRepo.count();
     const sapHetHang = await this.thuocRepo
       .createQueryBuilder('t')
