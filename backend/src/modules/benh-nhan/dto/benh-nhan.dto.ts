@@ -2,6 +2,7 @@ import {
   IsString, IsNotEmpty, IsOptional, IsEnum, IsDateString,
   IsEmail, MaxLength, IsInt, Min,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 
 export class TaoBenhNhanDto {
@@ -13,28 +14,33 @@ export class TaoBenhNhanDto {
 
   @ApiPropertyOptional({ example: '1990-05-15' })
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
   @IsDateString()
   ngaySinh?: string;
 
   @ApiPropertyOptional({ enum: ['nam', 'nu', 'khac'] })
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
   @IsEnum(['nam', 'nu', 'khac'])
   gioiTinh?: string;
 
   @ApiPropertyOptional({ example: '012345678901' })
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
   @IsString()
   @MaxLength(20)
   soCmnd?: string;
 
   @ApiPropertyOptional({ example: '0901234567' })
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
   @IsString()
   @MaxLength(15)
   soDienThoai?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
   @IsEmail()
   email?: string;
 
@@ -45,6 +51,7 @@ export class TaoBenhNhanDto {
 
   @ApiPropertyOptional({ enum: ['A', 'B', 'AB', 'O'] })
   @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
   @IsEnum(['A', 'B', 'AB', 'O'])
   nhomMau?: string;
 

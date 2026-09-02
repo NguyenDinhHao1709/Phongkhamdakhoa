@@ -73,13 +73,21 @@ export default function BenhNhanChiTietPage({ isCreate = false, isEdit = false }
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
+
+    // Làm sạch payload: biến chuỗi rỗng '' thành null để tránh lỗi validation API DTO
+    const cleanedPayload = {};
+    Object.keys(formData).forEach((key) => {
+      const val = formData[key];
+      cleanedPayload[key] = val === '' ? null : val;
+    });
+
     try {
       if (isCreate) {
-        const res = await apiPost('/benh-nhan', formData);
+        const res = await apiPost('/benh-nhan', cleanedPayload);
         alert('Tạo hồ sơ bệnh nhân mới thành công!');
         navigate(`/tiep-tan/benh-nhan/${res.data.id}`);
       } else {
-        await apiPatch(`/benh-nhan/${id}`, formData);
+        await apiPatch(`/benh-nhan/${id}`, cleanedPayload);
         alert('Cập nhật thông tin bệnh nhân thành công!');
         setEditMode(false);
         fetchPatient();
@@ -425,3 +433,4 @@ export default function BenhNhanChiTietPage({ isCreate = false, isEdit = false }
     </div>
   );
 }
+
