@@ -17,6 +17,8 @@ function useBenhNhan(params) {
     queryKey: ['benh-nhan', params],
     queryFn: () => apiGet('/benh-nhan', params),
     keepPreviousData: true,
+    refetchOnMount: true,
+    staleTime: 0,
   });
 }
 

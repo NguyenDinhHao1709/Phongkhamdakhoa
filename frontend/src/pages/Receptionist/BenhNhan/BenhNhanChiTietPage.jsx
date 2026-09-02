@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, User, Phone, Mail, MapPin, Calendar, Activity,
   AlertTriangle, Save, Edit3, ShieldCheck, Clock, FileText, CheckCircle
@@ -12,6 +13,7 @@ import { GIOI_TINH } from '../../../utils/constants';
 export default function BenhNhanChiTietPage({ isCreate = false, isEdit = false }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [loading, setLoading] = useState(!isCreate);
   const [saving, setSaving] = useState(false);
@@ -73,13 +75,25 @@ export default function BenhNhanChiTietPage({ isCreate = false, isEdit = false }
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
+
+    // Làm sạch payload: biến chuỗi rỗng '' thành null để tránh lỗi validation API DTO
+    const cleanedPayload = {};
+    Object.keys(formData).forEach((key) => {
+      const val = formData[key];
+      cleanedPayload[key] = val === '' ? null : val;
+    });
+
     try {
       if (isCreate) {
         const res = await apiPost('/benh-nhan', cleanedPayload);
+        alert('Tạo hồ sơ bệnh nhân mới thành công!');
+        queryClient.invalidateQueries({ queryKey: ['benh-nhan'] });
         navigate(`/tiep-tan/benh-nhan/${res.data.id}`);
       } else {
         await apiPatch(`/benh-nhan/${id}`, cleanedPayload);
         alert('Cập nhật thông tin bệnh nhân thành công!');
+        queryClient.invalidateQueries({ queryKey: ['benh-nhan'] });
+        setEditMode(false);
         fetchPatient();
       }
     } catch (err) {

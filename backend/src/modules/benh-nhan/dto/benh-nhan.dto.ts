@@ -89,14 +89,51 @@ export class TimKiemBenhNhanDto {
   @IsString()
   q?: string;
 
+  @ApiPropertyOptional({ description: 'Từ ngày đăng ký (YYYY-MM-DD)' })
+  @IsOptional()
+  @IsString()
+  tuNgay?: string;
+
+  @ApiPropertyOptional({ description: 'Đến ngày đăng ký (YYYY-MM-DD)' })
+  @IsOptional()
+  @IsString()
+  denNgay?: string;
+
+  @ApiPropertyOptional({ enum: ['nam', 'nu', 'khac'] })
+  @IsOptional()
+  @IsString()
+  gioiTinh?: string;
+
+  @ApiPropertyOptional({ enum: ['nhi', 'truong_thanh', 'cao_tuoi'] })
+  @IsOptional()
+  @IsString()
+  doTuoi?: string;
+
+  @ApiPropertyOptional({ description: 'Lọc bệnh nhân có tiền sử dị ứng' })
+  @IsOptional()
+  @IsString()
+  coDiUng?: string;
+
+  @ApiPropertyOptional({ description: 'Lọc bệnh nhân chưa hoàn thiện hồ sơ' })
+  @IsOptional()
+  @IsString()
+  chuaHoanThien?: string;
+
+  @ApiPropertyOptional({ description: 'Lọc bệnh nhân mới đăng ký hôm nay' })
+  @IsOptional()
+  @IsString()
+  moiDangKyHomNay?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
+  @Transform(({ value }) => (value ? Number(value) : 1))
   @IsInt()
   @Min(1)
   page?: number = 1;
 
   @ApiPropertyOptional({ default: 20 })
   @IsOptional()
+  @Transform(({ value }) => (value ? Number(value) : 20))
   @IsInt()
   @Min(1)
   limit?: number = 20;
