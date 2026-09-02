@@ -80,7 +80,7 @@ export default function PatientPortal() {
 
           <div className="flex items-center gap-3">
             <div className="hidden sm:block text-right">
-              <p className="text-xs font-bold text-gray-900">{user?.tenDangNhap}</p>
+              <p className="text-xs font-bold text-gray-900">{user?.hoTen || user?.tenDangNhap}</p>
               <p className="text-[11px] text-gray-500">Tài khoản Bệnh nhân</p>
             </div>
             <button

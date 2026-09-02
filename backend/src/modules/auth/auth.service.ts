@@ -4,13 +4,14 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan } from 'typeorm';
+import { Repository, MoreThan, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { NguoiDung, TrangThaiNguoiDung, LoaiTaiKhoan } from './entities/nguoi-dung.entity';
 import { VaiTro } from './entities/vai-tro.entity';
 import { MaXacThucOtp, LoaiOtp } from './entities/ma-xac-thuc-otp.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
+import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { comparePassword, hashPassword } from '../../common/utils/hash.util';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 import { LoginDto, SendOtpDto, VerifyOtpDto, RegisterPatientDto } from './dto/auth.dto';
@@ -28,6 +29,7 @@ export class AuthService {
     @InjectRepository(BenhNhan) private benhNhanRepo: Repository<BenhNhan>,
     private jwtService: JwtService,
     private config: ConfigService,
+    private dataSource: DataSource,
   ) {
     this.mailer = nodemailer.createTransport({
       host: config.get('MAIL_HOST'),
@@ -87,6 +89,8 @@ export class AuthService {
         user: {
           id: savedUser.id,
           tenDangNhap: savedUser.tenDangNhap,
+          hoTen: newPatient.hoTen,
+          email: newPatient.email,
           vaiTro: role.maVaiTro,
           loaiTaiKhoan: savedUser.loaiTaiKhoan,
           benhNhanId: newPatient.id,
@@ -132,9 +136,17 @@ export class AuthService {
     await this.nguoiDungRepo.update(nguoiDung.id, { lanDangNhapCuoi: new Date() });
 
     let benhNhanId = null;
+    let hoTen = nguoiDung.tenDangNhap;
+
     if (nguoiDung.vaiTro?.maVaiTro === 'benh_nhan' || nguoiDung.loaiTaiKhoan === LoaiTaiKhoan.BENH_NHAN) {
       const bn = await this.benhNhanRepo.findOne({ where: { nguoiDungId: nguoiDung.id } });
-      if (bn) benhNhanId = bn.id;
+      if (bn) {
+        benhNhanId = bn.id;
+        if (bn.hoTen) hoTen = bn.hoTen;
+      }
+    } else {
+      const nv = await this.dataSource.getRepository(NhanVien).findOne({ where: { nguoiDungId: nguoiDung.id } });
+      if (nv && nv.hoTen) hoTen = nv.hoTen;
     }
 
     const tokens = await this.taoTokens(nguoiDung);
@@ -144,6 +156,7 @@ export class AuthService {
         user: {
           id: nguoiDung.id,
           tenDangNhap: nguoiDung.tenDangNhap,
+          hoTen,
           vaiTro: nguoiDung.vaiTro?.maVaiTro,
           tenVaiTro: nguoiDung.vaiTro?.tenVaiTro,
           loaiTaiKhoan: nguoiDung.loaiTaiKhoan,

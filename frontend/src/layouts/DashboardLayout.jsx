@@ -110,7 +110,7 @@ export function DashboardLayout({ children }) {
         <div className="border-t border-gray-100 p-2">
           {!collapsed && (
             <div className="px-3 py-2 mb-1">
-              <p className="text-xs font-semibold text-gray-800 truncate">{user?.tenDangNhap}</p>
+              <p className="text-xs font-semibold text-gray-800 truncate">{user?.hoTen || user?.tenDangNhap}</p>
               <p className="text-xs text-gray-500">{VAI_TRO_LABEL[user?.vaiTro] || user?.vaiTro}</p>
             </div>
           )}
