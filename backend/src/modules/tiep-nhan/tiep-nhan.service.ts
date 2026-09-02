@@ -2,8 +2,9 @@ import {
   Injectable, NotFoundException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { LuotTiepNhan, SinhHieu, TrangThaiTiepNhan } from './entities/tiep-nhan.entity';
+import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 import {
   IsOptional, IsInt, IsPositive, IsString, IsDateString,
@@ -57,6 +58,7 @@ export class TiepNhanService {
   constructor(
     @InjectRepository(LuotTiepNhan) private luotRepo: Repository<LuotTiepNhan>,
     @InjectRepository(SinhHieu) private sinhHieuRepo: Repository<SinhHieu>,
+    private dataSource: DataSource,
   ) {}
 
   // ─── HÀNG ĐỢI PHÒNG KHÁM ─────────────────────────────────────
@@ -65,22 +67,29 @@ export class TiepNhanService {
       .leftJoinAndSelect('ltn.benhNhan', 'bn')
       .leftJoinAndSelect('ltn.bacSi', 'bs')
       .leftJoinAndSelect('bs.nhanVien', 'nv')
-      .leftJoinAndSelect('ltn.sinhHieu', 'sh')
-      .where('ltn.trangThai IN (:...tt)', { tt: ['cho_kham', 'dang_kham'] })
-      .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
-      .orderBy('ltn.thoiGianDen', 'ASC');
+      .where('ltn.trangThai IN (:...st)', { st: ['cho_kham', 'dang_kham'] })
+      .andWhere('DATE(ltn.thoiGianDen) = CURDATE()');
 
-    if (phongKhamId) qb.andWhere('ltn.phongKhamId = :phongKhamId', { phongKhamId });
+    if (phongKhamId) {
+      qb.andWhere('ltn.phongKhamId = :phongKhamId', { phongKhamId });
+    }
 
-    const items = await qb.getMany();
-    return { data: items, message: 'Lấy hàng đợi thành công' };
+    const list = await qb
+      .orderBy("CASE ltn.trangThai WHEN 'dang_kham' THEN 1 ELSE 2 END", 'ASC')
+      .addOrderBy('ltn.thoiGianDen', 'ASC')
+      .getMany();
+
+    return { data: list, message: 'Lấy hàng đợi thành công' };
   }
 
-  // ─── TẠO LƯỢT TIẾP NHẬN ──────────────────────────────────────
-  async create(dto: TaoTiepNhanDto, tiepTanId: number) {
-    // Đếm tổng số lượt để tạo số thứ tự duy nhất không trùng DB constraint
-    const totalCount = await this.luotRepo.count();
-    const maSoThuTu = MaGeneratorService.generateSoThuTu(totalCount + 1);
+  // ─── TẠO LƯỢT TIẾP NHẬN BỆNH NHÂN ────────────────────────────
+  async create(dto: TaoTiepNhanDto, tiepTanId?: number) {
+    const todayCount = await this.luotRepo
+      .createQueryBuilder('l')
+      .where('DATE(l.thoiGianDen) = CURDATE()')
+      .getCount();
+
+    const maSoThuTu = MaGeneratorService.generateSoThuTu(todayCount + 1);
 
     const luot = this.luotRepo.create({
       ...dto,
@@ -99,25 +108,41 @@ export class TiepNhanService {
   }
 
   // ─── GHI SINH HIỆU ───────────────────────────────────────────
-  async ghiSinhHieu(luotId: number, dto: GhiSinhHieuDto, doBoiId: number) {
+  async ghiSinhHieu(luotId: number, dto: GhiSinhHieuDto, nguoiDungId: number) {
     const luot = await this.luotRepo.findOne({ where: { id: luotId } });
     if (!luot) throw new NotFoundException({ code: 'LUOT_KHONG_TON_TAI', message: 'Không tìm thấy lượt tiếp nhận' });
 
-    // Upsert sinh hiệu
-    let sh = await this.sinhHieuRepo.findOne({ where: { luotTiepNhanId: luotId } });
-    if (sh) {
-      Object.assign(sh, dto, { doBoiId, doLuc: new Date() });
-    } else {
-      sh = this.sinhHieuRepo.create({
-        ...dto,
-        luotTiepNhanId: luotId,
-        doBoiId,
-        doLuc: new Date(),
-      });
+    let doBoiId: number | null = null;
+    if (nguoiDungId) {
+      const nv = await this.dataSource.getRepository(NhanVien).findOne({ where: { nguoiDungId } });
+      if (nv) doBoiId = nv.id;
     }
 
+    const chieuCaoCm = dto.chieuCaoCm ?? dto.chieuCao;
+    const canNangKg = dto.canNangKg ?? dto.canNang;
+    const nhietDoC = dto.nhietDoC ?? dto.nhietDo;
+    const nhipTim = dto.nhipTim ?? dto.mach;
+
+    // Upsert sinh hiệu không đè null lên dữ liệu cũ
+    let sh = await this.sinhHieuRepo.findOne({ where: { luotTiepNhanId: luotId } });
+    if (!sh) {
+      sh = this.sinhHieuRepo.create({ luotTiepNhanId: luotId });
+    }
+
+    if (chieuCaoCm !== undefined && chieuCaoCm !== null && chieuCaoCm !== ('' as any)) sh.chieuCaoCm = Number(chieuCaoCm);
+    if (canNangKg !== undefined && canNangKg !== null && canNangKg !== ('' as any)) sh.canNangKg = Number(canNangKg);
+    if (nhietDoC !== undefined && nhietDoC !== null && nhietDoC !== ('' as any)) sh.nhietDoC = Number(nhietDoC);
+    if (dto.huyetApTamThu !== undefined && dto.huyetApTamThu !== null && dto.huyetApTamThu !== ('' as any)) sh.huyetApTamThu = Number(dto.huyetApTamThu);
+    if (dto.huyetApTamTruong !== undefined && dto.huyetApTamTruong !== null && dto.huyetApTamTruong !== ('' as any)) sh.huyetApTamTruong = Number(dto.huyetApTamTruong);
+    if (nhipTim !== undefined && nhipTim !== null && nhipTim !== ('' as any)) sh.nhipTim = Number(nhipTim);
+    if (dto.nhipTho !== undefined && dto.nhipTho !== null && dto.nhipTho !== ('' as any)) sh.nhipTho = Number(dto.nhipTho);
+    if (dto.spo2 !== undefined && dto.spo2 !== null && dto.spo2 !== ('' as any)) sh.spo2 = Number(dto.spo2);
+    if (dto.ghiChu !== undefined && dto.ghiChu !== null) sh.ghiChu = dto.ghiChu;
+    if (doBoiId) sh.doBoiId = doBoiId;
+    sh.doLuc = new Date();
+
     const saved = await this.sinhHieuRepo.save(sh);
-    return { data: saved, message: 'Ghi sinh hiệu thành công' };
+    return this.xemSinhHieu(luotId);
   }
 
   // ─── ĐIỀU PHỐI PHÒNG ─────────────────────────────────────────
@@ -135,7 +160,7 @@ export class TiepNhanService {
     const luot = await this.luotRepo.findOne({ where: { id: luotId } });
     if (!luot) throw new NotFoundException({ code: 'LUOT_KHONG_TON_TAI', message: 'Không tìm thấy lượt tiếp nhận' });
 
-    // Khi chuyển sang trạng thái "Đang khám": tự động chuyển các lượt khác đang "dang_kham" của cùng bác sĩ/phòng khám sang "cho_ket_qua"
+    // Khi chuyển sang trạng thái "Đang khám": tự động chuyển các lượt khác đang "dang_kham" của cùng bác sĩ/phòng khám sang "cho_kham"
     if (dto.trangThai === 'dang_kham') {
       const query = this.luotRepo.createQueryBuilder('luot')
         .where('luot.trangThai = :st', { st: 'dang_kham' })
@@ -164,7 +189,24 @@ export class TiepNhanService {
   // ─── XEM SINH HIỆU ───────────────────────────────────────────
   async xemSinhHieu(luotId: number) {
     const sh = await this.sinhHieuRepo.findOne({ where: { luotTiepNhanId: luotId } });
-    return { data: sh || null, message: sh ? 'OK' : 'Chưa có sinh hiệu' };
+    if (!sh) return { data: null, message: 'Chưa có sinh hiệu' };
+
+    const formattedData = {
+      ...sh,
+      chieuCaoCm: sh.chieuCaoCm ? Number(sh.chieuCaoCm) : null,
+      canNangKg: sh.canNangKg ? Number(sh.canNangKg) : null,
+      nhietDoC: sh.nhietDoC ? Number(sh.nhietDoC) : null,
+      huyetApTamThu: sh.huyetApTamThu ? Number(sh.huyetApTamThu) : null,
+      huyetApTamTruong: sh.huyetApTamTruong ? Number(sh.huyetApTamTruong) : null,
+      nhipTim: sh.nhipTim ? Number(sh.nhipTim) : null,
+      mach: sh.nhipTim ? Number(sh.nhipTim) : null,
+      nhipTho: sh.nhipTho ? Number(sh.nhipTho) : null,
+      spo2: sh.spo2 ? Number(sh.spo2) : null,
+    };
+
+    return {
+      data: formattedData,
+      message: 'OK',
+    };
   }
 }
-
