@@ -76,8 +76,9 @@ export class AuthController {
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Lấy thông tin người dùng hiện tại' })
-  getMe(@CurrentUser() user: any) {
-    return { data: user, message: 'Lấy thông tin thành công' };
+  async getMe(@CurrentUser() user: any) {
+    const data = await this.authService.getMe(user.userId || user.sub);
+    return { data, message: 'Lấy thông tin thành công' };
   }
 
   @UseGuards(JwtAuthGuard)

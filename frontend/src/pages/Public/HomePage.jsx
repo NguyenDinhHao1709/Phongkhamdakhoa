@@ -24,7 +24,7 @@ const ROLE_HOME = {
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, setUser } = useAuthStore();
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,6 +46,20 @@ export default function HomePage() {
   useEffect(() => {
     fetchPublicDoctors();
   }, []);
+
+  // Tự động đồng bộ họ tên bệnh nhân/nhân viên từ CSDL khi đã đăng nhập
+  useEffect(() => {
+    if (isAuthenticated && (!user?.hoTen || user?.hoTen === user?.tenDangNhap)) {
+      apiGet('/auth/me')
+        .then((res) => {
+          const userData = res?.data || res;
+          if (userData && userData.hoTen) {
+            setUser({ ...user, ...userData });
+          }
+        })
+        .catch((err) => console.error('Lỗi nạp tên người dùng:', err));
+    }
+  }, [isAuthenticated, user?.hoTen, user?.tenDangNhap]);
 
   const fetchPublicDoctors = async () => {
     try {
@@ -162,7 +176,7 @@ export default function HomePage() {
                 }}
                 leftIcon={<User className="h-4 w-4" />}
               >
-                {user?.vaiTro === 'benh_nhan' ? 'Cổng Bệnh nhân' : 'Trang làm việc'} ({user?.tenDangNhap})
+                {user?.vaiTro === 'benh_nhan' ? 'Cổng Bệnh nhân' : 'Trang làm việc'} ({user?.hoTen || user?.tenDangNhap})
               </MedButton>
             ) : (
               <>

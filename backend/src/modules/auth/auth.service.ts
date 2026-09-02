@@ -142,10 +142,13 @@ export class AuthService {
     let hoTen = nguoiDung.tenDangNhap;
 
     if (nguoiDung.vaiTro?.maVaiTro === 'benh_nhan' || nguoiDung.loaiTaiKhoan === LoaiTaiKhoan.BENH_NHAN) {
-      const bn = await this.benhNhanRepo.findOne({ where: { nguoiDungId: nguoiDung.id } });
+      let bn = await this.benhNhanRepo.findOne({ where: { nguoiDungId: nguoiDung.id } });
+      if (!bn && nguoiDung.tenDangNhap) {
+        bn = await this.benhNhanRepo.findOne({ where: { email: nguoiDung.tenDangNhap } });
+      }
       if (bn) {
         benhNhanId = bn.id;
-        if (bn.hoTen) hoTen = bn.hoTen;
+        if (bn.hoTen && bn.hoTen.trim() !== '') hoTen = bn.hoTen;
       }
     } else {
       const nv = await this.dataSource.getRepository(NhanVien).findOne({ where: { nguoiDungId: nguoiDung.id } });
@@ -384,6 +387,45 @@ export class AuthService {
     await this.otpRepo.save(otpRecord);
 
     return { message: 'Đặt lại mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.' };
+  }
+
+  // ─── LẤY THÔNG TIN USER HIỆN TẠI (GET ME) ─────────────────────
+  async getMe(userId: number) {
+    const nguoiDung = await this.nguoiDungRepo.findOne({
+      where: { id: userId },
+      relations: ['vaiTro'],
+    });
+
+    if (!nguoiDung) {
+      throw new BadRequestException({ code: 'NGUOI_DUNG_KHONG_TON_TAI', message: 'Người dùng không tồn tại' });
+    }
+
+    let benhNhanId = null;
+    let hoTen = nguoiDung.tenDangNhap;
+
+    if (nguoiDung.vaiTro?.maVaiTro === 'benh_nhan' || nguoiDung.loaiTaiKhoan === LoaiTaiKhoan.BENH_NHAN) {
+      let bn = await this.benhNhanRepo.findOne({ where: { nguoiDungId: nguoiDung.id } });
+      if (!bn && nguoiDung.tenDangNhap) {
+        bn = await this.benhNhanRepo.findOne({ where: { email: nguoiDung.tenDangNhap } });
+      }
+      if (bn) {
+        benhNhanId = bn.id;
+        if (bn.hoTen && bn.hoTen.trim() !== '') hoTen = bn.hoTen;
+      }
+    } else {
+      const nv = await this.dataSource.getRepository(NhanVien).findOne({ where: { nguoiDungId: nguoiDung.id } });
+      if (nv && nv.hoTen) hoTen = nv.hoTen;
+    }
+
+    return {
+      id: nguoiDung.id,
+      tenDangNhap: nguoiDung.tenDangNhap,
+      hoTen,
+      vaiTro: nguoiDung.vaiTro?.maVaiTro,
+      tenVaiTro: nguoiDung.vaiTro?.tenVaiTro,
+      loaiTaiKhoan: nguoiDung.loaiTaiKhoan,
+      benhNhanId,
+    };
   }
 
   // ─── HELPER: TẠO JWT TOKENS ───────────────────────────────────
