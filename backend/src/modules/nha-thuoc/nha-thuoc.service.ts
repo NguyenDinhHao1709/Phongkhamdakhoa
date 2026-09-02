@@ -394,8 +394,8 @@ export class NhaThuocService {
       .createQueryBuilder('dt')
       .select("DATE_FORMAT(dt.ngayKe, '%d/%m')", 'ngay')
       .addSelect('COUNT(dt.id)', 'soDonXuat')
-      .groupBy('ngay')
-      .orderBy('dt.ngayKe', 'ASC')
+      .groupBy("DATE_FORMAT(dt.ngayKe, '%d/%m')")
+      .orderBy("DATE_FORMAT(dt.ngayKe, '%d/%m')", 'ASC')
       .limit(7)
       .getRawMany();
 
