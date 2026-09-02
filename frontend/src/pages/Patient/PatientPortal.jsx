@@ -1,19 +1,37 @@
+import { useEffect } from 'react';
 import { Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
 import { Calendar, ClipboardList, FileText, Bot, LogOut, Stethoscope, User, Home } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
+import { apiGet } from '../../services/api';
 import DatLichKhamPage from './DatLichKhamPage';
 import LichHenBenhNhanPage from './LichHenBenhNhanPage';
 import HoSoYTeBenhNhanPage from './HoSoYTeBenhNhanPage';
 import ChatAiPage from './ChatAiPage';
 
 export default function PatientPortal() {
-  const { user, logout } = useAuthStore();
+  const { user, setUser, logout } = useAuthStore();
   const navigate = useNavigate();
+
+  // Tự động đồng bộ tên Bệnh nhân từ CSDL nếu chưa có trong phiên đăng nhập cũ
+  useEffect(() => {
+    if (user?.benhNhanId && !user?.hoTen) {
+      apiGet(`/benh-nhan/${user.benhNhanId}`)
+        .then((res) => {
+          const bnData = res?.data || res;
+          if (bnData && bnData.hoTen) {
+            setUser({ ...user, hoTen: bnData.hoTen });
+          }
+        })
+        .catch((err) => console.error('Lỗi nạp tên bệnh nhân:', err));
+    }
+  }, [user?.benhNhanId, user?.hoTen]);
 
   const handleLogout = () => {
     logout();
     navigate('/');
   };
+
+  const displayName = user?.hoTen || (user?.tenDangNhap?.includes('@') ? user.tenDangNhap.split('@')[0] : user?.tenDangNhap);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
@@ -80,7 +98,7 @@ export default function PatientPortal() {
 
           <div className="flex items-center gap-3">
             <div className="hidden sm:block text-right">
-              <p className="text-xs font-bold text-gray-900">{user?.hoTen || user?.tenDangNhap}</p>
+              <p className="text-xs font-bold text-gray-900">{displayName}</p>
               <p className="text-[11px] text-gray-500">Tài khoản Bệnh nhân</p>
             </div>
             <button
