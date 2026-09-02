@@ -1,3 +1,5 @@
+Tài khoản test:admin 123456
+vào đó xem tài khoản của nhân viên 
 # Hệ thống Quản Lý Phòng Khám Đa Khoa
 
 ## 1. Tổng quan
