@@ -14,18 +14,66 @@ export class BenhNhanService {
     private repo: Repository<BenhNhan>,
   ) {}
 
-  // ─── DANH SÁCH + TÌM KIẾM ─────────────────────────────────────
+  // ─── DANH SÁCH + TÌM KIẾM ĐA TẦNG ──────────────────────────────
   async findAll(dto: TimKiemBenhNhanDto) {
-    const { q, page = 1, limit = 20 } = dto;
+    const {
+      q, tuNgay, denNgay, gioiTinh, doTuoi,
+      coDiUng, chuaHoanThien, moiDangKyHomNay,
+      page = 1, limit = 20,
+    } = dto;
     const skip = (page - 1) * limit;
 
     const qb = this.repo.createQueryBuilder('bn');
 
-    if (q) {
-      qb.where(
-        'bn.ho_ten LIKE :q OR bn.ma_benh_nhan LIKE :q OR bn.so_cmnd LIKE :q OR bn.so_dien_thoai LIKE :q',
-        { q: `%${q}%` },
+    // 1. Tìm kiếm nhanh theo từ khóa (Tên, Mã BN, CCCD, SĐT)
+    if (q && q.trim() !== '') {
+      qb.andWhere(
+        '(bn.ho_ten LIKE :q OR bn.ma_benh_nhan LIKE :q OR bn.so_cmnd LIKE :q OR bn.so_dien_thoai LIKE :q)',
+        { q: `%${q.trim()}%` },
       );
+    }
+
+    // 2. Lọc Mới đăng ký hôm nay
+    if (moiDangKyHomNay === 'true' || moiDangKyHomNay === '1') {
+      qb.andWhere('DATE(bn.tao_luc) = CURDATE()');
+    }
+
+    // 3. Lọc Theo Khoảng Thời Gian Tạo Hồ Sơ
+    if (tuNgay) {
+      qb.andWhere('DATE(bn.tao_luc) >= :tuNgay', { tuNgay });
+    }
+    if (denNgay) {
+      qb.andWhere('DATE(bn.tao_luc) <= :denNgay', { denNgay });
+    }
+
+    // 4. Lọc Giới Tính
+    if (gioiTinh && gioiTinh !== '') {
+      qb.andWhere('bn.gioi_tinh = :gioiTinh', { gioiTinh });
+    }
+
+    // 5. Lọc Nhóm Tuổi (Nhi <15t, Trưởng thành 15-60t, Cao tuổi >60t)
+    if (doTuoi && doTuoi !== '') {
+      const currentYear = new Date().getFullYear();
+      if (doTuoi === 'nhi') {
+        qb.andWhere('YEAR(bn.ngay_sinh) >= :minYearNhi', { minYearNhi: currentYear - 15 });
+      } else if (doTuoi === 'truong_thanh') {
+        qb.andWhere('YEAR(bn.ngay_sinh) BETWEEN :minYearTT AND :maxYearTT', {
+          minYearTT: currentYear - 60,
+          maxYearTT: currentYear - 15,
+        });
+      } else if (doTuoi === 'cao_tuoi') {
+        qb.andWhere('YEAR(bn.ngay_sinh) < :maxYearCaoTuoi', { maxYearCaoTuoi: currentYear - 60 });
+      }
+    }
+
+    // 6. Lọc Bệnh Nhân Có Dị Ứng
+    if (coDiUng === 'true' || coDiUng === '1') {
+      qb.andWhere('bn.di_ung IS NOT NULL AND bn.di_ung != ""');
+    }
+
+    // 7. Lọc Hồ Sơ Chưa Hoàn Thiện (Thiếu ngày sinh hoặc thiếu CMND/CCCD)
+    if (chuaHoanThien === 'true' || chuaHoanThien === '1') {
+      qb.andWhere('(bn.ngay_sinh IS NULL OR bn.so_cmnd IS NULL OR bn.so_cmnd = "")');
     }
 
     qb.orderBy('bn.tao_luc', 'DESC').skip(skip).take(limit);
@@ -36,8 +84,8 @@ export class BenhNhanService {
       data: items,
       message: 'Lấy danh sách bệnh nhân thành công',
       pagination: {
-        page,
-        limit,
+        page: Number(page),
+        limit: Number(limit),
         total,
         totalPages: Math.ceil(total / limit),
       },
