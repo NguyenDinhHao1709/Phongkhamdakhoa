@@ -1025,7 +1025,7 @@ function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
 function DonThuocTab({ benhAnKhamId, onOpenModal }) {
   const { data, isLoading } = useQuery({
     queryKey: ['don-thuoc-benh-an', benhAnKhamId],
-    queryFn: () => apiGet(`/nha-thuoc/don-thuoc?search=${benhAnKhamId}`),
+    queryFn: () => apiGet(`/nha-thuoc/don-thuoc?benhAnKhamId=${benhAnKhamId}`),
   });
 
   const donList = data?.data || [];

@@ -45,8 +45,9 @@ export class NhaThuocController {
   getDanhSachDonThuoc(
     @Query('trangThai') trangThai?: string,
     @Query('search') search?: string,
+    @Query('benhAnKhamId') benhAnKhamId?: number,
   ) {
-    return this.nhaThuocService.getDanhSachDonThuoc({ trangThai, search });
+    return this.nhaThuocService.getDanhSachDonThuoc({ trangThai, search, benhAnKhamId });
   }
 
   @Get('don-thuoc/:id')

@@ -103,7 +103,7 @@ export class NhaThuocService {
   /**
    * Lấy danh sách đơn thuốc từ bác sĩ kê
    */
-  async getDanhSachDonThuoc(query: { trangThai?: string; search?: string }) {
+  async getDanhSachDonThuoc(query: { trangThai?: string; search?: string; benhAnKhamId?: number }) {
     const qb = this.donThuocRepo
       .createQueryBuilder('dt')
       .leftJoinAndSelect('dt.bacSiKe', 'bs')
@@ -116,7 +116,9 @@ export class NhaThuocService {
       qb.andWhere('dt.trangThai = :trangThai', { trangThai: query.trangThai });
     }
 
-    if (query.search) {
+    if (query.benhAnKhamId) {
+      qb.andWhere('dt.benhAnKhamId = :benhAnKhamId', { benhAnKhamId: Number(query.benhAnKhamId) });
+    } else if (query.search) {
       const keyword = `%${query.search.trim()}%`;
       qb.andWhere('(dt.maDonThuoc LIKE :keyword OR nv.hoTen LIKE :keyword)', { keyword });
     }
@@ -128,10 +130,25 @@ export class NhaThuocService {
       data: list.map((dt) => ({
         id: dt.id,
         maDonThuoc: dt.maDonThuoc,
+        benhAnKhamId: dt.benhAnKhamId,
         bacSi: dt.bacSiKe?.nhanVien?.hoTen || 'Bác sĩ',
         ngayKe: dt.ngayKe,
         trangThai: dt.trangThai,
+        ghiChu: dt.ghiChu,
         soLuongMon: dt.chiTiet ? dt.chiTiet.length : 0,
+        chiTiet: dt.chiTiet ? dt.chiTiet.map((ct) => ({
+          id: ct.id,
+          soLuong: ct.soLuong,
+          lieuDung: ct.lieuDung,
+          soNgayDung: ct.soNgayDung,
+          thuoc: ct.thuoc ? {
+            id: ct.thuoc.id,
+            maThuoc: ct.thuoc.maThuoc,
+            tenThuoc: ct.thuoc.tenThuoc,
+            donViTinh: ct.thuoc.donViTinh,
+            giaBan: ct.thuoc.giaBan,
+          } : null,
+        })) : [],
       })),
     };
   }
