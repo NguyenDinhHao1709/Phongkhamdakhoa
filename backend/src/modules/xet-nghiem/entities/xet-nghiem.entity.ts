@@ -27,7 +27,7 @@ export class DichVuXetNghiem {
   @Column({ name: 'gia_tri_binh_thuong', length: 200, nullable: true })
   giaTriBinhThuong: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'mo_ta', type: 'text', nullable: true })
   moTa: string;
 
   @Column({ name: 'trang_thai', type: 'enum', enum: ['hoat_dong', 'ngung'], default: 'hoat_dong' })

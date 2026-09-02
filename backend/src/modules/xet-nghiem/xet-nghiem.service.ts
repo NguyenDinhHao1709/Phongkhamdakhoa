@@ -63,7 +63,20 @@ export class XetNghiemService {
   async danhMucDichVu(loai?: string) {
     const where: any = { trangThai: 'hoat_dong' };
     if (loai) where.loai = loai;
-    const items = await this.dvRepo.find({ where, order: { tenDichVu: 'ASC' } });
+    let items = await this.dvRepo.find({ where, order: { tenDichVu: 'ASC' } });
+
+    if (items.length === 0) {
+      const initialServices = [
+        { maDichVu: 'XN001', tenDichVu: 'Công thức máu toàn phần (CBC)', loai: 'xet_nghiem', gia: 120000, donViKetQua: 'G/L', giaTriBinhThuong: '4.0 - 10.0' },
+        { maDichVu: 'XN002', tenDichVu: 'Sinh hóa máu (Đường huyết, Men gan, Ure, Creatinine)', loai: 'xet_nghiem', gia: 250000, donViKetQua: 'mmol/L', giaTriBinhThuong: '3.9 - 6.4' },
+        { maDichVu: 'CD001', tenDichVu: 'X-Quang ngực thẳng', loai: 'cdha', gia: 150000, donViKetQua: 'Hình ảnh', giaTriBinhThuong: 'Bình thường' },
+        { maDichVu: 'CD002', tenDichVu: 'Siêu âm ổ bụng tổng quát', loai: 'cdha', gia: 200000, donViKetQua: 'Hình ảnh', giaTriBinhThuong: 'Bình thường' },
+        { maDichVu: 'XN003', tenDichVu: 'Điện tâm đồ (ECG)', loai: 'xet_nghiem', gia: 100000, donViKetQua: 'Nhịp tim', giaTriBinhThuong: '60 - 100 bpm' },
+      ];
+      await this.dvRepo.save(this.dvRepo.create(initialServices));
+      items = await this.dvRepo.find({ where, order: { tenDichVu: 'ASC' } });
+    }
+
     return { data: items, message: 'OK' };
   }
 

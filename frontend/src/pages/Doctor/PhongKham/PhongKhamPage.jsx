@@ -582,12 +582,12 @@ function TaoChiDinhModal({ benhAnKhamId, onClose, onSuccess }) {
     queryFn: () => apiGet('/xet-nghiem/dich-vu'),
   });
 
-  const listDichVu = data?.data || [
-    { id: 1, maDichVu: 'XN001', tenDichVu: 'Công thức máu toàn phần (CBC)', giaDichVu: 120000, loai: 'xet_nghiem' },
-    { id: 2, maDichVu: 'XN002', tenDichVu: 'Sinh hóa máu (Đường huyết, Men gan, Ure, Creatinine)', giaDichVu: 250000, loai: 'xet_nghiem' },
-    { id: 3, maDichVu: 'CD001', tenDichVu: 'X-Quang ngực thẳng', giaDichVu: 150000, loai: 'chan_doan_hinh_anh' },
-    { id: 4, maDichVu: 'CD002', tenDichVu: 'Siêu âm ổ bụng tổng quát', giaDichVu: 200000, loai: 'chan_doan_hinh_anh' },
-    { id: 5, maDichVu: 'XN003', tenDichVu: 'Điện tâm đồ (ECG)', giaDichVu: 100000, loai: 'xet_nghiem' },
+  const listDichVu = (data?.data && data.data.length > 0) ? data.data : [
+    { id: 1, maDichVu: 'XN001', tenDichVu: 'Công thức máu toàn phần (CBC)', gia: 120000, loai: 'xet_nghiem' },
+    { id: 2, maDichVu: 'XN002', tenDichVu: 'Sinh hóa máu (Đường huyết, Men gan, Ure, Creatinine)', gia: 250000, loai: 'xet_nghiem' },
+    { id: 3, maDichVu: 'CD001', tenDichVu: 'X-Quang ngực thẳng', gia: 150000, loai: 'chan_doan_hinh_anh' },
+    { id: 4, maDichVu: 'CD002', tenDichVu: 'Siêu âm ổ bụng tổng quát', gia: 200000, loai: 'chan_doan_hinh_anh' },
+    { id: 5, maDichVu: 'XN003', tenDichVu: 'Điện tâm đồ (ECG)', gia: 100000, loai: 'xet_nghiem' },
   ];
 
   const handleToggle = (id) => {
