@@ -395,7 +395,7 @@ function KhamBenhPanel({ luot, onComplete, onUpdateLuot }) {
           benhAnKhamId={benhAnId}
           onClose={() => setShowDonThuocModal(false)}
           onSuccess={() => {
-            qc.invalidateQueries(['don-thuoc-benh-an', benhAnKhamId]);
+            qc.invalidateQueries(['don-thuoc-benh-an', benhAnId]);
             setShowDonThuocModal(false);
             setTab('don_thuoc');
           }}
