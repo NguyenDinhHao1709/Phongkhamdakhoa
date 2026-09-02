@@ -42,9 +42,12 @@ export class AuthService {
 
   // ─── ĐĂNG KÝ BỆNH NHÂN TỰ DO ──────────────────────────────
   async registerPatient(dto: RegisterPatientDto) {
-    const existingUser = await this.nguoiDungRepo.findOne({ where: { tenDangNhap: dto.tenDangNhap } });
+    const username = (dto.tenDangNhap || dto.email || '').trim().toLowerCase();
+    const existingUser = await this.nguoiDungRepo.findOne({
+      where: [{ tenDangNhap: username }],
+    });
     if (existingUser) {
-      throw new ConflictException({ code: 'USERNAME_EXISTS', message: 'Tên đăng nhập đã tồn tại' });
+      throw new ConflictException({ code: 'USERNAME_EXISTS', message: 'Email đăng ký này đã tồn tại trong hệ thống' });
     }
 
     const role = await this.vaiTroRepo.findOne({ where: { maVaiTro: 'benh_nhan' } });
@@ -55,11 +58,12 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(dto.matKhau, 10);
 
     const newUser = this.nguoiDungRepo.create({
-      tenDangNhap: dto.tenDangNhap,
+      tenDangNhap: username,
       matKhauHash: hashedPassword,
       vaiTroId: role.id,
       loaiTaiKhoan: LoaiTaiKhoan.BENH_NHAN,
       trangThai: TrangThaiNguoiDung.HOAT_DONG,
+      emailDaXacThuc: true as any,
     });
     const savedUser = await this.nguoiDungRepo.save(newUser);
     savedUser.vaiTro = role;

@@ -39,10 +39,15 @@ export class RefreshTokenDto {
 
 // ─── DTO ĐĂNG KÝ BỆNH NHÂN ────────────────────────────────
 export class RegisterPatientDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'Tên đăng nhập không được để trống' })
-  tenDangNhap: string;
+  tenDangNhap?: string;
+
+  @ApiProperty()
+  @IsEmail({}, { message: 'Email không hợp lệ' })
+  @IsNotEmpty({ message: 'Email không được để trống' })
+  email: string;
 
   @ApiProperty()
   @IsString()
@@ -59,18 +64,13 @@ export class RegisterPatientDto {
   @IsNotEmpty({ message: 'Số điện thoại không được để trống' })
   soDienThoai: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsEmail({}, { message: 'Email không hợp lệ' })
-  email?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiProperty()
   @IsString()
-  gioiTinh?: string;
+  @IsNotEmpty({ message: 'Giới tính không được để trống' })
+  gioiTinh: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiProperty()
   @IsString()
-  ngaySinh?: string;
+  @IsNotEmpty({ message: 'Ngày sinh không được để trống' })
+  ngaySinh: string;
 }
