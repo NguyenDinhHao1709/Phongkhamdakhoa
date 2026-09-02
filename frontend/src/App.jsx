@@ -10,14 +10,14 @@ const LoginPage       = lazy(() => import("./pages/Login/LoginPage.jsx"));
 const RegisterPage    = lazy(() => import("./pages/Login/RegisterPage.jsx"));
 const UnauthorizedPage = lazy(() => import("./pages/Unauthorized/UnauthorizedPage.jsx"));
 
-// Portals (lazy loaded)
-const ReceptionistPortal = lazy(() => import("./pages/Receptionist/ReceptionistPortal.jsx").catch(() => ({ default: () => <ComingSoon role="Tiep Tan" /> })));
-const DoctorPortal       = lazy(() => import("./pages/Doctor/DoctorPortal.jsx").catch(() => ({ default: () => <ComingSoon role="Bac Si" /> })));
-const LabPortal          = lazy(() => import("./pages/Lab/LabPortal.jsx").catch(() => ({ default: () => <ComingSoon role="Ky Thuat Vien" /> })));
-const PharmacyPortal     = lazy(() => import("./pages/Pharmacy/PharmacyPortal.jsx").catch(() => ({ default: () => <ComingSoon role="Nha Thuoc" /> })));
-const CashierPortal      = lazy(() => import("./pages/Cashier/CashierPortal.jsx").catch(() => ({ default: () => <ComingSoon role="Thu Ngan" /> })));
-const ManagementPortal   = lazy(() => import("./pages/Management/ManagementPortal.jsx").catch(() => ({ default: () => <ComingSoon role="Quan Ly" /> })));
-const PatientPortal      = lazy(() => import("./pages/Patient/PatientPortal.jsx").catch(() => ({ default: () => <ComingSoon role="Benh Nhan" /> })));
+// Portals
+import ReceptionistPortal from "./pages/Receptionist/ReceptionistPortal.jsx";
+import DoctorPortal from "./pages/Doctor/DoctorPortal.jsx";
+import LabPortal from "./pages/Lab/LabPortal.jsx";
+import PharmacyPortal from "./pages/Pharmacy/PharmacyPortal.jsx";
+import CashierPortal from "./pages/Cashier/CashierPortal.jsx";
+import ManagementPortal from "./pages/Management/ManagementPortal.jsx";
+import PatientPortal from "./pages/Patient/PatientPortal.jsx";
 
 /* ================================================================
    Temporary placeholder for portals not yet created
