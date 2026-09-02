@@ -62,6 +62,7 @@ export class AuthService {
       trangThai: TrangThaiNguoiDung.HOAT_DONG,
     });
     const savedUser = await this.nguoiDungRepo.save(newUser);
+    savedUser.vaiTro = role;
 
     const bnCount = await this.benhNhanRepo.count();
     const newPatient = this.benhNhanRepo.create({

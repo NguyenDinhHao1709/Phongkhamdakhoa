@@ -11,7 +11,7 @@ const registerSchema = z.object({
   tenDangNhap: z.string().min(3, 'Tên đăng nhập ít nhất 3 ký tự'),
   matKhau: z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự'),
   hoTen: z.string().min(2, 'Họ tên không hợp lệ'),
-  soDienThoai: z.string().regex(/(84|0[3|5|7|8|9])+([0-9]{8})\b/g, 'Số điện thoại không hợp lệ'),
+  soDienThoai: z.string().regex(/(84|0[3|5|7|8|9])+([0-9]{8})\b/, 'Số điện thoại không hợp lệ (gồm 10 chữ số)'),
   email: z.string().email('Email không hợp lệ').optional().or(z.literal('')),
   ngaySinh: z.string().optional().or(z.literal('')),
   gioiTinh: z.enum(['nam', 'nu', 'khac']).optional().or(z.literal('')),
@@ -35,25 +35,34 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       setError('');
-      
+
       // Filter out empty strings
       const payload = Object.fromEntries(
         Object.entries(data).filter(([_, v]) => v !== '')
       );
 
       const res = await apiPost('/auth/register', payload);
-      
-      // Auto login
-      if (res.data) {
+
+      const authData = res?.data || res;
+      if (authData && authData.accessToken) {
         setAuth({
-          user: res.data.user,
-          accessToken: res.data.accessToken,
-          refreshToken: res.data.refreshToken,
+          user: authData.user,
+          accessToken: authData.accessToken,
+          refreshToken: authData.refreshToken,
         });
         navigate('/benh-nhan', { replace: true });
+      } else {
+        alert('Đăng ký tài khoản thành công!');
+        navigate('/login', { replace: true });
       }
     } catch (err) {
-      setError(err.response?.data?.error?.message || 'Đăng ký thất bại. Vui lòng thử lại.');
+      console.error(err);
+      setError(
+        err?.error?.message ||
+        err?.message ||
+        err?.response?.data?.error?.message ||
+        'Đăng ký thất bại. Vui lòng kiểm tra lại thông tin.'
+      );
     } finally {
       setLoading(false);
     }
