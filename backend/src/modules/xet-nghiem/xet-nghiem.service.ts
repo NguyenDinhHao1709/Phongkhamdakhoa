@@ -8,6 +8,7 @@ import {
   TrangThaiChiDinh,
 } from './entities/xet-nghiem.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
+import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import {
   IsInt, IsPositive, IsOptional, IsString, IsEnum, IsArray,
   ValidateNested, IsNumber, Min,
@@ -71,7 +72,11 @@ export class XetNghiemService {
     let bacSiId: number | null = null;
     if (nguoiDungId) {
       const nv = await this.cdRepo.manager.getRepository(NhanVien).findOne({ where: { nguoiDungId } });
-      if (nv) bacSiId = nv.id;
+      if (nv) {
+        const bs = await this.cdRepo.manager.getRepository(BacSi).findOne({ where: { nhanVienId: nv.id } });
+        if (bs) bacSiId = bs.id;
+        else bacSiId = nv.id;
+      }
     }
 
     const entities = dto.dsChiDinh.map((item) =>

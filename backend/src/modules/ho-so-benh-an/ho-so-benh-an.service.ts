@@ -4,6 +4,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { HoSoBenhAn, BenhAnKham, TrangThaiBenhAnKham } from './entities/ho-so-benh-an.entity';
+import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
+import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 import {
   IsInt, IsPositive, IsOptional, IsString, IsEnum, IsDateString,
@@ -74,13 +76,29 @@ export class HoSoBenhAnService {
   }
 
   // ─── Tạo phiếu khám mới ──────────────────────────────────
-  async taoBenhAnKham(bacSiId: number, benhNhanId: number, dto: TaoBenhAnKhamDto) {
+  async taoBenhAnKham(nguoiDungId: number, benhNhanId: number, dto: TaoBenhAnKhamDto) {
     const hoSo = await this.getOrCreateHoSo(benhNhanId);
 
-    const bak = this.benhAnRepo.create({
+    // Nếu lượt tiếp nhận đã có phiếu khám thì trả về phiếu hiện tại
+    let bak = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: dto.luotTiepNhanId } });
+    if (bak) {
+      return { data: bak, message: 'Lấy phiếu khám hiện tại thành công' };
+    }
+
+    let bacSiTableId: number | null = null;
+    if (nguoiDungId) {
+      const nv = await this.benhAnRepo.manager.getRepository(NhanVien).findOne({ where: { nguoiDungId } });
+      if (nv) {
+        const bs = await this.benhAnRepo.manager.getRepository(BacSi).findOne({ where: { nhanVienId: nv.id } });
+        if (bs) bacSiTableId = bs.id;
+        else bacSiTableId = nv.id;
+      }
+    }
+
+    bak = this.benhAnRepo.create({
       hoSoBenhAnId: hoSo.id,
       luotTiepNhanId: dto.luotTiepNhanId,
-      bacSiId,
+      bacSiId: bacSiTableId || nguoiDungId,
       trieuChung: dto.trieuChung,
       chanDoanSoBo: dto.chanDoanSoBo,
       hinhThucKham: dto.hinhThucKham || 'truc_tiep',
@@ -118,4 +136,3 @@ export class HoSoBenhAnService {
     return { data: saved, message: 'Kết thúc khám thành công' };
   }
 }
-
