@@ -262,5 +262,62 @@ export class NhaThuocService {
       data: updated,
     };
   }
+
+  /**
+   * Bác sĩ lập đơn thuốc điện tử
+   */
+  async taoDonThuoc(body: {
+    benhAnKhamId: number;
+    bacSiId?: number;
+    ghiChu?: string;
+    chiTiet: Array<{
+      thuocId: number;
+      soLuong: number;
+      lieuDung?: string;
+      soNgayDung?: number;
+      ghiChu?: string;
+    }>;
+  }) {
+    if (!body.benhAnKhamId || !body.chiTiet || !body.chiTiet.length) {
+      throw new BadRequestException('Vui lòng cung cấp phiếu khám và ít nhất 1 thuốc');
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const count = await this.donThuocRepo.count();
+    const maDonThuoc = `DT${todayStr}${String(count + 1).padStart(4, '0')}`;
+
+    const dt = this.donThuocRepo.create({
+      maDonThuoc,
+      benhAnKhamId: body.benhAnKhamId,
+      bacSiKeId: body.bacSiId || 1,
+      trangThai: 'cho_duyet',
+      ghiChu: body.ghiChu,
+    });
+
+    const savedDon = await this.donThuocRepo.save(dt);
+
+    const chiTietEntities = body.chiTiet.map((item) =>
+      this.donThuocChiTietRepo.create({
+        donThuocId: savedDon.id,
+        thuocId: item.thuocId,
+        soLuong: item.soLuong,
+        lieuDung: item.lieuDung || '',
+        soNgayDung: item.soNgayDung || 1,
+        ghiChu: item.ghiChu || '',
+      })
+    );
+
+    await this.donThuocChiTietRepo.save(chiTietEntities);
+
+    const result = await this.donThuocRepo.findOne({
+      where: { id: savedDon.id },
+      relations: ['chiTiet', 'chiTiet.thuoc'],
+    });
+
+    return {
+      message: 'Kê đơn thuốc thành công',
+      data: result,
+    };
+  }
 }
 

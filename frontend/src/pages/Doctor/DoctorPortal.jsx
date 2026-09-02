@@ -3,6 +3,15 @@ import { lazy, Suspense } from 'react';
 import { DashboardLayout } from '../../layouts/DashboardLayout';
 
 const PhongKhamPage = lazy(() => import('./PhongKham/PhongKhamPage'));
+const KhamTrucTuyenPage = lazy(() => import('./KhamTrucTuyen/KhamTrucTuyenPage'));
+const HoSoBenhAnQuanLyPage = lazy(() => import('./HoSoBenhAn/HoSoBenhAnQuanLyPage'));
+const LichHenBacSiPage = lazy(() => import('./LichHen/LichHenBacSiPage'));
+const ThongKeBacSiPage = lazy(() => import('./ThongKe/ThongKeBacSiPage'));
+
+// Shared staff pages
+const ThongTinCaNhanPage = lazy(() => import('../Receptionist/NhanVienShared/ThongTinCaNhanPage'));
+const LichLamViecPage = lazy(() => import('../Receptionist/NhanVienShared/LichLamViecPage'));
+const GuiDonGiamDocPage = lazy(() => import('../Receptionist/NhanVienShared/GuiDonGiamDocPage'));
 
 function Loader() {
   return (
@@ -19,8 +28,16 @@ export default function DoctorPortal() {
         <Routes>
           <Route index element={<Navigate to="phong-kham" replace />} />
           <Route path="phong-kham" element={<PhongKhamPage />} />
-          <Route path="lich-hen" element={<div className="p-8 text-gray-500 font-semibold">Quản lý Lịch hẹn Bác sĩ</div>} />
-          <Route path="benh-nhan" element={<div className="p-8 text-gray-500 font-semibold">Danh sách Bệnh nhân Khám</div>} />
+          <Route path="kham-truc-tuyen" element={<KhamTrucTuyenPage />} />
+          <Route path="ho-so-benh-an" element={<HoSoBenhAnQuanLyPage />} />
+          <Route path="lich-hen" element={<LichHenBacSiPage />} />
+          <Route path="thong-ke" element={<ThongKeBacSiPage />} />
+          
+          {/* Chức năng cơ bản chung */}
+          <Route path="ca-nhan" element={<ThongTinCaNhanPage />} />
+          <Route path="lich-lam-viec" element={<LichLamViecPage />} />
+          <Route path="gui-don" element={<GuiDonGiamDocPage />} />
+
           <Route path="*" element={<Navigate to="phong-kham" replace />} />
         </Routes>
       </Suspense>

@@ -7,7 +7,7 @@ import {
   Stethoscope, Users, Calendar, ClipboardList,
   FlaskConical, Pill, Receipt, BarChart3,
   LogOut, ChevronLeft, ChevronRight, Bell,
-  User, Settings, FileText, Clock,
+  User, Settings, FileText, Clock, Video,
 } from 'lucide-react';
 
 const MENU_CONFIG = {
@@ -22,9 +22,14 @@ const MENU_CONFIG = {
     { to: '/tiep-tan/gui-don', icon: FileText, label: 'Gửi đơn Giám đốc' },
   ],
   bac_si: [
-    { to: '/bac-si/phong-kham', icon: Stethoscope, label: 'Phòng khám' },
-    { to: '/bac-si/lich-hen', icon: Calendar, label: 'Lịch hẹn' },
-    { to: '/bac-si/benh-nhan', icon: Users, label: 'Bệnh nhân' },
+    { to: '/bac-si/phong-kham', icon: Stethoscope, label: 'Phòng khám lâm sàng' },
+    { to: '/bac-si/kham-truc-tuyen', icon: Video, label: 'Khám trực tuyến' },
+    { to: '/bac-si/ho-so-benh-an', icon: ClipboardList, label: 'Quản lý Hồ sơ bệnh án' },
+    { to: '/bac-si/lich-hen', icon: Calendar, label: 'Lịch tư vấn & Lịch hẹn' },
+    { to: '/bac-si/thong-ke', icon: BarChart3, label: 'Thống kê bệnh nhân' },
+    { to: '/bac-si/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
+    { to: '/bac-si/lich-lam-viec', icon: Clock, label: 'Lịch làm việc' },
+    { to: '/bac-si/gui-don', icon: FileText, label: 'Gửi đơn Giám đốc' },
   ],
   ky_thuat_vien: [
     { to: '/ky-thuat-vien/xet-nghiem', icon: FlaskConical, label: 'Xét nghiệm' },

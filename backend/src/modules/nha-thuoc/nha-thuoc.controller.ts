@@ -40,7 +40,7 @@ export class NhaThuocController {
   }
 
   @Get('don-thuoc')
-  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'thu_ngan')
+  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'thu_ngan', 'bac_si')
   @ApiOperation({ summary: 'Lấy danh sách đơn thuốc cần cấp phát' })
   getDanhSachDonThuoc(
     @Query('trangThai') trangThai?: string,
@@ -50,7 +50,7 @@ export class NhaThuocController {
   }
 
   @Get('don-thuoc/:id')
-  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'thu_ngan')
+  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'thu_ngan', 'bac_si')
   @ApiOperation({ summary: 'Xem chi tiết đơn thuốc & lô FEFO' })
   getChiTietDonThuoc(@Param('id', ParseIntPipe) id: number) {
     return this.nhaThuocService.getChiTietDonThuoc(id);
@@ -61,6 +61,13 @@ export class NhaThuocController {
   @ApiOperation({ summary: 'Xác nhận cấp phát & trừ kho FEFO' })
   capPhatDonThuoc(@Param('id', ParseIntPipe) id: number) {
     return this.nhaThuocService.capPhatDonThuoc(id);
+  }
+
+  @Post('don-thuoc')
+  @Roles('bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Bác sĩ tạo đơn thuốc điện tử' })
+  taoDonThuoc(@Body() body: any) {
+    return this.nhaThuocService.taoDonThuoc(body);
   }
 }
 
