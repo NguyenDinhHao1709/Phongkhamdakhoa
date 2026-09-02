@@ -28,14 +28,36 @@ export const timeAgo = (date) => {
   });
 };
 
-/** Tính tuổi từ ngày sinh */
+/** Tính tuổi từ ngày sinh (Chuẩn y tế: Tính theo tháng nếu dưới 1 tuổi, bắt lỗi tương lai và dữ liệu trống) */
 export const tinhTuoi = (ngaySinh) => {
-  if (!ngaySinh) return null;
-  const birth = typeof ngaySinh === 'string' ? parseISO(ngaySinh) : ngaySinh;
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age;
+  if (!ngaySinh) return '';
+  try {
+    const birth = typeof ngaySinh === 'string' ? parseISO(ngaySinh) : ngaySinh;
+    if (isNaN(birth.getTime())) return '';
+    const today = new Date();
+
+    // Nếu ngày sinh trong tương lai
+    if (birth > today) return 'Lỗi dữ liệu';
+
+    let ageYears = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      ageYears--;
+    }
+
+    // Nếu bệnh nhi dưới 1 tuổi -> Hiển thị theo tháng
+    if (ageYears < 1) {
+      let months = (today.getFullYear() - birth.getFullYear()) * 12 + (today.getMonth() - birth.getMonth());
+      if (today.getDate() < birth.getDate()) months--;
+      if (months <= 0) return 'Dưới 1 tháng';
+      return `${months} tháng`;
+    }
+
+    return `${ageYears} tuổi`;
+  } catch {
+    return '';
+  }
 };
+
+export const calculateAge = tinhTuoi;
 
