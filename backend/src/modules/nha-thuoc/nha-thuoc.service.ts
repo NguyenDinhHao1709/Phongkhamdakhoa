@@ -25,7 +25,7 @@ export class NhaThuocService {
   async getDanhSachThuoc(search?: string) {
     const qb = this.thuocRepo
       .createQueryBuilder('t')
-      .leftJoinAndSelect('t.danhSachLo', 'lo');
+      .leftJoinAndSelect('t.loThuocList', 'lo');
 
     if (search) {
       const keyword = `%${search.trim()}%`;
@@ -37,7 +37,7 @@ export class NhaThuocService {
     return {
       message: 'Lấy danh sách thuốc thành công',
       data: list.map((item) => {
-        const loGanNhat = (item as any).danhSachLo?.sort((a: any, b: any) => new Date(a.ngayHetHan).getTime() - new Date(b.ngayHetHan).getTime())[0];
+        const loGanNhat = (item as any).loThuocList?.sort((a: any, b: any) => new Date(a.ngayHetHan).getTime() - new Date(b.ngayHetHan).getTime())[0];
         return {
           ...item,
           giaBan: Number(item.giaBan),
