@@ -8,13 +8,16 @@ import { VitalsCard } from '../../../design-system/components/VitalSign/VitalDis
 import { apiGet, apiPost, apiPatch } from '../../../services/api';
 import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
-import { Stethoscope, AlertTriangle, FileText, ClipboardList, FlaskConical, CheckCircle2, ChevronRight } from 'lucide-react';
+import {
+  Stethoscope, AlertTriangle, FileText, ClipboardList, FlaskConical,
+  CheckCircle2, ChevronRight, Activity, Plus, X, HeartPulse
+} from 'lucide-react';
 
 function useHangDoi() {
   return useQuery({
     queryKey: ['tiep-nhan', 'hang-doi'],
     queryFn: () => apiGet('/tiep-nhan/hang-doi'),
-    refetchInterval: 15000,
+    refetchInterval: 10000,
   });
 }
 
@@ -25,6 +28,11 @@ export default function PhongKhamPage() {
   const dangKham = items.filter((i) => i.trangThai === 'dang_kham');
   const choKham = items.filter((i) => i.trangThai === 'cho_kham');
 
+  // Đảm bảo selectedLuot luôn cập nhật đúng trạng thái mới từ API
+  const currentLuot = selectedLuot
+    ? items.find((i) => i.id === selectedLuot.id) || selectedLuot
+    : null;
+
   return (
     <div className="flex gap-6 h-[calc(100vh-7rem)] animate-fade-in">
       {/* Left: Patient Queue */}
@@ -33,13 +41,25 @@ export default function PhongKhamPage() {
           <ClipboardList className="h-5 w-5 text-primary-600" /> Hàng đợi
         </h2>
 
-        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-          {isLoading && <p className="text-center text-sm text-gray-400 py-8">Đang tải...</p>}
+        <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+          {isLoading && <p className="text-center text-sm text-gray-400 py-8">Đang tải danh sách...</p>}
+          
           {dangKham.map((luot) => (
-            <PatientCard key={luot.id} luot={luot} isActive={selectedLuot?.id === luot.id} onClick={() => setSelectedLuot(luot)} highlight />
+            <PatientCard
+              key={luot.id}
+              luot={luot}
+              isActive={currentLuot?.id === luot.id}
+              onClick={() => setSelectedLuot(luot)}
+              highlight
+            />
           ))}
           {choKham.map((luot) => (
-            <PatientCard key={luot.id} luot={luot} isActive={selectedLuot?.id === luot.id} onClick={() => setSelectedLuot(luot)} />
+            <PatientCard
+              key={luot.id}
+              luot={luot}
+              isActive={currentLuot?.id === luot.id}
+              onClick={() => setSelectedLuot(luot)}
+            />
           ))}
           {!isLoading && items.length === 0 && (
             <p className="text-center text-sm text-gray-400 py-8">Không có bệnh nhân chờ khám</p>
@@ -49,12 +69,16 @@ export default function PhongKhamPage() {
 
       {/* Right: Examination Panel */}
       <div className="flex-1 overflow-y-auto">
-        {selectedLuot ? (
-          <ExaminationPanel luot={selectedLuot} onComplete={() => setSelectedLuot(null)} />
+        {currentLuot ? (
+          <ExaminationPanel
+            luot={currentLuot}
+            onUpdateLuot={(updated) => setSelectedLuot(updated)}
+            onComplete={() => setSelectedLuot(null)}
+          />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
             <Stethoscope className="h-12 w-12 mb-3 opacity-30" />
-            <p className="text-base">Chọn bệnh nhân từ hàng đợi để bắt đầu khám</p>
+            <p className="text-base font-medium">Chọn bệnh nhân từ hàng đợi để bắt đầu khám</p>
           </div>
         )}
       </div>
@@ -64,37 +88,45 @@ export default function PhongKhamPage() {
 
 function PatientCard({ luot, isActive, onClick, highlight }) {
   const bn = luot.benhNhan || {};
+  const ageStr = tinhTuoi(bn.ngaySinh);
+
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left rounded-xl border p-3 transition-all ${
-        isActive ? 'border-primary-400 bg-primary-50 shadow-card-md' :
-        highlight ? 'border-primary-200 bg-primary-50/30 hover:border-primary-300' :
-        'border-gray-200 bg-white hover:border-gray-300'
+      className={`w-full text-left rounded-xl border p-3.5 transition-all cursor-pointer ${
+        isActive
+          ? 'border-primary-500 bg-blue-50/90 shadow-md ring-2 ring-primary-500/20'
+          : highlight
+          ? 'border-primary-200 bg-primary-50/30 hover:border-primary-300'
+          : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/50'
       }`}
     >
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-lg font-bold text-primary-700">{luot.maSoThuTu}</span>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className={`text-lg font-extrabold ${isActive ? 'text-primary-800' : 'text-primary-700'}`}>
+          {luot.maSoThuTu}
+        </span>
         <StatusBadge status={luot.trangThai} size="sm" />
       </div>
-      <p className="font-semibold text-sm text-gray-900 truncate">{bn.hoTen}</p>
-      <p className="text-xs text-gray-500">
-        {tinhTuoi(bn.ngaySinh) && `${tinhTuoi(bn.ngaySinh)}T`}
+      <p className="font-bold text-sm text-gray-900 truncate">{bn.hoTen}</p>
+      <p className="text-xs text-gray-500 mt-0.5">
+        {ageStr}
         {bn.gioiTinh && ` · ${GIOI_TINH[bn.gioiTinh]}`}
       </p>
       {bn.diUng && (
-        <div className="mt-1.5 flex items-center gap-1 rounded bg-danger-light px-2 py-0.5 text-xs font-medium text-danger-dark">
-          <AlertTriangle className="h-3 w-3" /> {bn.diUng}
+        <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200/60 px-2.5 py-1 text-xs font-semibold text-red-700">
+          <AlertTriangle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
+          <span className="truncate">⚠ Dị ứng: {bn.diUng}</span>
         </div>
       )}
     </button>
   );
 }
 
-function ExaminationPanel({ luot, onComplete }) {
+function ExaminationPanel({ luot, onUpdateLuot, onComplete }) {
   const bn = luot.benhNhan || {};
   const qc = useQueryClient();
   const [tab, setTab] = useState('kham'); // 'kham' | 'xn' | 'lich_su'
+  const [showVitalsModal, setShowVitalsModal] = useState(false);
   const [form, setForm] = useState({
     trieuChung: '', chanDoanSoBo: '', chanDoanXacDinh: '',
     ketQuaKham: '', phuongPhapDieuTri: '', taiKham: '', ghiChu: '',
@@ -102,7 +134,7 @@ function ExaminationPanel({ luot, onComplete }) {
   const [benhAnId, setBenhAnId] = useState(null);
 
   // Sinh hiệu
-  const { data: shData } = useQuery({
+  const { data: shData, refetch: refetchSinhHieu } = useQuery({
     queryKey: ['sinh-hieu', luot.id],
     queryFn: () => apiGet(`/tiep-nhan/${luot.id}/sinh-hieu`),
   });
@@ -124,11 +156,16 @@ function ExaminationPanel({ luot, onComplete }) {
     },
   });
 
-  // Bắt đầu khám
+  // Bắt đầu khám — Cập nhật backend siết chặt chỉ 1 người đang khám
   const handleBatDauKham = async () => {
-    await apiPatch(`/tiep-nhan/${luot.id}/trang-thai`, { trangThai: 'dang_kham' });
-    await createMut.mutateAsync();
-    qc.invalidateQueries(['tiep-nhan']);
+    try {
+      await apiPatch(`/tiep-nhan/${luot.id}/trang-thai`, { trangThai: 'dang_kham' });
+      onUpdateLuot({ ...luot, trangThai: 'dang_kham' });
+      await createMut.mutateAsync();
+      qc.invalidateQueries(['tiep-nhan']);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const TABS = [
@@ -136,6 +173,8 @@ function ExaminationPanel({ luot, onComplete }) {
     { key: 'xn', label: 'Xét nghiệm', icon: FlaskConical },
     { key: 'lich_su', label: 'Lịch sử', icon: FileText },
   ];
+
+  const ageStr = tinhTuoi(bn.ngaySinh);
 
   return (
     <div className="space-y-4">
@@ -148,26 +187,56 @@ function ExaminationPanel({ luot, onComplete }) {
               <StatusBadge status={luot.trangThai} />
             </div>
             <p className="text-sm text-gray-500">
-              {bn.maBenhNhan} · {tinhTuoi(bn.ngaySinh) && `${tinhTuoi(bn.ngaySinh)} tuổi`}
+              {bn.maBenhNhan}
+              {ageStr && ` · ${ageStr}`}
               {bn.gioiTinh && ` · ${GIOI_TINH[bn.gioiTinh]}`}
               {bn.soDienThoai && ` · ${bn.soDienThoai}`}
             </p>
             {bn.tienSuBenh && <p className="mt-1 text-xs text-gray-400">Tiền sử: {bn.tienSuBenh}</p>}
           </div>
           {!benhAnId && (
-            <MedButton variant="primary" onClick={handleBatDauKham} loading={createMut.isLoading}>
-              Bắt đầu khám
+            <MedButton
+              variant="primary"
+              onClick={handleBatDauKham}
+              loading={createMut.isLoading}
+            >
+              {luot.trangThai === 'dang_kham' ? 'Tiếp tục khám' : 'Bắt đầu khám'}
             </MedButton>
           )}
         </div>
       </MedCard>
 
-      {/* Vitals */}
-      {sinhHieu && (
-        <MedCard title="Sinh hiệu">
+      {/* Sinh hiệu / Empty State */}
+      <MedCard
+        title="Sinh hiệu"
+        action={
+          <button
+            type="button"
+            onClick={() => setShowVitalsModal(true)}
+            className="flex items-center gap-1 text-xs font-bold text-primary-600 hover:text-primary-700 bg-primary-50 hover:bg-primary-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" /> Cập nhật
+          </button>
+        }
+      >
+        {sinhHieu ? (
           <VitalsCard data={sinhHieu} />
-        </MedCard>
-      )}
+        ) : (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-xl bg-gray-50 border border-dashed border-gray-200">
+            <div className="flex items-center gap-3">
+              <Activity className="h-5 w-5 text-gray-400 flex-shrink-0" />
+              <p className="text-sm font-medium text-gray-500">Chưa ghi nhận sinh hiệu</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowVitalsModal(true)}
+              className="text-xs font-bold text-primary-600 hover:text-primary-700 border border-primary-300 hover:border-primary-400 bg-white px-3.5 py-1.5 rounded-lg transition-colors shadow-2xs cursor-pointer flex items-center gap-1"
+            >
+              <Plus className="h-3.5 w-3.5" /> Đo & Cập nhật ngay
+            </button>
+          </div>
+        )}
+      </MedCard>
 
       {/* Tabs */}
       {benhAnId && (
@@ -177,9 +246,9 @@ function ExaminationPanel({ luot, onComplete }) {
               <button
                 key={key}
                 onClick={() => setTab(key)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
                   tab === key
-                    ? 'border-primary-600 text-primary-700'
+                    ? 'border-primary-600 text-primary-700 font-semibold'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -230,9 +299,11 @@ function ExaminationPanel({ luot, onComplete }) {
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                  <MedButton variant="secondary" type="button" onClick={() =>
-                    apiPatch(`/ho-so-benh-an/benh-an-kham/${benhAnId}`, form)
-                  }>
+                  <MedButton
+                    variant="secondary"
+                    type="button"
+                    onClick={() => apiPatch(`/ho-so-benh-an/benh-an-kham/${benhAnId}`, form)}
+                  >
                     Lưu nháp
                   </MedButton>
                   <MedButton
@@ -252,6 +323,172 @@ function ExaminationPanel({ luot, onComplete }) {
           {tab === 'lich_su' && <LichSuTab benhNhanId={bn.id} />}
         </>
       )}
+
+      {/* Vitals Modal */}
+      {showVitalsModal && (
+        <VitalsModal
+          luotId={luot.id}
+          initialData={sinhHieu}
+          onClose={() => setShowVitalsModal(false)}
+          onSuccess={() => {
+            refetchSinhHieu();
+            setShowVitalsModal(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function VitalsModal({ luotId, initialData, onClose, onSuccess }) {
+  const [form, setForm] = useState({
+    mach: initialData?.mach || '',
+    huyetApTamThu: initialData?.huyetApTamThu || '',
+    huyetApTamTruong: initialData?.huyetApTamTruong || '',
+    nhietDo: initialData?.nhietDo || '',
+    chieuCao: initialData?.chieuCao || '',
+    canNang: initialData?.canNang || '',
+    spo2: initialData?.spo2 || '',
+    nhipTho: initialData?.nhipTho || '',
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const payload = {
+        mach: form.mach ? Number(form.mach) : null,
+        huyetApTamThu: form.huyetApTamThu ? Number(form.huyetApTamThu) : null,
+        huyetApTamTruong: form.huyetApTamTruong ? Number(form.huyetApTamTruong) : null,
+        nhietDo: form.nhietDo ? Number(form.nhietDo) : null,
+        chieuCao: form.chieuCao ? Number(form.chieuCao) : null,
+        canNang: form.canNang ? Number(form.canNang) : null,
+        spo2: form.spo2 ? Number(form.spo2) : null,
+        nhipTho: form.nhipTho ? Number(form.nhipTho) : null,
+      };
+
+      await apiPost(`/tiep-nhan/${luotId}/sinh-hieu`, payload);
+      onSuccess();
+    } catch (err) {
+      console.error(err);
+      alert('Lỗi cập nhật sinh hiệu. Vui lòng thử lại.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-xs p-4">
+      <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl space-y-4">
+        <div className="flex items-center justify-between border-b pb-3">
+          <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+            <HeartPulse className="h-5 w-5 text-primary-600" /> Cập nhật sinh hiệu bệnh nhân
+          </h3>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Mạch (lần/phút)</label>
+              <input
+                type="number"
+                value={form.mach}
+                onChange={(e) => setForm({ ...form, mach: e.target.value })}
+                placeholder="VD: 75"
+                className="w-full rounded-lg border border-gray-300 py-1.5 px-3 text-sm focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Nhiệt độ (°C)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={form.nhietDo}
+                onChange={(e) => setForm({ ...form, nhietDo: e.target.value })}
+                placeholder="VD: 36.8"
+                className="w-full rounded-lg border border-gray-300 py-1.5 px-3 text-sm focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Huyết áp tâm thu (mmHg)</label>
+              <input
+                type="number"
+                value={form.huyetApTamThu}
+                onChange={(e) => setForm({ ...form, huyetApTamThu: e.target.value })}
+                placeholder="VD: 120"
+                className="w-full rounded-lg border border-gray-300 py-1.5 px-3 text-sm focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Huyết áp tâm trương (mmHg)</label>
+              <input
+                type="number"
+                value={form.huyetApTamTruong}
+                onChange={(e) => setForm({ ...form, huyetApTamTruong: e.target.value })}
+                placeholder="VD: 80"
+                className="w-full rounded-lg border border-gray-300 py-1.5 px-3 text-sm focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Chiều cao (cm)</label>
+              <input
+                type="number"
+                value={form.chieuCao}
+                onChange={(e) => setForm({ ...form, chieuCao: e.target.value })}
+                placeholder="VD: 165"
+                className="w-full rounded-lg border border-gray-300 py-1.5 px-3 text-sm focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Cân nặng (kg)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={form.canNang}
+                onChange={(e) => setForm({ ...form, canNang: e.target.value })}
+                placeholder="VD: 60"
+                className="w-full rounded-lg border border-gray-300 py-1.5 px-3 text-sm focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">SpO2 (%)</label>
+              <input
+                type="number"
+                value={form.spo2}
+                onChange={(e) => setForm({ ...form, spo2: e.target.value })}
+                placeholder="VD: 98"
+                className="w-full rounded-lg border border-gray-300 py-1.5 px-3 text-sm focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Nhịp thở (lần/phút)</label>
+              <input
+                type="number"
+                value={form.nhipTho}
+                onChange={(e) => setForm({ ...form, nhipTho: e.target.value })}
+                placeholder="VD: 18"
+                className="w-full rounded-lg border border-gray-300 py-1.5 px-3 text-sm focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t">
+            <MedButton type="button" variant="ghost" size="sm" onClick={onClose}>
+              Hủy
+            </MedButton>
+            <MedButton type="submit" variant="primary" size="sm" loading={loading}>
+              Lưu sinh hiệu
+            </MedButton>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -318,4 +555,3 @@ function LichSuTab({ benhNhanId }) {
     </MedCard>
   );
 }
-

@@ -1,4 +1,5 @@
 import { clsx } from 'clsx';
+import { AlertTriangle } from 'lucide-react';
 
 /**
  * MedCard — Card y khoa chuẩn Healthcare UI
@@ -15,6 +16,10 @@ export function MedCard({
   padding = 'p-6',
   ...props
 }) {
+  const formattedAllergy = allergyNote
+    ? (allergyNote.toLowerCase().startsWith('dị ứng') ? allergyNote : `dị ứng ${allergyNote}`)
+    : '';
+
   return (
     <div
       className={clsx(
@@ -24,16 +29,11 @@ export function MedCard({
       )}
       {...props}
     >
-      {/* Cảnh báo dị ứng — luôn hiển thị đầu tiên nếu có */}
+      {/* Cảnh báo dị ứng — Dải Banner (Alert) nằm ngang súc tích */}
       {allergyNote && (
-        <div className="mb-4 flex items-start gap-2 rounded-lg bg-danger-light border border-danger-main/30 px-4 py-3">
-          <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-danger-main" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-          </svg>
-          <div>
-            <p className="text-sm font-semibold text-danger-dark">⚠ Dị ứng</p>
-            <p className="text-sm text-danger-dark">{allergyNote}</p>
-          </div>
+        <div className="mb-4 flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-2.5 text-xs sm:text-sm font-semibold text-red-700 shadow-xs">
+          <AlertTriangle className="h-4.5 w-4.5 flex-shrink-0 text-red-600" />
+          <span>⚠ Lưu ý: Bệnh nhân có tiền sử {formattedAllergy}</span>
         </div>
       )}
 
@@ -67,4 +67,3 @@ export function MedCardSection({ title, children, className = '' }) {
     </div>
   );
 }
-

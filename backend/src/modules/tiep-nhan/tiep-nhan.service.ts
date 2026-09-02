@@ -123,8 +123,31 @@ export class TiepNhanService {
 
   // ─── CẬP NHẬT TRẠNG THÁI ─────────────────────────────────────
   async capNhatTrangThai(luotId: number, dto: CapNhatTrangThaiTiepNhanDto) {
-    const result = await this.luotRepo.update(luotId, { trangThai: dto.trangThai as TrangThaiTiepNhan });
-    if (result.affected === 0) throw new NotFoundException({ code: 'LUOT_KHONG_TON_TAI', message: 'Không tìm thấy lượt tiếp nhận' });
+    const luot = await this.luotRepo.findOne({ where: { id: luotId } });
+    if (!luot) throw new NotFoundException({ code: 'LUOT_KHONG_TON_TAI', message: 'Không tìm thấy lượt tiếp nhận' });
+
+    // Khi chuyển sang trạng thái "Đang khám": tự động chuyển các lượt khác đang "dang_kham" của cùng bác sĩ/phòng khám sang "cho_ket_qua"
+    if (dto.trangThai === 'dang_kham') {
+      const query = this.luotRepo.createQueryBuilder('luot')
+        .where('luot.trangThai = :st', { st: 'dang_kham' })
+        .andWhere('luot.id != :id', { id: luotId });
+
+      if (luot.bacSiId) {
+        query.andWhere('luot.bacSiId = :bacSiId', { bacSiId: luot.bacSiId });
+      } else if (luot.phongKhamId) {
+        query.andWhere('luot.phongKhamId = :phongKhamId', { phongKhamId: luot.phongKhamId });
+      }
+
+      const existingDangKham = await query.getMany();
+      for (const prev of existingDangKham) {
+        prev.trangThai = TrangThaiTiepNhan.CHO_KHAM;
+        await this.luotRepo.save(prev);
+      }
+    }
+
+    luot.trangThai = dto.trangThai as TrangThaiTiepNhan;
+    await this.luotRepo.save(luot);
+
     const updated = await this.luotRepo.findOne({ where: { id: luotId }, relations: ['benhNhan', 'bacSi'] });
     return { data: updated, message: 'Cập nhật trạng thái thành công' };
   }
