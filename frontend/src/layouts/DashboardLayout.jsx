@@ -36,7 +36,11 @@ const MENU_CONFIG = {
   ],
   nhan_vien_nha_thuoc: [
     { to: '/nha-thuoc/don-thuoc', icon: Pill, label: 'Đơn thuốc' },
-    { to: '/nha-thuoc/kho-thuoc', icon: Pill, label: 'Kho thuốc' },
+    { to: '/nha-thuoc/kho-thuoc', icon: Package, label: 'Kho thuốc' },
+    { to: '/nha-thuoc/thong-ke', icon: BarChart3, label: 'Thống kê & Báo cáo' },
+    { to: '/nha-thuoc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
+    { to: '/nha-thuoc/lich-lam-viec', icon: Clock, label: 'Lịch làm việc' },
+    { to: '/nha-thuoc/gui-don', icon: FileText, label: 'Gửi đơn Giám đốc' },
   ],
   thu_ngan: [
     { to: '/thu-ngan/hoa-don', icon: Receipt, label: 'Hóa đơn' },

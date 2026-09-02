@@ -336,5 +336,56 @@ export class NhaThuocService {
       data: result,
     };
   }
+
+  /**
+   * Thống kê & Báo cáo Nhà thuốc
+   */
+  async getThongKeNhaThuoc() {
+    const tongSoThuoc = await this.thuocRepo.count();
+    const sapHetHang = await this.thuocRepo
+      .createQueryBuilder('t')
+      .where('t.tonKhoTong <= 20')
+      .getCount();
+
+    const sapHetHanCount = await this.loThuocRepo
+      .createQueryBuilder('lo')
+      .where('lo.soLuongTon > 0')
+      .andWhere('lo.ngayHetHan <= DATE_ADD(CURRENT_DATE(), INTERVAL 60 DAY)')
+      .getCount();
+
+    const listThuoc = await this.thuocRepo.find({ order: { tenThuoc: 'ASC' } });
+
+    const topThuoc = await this.donThuocChiTietRepo
+      .createQueryBuilder('ct')
+      .innerJoin('ct.thuoc', 't')
+      .select('t.tenThuoc', 'tenThuoc')
+      .addSelect('SUM(ct.soLuong)', 'tongDaBan')
+      .groupBy('ct.thuocId')
+      .orderBy('tongDaBan', 'DESC')
+      .limit(5)
+      .getRawMany();
+
+    const tongGiaTriKho = listThuoc.reduce((sum, t) => sum + (Number(t.giaBan || 0) * (t.tonKhoTong || 0)), 0);
+
+    return {
+      message: 'OK',
+      data: {
+        tongSoThuoc,
+        sapHetHang,
+        sapHetHanCount,
+        tongGiaTriKho,
+        topThuoc: topThuoc.map((t) => ({ tenThuoc: t.tenThuoc, tongDaBan: Number(t.tongDaBan || 0) })),
+        listThuoc: listThuoc.map((t) => ({
+          id: t.id,
+          maThuoc: t.maThuoc,
+          tenThuoc: t.tenThuoc,
+          donViTinh: t.donViTinh,
+          giaBan: Number(t.giaBan || 0),
+          tonKhoTong: t.tonKhoTong || 0,
+          trangThai: t.tonKhoTong <= 0 ? 'het_hang' : t.tonKhoTong <= 20 ? 'canh_bao' : 'con_hang',
+        })),
+      },
+    };
+  }
 }
 

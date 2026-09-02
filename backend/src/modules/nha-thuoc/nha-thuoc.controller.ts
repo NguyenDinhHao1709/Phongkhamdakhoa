@@ -70,5 +70,12 @@ export class NhaThuocController {
   taoDonThuoc(@Body() body: any) {
     return this.nhaThuocService.taoDonThuoc(body);
   }
+
+  @Get('thong-ke')
+  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thống kê & Báo cáo kho thuốc' })
+  getThongKeNhaThuoc() {
+    return this.nhaThuocService.getThongKeNhaThuoc();
+  }
 }
 
