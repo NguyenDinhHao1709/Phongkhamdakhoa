@@ -129,8 +129,8 @@ export default function LichHenQuanLyPage() {
         </div>
       </div>
 
-      {/* Bộ lọc & Tìm kiếm */}
-      <div className="rounded-2xl bg-white p-4 shadow-sm border border-gray-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Bộ lọc & Tìm kiếm (Khối nền xám nhạt phân tách rõ ràng) */}
+      <div className="rounded-2xl bg-gray-50/90 p-4 border border-gray-200/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Tìm theo từ khóa */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -139,7 +139,7 @@ export default function LichHenQuanLyPage() {
             value={searchKeyword}
             onChange={(e) => setSearchKeyword(e.target.value)}
             placeholder="Tìm theo tên BN, SĐT, mã lịch..."
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary-500 bg-gray-50/50"
+            className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 text-gray-800"
           />
         </div>
 
@@ -149,7 +149,7 @@ export default function LichHenQuanLyPage() {
             type="date"
             value={filterDate}
             onChange={(e) => setFilterDate(e.target.value)}
-            className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary-500 bg-gray-50/50"
+            className="w-full px-3.5 py-2 text-sm rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 text-gray-800"
           />
         </div>
 
@@ -158,7 +158,7 @@ export default function LichHenQuanLyPage() {
           <select
             value={filterBacSiId}
             onChange={(e) => setFilterBacSiId(e.target.value)}
-            className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary-500 bg-gray-50/50"
+            className="w-full px-3.5 py-2 text-sm rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 text-gray-800"
           >
             <option value="">-- Tất cả Bác sĩ --</option>
             {bacSiList.map((bs) => (
@@ -174,7 +174,7 @@ export default function LichHenQuanLyPage() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary-500 bg-gray-50/50"
+            className="w-full px-3.5 py-2 text-sm rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 text-gray-800"
           >
             <option value="">-- Tất cả Trạng thái --</option>
             <option value="cho_thanh_toan">Chờ thanh toán tạm ứng</option>
@@ -199,7 +199,7 @@ export default function LichHenQuanLyPage() {
         )}
       </div>
 
-      {/* Danh sách Lịch hẹn (Bảng Quản lý) */}
+      {/* Danh sách Lịch hẹn (Bảng Quản lý Chuẩn Doanh nghiệp Y tế) */}
       <div className="rounded-2xl bg-white border border-gray-200 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-gray-500">
@@ -221,71 +221,81 @@ export default function LichHenQuanLyPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 text-xs uppercase text-gray-500 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3">Mã Lịch Hẹn</th>
-                  <th className="px-4 py-3">Bệnh Nhân</th>
-                  <th className="px-4 py-3">Ngày & Giờ Hẹn</th>
-                  <th className="px-4 py-3">Bác Sĩ / Chuyên Khoa</th>
-                  <th className="px-4 py-3">Tạm Ứng (1/5)</th>
-                  <th className="px-4 py-3">Trạng Thái</th>
-                  <th className="px-4 py-3 text-right">Thao Tác</th>
+                  <th className="px-4 py-3.5">Mã Lịch Hẹn</th>
+                  <th className="px-4 py-3.5">Bệnh Nhân</th>
+                  <th className="px-4 py-3.5">Ngày & Giờ Hẹn</th>
+                  <th className="px-4 py-3.5">Bác Sĩ / Chuyên Khoa</th>
+                  <th className="px-4 py-3.5">Tạm Ứng (1/5)</th>
+                  <th className="px-4 py-3.5">Trạng Thái</th>
+                  <th className="px-4 py-3.5 text-right">Thao Tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredList.map((lh) => (
                   <tr key={lh.id} className="hover:bg-gray-50/80 transition-colors">
-                    <td className="px-4 py-3.5 font-bold text-gray-900">{lh.maLichHen}</td>
+                    <td className="px-4 py-3.5 font-bold text-gray-900 font-mono tracking-tight">{lh.maLichHen}</td>
                     <td className="px-4 py-3.5">
-                      <p className="font-semibold text-gray-900">{lh.benhNhan?.hoTen || 'Bệnh nhân'}</p>
-                      <p className="text-xs text-gray-500 flex items-center gap-1">
+                      <p className="font-bold text-gray-900">{lh.benhNhan?.hoTen || 'Bệnh nhân'}</p>
+                      <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
                         <Phone className="h-3 w-3" /> {lh.benhNhan?.soDienThoai || '---'}
                       </p>
                     </td>
                     <td className="px-4 py-3.5">
-                      <p className="font-medium text-gray-900">{formatDate(lh.ngayHen)}</p>
-                      <p className="text-xs font-bold text-primary-700">{lh.gioHen}</p>
+                      <p className="text-sm font-bold text-gray-900 font-mono tracking-tight">
+                        {lh.gioHen ? String(lh.gioHen).substring(0, 5) : '--:--'}
+                      </p>
+                      <p className="text-xs text-gray-500 font-normal mt-0.5">
+                        {formatDate(lh.ngayHen)}
+                      </p>
                     </td>
-                    <td className="px-4 py-3.5 text-gray-700">
+                    <td className="px-4 py-3.5">
                       {lh.bacSi?.nhanVien?.hoTen ? (
                         <div>
-                          <p className="font-semibold text-gray-900">{lh.bacSi.nhanVien.hoTen}</p>
-                          <p className="text-xs text-gray-500">{lh.bacSi.chuyenKhoa}</p>
+                          <p className="text-sm font-bold text-gray-900">{lh.bacSi.nhanVien.hoTen}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{lh.bacSi.chuyenKhoa || 'Chuyên khoa'}</p>
                         </div>
                       ) : (
-                        <span className="text-gray-400 italic">Khám tự do / Bác sĩ trực</span>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">Khám tự do</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Bác sĩ trực ca</p>
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3.5">
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80">
                         <ShieldCheck className="h-3.5 w-3.5" /> 40.000 đ
                       </span>
                     </td>
                     <td className="px-4 py-3.5">
-                      <StatusBadge status={lh.trangThai === 'da_xac_nhan' ? 'hoan_thanh' : lh.trangThai === 'da_huy' ? 'da_huy' : 'cho_kham'} />
+                      <StatusBadge status={lh.trangThai} />
                     </td>
-                    <td className="px-4 py-3.5 text-right space-x-1.5">
-                      <button
-                        onClick={() => setSelectedLichHen(lh)}
-                        className="px-2.5 py-1 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors inline-flex items-center gap-1"
-                      >
-                        <Eye className="h-3.5 w-3.5" /> Chi tiết
-                      </button>
+                    <td className="px-4 py-3.5 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => setSelectedLichHen(lh)}
+                          title="Xem chi tiết"
+                          className="p-1.5 text-gray-500 hover:text-primary-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
 
-                      {lh.trangThai !== 'da_xac_nhan' && lh.trangThai !== 'da_huy' && (
-                        <button
-                          onClick={() => handleUpdateStatus(lh.id, 'da_xac_nhan', lh.phienBan)}
-                          className="px-2.5 py-1 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
-                        >
-                          Duyệt
-                        </button>
-                      )}
-                      {lh.trangThai !== 'da_huy' && (
-                        <button
-                          onClick={() => handleUpdateStatus(lh.id, 'da_huy', lh.phienBan)}
-                          className="px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          Hủy
-                        </button>
-                      )}
+                        {lh.trangThai !== 'da_xac_nhan' && lh.trangThai !== 'da_huy' && (
+                          <button
+                            onClick={() => handleUpdateStatus(lh.id, 'da_xac_nhan', lh.phienBan)}
+                            className="px-3 py-1.5 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-xs transition-colors"
+                          >
+                            Duyệt
+                          </button>
+                        )}
+                        {lh.trangThai !== 'da_huy' && (
+                          <button
+                            onClick={() => handleUpdateStatus(lh.id, 'da_huy', lh.phienBan)}
+                            className="px-2.5 py-1.5 text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            Hủy
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -6,10 +6,12 @@ import { clsx } from 'clsx';
  */
 const STATUS_CONFIG = {
   // Lịch hẹn / Tiếp nhận
-  cho_kham:      { label: 'Chờ khám',    cls: 'bg-warning-light text-warning-dark border-warning-main/30' },
-  dang_kham:     { label: 'Đang khám',   cls: 'bg-primary-50 text-primary-700 border-primary-200' },
-  hoan_thanh:    { label: 'Hoàn thành',  cls: 'bg-success-light text-success-dark border-success-main/30' },
-  da_huy:        { label: 'Đã hủy',      cls: 'bg-gray-100 text-gray-500 border-gray-200' },
+  cho_kham:      { label: 'Chờ khám',    cls: 'bg-amber-50 text-amber-700 border-amber-200/80 font-semibold' },
+  cho_xac_nhan:  { label: 'Chờ xác nhận',cls: 'bg-amber-50 text-amber-700 border-amber-200/80 font-semibold' },
+  da_xac_nhan:   { label: 'Đã xác nhận', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200/80 font-semibold' },
+  dang_kham:     { label: 'Đang khám',   cls: 'bg-primary-50 text-primary-700 border-primary-200 font-semibold' },
+  hoan_thanh:    { label: 'Hoàn thành',  cls: 'bg-emerald-50 text-emerald-700 border-emerald-200/80 font-semibold' },
+  da_huy:        { label: 'Đã hủy',      cls: 'bg-gray-100 text-gray-600 border-gray-200/80 font-semibold' },
   // Xét nghiệm
   cho_lay_mau:   { label: 'Chờ lấy mẫu', cls: 'bg-warning-light text-warning-dark border-warning-main/30' },
   dang_lay_mau:  { label: 'Đang lấy mẫu', cls: 'bg-primary-50 text-primary-700 border-primary-200' },
