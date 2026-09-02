@@ -63,5 +63,18 @@ export class HoSoBenhAnController {
   ) {
     return this.service.ketThucKham(id, dto);
   }
+
+  @Get('thong-ke-bac-si')
+  @Roles('bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thống kê & Báo cáo hiệu suất lâm sàng của Bác sĩ' })
+  thongKeBacSi(
+    @CurrentUser() user: any,
+    @Query('range') range?: string,
+    @Query('hinhThuc') hinhThuc?: string,
+    @Query('tuNgay') tuNgay?: string,
+    @Query('denNgay') denNgay?: string,
+  ) {
+    return this.service.getThongKeBacSi(user.id, { range, hinhThuc, tuNgay, denNgay });
+  }
 }
 
