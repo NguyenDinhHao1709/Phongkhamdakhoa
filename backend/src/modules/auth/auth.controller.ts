@@ -3,7 +3,10 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { LoginDto, SendOtpDto, VerifyOtpDto, RefreshTokenDto, RegisterPatientDto } from './dto/auth.dto';
+import {
+  LoginDto, SendOtpDto, VerifyOtpDto, RefreshTokenDto,
+  RegisterPatientDto, DoiMatKhauDto,
+} from './dto/auth.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -60,5 +63,13 @@ export class AuthController {
   getMe(@CurrentUser() user: any) {
     return { data: user, message: 'Lấy thông tin thành công' };
   }
-}
 
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Đổi mật khẩu tài khoản người dùng' })
+  changePassword(@CurrentUser() user: any, @Body() dto: DoiMatKhauDto) {
+    return this.authService.changePassword(user.userId || user.sub, dto);
+  }
+}

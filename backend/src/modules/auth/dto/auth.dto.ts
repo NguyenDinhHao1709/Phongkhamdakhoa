@@ -74,3 +74,17 @@ export class RegisterPatientDto {
   @IsNotEmpty({ message: 'Ngày sinh không được để trống' })
   ngaySinh: string;
 }
+
+// ─── DTO ĐỔI MẬT KHẨU ────────────────────────────────────
+export class DoiMatKhauDto {
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  @IsNotEmpty({ message: 'Mật khẩu hiện tại không được để trống' })
+  matKhauHienTai: string;
+
+  @ApiProperty({ example: 'newpassword123' })
+  @IsString()
+  @IsNotEmpty({ message: 'Mật khẩu mới không được để trống' })
+  @MinLength(6, { message: 'Mật khẩu mới phải có ít nhất 6 ký tự' })
+  matKhauMoi: string;
+}

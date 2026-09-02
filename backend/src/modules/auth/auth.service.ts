@@ -14,7 +14,7 @@ import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { comparePassword, hashPassword } from '../../common/utils/hash.util';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
-import { LoginDto, SendOtpDto, VerifyOtpDto, RegisterPatientDto } from './dto/auth.dto';
+import { LoginDto, SendOtpDto, VerifyOtpDto, RegisterPatientDto, DoiMatKhauDto } from './dto/auth.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import * as bcrypt from 'bcryptjs';
 
@@ -268,6 +268,26 @@ export class AuthService {
     } catch {
       throw new UnauthorizedException({ code: 'TOKEN_HET_HAN', message: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.' });
     }
+  }
+
+  // ─── ĐỔI MẬT KHẨU TÀI KHOẢN ────────────────────────────────────
+  async changePassword(userId: number, dto: DoiMatKhauDto) {
+    const nguoiDung = await this.nguoiDungRepo.findOne({ where: { id: userId } });
+    if (!nguoiDung) {
+      throw new BadRequestException({ code: 'NGUOI_DUNG_KHONG_TON_TAI', message: 'Người dùng không tồn tại' });
+    }
+
+    // Kiểm tra mật khẩu hiện tại bằng Bcrypt compare
+    const isMatch = await comparePassword(dto.matKhauHienTai, nguoiDung.matKhauHash);
+    if (!isMatch) {
+      throw new BadRequestException({ code: 'MAT_KHAU_CU_KHONG_DUNG', message: 'Mật khẩu hiện tại không chính xác' });
+    }
+
+    // Băm mật khẩu mới và lưu vào CSDL
+    nguoiDung.matKhauHash = await hashPassword(dto.matKhauMoi);
+    await this.nguoiDungRepo.save(nguoiDung);
+
+    return { message: 'Đổi mật khẩu tài khoản thành công' };
   }
 
   // ─── HELPER: TẠO JWT TOKENS ───────────────────────────────────

@@ -1,22 +1,46 @@
 import { useState } from 'react';
-import { User, Phone, Mail, Shield, Calendar, Key, CheckCircle, Stethoscope } from 'lucide-react';
+import { User, Key, CheckCircle, AlertCircle } from 'lucide-react';
 import useAuthStore from '../../../store/authStore';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { VAI_TRO_LABEL } from '../../../utils/constants';
+import { apiPost } from '../../../services/api';
 
 export default function ThongTinCaNhanPage() {
   const { user } = useAuthStore();
   const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [loading, setLoading] = useState(false);
   const [passData, setPassData] = useState({ oldPass: '', newPass: '', confirmPass: '' });
 
-  const handleChangePassword = (e) => {
+  const handleChangePassword = async (e) => {
     e.preventDefault();
+    setSuccessMsg('');
+    setErrorMsg('');
+
     if (passData.newPass !== passData.confirmPass) {
-      alert('Mật khẩu mới không trùng khớp!');
+      setErrorMsg('Mật khẩu mới và xác nhận mật khẩu không trùng khớp!');
       return;
     }
-    setSuccessMsg('Đã cập nhật mật khẩu tài khoản nhân viên thành công!');
-    setPassData({ oldPass: '', newPass: '', confirmPass: '' });
+
+    if (passData.newPass.length < 6) {
+      setErrorMsg('Mật khẩu mới phải có ít nhất 6 ký tự!');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await apiPost('/auth/change-password', {
+        matKhauHienTai: passData.oldPass,
+        matKhauMoi: passData.newPass,
+      });
+      setSuccessMsg('Đã cập nhật mật khẩu tài khoản nhân viên thành công!');
+      setPassData({ oldPass: '', newPass: '', confirmPass: '' });
+    } catch (err) {
+      console.error('Lỗi đổi mật khẩu:', err);
+      setErrorMsg(err?.error?.message || err?.message || 'Mật khẩu hiện tại không chính xác!');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -29,9 +53,16 @@ export default function ThongTinCaNhanPage() {
       </div>
 
       {successMsg && (
-        <div className="flex items-center gap-3 rounded-2xl bg-success-light p-4 text-sm text-success-main border border-success-main/30 animate-fade-in">
-          <CheckCircle className="h-5 w-5 flex-shrink-0" />
-          <span className="font-semibold">{successMsg}</span>
+        <div className="flex items-center gap-3 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-700 border border-emerald-200 animate-fade-in font-medium">
+          <CheckCircle className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div className="flex items-center gap-3 rounded-2xl bg-red-50 p-4 text-sm text-red-700 border border-red-200 animate-fade-in font-medium">
+          <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+          <span>{errorMsg}</span>
         </div>
       )}
 
@@ -93,7 +124,8 @@ export default function ThongTinCaNhanPage() {
                   required
                   value={passData.oldPass}
                   onChange={(e) => setPassData({ ...passData, oldPass: e.target.value })}
-                  className="w-full p-2.5 text-sm rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500"
+                  placeholder="Nhập mật khẩu hiện tại"
+                  className="w-full p-2.5 text-sm rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                 />
               </div>
               <div>
@@ -103,7 +135,8 @@ export default function ThongTinCaNhanPage() {
                   required
                   value={passData.newPass}
                   onChange={(e) => setPassData({ ...passData, newPass: e.target.value })}
-                  className="w-full p-2.5 text-sm rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500"
+                  placeholder="Nhập mật khẩu mới (>= 6 ký tự)"
+                  className="w-full p-2.5 text-sm rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                 />
               </div>
               <div>
@@ -113,13 +146,20 @@ export default function ThongTinCaNhanPage() {
                   required
                   value={passData.confirmPass}
                   onChange={(e) => setPassData({ ...passData, confirmPass: e.target.value })}
-                  className="w-full p-2.5 text-sm rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500"
+                  placeholder="Nhập lại mật khẩu mới"
+                  className="w-full p-2.5 text-sm rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                 />
               </div>
             </div>
 
             <div className="flex justify-end pt-2">
-              <MedButton type="submit" variant="primary" size="sm" leftIcon={<Key className="h-4 w-4" />}>
+              <MedButton
+                type="submit"
+                variant="primary"
+                size="sm"
+                loading={loading}
+                leftIcon={<Key className="h-4 w-4" />}
+              >
                 Cập nhật mật khẩu
               </MedButton>
             </div>
@@ -129,4 +169,3 @@ export default function ThongTinCaNhanPage() {
     </div>
   );
 }
-
