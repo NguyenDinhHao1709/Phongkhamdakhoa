@@ -19,7 +19,7 @@ const registerSchema = z.object({
 
 export default function RegisterPage() {
   const navigate = useNavigate();
-  const setAuth = useAuthStore((s) => s.setAuth);
+  const login = useAuthStore((s) => s.login);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -45,11 +45,7 @@ export default function RegisterPage() {
 
       const authData = res?.data || res;
       if (authData && authData.accessToken) {
-        setAuth({
-          user: authData.user,
-          accessToken: authData.accessToken,
-          refreshToken: authData.refreshToken,
-        });
+        login(authData.user, authData.accessToken, authData.refreshToken);
         navigate('/benh-nhan', { replace: true });
       } else {
         alert('Đăng ký tài khoản thành công!');
