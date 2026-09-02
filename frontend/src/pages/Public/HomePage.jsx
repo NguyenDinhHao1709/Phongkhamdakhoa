@@ -30,6 +30,7 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchKeyword, setActiveSearchKeyword] = useState('');
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isHeaderSearchOpen, setIsHeaderSearchOpen] = useState(false);
 
   // Doctors from Database State
   const [dbDoctors, setDbDoctors] = useState([]);
@@ -99,17 +100,44 @@ export default function HomePage() {
             <span className="text-xl font-bold text-gray-900 tracking-tight hidden sm:inline">Phòng Khám Đa Khoa</span>
           </div>
 
-          {/* Search Bar in Navbar */}
-          <form onSubmit={handleSearchSubmit} className="flex-1 max-w-xs sm:max-w-md relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm bác sĩ, chuyên khoa, bài viết..."
-              className="w-full rounded-full border border-gray-200 bg-gray-50/80 py-1.5 pl-9 pr-4 text-xs sm:text-sm text-gray-900 placeholder-gray-400 transition-colors focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-            />
-          </form>
+          {/* Header Search Icon (Expandable on Click) */}
+          <div className="flex items-center">
+            {isHeaderSearchOpen ? (
+              <form onSubmit={handleSearchSubmit} className="flex items-center animate-fade-in relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onBlur={() => {
+                    if (!searchQuery.trim()) setIsHeaderSearchOpen(false);
+                  }}
+                  placeholder="Tìm bác sĩ, chuyên khoa..."
+                  className="w-48 sm:w-64 rounded-full border border-primary-300 bg-white py-1.5 pl-9 pr-8 text-xs sm:text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setIsHeaderSearchOpen(false);
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 font-bold p-1"
+                >
+                  ✕
+                </button>
+              </form>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsHeaderSearchOpen(true)}
+                title="Mở thanh tìm kiếm"
+                className="p-2 text-gray-600 hover:text-primary-600 hover:bg-gray-100 rounded-full transition-all flex items-center justify-center"
+              >
+                <Search className="h-5 w-5" />
+              </button>
+            )}
+          </div>
 
           {/* Navigation Items */}
           <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-gray-600">
