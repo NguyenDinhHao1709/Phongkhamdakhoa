@@ -7,7 +7,7 @@ import {
   Stethoscope, Users, Calendar, ClipboardList,
   FlaskConical, Pill, Receipt, BarChart3,
   LogOut, ChevronLeft, ChevronRight, Bell,
-  User, Settings, FileText, Clock, Video,
+  User, Settings, FileText, Clock, Video, Package,
 } from 'lucide-react';
 
 const MENU_CONFIG = {
