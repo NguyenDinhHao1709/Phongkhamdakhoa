@@ -342,14 +342,14 @@ function ExaminationPanel({ luot, onUpdateLuot, onComplete }) {
 
 function VitalsModal({ luotId, initialData, onClose, onSuccess }) {
   const [form, setForm] = useState({
-    mach: initialData?.mach || '',
-    huyetApTamThu: initialData?.huyetApTamThu || '',
-    huyetApTamTruong: initialData?.huyetApTamTruong || '',
-    nhietDo: initialData?.nhietDo || '',
-    chieuCao: initialData?.chieuCao || '',
-    canNang: initialData?.canNang || '',
-    spo2: initialData?.spo2 || '',
-    nhipTho: initialData?.nhipTho || '',
+    mach: initialData?.mach ?? initialData?.nhipTim ?? initialData?.nhip_tim ?? '',
+    huyetApTamThu: initialData?.huyetApTamThu ?? initialData?.huyet_ap_tam_thu ?? '',
+    huyetApTamTruong: initialData?.huyetApTamTruong ?? initialData?.huyet_ap_tam_truong ?? '',
+    nhietDo: initialData?.nhietDoC ?? initialData?.nhiet_do_c ?? initialData?.nhietDo ?? '',
+    chieuCao: initialData?.chieuCaoCm ?? initialData?.chieu_cao_cm ?? initialData?.chieuCao ?? '',
+    canNang: initialData?.canNangKg ?? initialData?.can_nang_kg ?? initialData?.canNang ?? '',
+    spo2: initialData?.spo2 ?? '',
+    nhipTho: initialData?.nhipTho ?? initialData?.nhip_tho ?? '',
   });
   const [loading, setLoading] = useState(false);
 
@@ -358,14 +358,15 @@ function VitalsModal({ luotId, initialData, onClose, onSuccess }) {
     setLoading(true);
     try {
       const payload = {
-        mach: form.mach ? Number(form.mach) : null,
-        huyetApTamThu: form.huyetApTamThu ? Number(form.huyetApTamThu) : null,
-        huyetApTamTruong: form.huyetApTamTruong ? Number(form.huyetApTamTruong) : null,
-        nhietDo: form.nhietDo ? Number(form.nhietDo) : null,
-        chieuCao: form.chieuCao ? Number(form.chieuCao) : null,
-        canNang: form.canNang ? Number(form.canNang) : null,
-        spo2: form.spo2 ? Number(form.spo2) : null,
-        nhipTho: form.nhipTho ? Number(form.nhipTho) : null,
+        mach: form.mach !== '' && form.mach !== null ? Number(form.mach) : undefined,
+        nhipTim: form.mach !== '' && form.mach !== null ? Number(form.mach) : undefined,
+        huyetApTamThu: form.huyetApTamThu !== '' && form.huyetApTamThu !== null ? Number(form.huyetApTamThu) : undefined,
+        huyetApTamTruong: form.huyetApTamTruong !== '' && form.huyetApTamTruong !== null ? Number(form.huyetApTamTruong) : undefined,
+        nhietDoC: form.nhietDo !== '' && form.nhietDo !== null ? Number(form.nhietDo) : undefined,
+        chieuCaoCm: form.chieuCao !== '' && form.chieuCao !== null ? Number(form.chieuCao) : undefined,
+        canNangKg: form.canNang !== '' && form.canNang !== null ? Number(form.canNang) : undefined,
+        spo2: form.spo2 !== '' && form.spo2 !== null ? Number(form.spo2) : undefined,
+        nhipTho: form.nhipTho !== '' && form.nhipTho !== null ? Number(form.nhipTho) : undefined,
       };
 
       await apiPost(`/tiep-nhan/${luotId}/sinh-hieu`, payload);
