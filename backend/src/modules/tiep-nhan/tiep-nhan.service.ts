@@ -57,11 +57,11 @@ export class TiepNhanService {
       .leftJoinAndSelect('ltn.bacSi', 'bs')
       .leftJoinAndSelect('bs.nhanVien', 'nv')
       .leftJoinAndSelect('ltn.sinhHieu', 'sh')
-      .where('ltn.trang_thai IN (:...tt)', { tt: ['cho_kham', 'dang_kham'] })
-      .andWhere('DATE(ltn.thoi_gian_den) = CURDATE()')
-      .orderBy('ltn.thoi_gian_den', 'ASC');
+      .where('ltn.trangThai IN (:...tt)', { tt: ['cho_kham', 'dang_kham'] })
+      .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
+      .orderBy('ltn.thoiGianDen', 'ASC');
 
-    if (phongKhamId) qb.andWhere('ltn.phong_kham_id = :phongKhamId', { phongKhamId });
+    if (phongKhamId) qb.andWhere('ltn.phongKhamId = :phongKhamId', { phongKhamId });
 
     const items = await qb.getMany();
     return { data: items, message: 'Lấy hàng đợi thành công' };
@@ -69,13 +69,9 @@ export class TiepNhanService {
 
   // ─── TẠO LƯỢT TIẾP NHẬN ──────────────────────────────────────
   async create(dto: TaoTiepNhanDto, tiepTanId: number) {
-    // Đếm số lượt trong ngày để tạo số thứ tự
-    const soLuotHom = await this.luotRepo
-      .createQueryBuilder('ltn')
-      .where('DATE(ltn.thoi_gian_den) = CURDATE()')
-      .getCount();
-
-    const maSoThuTu = MaGeneratorService.generateSoThuTu(soLuotHom + 1);
+    // Đếm tổng số lượt để tạo số thứ tự duy nhất không trùng DB constraint
+    const totalCount = await this.luotRepo.count();
+    const maSoThuTu = MaGeneratorService.generateSoThuTu(totalCount + 1);
 
     const luot = this.luotRepo.create({
       ...dto,

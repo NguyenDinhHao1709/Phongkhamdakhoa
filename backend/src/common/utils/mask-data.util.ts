@@ -23,3 +23,4 @@ export function maskIdentityNumber(idNum?: string): string {
   if (str.length < 9) return str;
   return str.substring(0, 3) + '******' + str.substring(str.length - 3);
 }
+

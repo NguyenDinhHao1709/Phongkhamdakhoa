@@ -27,14 +27,14 @@ export class TiepNhanController {
   }
 
   @Post()
-  @Roles('tiep_tan')
+  @Roles('tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Tạo lượt tiếp nhận mới' })
   create(@Body() dto: TaoTiepNhanDto, @CurrentUser() user: any) {
     return this.service.create(dto, user.id);
   }
 
   @Post(':id/sinh-hieu')
-  @Roles('tiep_tan')
+  @Roles('tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Ghi sinh hiệu ban đầu' })
   ghiSinhHieu(
     @Param('id', ParseIntPipe) id: number,
@@ -45,14 +45,14 @@ export class TiepNhanController {
   }
 
   @Get(':id/sinh-hieu')
-  @Roles('tiep_tan', 'bac_si')
+  @Roles('tiep_tan', 'bac_si', 'quan_tri_vien')
   @ApiOperation({ summary: 'Xem sinh hiệu của lượt tiếp nhận' })
   xemSinhHieu(@Param('id', ParseIntPipe) id: number) {
     return this.service.xemSinhHieu(id);
   }
 
   @Patch(':id/phong-kham')
-  @Roles('tiep_tan')
+  @Roles('tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Điều phối bệnh nhân vào phòng khám' })
   dieuPhoiPhong(@Param('id', ParseIntPipe) id: number, @Body() dto: DieuPhoiPhongDto) {
     return this.service.dieuPhoiPhong(id, dto);
