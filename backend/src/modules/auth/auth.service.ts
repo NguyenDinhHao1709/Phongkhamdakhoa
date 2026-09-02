@@ -14,7 +14,10 @@ import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { comparePassword, hashPassword } from '../../common/utils/hash.util';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
-import { LoginDto, SendOtpDto, VerifyOtpDto, RegisterPatientDto, DoiMatKhauDto } from './dto/auth.dto';
+import {
+  LoginDto, SendOtpDto, VerifyOtpDto, RegisterPatientDto,
+  DoiMatKhauDto, QuenMatKhauSendOtpDto, DatLaiMatKhauDto,
+} from './dto/auth.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import * as bcrypt from 'bcryptjs';
 
@@ -288,6 +291,99 @@ export class AuthService {
     await this.nguoiDungRepo.save(nguoiDung);
 
     return { message: 'Đổi mật khẩu tài khoản thành công' };
+  }
+
+  // ─── GỬI OTP ĐẶT LẠI MẬT KHẨU (QUÊN MẬT KHẨU) ─────────────
+  async sendForgotPasswordOtp(dto: QuenMatKhauSendOtpDto) {
+    const email = dto.email.trim();
+
+    // Kiểm tra xem email có tồn tại trong hệ thống (Bệnh nhân hoặc Người dùng)
+    const benhNhan = await this.benhNhanRepo.findOne({ where: { email } });
+    const nguoiDung = benhNhan?.nguoiDungId
+      ? await this.nguoiDungRepo.findOne({ where: { id: benhNhan.nguoiDungId } })
+      : await this.nguoiDungRepo.findOne({ where: { tenDangNhap: email } });
+
+    if (!nguoiDung) {
+      throw new BadRequestException({
+        code: 'EMAIL_KHONG_TON_TAI',
+        message: 'Email này chưa được đăng ký trong hệ thống',
+      });
+    }
+
+    const loai = LoaiOtp.QUEN_MAT_KHAU;
+
+    // Vô hiệu hóa OTP cũ chưa dùng
+    await this.otpRepo.update(
+      { email, loai, daSuDung: false as any },
+      { daSuDung: true as any },
+    );
+
+    const maOtp = MaGeneratorService.generateOtp();
+    const hetHanPhut = this.config.get<number>('OTP_EXPIRES_MINUTES', 10);
+    const hetHanLuc = new Date(Date.now() + hetHanPhut * 60 * 1000);
+
+    await this.otpRepo.save({ email, maOtp, loai, hetHanLuc });
+
+    // Gửi email bất đồng bộ
+    this.mailer
+      .sendMail({
+        from: this.config.get('MAIL_FROM'),
+        to: email,
+        subject: 'Mã xác thực Đặt lại mật khẩu - Phòng Khám Đa Khoa',
+        html: `
+          <div style="font-family: Inter, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+            <h2 style="color: #2563EB; margin-bottom: 8px;">Yêu cầu Đặt lại Mật khẩu</h2>
+            <p style="color: #6B7280;">Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản <strong>${email}</strong>. Sử dụng mã OTP bên dưới để xác thực:</p>
+            <div style="background: #FEF2F2; border: 2px solid #FCA5A5; border-radius: 12px; padding: 24px; text-align: center; margin: 24px 0;">
+              <span style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #DC2626;">${maOtp}</span>
+            </div>
+            <p style="color: #9CA3AF; font-size: 13px;">Mã có hiệu lực trong ${hetHanPhut} phút. Nếu bạn không gửi yêu cầu này, vui lòng bỏ qua email.</p>
+          </div>
+        `,
+      })
+      .catch((err) => console.error('Lỗi gửi email OTP đặt lại mật khẩu:', err));
+
+    return { message: 'Mã OTP đặt lại mật khẩu đã được gửi đến email của bạn' };
+  }
+
+  // ─── ĐẶT LẠI MẬT KHẨU QUA OTP ─────────────────────────────
+  async resetPassword(dto: DatLaiMatKhauDto) {
+    const email = dto.email.trim();
+    const maOtp = dto.maOtp.trim();
+
+    // 1. Kiểm tra OTP
+    const otpRecord = await this.otpRepo.findOne({
+      where: { email, maOtp, loai: LoaiOtp.QUEN_MAT_KHAU, daSuDung: false as any },
+      order: { taoLuc: 'DESC' },
+    });
+
+    if (!otpRecord) {
+      throw new BadRequestException({ code: 'OTP_KHONG_DUNG', message: 'Mã OTP xác thực không chính xác' });
+    }
+
+    if (new Date() > new Date(otpRecord.hetHanLuc)) {
+      throw new BadRequestException({ code: 'OTP_HET_HAN', message: 'Mã OTP đã hết hạn. Vui lòng gửi lại yêu cầu mới.' });
+    }
+
+    // 2. Tìm người dùng
+    const benhNhan = await this.benhNhanRepo.findOne({ where: { email } });
+    const nguoiDung = benhNhan?.nguoiDungId
+      ? await this.nguoiDungRepo.findOne({ where: { id: benhNhan.nguoiDungId } })
+      : await this.nguoiDungRepo.findOne({ where: { tenDangNhap: email } });
+
+    if (!nguoiDung) {
+      throw new BadRequestException({ code: 'NGUOI_DUNG_KHONG_TON_TAI', message: 'Không tìm thấy tài khoản người dùng' });
+    }
+
+    // 3. Cập nhật mật khẩu mới băm Bcrypt
+    nguoiDung.matKhauHash = await hashPassword(dto.matKhauMoi);
+    await this.nguoiDungRepo.save(nguoiDung);
+
+    // 4. Đánh dấu OTP đã dùng
+    otpRecord.daSuDung = true as any;
+    await this.otpRepo.save(otpRecord);
+
+    return { message: 'Đặt lại mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.' };
   }
 
   // ─── HELPER: TẠO JWT TOKENS ───────────────────────────────────

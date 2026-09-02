@@ -5,7 +5,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import {
   LoginDto, SendOtpDto, VerifyOtpDto, RefreshTokenDto,
-  RegisterPatientDto, DoiMatKhauDto,
+  RegisterPatientDto, DoiMatKhauDto, QuenMatKhauSendOtpDto, DatLaiMatKhauDto,
 } from './dto/auth.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -46,6 +46,22 @@ export class AuthController {
   @ApiOperation({ summary: 'Xác thực mã OTP' })
   verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyOtp(dto);
+  }
+
+  @Public()
+  @Post('forgot-password-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Gửi mã OTP để đặt lại mật khẩu' })
+  forgotPasswordOtp(@Body() dto: QuenMatKhauSendOtpDto) {
+    return this.authService.sendForgotPasswordOtp(dto);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Đặt lại mật khẩu mới bằng mã OTP' })
+  resetPassword(@Body() dto: DatLaiMatKhauDto) {
+    return this.authService.resetPassword(dto);
   }
 
   @Public()
