@@ -159,9 +159,51 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      {/* ─── CỘT TRÁI: FORM ĐĂNG KÝ (STEP 1 & STEP 2) ─────────────────── */}
-      <div className="flex w-full flex-col justify-center px-6 py-8 sm:px-12 md:w-[540px] lg:w-[580px] bg-white shadow-2xl z-10 relative">
+    <div className="flex min-h-screen bg-gray-50 flex-col md:flex-row">
+      {/* ─── CỘT TRÁI (LEFT 50%): BANNER NHA KHOA / Y TẾ CHẤT LƯỢNG CAO ─── */}
+      <div className="hidden md:block w-full md:w-1/2 relative bg-gray-900 overflow-hidden">
+        {/* Hình ảnh Bác sĩ & Bệnh nhân chuyên nghiệp cao cấp */}
+        <img
+          src="https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=1200&q=80"
+          alt="Bác sĩ phòng khám đa khoa"
+          className="absolute inset-0 h-full w-full object-cover object-center opacity-85"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-primary-950/90 via-primary-900/40 to-transparent" />
+
+        <div className="relative h-full flex flex-col justify-end p-12 text-white max-w-xl">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/20 backdrop-blur-md px-3.5 py-1 text-xs font-semibold text-white border border-white/30 mb-4 w-fit">
+            <Sparkles className="h-4 w-4 text-amber-300" /> Hệ thống Y tế Tiêu chuẩn Quốc tế
+          </div>
+          <h2 className="text-3xl font-extrabold tracking-tight mb-3 text-white leading-tight">
+            Chăm Sóc Sức Khỏe Toàn Diện Cho Gia Đình Bạn
+          </h2>
+          <p className="text-sm text-blue-100 leading-relaxed mb-6">
+            Đăng ký tài khoản y tế điện tử ngay hôm nay để trải nghiệm dịch vụ khám chữa bệnh chất lượng cao, tư vấn triệu chứng AI và theo dõi hồ sơ bệnh án trực tuyến 24/7.
+          </p>
+
+          {/* Glassmorphism Trust Badges */}
+          <div className="grid grid-cols-3 gap-3 pt-4 border-t border-white/20">
+            <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/15 text-center">
+              <ShieldCheck className="h-5 w-5 text-emerald-400 mx-auto mb-1" />
+              <p className="text-xs font-bold">100% Bảo mật</p>
+              <p className="text-[10px] text-blue-200">Chuẩn HIPAA</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/15 text-center">
+              <Award className="h-5 w-5 text-amber-300 mx-auto mb-1" />
+              <p className="text-xs font-bold">Bác sĩ Đầu ngành</p>
+              <p className="text-[10px] text-blue-200">Giàu kinh nghiệm</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/15 text-center">
+              <Calendar className="h-5 w-5 text-sky-300 mx-auto mb-1" />
+              <p className="text-xs font-bold">Đặt lịch 24/7</p>
+              <p className="text-[10px] text-blue-200">Không đợi chờ</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── CỘT PHẢI (RIGHT 50%): FORM ĐĂNG KÝ (STEP 1 & STEP 2) ─────────────────── */}
+      <div className="flex w-full md:w-1/2 flex-col justify-center px-6 py-8 sm:px-12 bg-white shadow-2xl z-10 relative">
         <div className="absolute top-6 left-6 right-6 flex items-center justify-between">
           <button
             onClick={() => {
@@ -421,48 +463,6 @@ export default function RegisterPage() {
             >
               Đăng nhập tại đây
             </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ─── CỘT PHẢI: BANNER NHA KHOA / Y TẾ CHẤT LƯỢNG CAO (TRUST & HUMAN CONNECTION) ─── */}
-      <div className="hidden flex-1 relative md:block bg-gray-900 overflow-hidden">
-        {/* Hình ảnh Bác sĩ & Bệnh nhân chuyên nghiệp cao cấp */}
-        <img
-          src="https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=1200&q=80"
-          alt="Bác sĩ phòng khám đa khoa"
-          className="absolute inset-0 h-full w-full object-cover object-center opacity-85"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-primary-950/90 via-primary-900/40 to-transparent" />
-
-        <div className="relative h-full flex flex-col justify-end p-12 text-white max-w-xl">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/20 backdrop-blur-md px-3.5 py-1 text-xs font-semibold text-white border border-white/30 mb-4 w-fit">
-            <Sparkles className="h-4 w-4 text-amber-300" /> Hệ thống Y tế Tiêu chuẩn Quốc tế
-          </div>
-          <h2 className="text-3xl font-extrabold tracking-tight mb-3 text-white leading-tight">
-            Chăm Sóc Sức Khỏe Toàn Diện Cho Gia Đình Bạn
-          </h2>
-          <p className="text-sm text-blue-100 leading-relaxed mb-6">
-            Đăng ký tài khoản y tế điện tử ngay hôm nay để trải nghiệm dịch vụ khám chữa bệnh chất lượng cao, tư vấn triệu chứng AI và theo dõi hồ sơ bệnh án trực tuyến 24/7.
-          </p>
-
-          {/* Glassmorphism Trust Badges */}
-          <div className="grid grid-cols-3 gap-3 pt-4 border-t border-white/20">
-            <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/15 text-center">
-              <ShieldCheck className="h-5 w-5 text-emerald-400 mx-auto mb-1" />
-              <p className="text-xs font-bold">100% Bảo mật</p>
-              <p className="text-[10px] text-blue-200">Chuẩn HIPAA</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/15 text-center">
-              <Award className="h-5 w-5 text-amber-300 mx-auto mb-1" />
-              <p className="text-xs font-bold">Bác sĩ Đầu ngành</p>
-              <p className="text-[10px] text-blue-200">Giàu kinh nghiệm</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/15 text-center">
-              <Calendar className="h-5 w-5 text-sky-300 mx-auto mb-1" />
-              <p className="text-xs font-bold">Đặt lịch 24/7</p>
-              <p className="text-[10px] text-blue-200">Không đợi chờ</p>
-            </div>
           </div>
         </div>
       </div>
