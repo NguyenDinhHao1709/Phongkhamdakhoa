@@ -29,7 +29,7 @@ export default function PhongKhamPage() {
 
   const currentLuot = selectedLuot
     ? items.find((i) => i.id === selectedLuot.id) || selectedLuot
-    : null;
+    : (dangKham[0] || choKham[0] || null);
 
   return (
     <div className="flex gap-6 h-[calc(100vh-7rem)] animate-fade-in">
@@ -211,34 +211,37 @@ function KhamBenhPanel({ luot, onComplete, onUpdateLuot }) {
               >
                 {luot.trangThai === 'dang_kham' ? 'Tiếp tục khám' : 'Bắt đầu khám'}
               </MedButton>
-            ) : (
-              <>
-                <MedButton
-                  variant="secondary"
-                  size="sm"
-                  leftIcon={<FlaskConical className="h-4 w-4 text-purple-600" />}
-                  onClick={() => setShowChiDinhModal(true)}
-                >
-                  + Chỉ định cận lâm sàng
-                </MedButton>
-                <MedButton
-                  variant="secondary"
-                  size="sm"
-                  leftIcon={<Pill className="h-4 w-4 text-emerald-600" />}
-                  onClick={() => setShowDonThuocModal(true)}
-                >
-                  + Kê đơn thuốc
-                </MedButton>
-                <MedButton
-                  variant="secondary"
-                  size="sm"
-                  leftIcon={<Calendar className="h-4 w-4 text-blue-600" />}
-                  onClick={() => setShowTaiKhamModal(true)}
-                >
-                  + Hẹn tái khám
-                </MedButton>
-              </>
-            )}
+            ) : null}
+            <MedButton
+              variant="secondary"
+              size="sm"
+              leftIcon={<FlaskConical className="h-4 w-4 text-purple-600" />}
+              onClick={async () => {
+                if (!benhAnId) await handleBatDauKham();
+                setShowChiDinhModal(true);
+              }}
+            >
+              + Chỉ định cận lâm sàng
+            </MedButton>
+            <MedButton
+              variant="secondary"
+              size="sm"
+              leftIcon={<Pill className="h-4 w-4 text-emerald-600" />}
+              onClick={async () => {
+                if (!benhAnId) await handleBatDauKham();
+                setShowDonThuocModal(true);
+              }}
+            >
+              + Kê đơn thuốc
+            </MedButton>
+            <MedButton
+              variant="secondary"
+              size="sm"
+              leftIcon={<Calendar className="h-4 w-4 text-blue-600" />}
+              onClick={() => setShowTaiKhamModal(true)}
+            >
+              + Hẹn tái khám
+            </MedButton>
           </div>
         </div>
       </MedCard>
@@ -276,7 +279,7 @@ function KhamBenhPanel({ luot, onComplete, onUpdateLuot }) {
       </MedCard>
 
       {/* Tabs */}
-      {benhAnId && (
+      {true && (
         <>
           <div className="flex border-b border-gray-200">
             {TABS.map(({ key, label, icon: Icon }) => (
