@@ -23,7 +23,9 @@ export class NhaThuocService {
    * Lấy danh sách danh mục thuốc & tồn kho
    */
   async getDanhSachThuoc(search?: string) {
-    const qb = this.thuocRepo.createQueryBuilder('t');
+    const qb = this.thuocRepo
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.danhSachLo', 'lo');
 
     if (search) {
       const keyword = `%${search.trim()}%`;
@@ -34,15 +36,22 @@ export class NhaThuocService {
 
     return {
       message: 'Lấy danh sách thuốc thành công',
-      data: list.map((item) => ({
-        ...item,
-        giaBan: Number(item.giaBan),
-      })),
+      data: list.map((item) => {
+        const loGanNhat = (item as any).danhSachLo?.sort((a: any, b: any) => new Date(a.ngayHetHan).getTime() - new Date(b.ngayHetHan).getTime())[0];
+        return {
+          ...item,
+          giaBan: Number(item.giaBan),
+          maLo: loGanNhat?.maLo || '---',
+          ngaySanXuat: loGanNhat?.ngaySanXuat ? String(loGanNhat.ngaySanXuat).slice(0, 10) : '---',
+          ngayHetHan: loGanNhat?.ngayHetHan ? String(loGanNhat.ngayHetHan).slice(0, 10) : '---',
+          nhaCungCap: loGanNhat?.nhaCungCap || '---',
+        };
+      }),
     };
   }
 
   /**
-   * Thêm thuốc mới
+   * Thêm thuốc mới kèm Lô sản xuất, Ngày sản xuất (NSX), Hạn sử dụng (HSD)
    */
   async taoThuoc(data: any) {
     const count = await this.thuocRepo.count();
@@ -62,11 +71,29 @@ export class NhaThuocService {
     });
 
     const saved = await this.thuocRepo.save(newThuoc);
-    return { message: 'Thêm thuốc mới thành công', data: saved };
+
+    // Tự động tạo lô thuốc đầu tiên với NSX, HSD và Nhà cung cấp
+    if (data.ngayHetHan || data.ngaySanXuat || Number(data.tonKhoTong || 0) > 0) {
+      const maLo = data.maLo?.trim() || `LO${new Date().getFullYear()}${String(saved.id).padStart(3, '0')}`;
+      const newLo = this.loThuocRepo.create({
+        thuocId: saved.id,
+        maLo,
+        soLuongNhap: Number(data.tonKhoTong || 0),
+        soLuongTon: Number(data.tonKhoTong || 0),
+        giaNhap: Number(data.giaNhap || (data.giaBan ? Number(data.giaBan) * 0.75 : 0)),
+        ngaySanXuat: data.ngaySanXuat ? new Date(data.ngaySanXuat) : new Date(),
+        ngayHetHan: data.ngayHetHan ? new Date(data.ngayHetHan) : new Date(Date.now() + 365 * 24 * 3600 * 1000 * 2),
+        nhaCungCap: data.nhaCungCap || 'Công ty Dược phẩm',
+        trangThai: 'con_hang',
+      });
+      await this.loThuocRepo.save(newLo);
+    }
+
+    return { message: 'Thêm thuốc mới và tạo lô hạn sử dụng thành công', data: saved };
   }
 
   /**
-   * Cập nhật thông tin thuốc
+   * Cập nhật thông tin thuốc và Lô hạn sử dụng
    */
   async capNhatThuoc(id: number, data: any) {
     const thuoc = await this.thuocRepo.findOne({ where: { id } });
@@ -86,7 +113,33 @@ export class NhaThuocService {
       trangThai: tonKhoTong > 0 ? 'con_hang' : 'het_hang',
     });
 
-    return { message: 'Cập nhật thông tin thuốc thành công' };
+    if (data.ngayHetHan || data.ngaySanXuat || data.maLo || data.nhaCungCap) {
+      const existingLo = await this.loThuocRepo.findOne({ where: { thuocId: id } });
+      if (existingLo) {
+        await this.loThuocRepo.update(existingLo.id, {
+          maLo: data.maLo || existingLo.maLo,
+          ngaySanXuat: data.ngaySanXuat ? new Date(data.ngaySanXuat) : existingLo.ngaySanXuat,
+          ngayHetHan: data.ngayHetHan ? new Date(data.ngayHetHan) : existingLo.ngayHetHan,
+          nhaCungCap: data.nhaCungCap || existingLo.nhaCungCap,
+          soLuongTon: tonKhoTong,
+        });
+      } else {
+        const newLo = this.loThuocRepo.create({
+          thuocId: id,
+          maLo: data.maLo?.trim() || `LO${new Date().getFullYear()}${String(id).padStart(3, '0')}`,
+          soLuongNhap: tonKhoTong,
+          soLuongTon: tonKhoTong,
+          giaNhap: Number(data.giaBan ? Number(data.giaBan) * 0.75 : 0),
+          ngaySanXuat: data.ngaySanXuat ? new Date(data.ngaySanXuat) : new Date(),
+          ngayHetHan: data.ngayHetHan ? new Date(data.ngayHetHan) : new Date(Date.now() + 365 * 24 * 3600 * 1000 * 2),
+          nhaCungCap: data.nhaCungCap || 'Công ty Dược phẩm',
+          trangThai: 'con_hang',
+        });
+        await this.loThuocRepo.save(newLo);
+      }
+    }
+
+    return { message: 'Cập nhật thông tin thuốc và hạn sử dụng thành công' };
   }
 
   /**

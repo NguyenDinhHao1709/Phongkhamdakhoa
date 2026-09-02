@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { X, Pill } from 'lucide-react';
+import { X, Pill, Calendar, Building2, Layers } from 'lucide-react';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { apiPost, apiPatch } from '../../services/api';
 
@@ -21,6 +21,10 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
       duongDung: 'Uống',
       giaBan: 0,
       tonKhoTong: 0,
+      maLo: '',
+      ngaySanXuat: '',
+      ngayHetHan: '',
+      nhaCungCap: '',
       moTa: '',
     },
   });
@@ -36,6 +40,10 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
         duongDung: thuoc.duongDung || 'Uống',
         giaBan: thuoc.giaBan || 0,
         tonKhoTong: thuoc.tonKhoTong || 0,
+        maLo: thuoc.maLo || '',
+        ngaySanXuat: thuoc.ngaySanXuat || '',
+        ngayHetHan: thuoc.ngayHetHan || '',
+        nhaCungCap: thuoc.nhaCungCap || '',
         moTa: thuoc.moTa || '',
       });
     } else {
@@ -48,6 +56,10 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
         duongDung: 'Uống',
         giaBan: 0,
         tonKhoTong: 0,
+        maLo: '',
+        ngaySanXuat: new Date().toISOString().slice(0, 10),
+        ngayHetHan: new Date(Date.now() + 365 * 24 * 3600 * 1000 * 2).toISOString().slice(0, 10),
+        nhaCungCap: 'Dược Hậu Giang (DHG Pharma)',
         moTa: '',
       });
     }
@@ -57,10 +69,10 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
     try {
       if (isEdit) {
         await apiPatch(`/nha-thuoc/thuoc/${thuoc.id}`, data);
-        alert('Cập nhật thông tin thuốc thành công!');
+        alert('Cập nhật thông tin thuốc và hạn sử dụng thành công!');
       } else {
         await apiPost('/nha-thuoc/thuoc', data);
-        alert('Thêm thuốc mới thành công!');
+        alert('Thêm thuốc mới và tạo lô hạn sử dụng thành công!');
       }
       onSuccess?.();
       onClose?.();
@@ -70,25 +82,29 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl border border-gray-100 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl border border-gray-100 flex flex-col max-h-[92vh] animate-scale-up">
         {/* Header */}
-        <div className="flex items-center justify-between border-b px-6 py-4">
+        <div className="flex items-center justify-between border-b px-6 py-4 bg-gray-50/50 rounded-t-2xl">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-100 text-primary-600">
               <Pill className="h-5 w-5" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900">
-              {isEdit ? 'Chỉnh sửa thông tin thuốc' : 'Thêm thuốc mới vào kho'}
-            </h3>
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">
+                {isEdit ? 'Chỉnh sửa thông tin thuốc & Hạn dùng' : 'Thêm thuốc mới vào kho'}
+              </h3>
+              <p className="text-xs text-gray-500">Quản lý danh mục, số lượng tồn và thông tin lô hạn sử dụng</p>
+            </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Form Body */}
         <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4 overflow-y-auto flex-1 text-sm">
+          {/* Thông tin danh mục */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block font-medium text-gray-700 mb-1">Mã thuốc (Tùy chọn)</label>
@@ -96,13 +112,13 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
                 type="text"
                 {...register('maThuoc')}
                 placeholder="VD: TH005 (Tự sinh nếu bỏ trống)"
-                className="w-full rounded-lg border border-gray-300 p-2.5"
+                className="w-full rounded-lg border border-gray-300 p-2.5 focus:ring-2 focus:ring-primary-500 focus:outline-none"
               />
             </div>
 
             <div>
               <label className="block font-medium text-gray-700 mb-1">Đơn vị tính *</label>
-              <select {...register('donViTinh')} className="w-full rounded-lg border border-gray-300 p-2.5">
+              <select {...register('donViTinh')} className="w-full rounded-lg border border-gray-300 p-2.5 focus:ring-2 focus:ring-primary-500 focus:outline-none">
                 <option value="Viên">Viên</option>
                 <option value="Chai">Chai</option>
                 <option value="Lọ">Lọ</option>
@@ -121,7 +137,7 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
               type="text"
               {...register('tenThuoc', { required: 'Tên thuốc không được để trống' })}
               placeholder="VD: Paracetamol 500mg"
-              className={`w-full rounded-lg border p-2.5 ${errors.tenThuoc ? 'border-danger-main' : 'border-gray-300'}`}
+              className={`w-full rounded-lg border p-2.5 focus:ring-2 focus:ring-primary-500 focus:outline-none ${errors.tenThuoc ? 'border-danger-main' : 'border-gray-300'}`}
             />
             {errors.tenThuoc && <p className="mt-1 text-xs text-danger-main">{errors.tenThuoc.message}</p>}
           </div>
@@ -132,7 +148,7 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
               type="text"
               {...register('tenHoatChat')}
               placeholder="VD: Paracetamol"
-              className="w-full rounded-lg border border-gray-300 p-2.5"
+              className="w-full rounded-lg border border-gray-300 p-2.5 focus:ring-2 focus:ring-primary-500 focus:outline-none"
             />
           </div>
 
@@ -143,13 +159,13 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
                 type="text"
                 {...register('hamLuong')}
                 placeholder="VD: 500mg, 100mg/5ml..."
-                className="w-full rounded-lg border border-gray-300 p-2.5"
+                className="w-full rounded-lg border border-gray-300 p-2.5 focus:ring-2 focus:ring-primary-500 focus:outline-none"
               />
             </div>
 
             <div>
               <label className="block font-medium text-gray-700 mb-1">Đường dùng</label>
-              <select {...register('duongDung')} className="w-full rounded-lg border border-gray-300 p-2.5">
+              <select {...register('duongDung')} className="w-full rounded-lg border border-gray-300 p-2.5 focus:ring-2 focus:ring-primary-500 focus:outline-none">
                 <option value="Uống">Uống</option>
                 <option value="Tiêm tĩnh mạch">Tiêm tĩnh mạch</option>
                 <option value="Tiêm bắp">Tiêm bắp</option>
@@ -169,18 +185,67 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
                 min="0"
                 step="500"
                 {...register('giaBan', { valueAsNumber: true })}
-                className="w-full rounded-lg border border-gray-300 p-2.5 font-semibold text-gray-900"
+                className="w-full rounded-lg border border-gray-300 p-2.5 font-semibold text-gray-900 focus:ring-2 focus:ring-primary-500 focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="block font-medium text-gray-700 mb-1">Số lượng tồn kho ban đầu</label>
+              <label className="block font-medium text-gray-700 mb-1">Số lượng tồn kho ban đầu *</label>
               <input
                 type="number"
                 min="0"
                 {...register('tonKhoTong', { valueAsNumber: true })}
-                className="w-full rounded-lg border border-gray-300 p-2.5 font-semibold text-gray-900"
+                className="w-full rounded-lg border border-gray-300 p-2.5 font-semibold text-gray-900 focus:ring-2 focus:ring-primary-500 focus:outline-none"
               />
+            </div>
+          </div>
+
+          {/* KHỐI THÔNG TIN LÔ HÀNG & HẠN DÙNG (QUAN TRỌNG) */}
+          <div className="rounded-xl bg-blue-50/60 p-4 border border-blue-200/80 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-blue-900 uppercase tracking-wider">
+              <Calendar className="h-4 w-4 text-primary-600" /> Thông Tin Lô Hàng & Hạn Sử Dụng (Quản lý FEFO)
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Mã Lô sản xuất</label>
+                <input
+                  type="text"
+                  {...register('maLo')}
+                  placeholder="VD: LO2026A"
+                  className="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Nhà cung cấp / Hãng SX</label>
+                <input
+                  type="text"
+                  {...register('nhaCungCap')}
+                  placeholder="VD: DHG Pharma, Sanofi..."
+                  className="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Ngày sản xuất (NSX) *</label>
+                <input
+                  type="date"
+                  {...register('ngaySanXuat')}
+                  className="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-rose-700 mb-1">Ngày hết hạn (HSD/Exp Date) *</label>
+                <input
+                  type="date"
+                  {...register('ngayHetHan')}
+                  className="w-full rounded-lg border border-rose-300 bg-rose-50/30 p-2 text-xs font-bold text-rose-900 focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                />
+              </div>
             </div>
           </div>
 
@@ -190,7 +255,7 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
               rows={2}
               {...register('moTa')}
               placeholder="Chỉ định, chống chỉ định, lưu ý bảo quản..."
-              className="w-full rounded-lg border border-gray-300 p-2.5"
+              className="w-full rounded-lg border border-gray-300 p-2.5 focus:ring-2 focus:ring-primary-500 focus:outline-none"
             ></textarea>
           </div>
 
@@ -208,4 +273,3 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
     </div>
   );
 }
-
