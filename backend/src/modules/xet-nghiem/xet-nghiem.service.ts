@@ -7,6 +7,7 @@ import {
   DichVuXetNghiem, ChiDinhCanLamSang, KetQuaXetNghiem,
   TrangThaiChiDinh,
 } from './entities/xet-nghiem.entity';
+import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import {
   IsInt, IsPositive, IsOptional, IsString, IsEnum, IsArray,
   ValidateNested, IsNumber, Min,
@@ -66,17 +67,23 @@ export class XetNghiemService {
   }
 
   // ─── BÁC SĨ CHỈ ĐỊNH XÉT NGHIỆM ──────────────────────────
-  async taoChiDinh(bacSiId: number, dto: TaoChiDinhDto) {
+  async taoChiDinh(nguoiDungId: number, dto: TaoChiDinhDto) {
+    let bacSiId: number | null = null;
+    if (nguoiDungId) {
+      const nv = await this.cdRepo.manager.getRepository(NhanVien).findOne({ where: { nguoiDungId } });
+      if (nv) bacSiId = nv.id;
+    }
+
     const entities = dto.dsChiDinh.map((item) =>
       this.cdRepo.create({
         benhAnKhamId: dto.benhAnKhamId,
         dichVuXetNghiemId: item.dichVuXetNghiemId,
-        bacSiChiDinhId: bacSiId,
+        bacSiChiDinhId: bacSiId || nguoiDungId,
         ghiChuChiDinh: item.ghiChuChiDinh,
       }),
     );
     const saved = await this.cdRepo.save(entities);
-    return { data: saved, message: `Đã chỉ định ${saved.length} xét nghiệm` };
+    return { data: saved, message: `Đã chỉ định ${saved.length} xét nghiệm thành công` };
   }
 
   // ─── DANH SÁCH CHỈ ĐỊNH (cho KTV) ──────────────────────────
