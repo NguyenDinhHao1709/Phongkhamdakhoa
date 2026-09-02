@@ -194,7 +194,7 @@ export default function BenhNhanListPage() {
                           <Eye className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); navigate(`/tiep-tan/benh-nhan/${bn.id}`); }}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/tiep-tan/benh-nhan/${bn.id}/edit`); }}
                           title="Chỉnh sửa hồ sơ"
                           className="p-1.5 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg border border-gray-200/60 transition-colors"
                         >

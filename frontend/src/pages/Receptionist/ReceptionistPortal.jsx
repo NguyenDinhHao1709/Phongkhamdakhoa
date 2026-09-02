@@ -5,6 +5,7 @@ import { DashboardLayout } from '../../layouts/DashboardLayout';
 const HangDoiPage          = lazy(() => import('./HangDoi/HangDoiPage'));
 const TiepNhanPage         = lazy(() => import('./TiepNhan/TiepNhanPage'));
 const BenhNhanList         = lazy(() => import('./BenhNhan/BenhNhanListPage'));
+const BenhNhanChiTietPage  = lazy(() => import('./BenhNhan/BenhNhanChiTietPage'));
 const LichHenQuanLyPage    = lazy(() => import('./LichHen/LichHenQuanLyPage'));
 const ThongKeKhachHangPage = lazy(() => import('./ThongKe/ThongKeKhachHangPage'));
 const ThongTinCaNhanPage   = lazy(() => import('./NhanVienShared/ThongTinCaNhanPage'));
@@ -25,10 +26,16 @@ export default function ReceptionistPortal() {
       <Suspense fallback={<Loader />}>
         <Routes>
           <Route index element={<Navigate to="hang-doi" replace />} />
+          <Route path="hang-doi text"  element={<HangDoiPage />} />
           <Route path="hang-doi"       element={<HangDoiPage />} />
+          <Route path="tiep-nhan text" element={<TiepNhanPage />} />
           <Route path="tiep-nhan"      element={<TiepNhanPage />} />
+          <Route path="lich-hen text"  element={<LichHenQuanLyPage />} />
           <Route path="lich-hen"       element={<LichHenQuanLyPage />} />
-          <Route path="benh-nhan"      element={<BenhNhanList />} />
+          <Route path="benh-nhan"              element={<BenhNhanList />} />
+          <Route path="benh-nhan/tao-moi"      element={<BenhNhanChiTietPage isCreate={true} />} />
+          <Route path="benh-nhan/:id"          element={<BenhNhanChiTietPage isEdit={false} />} />
+          <Route path="benh-nhan/:id/edit"     element={<BenhNhanChiTietPage isEdit={true} />} />
           <Route path="thong-ke"       element={<ThongKeKhachHangPage />} />
           <Route path="ca-nhan"        element={<ThongTinCaNhanPage />} />
           <Route path="lich-lam-viec"  element={<LichLamViecPage />} />
