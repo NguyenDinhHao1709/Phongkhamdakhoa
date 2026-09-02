@@ -22,11 +22,20 @@ export class TaoTiepNhanDto {
 
 export class GhiSinhHieuDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() chieuCaoCm?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() chieuCao?: number;
+
   @ApiPropertyOptional() @IsOptional() @IsNumber() canNangKg?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() canNang?: number;
+
   @ApiPropertyOptional() @IsOptional() @IsNumber() nhietDoC?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() nhietDo?: number;
+
   @ApiPropertyOptional() @IsOptional() @IsInt() huyetApTamThu?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() huyetApTamTruong?: number;
+
   @ApiPropertyOptional() @IsOptional() @IsInt() nhipTim?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() mach?: number;
+
   @ApiPropertyOptional() @IsOptional() @IsInt() nhipTho?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() spo2?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() ghiChu?: string;

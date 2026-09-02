@@ -39,6 +39,15 @@ export function VitalDisplay({ label, value, unit, status = 'normal', referenceR
  * VitalsCard — Bộ sinh hiệu đầy đủ trong 1 card
  */
 export function VitalsCard({ data = {}, className = '' }) {
+  const height = data.chieuCaoCm ?? data.chieu_cao_cm ?? data.chieuCao;
+  const weight = data.canNangKg ?? data.can_nang_kg ?? data.canNang;
+  const temp = data.nhietDoC ?? data.nhiet_do_c ?? data.nhietDo;
+  const sys = data.huyetApTamThu ?? data.huyet_ap_tam_thu;
+  const dia = data.huyetApTamTruong ?? data.huyet_ap_tam_truong;
+  const hr = data.nhipTim ?? data.nhip_tim ?? data.mach;
+  const resp = data.nhipTho ?? data.nhip_tho;
+  const spo2Val = data.spo2;
+
   const getHuyetApStatus = (systolic) => {
     if (!systolic) return 'normal';
     if (systolic > 140 || systolic < 90) return 'danger';
@@ -46,52 +55,55 @@ export function VitalsCard({ data = {}, className = '' }) {
     return 'normal';
   };
 
-  const getNhietDoStatus = (temp) => {
-    if (!temp) return 'normal';
-    if (temp >= 38.5 || temp < 35) return 'danger';
-    if (temp >= 37.5) return 'warning';
+  const getNhietDoStatus = (t) => {
+    if (!t) return 'normal';
+    if (t >= 38.5 || t < 35) return 'danger';
+    if (t >= 37.5) return 'warning';
     return 'normal';
   };
 
-  const getNhipTimStatus = (hr) => {
-    if (!hr) return 'normal';
-    if (hr > 120 || hr < 50) return 'danger';
-    if (hr > 100 || hr < 60) return 'warning';
+  const getNhipTimStatus = (h) => {
+    if (!h) return 'normal';
+    if (h > 120 || h < 50) return 'danger';
+    if (h > 100 || h < 60) return 'warning';
     return 'normal';
   };
 
-  const getSpo2Status = (spo2) => {
-    if (!spo2) return 'normal';
-    if (spo2 < 90) return 'danger';
-    if (spo2 < 95) return 'warning';
+  const getSpo2Status = (s) => {
+    if (!s) return 'normal';
+    if (s < 90) return 'danger';
+    if (s < 95) return 'warning';
     return 'normal';
   };
 
   return (
     <div className={clsx('grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4', className)}>
-      {data.chieu_cao_cm && (
-        <VitalDisplay label="Chiều cao" value={data.chieu_cao_cm} unit="cm" status="normal" referenceRange="—" />
+      {height && (
+        <VitalDisplay label="Chiều cao" value={height} unit="cm" status="normal" referenceRange="—" />
       )}
-      {data.can_nang_kg && (
-        <VitalDisplay label="Cân nặng" value={data.can_nang_kg} unit="kg" status="normal" referenceRange="—" />
+      {weight && (
+        <VitalDisplay label="Cân nặng" value={weight} unit="kg" status="normal" referenceRange="—" />
       )}
-      {(data.huyet_ap_tam_thu || data.huyet_ap_tam_truong) && (
+      {(sys || dia) && (
         <VitalDisplay
           label="Huyết áp"
-          value={`${data.huyet_ap_tam_thu ?? '?'}/${data.huyet_ap_tam_truong ?? '?'}`}
+          value={`${sys ?? '?'}/${dia ?? '?'}`}
           unit="mmHg"
-          status={getHuyetApStatus(data.huyet_ap_tam_thu)}
+          status={getHuyetApStatus(sys)}
           referenceRange="90–120 / 60–80"
         />
       )}
-      {data.nhiet_do_c && (
-        <VitalDisplay label="Nhiệt độ" value={data.nhiet_do_c} unit="°C" status={getNhietDoStatus(data.nhiet_do_c)} referenceRange="36.1–37.2" />
+      {temp && (
+        <VitalDisplay label="Nhiệt độ" value={temp} unit="°C" status={getNhietDoStatus(temp)} referenceRange="36.1–37.2" />
       )}
-      {data.nhip_tim && (
-        <VitalDisplay label="Nhịp tim" value={data.nhip_tim} unit="lần/phút" status={getNhipTimStatus(data.nhip_tim)} referenceRange="60–100" />
+      {hr && (
+        <VitalDisplay label="Mạch / Nhịp tim" value={hr} unit="lần/phút" status={getNhipTimStatus(hr)} referenceRange="60–100" />
       )}
-      {data.spo2 && (
-        <VitalDisplay label="SpO₂" value={data.spo2} unit="%" status={getSpo2Status(data.spo2)} referenceRange="≥ 95%" />
+      {resp && (
+        <VitalDisplay label="Nhịp thở" value={resp} unit="lần/phút" status="normal" referenceRange="12–20" />
+      )}
+      {spo2Val && (
+        <VitalDisplay label="SpO₂" value={spo2Val} unit="%" status={getSpo2Status(spo2Val)} referenceRange="≥ 95%" />
       )}
     </div>
   );

@@ -34,7 +34,7 @@ export class TiepNhanController {
   }
 
   @Post(':id/sinh-hieu')
-  @Roles('tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Ghi sinh hiệu ban đầu' })
   ghiSinhHieu(
     @Param('id', ParseIntPipe) id: number,
