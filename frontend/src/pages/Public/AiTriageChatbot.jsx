@@ -266,3 +266,4 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, initialMes
     </div>
   );
 }
+

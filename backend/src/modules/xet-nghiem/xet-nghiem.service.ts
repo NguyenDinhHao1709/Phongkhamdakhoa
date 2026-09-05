@@ -200,5 +200,85 @@ export class XetNghiemService {
 
     return { data: results, message: 'OK' };
   }
+
+  // ─── UC 47: THỐNG KÊ BÁO CÁO KẾT QUẢ XÉT NGHIỆM ─────────
+  async getThongKeXetNghiem(query: { range?: string; tuNgay?: string; denNgay?: string }) {
+    const qb = this.cdRepo.createQueryBuilder('cd')
+      .leftJoinAndSelect('cd.dichVu', 'dv')
+      .orderBy('cd.thoiGianChiDinh', 'DESC');
+
+    const now = new Date();
+
+    if (query.tuNgay && query.denNgay) {
+      qb.andWhere('cd.thoiGianChiDinh >= :tuNgay AND cd.thoiGianChiDinh <= :denNgay', {
+        tuNgay: query.tuNgay + ' 00:00:00',
+        denNgay: query.denNgay + ' 23:59:59',
+      });
+    } else {
+      let startDate: Date;
+      switch (query.range) {
+        case 'tuan_nay':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() + 1);
+          break;
+        case 'thang_nay':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case 'hom_nay':
+        default:
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+      }
+      qb.andWhere('cd.thoiGianChiDinh >= :startDate', { startDate });
+    }
+
+    const list = await qb.getMany();
+
+    const tongChiDinh = list.length;
+    const daHoanThanh = list.filter(c => c.trangThai === TrangThaiChiDinh.CO_KET_QUA).length;
+    const dangXuLy = list.filter(c => c.trangThai === TrangThaiChiDinh.DANG_XU_LY || c.trangThai === TrangThaiChiDinh.DANG_LAY_MAU).length;
+    const choLayMau = list.filter(c => c.trangThai === TrangThaiChiDinh.CHO_LAY_MAU).length;
+
+    // Phân loại xét nghiệm máu vs chẩn đoán hình ảnh
+    const soXetNghiem = list.filter(c => c.dichVu?.loai === 'xet_nghiem').length;
+    const soCdha = list.filter(c => c.dichVu?.loai === 'cdha').length;
+    const soKhac = tongChiDinh - soXetNghiem - soCdha;
+
+    // Top 5 dịch vụ chỉ định nhiều nhất
+    const dvCounts: Record<string, { ten: string; count: number }> = {};
+    list.forEach(c => {
+      const ten = c.dichVu?.tenDichVu || 'Khác';
+      if (!dvCounts[ten]) dvCounts[ten] = { ten, count: 0 };
+      dvCounts[ten].count++;
+    });
+
+    const topDichVu = Object.values(dvCounts)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    return {
+      success: true,
+      data: {
+        tongChiDinh,
+        daHoanThanh,
+        dangXuLy,
+        choLayMau,
+        tyLeHoanThanh: tongChiDinh > 0 ? `${Math.round((daHoanThanh / tongChiDinh) * 100)}%` : '0%',
+        coCauLoai: [
+          { name: 'Xét nghiệm sinh hóa / máu', value: soXetNghiem },
+          { name: 'Chẩn đoán hình ảnh (X-Quang, Siêu âm)', value: soCdha },
+          { name: 'Khác', value: soKhac },
+        ],
+        topDichVu,
+        danhSachMoiNhat: list.slice(0, 10).map(c => ({
+          id: c.id,
+          tenDichVu: c.dichVu?.tenDichVu,
+          loai: c.dichVu?.loai,
+          trangThai: c.trangThai,
+          thoiGianChiDinh: c.thoiGianChiDinh,
+          thoiGianCoKetQua: c.thoiGianCoKetQua,
+        })),
+      },
+    };
+  }
 }
 

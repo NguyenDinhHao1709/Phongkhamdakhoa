@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, CreditCard, Filter, RefreshCw, CheckCircle2, Clock } from 'lucide-react';
+import { Search, CreditCard, Filter, RefreshCw, CheckCircle2, Clock, Printer } from 'lucide-react';
 import { apiGet } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../design-system/components/Badge/StatusBadge';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDateTime } from '../../utils/formatDate';
 import ThanhToanModal from './ThanhToanModal';
+import InHoaDonModal from './InHoaDonModal';
 
 export default function HoaDonListPage() {
   const [list, setList] = useState([]);
@@ -13,6 +14,7 @@ export default function HoaDonListPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'cho_thanh_toan' | 'da_thanh_toan'
   const [selectedHoaDonId, setSelectedHoaDonId] = useState(null);
+  const [printInvoiceData, setPrintInvoiceData] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -157,13 +159,27 @@ export default function HoaDonListPage() {
                       {formatDateTime(hd.ngayTao)}
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <MedButton
-                        size="sm"
-                        variant={hd.trangThai === 'da_thanh_toan' ? 'secondary' : 'primary'}
-                        onClick={() => setSelectedHoaDonId(hd.id)}
-                      >
-                        {hd.trangThai === 'da_thanh_toan' ? 'Xem chi tiết' : 'Thu tiền'}
-                      </MedButton>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <MedButton
+                          size="sm"
+                          variant={hd.trangThai === 'da_thanh_toan' ? 'secondary' : 'primary'}
+                          onClick={() => setSelectedHoaDonId(hd.id)}
+                        >
+                          {hd.trangThai === 'da_thanh_toan' ? 'Xem chi tiết' : 'Thu tiền'}
+                        </MedButton>
+                        {hd.trangThai === 'da_thanh_toan' && (
+                          <button
+                            onClick={async () => {
+                              const res = await apiGet(`/thanh-toan/${hd.id}`);
+                              setPrintInvoiceData(res?.data || res);
+                            }}
+                            className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-primary-600 transition-colors"
+                            title="In phiếu thu viện phí"
+                          >
+                            <Printer className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -179,6 +195,14 @@ export default function HoaDonListPage() {
           hoaDonId={selectedHoaDonId}
           onClose={() => setSelectedHoaDonId(null)}
           onSuccess={fetchData}
+        />
+      )}
+
+      {/* Modal In Hóa Đơn / Phiếu Thu */}
+      {printInvoiceData && (
+        <InHoaDonModal
+          hoaDon={printInvoiceData}
+          onClose={() => setPrintInvoiceData(null)}
         />
       )}
     </div>

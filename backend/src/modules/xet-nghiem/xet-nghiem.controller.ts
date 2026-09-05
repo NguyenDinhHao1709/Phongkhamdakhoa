@@ -91,5 +91,17 @@ export class XetNghiemController {
   ketQuaTheoBenhAnKham(@Param('benhAnKhamId', ParseIntPipe) id: number) {
     return this.service.ketQuaTheoBenhAnKham(id);
   }
+
+  // ─── UC 47: THỐNG KÊ BÁO CÁO XÉT NGHIỆM ──────────────────
+  @Get('thong-ke')
+  @Roles('ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
+  @ApiOperation({ summary: 'Báo cáo thống kê hoạt động xét nghiệm / CĐHA' })
+  getThongKeXetNghiem(
+    @Query('range') range?: string,
+    @Query('tuNgay') tuNgay?: string,
+    @Query('denNgay') denNgay?: string,
+  ) {
+    return this.service.getThongKeXetNghiem({ range, tuNgay, denNgay });
+  }
 }
 

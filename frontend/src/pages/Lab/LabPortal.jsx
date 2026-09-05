@@ -2,7 +2,11 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { DashboardLayout } from '../../layouts/DashboardLayout';
 
-const XetNghiemListPage = lazy(() => import('./XetNghiem/XetNghiemListPage'));
+const XetNghiemListPage   = lazy(() => import('./XetNghiem/XetNghiemListPage'));
+const ThongKeXetNghiemPage = lazy(() => import('./ThongKeXetNghiemPage'));
+const ThongTinCaNhanPage  = lazy(() => import('../Receptionist/NhanVienShared/ThongTinCaNhanPage'));
+const LichLamViecPage     = lazy(() => import('../Receptionist/NhanVienShared/LichLamViecPage'));
+const GuiDonGiamDocPage   = lazy(() => import('../Receptionist/NhanVienShared/GuiDonGiamDocPage'));
 
 function Loader() {
   return (
@@ -19,6 +23,10 @@ export default function LabPortal() {
         <Routes>
           <Route index element={<Navigate to="xet-nghiem" replace />} />
           <Route path="xet-nghiem" element={<XetNghiemListPage />} />
+          <Route path="thong-ke" element={<ThongKeXetNghiemPage />} />
+          <Route path="ca-nhan" element={<ThongTinCaNhanPage />} />
+          <Route path="lich-lam-viec" element={<LichLamViecPage />} />
+          <Route path="gui-don" element={<GuiDonGiamDocPage />} />
           <Route path="*" element={<Navigate to="xet-nghiem" replace />} />
         </Routes>
       </Suspense>

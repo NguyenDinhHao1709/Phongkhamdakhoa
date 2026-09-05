@@ -22,6 +22,17 @@ export class ThanhToanController {
     return this.thanhToanService.getDanhSachHoaDon({ trangThai, search });
   }
 
+  @Get('thong-ke-thu-ngan')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
+  @ApiOperation({ summary: 'Báo cáo thống kê doanh thu thu ngân' })
+  getThongKeThuNgan(
+    @Query('range') range?: string,
+    @Query('tuNgay') tuNgay?: string,
+    @Query('denNgay') denNgay?: string,
+  ) {
+    return this.thanhToanService.getThongKeThuNgan({ range, tuNgay, denNgay });
+  }
+
   @Get(':id')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Xem chi tiết hóa đơn' })
