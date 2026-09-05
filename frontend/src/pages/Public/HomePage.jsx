@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { apiGet } from '../../services/api';
+import { MedButton } from '../../design-system/components/Button/MedButton';
 import SearchResultsModal from './SearchResultsModal';
 import AiTriageChatbot from './AiTriageChatbot';
 
