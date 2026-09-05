@@ -60,12 +60,13 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, initialMes
 
     try {
       const res = await apiPost('/ai/triage-chat', { sessionId, message: msg });
-      const d = res?.data || res;
+      const raw = res?.data || res;
+      const d = (raw?.data && (raw.data.cau_tra_loi || raw.data.khoa)) ? raw.data : raw;
 
       const botMsg = {
         id: Date.now() + 1,
         role: 'bot',
-        text: d.cau_tra_loi,
+        text: d?.cau_tra_loi || 'Tôi đã tiếp nhận triệu chứng của bạn và đang gợi ý khoa khám phù hợp.',
         data: d,
         timestamp: new Date(),
       };

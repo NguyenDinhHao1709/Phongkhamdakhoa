@@ -46,3 +46,4 @@ export class DonGui {
   @JoinColumn({ name: 'nguoi_gui_id' })
   nguoiGui: NhanVien;
 }
+

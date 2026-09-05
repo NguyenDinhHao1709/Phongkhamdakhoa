@@ -33,7 +33,8 @@ export default function AiTriageReceptionPage() {
     setQuickResult(null);
     try {
       const res = await apiPost('/ai/phan-luong-nhanh', { trieuChung: text });
-      const d = res?.data || res;
+      const raw = res?.data || res;
+      const d = (raw?.data && (raw.data.cau_tra_loi || raw.data.khoa)) ? raw.data : raw;
       setQuickResult(d);
       setLastChecked(new Date());
     } catch (err) {

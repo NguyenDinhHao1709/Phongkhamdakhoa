@@ -27,3 +27,4 @@ export class LichLamViec {
   @JoinColumn({ name: 'ca_lam_viec_id' })
   caLamViec: CaLamViec;
 }
+

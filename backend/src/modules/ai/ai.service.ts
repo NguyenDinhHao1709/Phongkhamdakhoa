@@ -62,15 +62,16 @@ export class AiService {
     if (apiKey) {
       try {
         this.genAI = new GoogleGenerativeAI(apiKey);
+        // Sử dụng gemini-3.5-flash-lite: tốc độ siêu nhanh (~1.2s), hỗ trợ responseMimeType JSON
         this.model = this.genAI.getGenerativeModel({
-          model: 'gemini-1.5-flash',
+          model: 'gemini-3.5-flash-lite',
           generationConfig: {
-            temperature: 0.3,
-            topP: 0.9,
-            maxOutputTokens: 1024,
+            temperature: 0.2,
+            responseMimeType: 'application/json',
           },
+          systemInstruction: MEDICAL_SYSTEM_PROMPT,
         });
-        this.logger.log('✅ Gemini AI initialized successfully');
+        this.logger.log('✅ Gemini AI (gemini-3.5-flash-lite) initialized successfully');
       } catch (err) {
         this.logger.warn('⚠️ Gemini AI init failed, fallback to rule-based:', err.message);
       }
@@ -96,20 +97,16 @@ export class AiService {
 
     try {
       const chat = this.model!.startChat({
-        history: [
-          {
-            role: 'user',
-            parts: [{ text: MEDICAL_SYSTEM_PROMPT }],
-          },
-          {
-            role: 'model',
-            parts: [{ text: '{"khoa":"Nội tổng quát","ma_khoa":"NOI","khan_cap":false,"muc_do_uu_tien":"thap","cau_tra_loi":"Xin chào! Tôi là trợ lý AI của Phòng Khám Đa Khoa. Bạn có thể mô tả triệu chứng hoặc vấn đề sức khỏe để tôi hỗ trợ phân luồng chuyên khoa phù hợp nhé.","can_hoi_them":true,"cau_hoi_tiep_theo":"Bạn đang gặp vấn đề sức khỏe gì?","loi_khuyen_so_bo":"Hãy mô tả triệu chứng chi tiết để được tư vấn chính xác hơn.","do_tin_cay":1.0}' }],
-          },
-          ...history,
-        ],
+        history: [...history],
       });
 
-      const result = await chat.sendMessage(userMessage);
+      // Timeout bảo vệ 4 giây: nếu mạng chậm hoặc Google delay quá 4s → fallback ngay lập tức!
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('AI_TIMEOUT_EXCEEDED')), 4000),
+      );
+
+      const sendPromise = chat.sendMessage(userMessage);
+      const result: any = await Promise.race([sendPromise, timeoutPromise]);
       const rawText = result.response.text().trim();
 
       // Cập nhật history
@@ -120,30 +117,10 @@ export class AiService {
       chatSessions.set(sessionId, history.slice(-20)); // Giới hạn 20 lượt
 
       // Parse JSON từ Gemini
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return { success: true, data: parsed, source: 'gemini' };
-      }
-
-      // Nếu Gemini trả lời không phải JSON
-      return {
-        success: true,
-        data: {
-          khoa: 'Nội tổng quát',
-          ma_khoa: 'NOI',
-          khan_cap: false,
-          muc_do_uu_tien: 'thap',
-          cau_tra_loi: rawText,
-          can_hoi_them: true,
-          cau_hoi_tiep_theo: null,
-          loi_khuyen_so_bo: 'Vui lòng đến phòng khám để được tư vấn cụ thể.',
-          do_tin_cay: 0.6,
-        },
-        source: 'gemini_raw',
-      };
+      const parsed = JSON.parse(rawText);
+      return { ...parsed, source: 'gemini' };
     } catch (err) {
-      this.logger.error('Gemini API error:', err.message);
+      this.logger.error('Gemini API error / timeout:', err.message);
       return this.triageChatRuleBased(userMessage);
     }
   }
@@ -151,16 +128,19 @@ export class AiService {
   // ─── PHÂN LUỒNG NHANH (single-turn, dùng cho tiếp tân) ─────────
   async phanLuongNhanh(trieuChung: string) {
     if (this.model) {
-      const prompt = `${MEDICAL_SYSTEM_PROMPT}\n\nTriệu chứng bệnh nhân: "${trieuChung}"\n\nHãy phân tích và trả về JSON phân luồng chuyên khoa.`;
+      const prompt = `Triệu chứng bệnh nhân: "${trieuChung}". Hãy phân tích và trả về JSON phân luồng chuyên khoa.`;
       try {
-        const result = await this.model.generateContent(prompt);
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('AI_TIMEOUT_EXCEEDED')), 4000),
+        );
+        const result: any = await Promise.race([
+          this.model.generateContent(prompt),
+          timeoutPromise,
+        ]);
         const rawText = result.response.text().trim();
-        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          return { success: true, data: JSON.parse(jsonMatch[0]), source: 'gemini' };
-        }
+        return { ...JSON.parse(rawText), source: 'gemini' };
       } catch (err) {
-        this.logger.error('Gemini quick triage error:', err.message);
+        this.logger.error('Gemini quick triage error / timeout:', err.message);
       }
     }
     return this.triageChatRuleBased(trieuChung);
@@ -208,12 +188,15 @@ export class AiService {
     }
 
     return {
-      success: true,
-      data: {
-        khoa, ma_khoa: maKhoa, khan_cap: khanCap, muc_do_uu_tien: mucDo,
-        cau_tra_loi: cauTraLoi, can_hoi_them: true,
-        cau_hoi_tiep_theo: null, loi_khuyen_so_bo: loiKhuyen, do_tin_cay: 0.75,
-      },
+      khoa,
+      ma_khoa: maKhoa,
+      khan_cap: khanCap,
+      muc_do_uu_tien: mucDo,
+      cau_tra_loi: cauTraLoi,
+      can_hoi_them: true,
+      cau_hoi_tiep_theo: null,
+      loi_khuyen_so_bo: loiKhuyen,
+      do_tin_cay: 0.75,
       source: 'rule_based',
     };
   }

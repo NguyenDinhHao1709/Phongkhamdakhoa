@@ -14,3 +14,4 @@ export class CaLamViec {
   @Column({ name: 'gio_ket_thuc', type: 'time' })
   gioKetThuc: string;
 }
+
