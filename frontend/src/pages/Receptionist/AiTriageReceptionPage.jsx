@@ -62,7 +62,7 @@ export default function AiTriageReceptionPage() {
               AI Triage — Phân Luồng Bệnh Nhân <Sparkles className="h-4 w-4 text-amber-300" />
             </h1>
             <p className="text-blue-200 text-xs mt-0.5">
-              Powered by Gemini AI • Nhập triệu chứng để AI gợi ý chuyên khoa phù hợp
+              Trợ lý AI • Nhập triệu chứng để gợi ý chuyên khoa phù hợp
             </p>
           </div>
         </div>
@@ -159,7 +159,7 @@ export default function AiTriageReceptionPage() {
             {quickLoading && (
               <div className="flex flex-col items-center justify-center h-48 text-gray-500 text-sm gap-3">
                 <div className="h-8 w-8 border-3 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
-                <p>Gemini AI đang phân tích triệu chứng...</p>
+                <p>Đang phân tích triệu chứng...</p>
               </div>
             )}
 

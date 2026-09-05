@@ -132,7 +132,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, initialMes
           </div>
           <div>
             <p className="font-bold text-sm leading-tight">AI Triage Phòng Khám</p>
-            <p className="text-[11px] text-blue-200 flex items-center gap-1"><Zap className="h-3 w-3" /> Powered by Gemini AI</p>
+            <p className="text-[11px] text-blue-200 flex items-center gap-1"><Zap className="h-3 w-3" /> Trợ lý Y tế Thông minh</p>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -216,7 +216,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, initialMes
                 {[0, 1, 2].map(i => (
                   <span key={i} className="h-2 w-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }}></span>
                 ))}
-                <span className="text-xs text-gray-500 ml-1">Gemini đang phân tích...</span>
+                <span className="text-xs text-gray-500 ml-1">Đang phân tích...</span>
               </div>
             </div>
           </div>
