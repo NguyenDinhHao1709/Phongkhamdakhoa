@@ -17,6 +17,8 @@ import LabPortal from "./pages/Lab/LabPortal.jsx";
 import PharmacyPortal from "./pages/Pharmacy/PharmacyPortal.jsx";
 import CashierPortal from "./pages/Cashier/CashierPortal.jsx";
 import ManagementPortal from "./pages/Management/ManagementPortal.jsx";
+import AdminPortal from "./pages/Management/AdminPortal.jsx";
+import DirectorPortal from "./pages/Management/DirectorPortal.jsx";
 import PatientPortal from "./pages/Patient/PatientPortal.jsx";
 
 /* ================================================================
@@ -29,9 +31,9 @@ const ROLE_HOME = {
   nhan_vien_nha_thuoc: "/nha-thuoc",
   nha_thuoc:     "/nha-thuoc",
   thu_ngan:      "/thu-ngan",
-  quan_tri_vien: "/quan-ly",
-  quan_tri_vien_cap_cao: "/quan-ly",
-  ban_giam_doc:  "/quan-ly",
+  quan_tri_vien: "/quan-tri",
+  quan_tri_vien_cap_cao: "/quan-tri",
+  ban_giam_doc:  "/ban-giam-doc",
   benh_nhan:     "/benh-nhan",
 };
 
@@ -140,14 +142,30 @@ export default function App() {
           }
         />
 
-        {/* Management Portal */}
+        {/* Admin Portal (Quản Trị Viên - IT & Kỹ Thuật Hệ Thống) */}
         <Route
-          path="/quan-ly/*"
+          path="/quan-tri/*"
           element={
-            <PrivateRoute allowedRoles={["quan_tri_vien", "quan_tri_vien_cap_cao", "ban_giam_doc"]}>
-              <ManagementPortal />
+            <PrivateRoute allowedRoles={["quan_tri_vien", "quan_tri_vien_cap_cao"]}>
+              <AdminPortal />
             </PrivateRoute>
           }
+        />
+
+        {/* Director Portal (Ban Giám Đốc - Điều Hành Y Tế & Tài Chính) */}
+        <Route
+          path="/ban-giam-doc/*"
+          element={
+            <PrivateRoute allowedRoles={["ban_giam_doc"]}>
+              <DirectorPortal />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Legacy /quan-ly/* redirect by role */}
+        <Route
+          path="/quan-ly/*"
+          element={<RoleRedirect />}
         />
 
         {/* Patient Portal */}

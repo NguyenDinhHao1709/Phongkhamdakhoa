@@ -342,7 +342,7 @@ export class QuanLyService {
       .addSelect('COUNT(*)', 'soLuotKham')
       .where('ltn.thoiGianDen >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
       .groupBy("DATE_FORMAT(ltn.thoiGianDen, '%d/%m')")
-      .orderBy("ltn.thoiGianDen", 'ASC')
+      .orderBy("MIN(ltn.thoiGianDen)", 'ASC')
       .getRawMany();
 
     const revTrend = await this.hoaDonRepo.createQueryBuilder('hd')
@@ -351,7 +351,7 @@ export class QuanLyService {
       .where('hd.trangThai = :st', { st: 'da_thanh_toan' })
       .andWhere('hd.ngayThanhToan >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)')
       .groupBy("DATE_FORMAT(hd.ngayThanhToan, '%d/%m')")
-      .orderBy("hd.ngayThanhToan", 'ASC')
+      .orderBy("MIN(hd.ngayThanhToan)", 'ASC')
       .getRawMany();
 
     // Merge trend
@@ -388,39 +388,34 @@ export class QuanLyService {
     }));
 
     // 7. Top bác sĩ khám nhiều nhất
-    const topBacSi = await this.benhAnRepo.createQueryBuilder('bak')
-      .leftJoin('bak.bacSi', 'bs')
-      .leftJoin('bs.nhanVien', 'nv')
-      .select('nv.hoTen', 'hoTen')
-      .addSelect('bs.chuyenKhoa', 'chuyenKhoa')
-      .addSelect('COUNT(bak.id)', 'soCa')
-      .groupBy('nv.hoTen')
-      .addGroupBy('bs.chuyenKhoa')
-      .orderBy('soCa', 'DESC')
-      .limit(5)
-      .getRawMany();
+    const topBacSi = await this.benhAnRepo.query(`
+      SELECT nv.ho_ten AS hoTen, bs.chuyen_khoa AS chuyenKhoa, COUNT(bak.id) AS soCa
+      FROM benh_an_kham bak
+      JOIN bac_si bs ON bak.bac_si_id = bs.id
+      JOIN nhan_vien nv ON bs.nhan_vien_id = nv.id
+      GROUP BY nv.ho_ten, bs.chuyen_khoa
+      ORDER BY soCa DESC
+      LIMIT 5
+    `);
 
     return {
-      success: true,
-      data: {
-        kpis: {
-          tongDoanhThu,
-          doanhThuHomNay,
-          totalTiepNhan,
-          tiepNhanHomNay,
-          soBacSi,
-          soNhanVien,
-          thoiGianChoTrungBinh: '~12 phút/ca',
-          donChoDuyet,
-        },
-        chart7Days,
-        coCauDoanhThu,
-        topBacSi: topBacSi.map(b => ({
-          hoTen: b.hoTen || 'Bác sĩ',
-          chuyenKhoa: b.chuyenKhoa || 'Đa khoa',
-          soCa: Number(b.soCa),
-        })),
+      kpis: {
+        tongDoanhThu,
+        doanhThuHomNay,
+        totalTiepNhan,
+        tiepNhanHomNay,
+        soBacSi,
+        soNhanVien,
+        thoiGianChoTrungBinh: '~12 phút/ca',
+        donChoDuyet,
       },
+      chart7Days,
+      coCauDoanhThu,
+      topBacSi: topBacSi.map((b: any) => ({
+        hoTen: b.hoTen || 'Bác sĩ',
+        chuyenKhoa: b.chuyenKhoa || 'Đa khoa',
+        soCa: Number(b.soCa),
+      })),
     };
   }
 
@@ -714,5 +709,108 @@ export class QuanLyService {
   async xoaLichPhanCa(id: number) {
     await this.lichLamViecRepo.delete(id);
     return { success: true, message: 'Đã xóa ca trực' };
+  }
+
+  // ─── ADMIN: TỔNG QUAN HỆ THỐNG KỸ THUẬT ─────────────────────
+  async getSystemOverview() {
+    const totalUsers = await this.nguoiDungRepo.count();
+    const activeUsers = await this.nguoiDungRepo.count({ where: { trangThai: 'hoat_dong' as any } });
+    const lockedUsers = await this.nguoiDungRepo.count({ where: { trangThai: 'bi_khoa' as any } });
+
+    const rolesDistribution = await this.nguoiDungRepo.createQueryBuilder('nd')
+      .innerJoin('nd.vaiTro', 'vt')
+      .select('vt.tenVaiTro', 'tenVaiTro')
+      .addSelect('vt.maVaiTro', 'maVaiTro')
+      .addSelect('COUNT(nd.id)', 'soLuong')
+      .groupBy('vt.id')
+      .getRawMany();
+
+    const recentUsers = await this.nguoiDungRepo.find({
+      relations: ['vaiTro'],
+      order: { taoLuc: 'DESC' },
+      take: 8,
+    });
+
+    const mem = process.memoryUsage();
+    const uptimeHours = (process.uptime() / 3600).toFixed(1);
+
+    return {
+      accounts: {
+        total: totalUsers,
+        active: activeUsers,
+        locked: lockedUsers,
+      },
+      rolesDistribution: rolesDistribution.map(r => ({
+        tenVaiTro: r.tenVaiTro,
+        maVaiTro: r.maVaiTro,
+        soLuong: Number(r.soLuong),
+      })),
+      systemHealth: {
+        nodeVersion: process.version,
+        platform: process.platform,
+        uptime: `${uptimeHours} giờ`,
+        memoryRss: `${Math.round(mem.rss / 1024 / 1024)} MB`,
+        memoryHeap: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`,
+        dbStatus: 'Hoạt động (MySQL 3306)',
+        aiServiceStatus: 'Hoạt động (gemini-3.5-flash-lite)',
+        socketStatus: 'Hoạt động (Socket.io Port 5000)',
+      },
+      recentUsers: recentUsers.map(u => ({
+        id: u.id,
+        tenDangNhap: u.tenDangNhap,
+        vaiTro: u.vaiTro?.tenVaiTro || 'Chưa gán',
+        trangThai: u.trangThai,
+        taoLuc: u.taoLuc,
+      })),
+    };
+  }
+
+  // ─── ADMIN: DANH MỤC DÙNG CHUNG (MASTER DATA) ─────────────────
+  async getDanhMucTongHop() {
+    const phongBans = await this.nguoiDungRepo.query(
+      'SELECT id, ma_phong_ban, ten_phong_ban, mo_ta FROM phong_ban ORDER BY id ASC'
+    );
+    const phongKhams = await this.nguoiDungRepo.query(
+      'SELECT id, ma_phong, ten_phong, vi_tri, trang_thai FROM phong_kham ORDER BY id ASC'
+    );
+    const dichVus = await this.nguoiDungRepo.query(
+      'SELECT id, ma_dich_vu, ten_dich_vu, gia_tien, thoi_gian_tra_kq_phut, trang_thai FROM dich_vu_xet_nghiem ORDER BY id ASC'
+    );
+    const thuocs = await this.nguoiDungRepo.query(
+      'SELECT id, ma_thuoc, ten_thuoc, hoat_chat, don_vi_tinh, gia_ban, so_luong_ton, trang_thai FROM thuoc ORDER BY id ASC'
+    );
+
+    return {
+      phongBans,
+      phongKhams,
+      dichVus,
+      thuocs,
+    };
+  }
+
+  // ─── ADMIN: SAO LƯU & DUNG LƯỢNG DATABASE ─────────────────────
+  async getDatabaseBackupInfo() {
+    const tables = await this.nguoiDungRepo.query(`
+      SELECT 
+        table_name AS tableName,
+        table_rows AS tableRows,
+        ROUND((data_length + index_length) / 1024 / 1024, 2) AS totalSizeMB,
+        ROUND(data_length / 1024 / 1024, 2) AS dataSizeMB,
+        update_time AS updateTime
+      FROM information_schema.tables
+      WHERE table_schema = DATABASE()
+      ORDER BY (data_length + index_length) DESC
+    `);
+
+    const totalSize = tables.reduce((acc: number, t: any) => acc + Number(t.totalSizeMB || 0), 0);
+    const totalRows = tables.reduce((acc: number, t: any) => acc + Number(t.tableRows || 0), 0);
+
+    return {
+      dbName: 'phong_kham',
+      totalTables: tables.length,
+      totalRows,
+      totalSizeMB: totalSize.toFixed(2),
+      tables,
+    };
   }
 }

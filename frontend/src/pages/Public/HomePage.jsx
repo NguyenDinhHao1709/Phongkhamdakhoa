@@ -7,14 +7,13 @@ import {
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { apiGet } from '../../services/api';
-import { MedButton } from '../../design-system/components/Button/MedButton';
 import SearchResultsModal from './SearchResultsModal';
 import AiTriageChatbot from './AiTriageChatbot';
 
 const ROLE_HOME = {
-  quan_tri_vien_cap_cao: '/quan-ly',
-  quan_tri_vien: '/quan-ly',
-  ban_giam_doc: '/quan-ly',
+  quan_tri_vien_cap_cao: '/quan-tri',
+  quan_tri_vien: '/quan-tri',
+  ban_giam_doc: '/ban-giam-doc',
   bac_si: '/bac-si',
   tiep_tan: '/tiep-tan',
   ky_thuat_vien: '/ky-thuat-vien',

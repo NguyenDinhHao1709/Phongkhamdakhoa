@@ -19,9 +19,33 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 export class QuanLyController {
   constructor(private readonly quanLyService: QuanLyService) {}
 
+  // ─── ADMIN: TỔNG QUAN HỆ THỐNG KỸ THUẬT (IT / SYSTEM) ─────────
+  @Get('system-overview')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thông số kỹ thuật hệ thống, server, database, số lượng người dùng' })
+  getSystemOverview() {
+    return this.quanLyService.getSystemOverview();
+  }
+
+  // ─── ADMIN: DANH MỤC DÙNG CHUNG (MASTER DATA) ─────────────────
+  @Get('danh-muc-tong-hop')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Lấy toàn bộ danh mục dùng chung (Phòng ban, phòng khám, dịch vụ, thuốc)' })
+  getDanhMucTongHop() {
+    return this.quanLyService.getDanhMucTongHop();
+  }
+
+  // ─── ADMIN: THÔNG SỐ CƠ SỞ DỮ LIỆU & BACKUP ─────────────────
+  @Get('backup-info')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Xem thông số bảng dữ liệu và trạng thái sao lưu database' })
+  getBackupInfo() {
+    return this.quanLyService.getDatabaseBackupInfo();
+  }
+
   // ─── UC 17: DASHBOARD TỔNG QUAN BAN GIÁM ĐỐC ─────────────
   @Get('dashboard-stats')
-  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('ban_giam_doc')
   @ApiOperation({ summary: 'Chỉ số hoạt động tổng quan KPI của phòng khám' })
   getDashboardStats(
     @Query('range') range?: string,
@@ -33,7 +57,7 @@ export class QuanLyController {
 
   // ─── UC 18: BÁO CÁO TÀI CHÍNH VÀ DOANH THU ──────────────
   @Get('bao-cao-tai-chinh')
-  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('ban_giam_doc')
   @ApiOperation({ summary: 'Báo cáo doanh thu chi tiết, lọc theo ngày và loại phí' })
   getBaoCaoTaiChinh(
     @Query('tuNgay') tuNgay?: string,
@@ -46,14 +70,14 @@ export class QuanLyController {
 
   // ─── UC 22: PHÊ DUYỆT YÊU CẦU / ĐƠN TỪ NHÂN VIÊN ────────
   @Get('don-tu')
-  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('ban_giam_doc')
   @ApiOperation({ summary: 'Danh sách đơn từ / yêu cầu của nhân viên cấp dưới' })
   getDanhSachDonTu(@Query('trangThai') trangThai?: string) {
     return this.quanLyService.getDanhSachDonTu({ trangThai });
   }
 
   @Patch('don-tu/:id/duyet')
-  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('ban_giam_doc')
   @ApiOperation({ summary: 'Phê duyệt hoặc từ chối đơn yêu cầu' })
   duyetDonTu(
     @Param('id', ParseIntPipe) id: number,
@@ -88,7 +112,7 @@ export class QuanLyController {
   }
 
   @Post('lich-lam-viec')
-  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('ban_giam_doc')
   @ApiOperation({ summary: 'Lưu phân ca làm việc cho nhân viên' })
   xepLichLamViec(@Body() body: any) {
     const list = Array.isArray(body) ? body : [body];
@@ -96,7 +120,7 @@ export class QuanLyController {
   }
 
   @Delete('lich-lam-viec/:id')
-  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('ban_giam_doc')
   @ApiOperation({ summary: 'Xóa ca trực' })
   xoaLichLamViec(@Param('id', ParseIntPipe) id: number) {
     return this.quanLyService.xoaLichPhanCa(id);

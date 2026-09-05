@@ -18,9 +18,9 @@ const loginSchema = z.object({
 });
 
 const ROLE_HOME = {
-  quan_tri_vien_cap_cao: '/quan-ly',
-  quan_tri_vien: '/quan-ly',
-  ban_giam_doc: '/quan-ly',
+  quan_tri_vien_cap_cao: '/quan-tri',
+  quan_tri_vien: '/quan-tri',
+  ban_giam_doc: '/ban-giam-doc',
   bac_si: '/bac-si',
   tiep_tan: '/tiep-tan',
   ky_thuat_vien: '/ky-thuat-vien',
@@ -246,7 +246,32 @@ export default function LoginPage() {
             </MedButton>
           </form>
 
-          <p className="mt-8 text-center text-sm text-gray-500">
+          {/* Tài khoản mẫu nhanh */}
+          <div className="mt-6 pt-4 border-t border-gray-100">
+            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center mb-2">
+              Tài khoản mẫu nhanh:
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => { setValue('tenDangNhap', 'admin'); setValue('matKhau', '123456'); }}
+                className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left transition-colors"
+              >
+                <p className="text-xs font-bold text-slate-800">🛠️ Quản Trị Viên (IT)</p>
+                <p className="text-[11px] text-slate-500 font-mono">admin / 123456</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setValue('tenDangNhap', 'giamdoc'); setValue('matKhau', '123456'); }}
+                className="p-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-left transition-colors"
+              >
+                <p className="text-xs font-bold text-blue-900">💼 Ban Giám Đốc</p>
+                <p className="text-[11px] text-blue-600 font-mono">giamdoc / 123456</p>
+              </button>
+            </div>
+          </div>
+
+          <p className="mt-6 text-center text-sm text-gray-500">
             Dành cho Bệnh nhân mới?{' '}
             <button
               type="button"
