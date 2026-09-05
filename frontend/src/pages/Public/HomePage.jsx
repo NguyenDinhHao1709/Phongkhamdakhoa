@@ -6,7 +6,7 @@ import {
   FileText, Clock, MapPin, Award, BookOpen, UserCheck, MessageCircle, X, BrainCircuit
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
-import { apiGet, apiPost } from '../../services/api';
+import { apiGet } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import SearchResultsModal from './SearchResultsModal';
 import AiTriageChatbot from './AiTriageChatbot';
@@ -35,11 +35,6 @@ export default function HomePage() {
 
   // Doctors from Database State
   const [dbDoctors, setDbDoctors] = useState([]);
-
-  // AI Symptom State (Legacy - quick analyze)
-  const [trieuChungInput, setTrieuChungInput] = useState('');
-  const [aiResult, setAiResult] = useState(null);
-  const [aiLoading, setAiLoading] = useState(false);
 
   // AI Triage Chatbot Floating (Gemini)
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
@@ -82,21 +77,6 @@ export default function HomePage() {
     setIsSearchModalOpen(true);
   };
 
-  const handleAiAnalyze = async (e) => {
-    e.preventDefault();
-    if (!trieuChungInput.trim()) return;
-    setAiLoading(true);
-    try {
-      const res = await apiPost('/ai/goi-y-chuyen-khoa', { trieuChung: trieuChungInput });
-      if (res.data) {
-        setAiResult(res.data);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setAiLoading(false);
-    }
-  };
 
   const handleBookingClick = () => {
     if (!isAuthenticated) {
@@ -162,9 +142,13 @@ export default function HomePage() {
           <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-gray-600">
             <a href="#hero" className="hover:text-primary-600 transition-colors">Trang chủ</a>
             <a href="#chuyen-khoa" className="hover:text-primary-600 transition-colors">Chuyên khoa</a>
-            <a href="#ai-symptom" className="hover:text-primary-600 transition-colors flex items-center gap-1 text-primary-600 font-semibold">
-              <Sparkles className="h-4 w-4" /> Gợi ý AI
-            </a>
+            <button
+              type="button"
+              onClick={() => setIsChatbotOpen(true)}
+              className="hover:text-primary-600 transition-colors flex items-center gap-1 text-primary-600 font-semibold"
+            >
+              <Sparkles className="h-4 w-4" /> Tư vấn AI
+            </button>
             <a href="#bac-si" className="hover:text-primary-600 transition-colors">Bác sĩ</a>
             <a href="#bai-viet" className="hover:text-primary-600 transition-colors">Bài viết</a>
           </nav>
@@ -240,15 +224,6 @@ export default function HomePage() {
                 >
                   Đặt lịch khám trực tuyến
                 </MedButton>
-                <a href="#ai-symptom">
-                  <MedButton
-                    size="lg"
-                    variant="secondary"
-                    leftIcon={<Bot className="h-5 w-5 text-primary-600" />}
-                  >
-                    Khai báo triệu chứng AI
-                  </MedButton>
-                </a>
               </div>
             </div>
 
@@ -285,83 +260,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ─── AI SYMPTOM CHECKER SECTION (GUEST & ALL ACTORS) ──────── */}
-      <section id="ai-symptom" className="py-16 bg-white border-t border-b border-gray-100">
-        <div className="mx-auto max-w-4xl px-4 sm:px-6">
-          <div className="text-center space-y-3 mb-10">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-3.5 py-1 text-xs font-semibold text-primary-700 border border-primary-200">
-              <Sparkles className="h-3.5 w-3.5 text-primary-600" /> Tính năng dành cho Khách vãng lai & Bệnh nhân
-            </span>
-            <h2 className="text-3xl font-bold text-gray-900">AI Khai Báo Triệu Chứng & Gợi Ý Chuyên Khoa</h2>
-            <p className="text-sm text-gray-500 max-w-xl mx-auto">
-              Nhập các dấu hiệu bất thường bạn đang gặp phải. Trợ lý AI sẽ tự động phân tích và đưa ra gợi ý chuyên khoa khám phù hợp.
-            </p>
-          </div>
-
-          <form onSubmit={handleAiAnalyze} className="rounded-2xl bg-gray-50 p-6 shadow-sm border border-gray-200 space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Mô tả triệu chứng sức khỏe của bạn:
-              </label>
-              <textarea
-                rows={3}
-                value={trieuChungInput}
-                onChange={(e) => setTrieuChungInput(e.target.value)}
-                placeholder="Ví dụ: Tôi bị đau đầu kéo dài 3 ngày nay, kèm theo cảm giác chóng mặt và mệt mỏi vào buổi sáng..."
-                className="w-full rounded-xl border border-gray-300 p-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-              ></textarea>
-            </div>
-
-            <div className="flex justify-end">
-              <MedButton
-                type="submit"
-                variant="primary"
-                loading={aiLoading}
-                leftIcon={<Bot className="h-4 w-4" />}
-              >
-                Phân tích bằng AI
-              </MedButton>
-            </div>
-          </form>
-
-          {/* AI Result Display */}
-          {aiResult && (
-            <div className="mt-6 rounded-2xl bg-primary-50/70 p-6 border border-primary-200/80 space-y-4 animate-fade-in">
-              <div className="flex items-center justify-between border-b border-primary-200/60 pb-3">
-                <div className="flex items-center gap-2">
-                  <Bot className="h-5 w-5 text-primary-600" />
-                  <h4 className="font-bold text-gray-900">Kết quả phân tích từ AI</h4>
-                </div>
-                <span className="text-xs font-medium text-primary-700 bg-white px-2.5 py-1 rounded-full border border-primary-200">
-                  Độ chính xác tham khảo: {aiResult.doChinhXac}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Chuyên khoa khuyên khám:</p>
-                  <p className="text-lg font-bold text-primary-700 mt-0.5">{aiResult.chuyenKhoaGoiY}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Mức độ cần thiết:</p>
-                  <p className="text-sm font-semibold text-gray-800 mt-0.5">{aiResult.moTa}</p>
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-white p-4 border border-primary-100">
-                <p className="text-xs font-bold text-gray-700 mb-1">💡 Lời khuyên ban đầu từ chuyên gia:</p>
-                <p className="text-sm text-gray-600 leading-relaxed">{aiResult.loiKhuyen}</p>
-              </div>
-
-              <div className="pt-2 flex justify-center">
-                <MedButton variant="primary" size="md" onClick={handleBookingClick}>
-                  Đặt lịch khám chuyên khoa này ngay
-                </MedButton>
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
 
       {/* ─── CHUYÊN KHOA SHOWCASE ──────────────────────────────────── */}
       <section id="chuyen-khoa" className="py-16 bg-gray-50">
