@@ -105,10 +105,29 @@ export default function ThongTinCaNhanPage() {
               </div>
               <div>
                 <p className="text-xs text-gray-500">Phòng ban / Bộ phận</p>
-                <p className="font-semibold text-gray-900">Quầy Tiếp tân & Điều phối</p>
+                <p className="font-semibold text-gray-900">
+                  {user?.vaiTro === 'bac_si' ? 'Khoa Khám Bệnh & Lâm Sàng' : user?.vaiTro === 'ky_thuat_vien' ? 'Khoa Cận Lâm Sàng & Xét Nghiệm' : user?.vaiTro === 'nhan_vien_nha_thuoc' ? 'Khoa Dược & Nhà Thuốc' : 'Quầy Tiếp Tân & Điều Phối'}
+                </p>
               </div>
+              {user?.vaiTro === 'bac_si' && (
+                <>
+                  <div>
+                    <p className="text-xs text-gray-500">Học hàm / Học vị</p>
+                    <p className="font-semibold text-primary-700">Thạc sĩ, Bác sĩ CKI</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Chứng chỉ hành nghề (CCHN)</p>
+                    <p className="font-semibold text-gray-900">008924 / BYT - CCHN</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Chuyên khoa đăng ký</p>
+                    <p className="font-semibold text-gray-900">Nội tổng quát & Đa khoa</p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
+
 
           {/* Form Đổi mật khẩu */}
           <form onSubmit={handleChangePassword} className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200 space-y-4">

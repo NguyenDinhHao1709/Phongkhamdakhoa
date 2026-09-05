@@ -80,7 +80,7 @@ export class XetNghiemController {
   @Patch('chi-dinh/:id/gui-bac-si')
   @Roles('ky_thuat_vien')
   @ApiOperation({ summary: 'Đánh dấu đã gửi kết quả cho bác sĩ' })
-  guiKetQuaChoBacSi(@Param('id', ParseIntPipe) id: number) {
+  guiKetQuaChoBacSi(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.service.guiKetQuaChoBacSi(id);
   }
 

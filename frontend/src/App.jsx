@@ -1,5 +1,5 @@
-import { Routes, Route, Navigate } from "react-router-dom";
-import { Suspense, lazy } from "react";
+import { lazy, Suspense } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import useAuthStore from "./store/authStore";
 
 /* ================================================================
@@ -39,9 +39,11 @@ const ROLE_HOME = {
 
 function RoleRedirect() {
   const user = useAuthStore((s) => s.user);
-  if (!user) return <Navigate to="/login" replace />;
-  const home = ROLE_HOME[user.vaiTro] || "/unauthorized";
-  return <Navigate to={home} replace />;
+  const location = useLocation();
+  const baseHome = ROLE_HOME[user.vaiTro] || "/unauthorized";
+  const sub = location.pathname.replace(/^\/quan-ly\/?/, "");
+  const target = sub ? `${baseHome}/${sub}` : baseHome;
+  return <Navigate to={target} replace />;
 }
 
 /* ================================================================

@@ -58,10 +58,23 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, initialMes
     const userMsg = { id: Date.now(), role: 'user', text: msg, timestamp: new Date() };
     setMessages(prev => [...prev, userMsg]);
 
+    // Lấy 6 tin nhắn hội thoại gần nhất gửi kèm để AI nắm giữ ngữ cảnh (Chat Context)
+    const chatHistory = messages
+      .filter(m => m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('🔄'))
+      .slice(-6)
+      .map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        text: m.text,
+      }));
+
     try {
-      const res = await apiPost('/ai/triage-chat', { sessionId, message: msg });
+      const res = await apiPost('/ai/triage-chat', { 
+        sessionId, 
+        message: msg,
+        history: chatHistory,
+      });
       const raw = res?.data || res;
-      const d = (raw?.data && (raw.data.cau_tra_loi || raw.data.khoa)) ? raw.data : raw;
+      const d = (raw?.data && (raw.data.cau_tra_loi || raw.data.chuyen_khoa || raw.data.khoa)) ? raw.data : raw;
 
       const botMsg = {
         id: Date.now() + 1,
@@ -174,11 +187,11 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, initialMes
               </div>
 
               {/* Card kết quả AI */}
-              {msg.data && msg.data.khoa && !msg.data.can_hoi_them && (
+              {msg.data && (msg.data.chuyen_khoa || msg.data.khoa) && !msg.data.can_hoi_them && (
                 <div className="mt-2 rounded-xl border border-gray-200 bg-white shadow-xs overflow-hidden">
                   <div className={`${CHUYEN_KHOA_COLORS[msg.data.ma_khoa] || 'bg-primary-600'} text-white px-3 py-2 flex items-center gap-2`}>
                     <Stethoscope className="h-4 w-4" />
-                    <span className="font-bold text-sm">Gợi ý: {msg.data.khoa}</span>
+                    <span className="font-bold text-sm">Gợi ý: {msg.data.chuyen_khoa || msg.data.khoa}</span>
                     {msg.data.khan_cap && <span className="ml-auto bg-red-200 text-red-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">KHẨN CẤP</span>}
                   </div>
                   <div className="px-3 py-2 space-y-1 text-xs text-gray-600">
@@ -196,10 +209,10 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, initialMes
                 </div>
               )}
 
-              {msg.data && msg.data.khoa && msg.data.can_hoi_them && (
+              {msg.data && (msg.data.chuyen_khoa || msg.data.khoa) && msg.data.can_hoi_them && (
                 <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-gray-500">
                   <Stethoscope className="h-3 w-3 text-primary-500" />
-                  <span>Đang phân tích: <strong className="text-primary-700">{msg.data.khoa}</strong></span>
+                  <span>Đang phân tích: <strong className="text-primary-700">{msg.data.chuyen_khoa || msg.data.khoa}</strong></span>
                 </div>
               )}
             </div>

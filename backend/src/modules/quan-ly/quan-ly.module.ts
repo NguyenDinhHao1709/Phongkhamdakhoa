@@ -19,6 +19,7 @@ import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { QuanLyController } from './quan-ly.controller';
 import { QuanLyService } from './quan-ly.service';
+import { ThongBaoModule } from '../thong-bao/thong-bao.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { QuanLyService } from './quan-ly.service';
       ChiDinhCanLamSang,
       DonThuoc,
     ]),
+    ThongBaoModule,
   ],
   controllers: [QuanLyController],
   providers: [QuanLyService],

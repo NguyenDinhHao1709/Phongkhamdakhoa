@@ -39,7 +39,7 @@ export default function BaoCaoTaiChinhPage() {
     },
   });
 
-  const report = data?.data;
+  const report = data?.data?.data || data?.data || data || {};
   const list = report?.danhSachHoaDon || [];
 
   const filteredList = list.filter(item => {

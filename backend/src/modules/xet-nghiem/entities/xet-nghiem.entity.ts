@@ -2,6 +2,7 @@ import {
   Entity, PrimaryGeneratedColumn, Column,
   ManyToOne, OneToOne, JoinColumn, CreateDateColumn,
 } from 'typeorm';
+import { BenhAnKham } from '../../ho-so-benh-an/entities/ho-so-benh-an.entity';
 
 // ─── DANH MỤC DỊCH VỤ XÉT NGHIỆM ──────────────────────────
 @Entity('dich_vu_xet_nghiem')
@@ -84,6 +85,10 @@ export class ChiDinhCanLamSang {
   @ManyToOne(() => DichVuXetNghiem)
   @JoinColumn({ name: 'dich_vu_xet_nghiem_id' })
   dichVu: DichVuXetNghiem;
+
+  @ManyToOne(() => BenhAnKham)
+  @JoinColumn({ name: 'benh_an_kham_id' })
+  benhAnKham: BenhAnKham;
 }
 
 // ─── KẾT QUẢ XÉT NGHIỆM ────────────────────────────────────

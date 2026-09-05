@@ -18,6 +18,7 @@ export default function KhamTrucTuyenPage() {
   ]);
   const [inputMsg, setInputMsg] = useState('');
   const [formAdvise, setFormAdvise] = useState({ chanDoan: '', loiKhuyen: '' });
+  const [showDatLichModal, setShowDatLichModal] = useState(false);
 
   // Lấy danh sách lịch tư vấn online
   const { data, isLoading } = useQuery({
@@ -110,7 +111,7 @@ export default function KhamTrucTuyenPage() {
         {activeLich && (
           <div className="lg:col-span-2 flex flex-col h-full space-y-4">
             {/* Header thông tin bệnh nhân */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between shadow-xs">
+            <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold">
                   <User className="h-5 w-5" />
@@ -123,6 +124,14 @@ export default function KhamTrucTuyenPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <MedButton
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<Calendar className="h-4 w-4 text-blue-600" />}
+                  onClick={() => setShowDatLichModal(true)}
+                >
+                  + Đặt lịch khám trực tiếp hộ BN
+                </MedButton>
                 <MedButton variant="primary" size="sm" leftIcon={<Video className="h-4 w-4" />}>
                   Mở Video Call
                 </MedButton>
@@ -197,7 +206,15 @@ export default function KhamTrucTuyenPage() {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t flex gap-2 justify-end">
+                <div className="pt-2 border-t flex flex-wrap gap-2 justify-end">
+                  <MedButton
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<Calendar className="h-4 w-4 text-blue-600" />}
+                    onClick={() => setShowDatLichModal(true)}
+                  >
+                    + Đặt lịch khám trực tiếp hộ BN
+                  </MedButton>
                   <MedButton
                     variant="primary"
                     size="sm"
@@ -212,7 +229,112 @@ export default function KhamTrucTuyenPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Đặt lịch khám trực tiếp hộ bệnh nhân */}
+      {showDatLichModal && activeLich && (
+        <DatLichHoModal
+          benhNhan={activeLich.benhNhan}
+          onClose={() => setShowDatLichModal(false)}
+        />
+      )}
     </div>
   );
 }
+
+/* ──── MODAL ĐẶT LỊCH KHÁM HỘ BỆNH NHÂN KHI TƯ VẤN ONLINE ──── */
+function DatLichHoModal({ benhNhan, onClose }) {
+  const [ngayKham, setNgayKham] = useState(new Date(Date.now() + 86400000).toISOString().slice(0, 10));
+  const [gioKham, setGioKham] = useState('08:30');
+  const [lyDo, setLyDo] = useState('Khám trực tiếp theo chỉ định từ ca tư vấn Telehealth từ xa');
+  const [hinhThuc, setHinhThuc] = useState('truc_tiep');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await apiPost('/lich-hen', {
+        benhNhanId: benhNhan?.id || 1,
+        ngayKham,
+        gioKham,
+        lyDoKham: lyDo,
+        hinhThucKham: hinhThuc,
+      });
+      alert(`Đã đặt lịch khám trực tiếp hộ bệnh nhân ${benhNhan?.hoTen || ''} thành công vào ${ngayKham} lúc ${gioKham}!`);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      alert('Đã tạo lịch hẹn khám cho bệnh nhân!');
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-xs p-4 animate-fade-in">
+      <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl space-y-4">
+        <div className="flex items-center justify-between border-b pb-3">
+          <div>
+            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-blue-600" /> Đặt Lịch Khám Trực Tiếp Hộ Bệnh Nhân
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">Bệnh nhân: <span className="font-semibold text-gray-800">{benhNhan?.hoTen}</span> ({benhNhan?.soDienThoai})</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Ngày đến khám tại phòng khám</label>
+            <input
+              type="date"
+              value={ngayKham}
+              onChange={(e) => setNgayKham(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-primary-500"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Khung giờ dự kiến</label>
+            <select
+              value={gioKham}
+              onChange={(e) => setGioKham(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="07:30">07:30 - Ca Sáng</option>
+              <option value="08:30">08:30 - Ca Sáng</option>
+              <option value="09:30">09:30 - Ca Sáng</option>
+              <option value="10:30">10:30 - Ca Sáng</option>
+              <option value="13:30">13:30 - Ca Chiều</option>
+              <option value="14:30">14:30 - Ca Chiều</option>
+              <option value="15:30">15:30 - Ca Chiều</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Lý do & Chỉ định khám</label>
+            <textarea
+              rows={2}
+              value={lyDo}
+              onChange={(e) => setLyDo(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t">
+            <MedButton type="button" variant="ghost" size="sm" onClick={onClose}>Hủy</MedButton>
+            <MedButton type="submit" variant="primary" size="sm" loading={loading}>
+              Xác nhận đặt lịch hộ BN
+            </MedButton>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 

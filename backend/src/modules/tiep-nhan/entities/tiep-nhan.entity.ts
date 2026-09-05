@@ -8,10 +8,12 @@ import { BacSi } from '../../nhan-vien/entities/bac-si.entity';
 import { NhanVien } from '../../nhan-vien/entities/nhan-vien.entity';
 
 export enum TrangThaiTiepNhan {
-  CHO_KHAM   = 'cho_kham',
-  DANG_KHAM  = 'dang_kham',
-  HOAN_THANH = 'hoan_thanh',
-  DA_HUY     = 'da_huy',
+  CHO_KHAM     = 'cho_kham',
+  DANG_KHAM    = 'dang_kham',
+  DANG_CLS     = 'dang_cls',
+  DA_CO_KQ_CLS = 'da_co_kq_cls',
+  HOAN_THANH   = 'hoan_thanh',
+  DA_HUY       = 'da_huy',
 }
 
 // ──────────────────────────────────────────────

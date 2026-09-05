@@ -37,6 +37,13 @@ export class HoSoBenhAnController {
     return this.service.taoBenhAnKham(user.id, benhNhanId, dto);
   }
 
+  @Get('benh-an-kham/luot/:luotTiepNhanId')
+  @Roles('bac_si', 'tiep_tan', 'quan_tri_vien')
+  @ApiOperation({ summary: 'Lấy phiếu khám theo lượt tiếp nhận' })
+  layBenhAnTheoLuot(@Param('luotTiepNhanId', ParseIntPipe) luotTiepNhanId: number) {
+    return this.service.layBenhAnTheoLuot(luotTiepNhanId);
+  }
+
   @Get('benh-an-kham/:id')
   @Roles('bac_si', 'tiep_tan')
   @ApiOperation({ summary: 'Chi tiết phiếu khám' })

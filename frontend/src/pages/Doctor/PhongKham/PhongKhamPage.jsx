@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
@@ -21,20 +22,52 @@ function useHangDoi() {
 }
 
 export default function PhongKhamPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const chiDinhIdParam = searchParams.get('chiDinhId');
+  const tabParam = searchParams.get('tab');
+
   const { data, isLoading } = useHangDoi();
   const [selectedLuot, setSelectedLuot] = useState(null);
   const items = data?.data || [];
   const dangKham = items.filter((i) => i.trangThai === 'dang_kham');
   const choKham = items.filter((i) => i.trangThai === 'cho_kham');
 
+  // Nếu chuyển sang từ Thông báo xét nghiệm (có chiDinhId)
+  const { data: cdData } = useQuery({
+    queryKey: ['chi-dinh-direct', chiDinhIdParam],
+    queryFn: () => apiGet(`/xet-nghiem/chi-dinh/${chiDinhIdParam}`),
+    enabled: !!chiDinhIdParam,
+  });
+
+  useEffect(() => {
+    if (cdData?.data?.chiDinh) {
+      const cd = cdData.data.chiDinh;
+      const bak = cd.benhAnKham;
+      const luotId = bak?.luotTiepNhanId;
+      const matchingLuot = items.find(
+        (i) => i.id === luotId || i.benhNhan?.id === bak?.hoSoBenhAn?.benhNhan?.id,
+      );
+      if (matchingLuot) {
+        setSelectedLuot(matchingLuot);
+      } else if (bak?.hoSoBenhAn?.benhNhan) {
+        setSelectedLuot({
+          id: luotId,
+          maSoThuTu: 'CLS',
+          trangThai: bak.trangThai || 'dang_kham',
+          benhNhan: bak.hoSoBenhAn.benhNhan,
+        });
+      }
+    }
+  }, [cdData, items]);
+
   const currentLuot = selectedLuot
     ? items.find((i) => i.id === selectedLuot.id) || selectedLuot
     : (dangKham[0] || choKham[0] || null);
 
   return (
-    <div className="flex gap-6 h-[calc(100vh-7rem)] animate-fade-in">
+    <div className="flex gap-6 h-[calc(100vh-7rem)] animate-fade-in overflow-x-auto pb-2">
       {/* Left: Patient Queue */}
-      <div className="w-80 flex-shrink-0 flex flex-col">
+      <div className="w-72 sm:w-80 flex-shrink-0 flex flex-col min-w-[260px]">
         <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
           <ClipboardList className="h-5 w-5 text-primary-600" /> Hàng đợi phòng khám
         </h2>
@@ -67,10 +100,12 @@ export default function PhongKhamPage() {
       </div>
 
       {/* Right: Clinical Examination Main Panel */}
-      <div className="flex-1 min-w-0 overflow-y-auto pr-1">
+      <div className="flex-1 min-w-[480px] overflow-y-auto pr-1">
         {currentLuot ? (
           <KhamBenhPanel
+
             luot={currentLuot}
+            initialTab={tabParam}
             onComplete={() => setSelectedLuot(null)}
             onUpdateLuot={(updated) => setSelectedLuot(updated)}
           />
@@ -126,10 +161,16 @@ function PatientCard({ luot, isSelected, onSelect }) {
   );
 }
 
-function KhamBenhPanel({ luot, onComplete, onUpdateLuot }) {
+function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
   const qc = useQueryClient();
   const bn = luot.benhNhan || {};
-  const [tab, setTab] = useState('kham');
+  const [tab, setTab] = useState(initialTab || 'kham');
+
+  useEffect(() => {
+    if (initialTab) {
+      setTab(initialTab);
+    }
+  }, [initialTab]);
   const [showVitalsModal, setShowVitalsModal] = useState(false);
   const [showChiDinhModal, setShowChiDinhModal] = useState(false);
   const [showDonThuocModal, setShowDonThuocModal] = useState(false);
@@ -141,6 +182,36 @@ function KhamBenhPanel({ luot, onComplete, onUpdateLuot }) {
   });
   const [benhAnId, setBenhAnId] = useState(null);
 
+  // Tự động tìm phiếu khám hiện tại của lượt tiếp nhận này
+  const { data: bakData } = useQuery({
+    queryKey: ['benh-an-kham-luot', luot?.id],
+    queryFn: () => apiGet(`/ho-so-benh-an/benh-an-kham/luot/${luot.id}`),
+    enabled: !!luot?.id,
+  });
+
+  useEffect(() => {
+    if (bakData?.data) {
+      const b = bakData.data;
+      setBenhAnId(b.id);
+      setForm((prev) => ({
+        ...prev,
+        trieuChung: b.trieuChung || '',
+        chanDoanSoBo: b.chanDoanSoBo || '',
+        chanDoanXacDinh: b.chanDoanXacDinh || '',
+        ketQuaKham: b.ketQuaKham || '',
+        phuongPhapDieuTri: b.phuongPhapDieuTri || '',
+        taiKham: b.taiKham ? b.taiKham.split('T')[0] : '',
+        ghiChu: b.ghiChu || '',
+      }));
+    } else {
+      setBenhAnId(null);
+      setForm({
+        trieuChung: '', chanDoanSoBo: '', chanDoanXacDinh: '',
+        ketQuaKham: '', phuongPhapDieuTri: '', taiKham: '', ghiChu: '',
+      });
+    }
+  }, [bakData, luot?.id]);
+
   // Sinh hiệu
   const { data: shData, refetch: refetchSinhHieu } = useQuery({
     queryKey: ['sinh-hieu', luot.id],
@@ -151,12 +222,19 @@ function KhamBenhPanel({ luot, onComplete, onUpdateLuot }) {
   // Tạo phiếu khám
   const createMut = useMutation({
     mutationFn: () => apiPost(`/ho-so-benh-an/benh-an-kham/${bn.id}`, { luotTiepNhanId: luot.id, hinhThucKham: 'truc_tiep' }),
-    onSuccess: (res) => setBenhAnId(res.data.id),
+    onSuccess: (res) => {
+      if (res?.data?.id) setBenhAnId(res.data.id);
+      qc.invalidateQueries(['benh-an-kham-luot', luot?.id]);
+    },
   });
 
   // Kết thúc khám
   const finishMut = useMutation({
-    mutationFn: () => apiPatch(`/ho-so-benh-an/benh-an-kham/${benhAnId}/ket-thuc`, form),
+    mutationFn: () => {
+      const payload = { ...form };
+      if (!payload.taiKham) delete payload.taiKham;
+      return apiPatch(`/ho-so-benh-an/benh-an-kham/${benhAnId}/ket-thuc`, payload);
+    },
     onSuccess: () => {
       apiPatch(`/tiep-nhan/${luot.id}/trang-thai`, { trangThai: 'hoan_thanh' });
       qc.invalidateQueries(['tiep-nhan']);
@@ -164,12 +242,17 @@ function KhamBenhPanel({ luot, onComplete, onUpdateLuot }) {
     },
   });
 
+
   const handleBatDauKham = async () => {
     try {
       await apiPatch(`/tiep-nhan/${luot.id}/trang-thai`, { trangThai: 'dang_kham' });
       onUpdateLuot({ ...luot, trangThai: 'dang_kham' });
-      await createMut.mutateAsync();
+      const res = await createMut.mutateAsync();
+      if (res?.data?.id) {
+        setBenhAnId(res.data.id);
+      }
       qc.invalidateQueries(['tiep-nhan']);
+      qc.invalidateQueries(['benh-an-kham-luot', luot?.id]);
     } catch (err) {
       console.error(err);
     }
@@ -944,82 +1027,184 @@ function DatLichTaiKhamModal({ benhNhanId, onClose, onSuccess }) {
   );
 }
 
+/* ──── WIDGET LỘ TRÌNH ĐỊNH TUYẾN ĐỘNG (PYTHON ML + GEMINI AI) ──── */
+function DynamicQueuePanel({ benhAnKhamId }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['dynamic-queue-routing', benhAnKhamId],
+    queryFn: () => apiGet(`/ai/dynamic-queue/${benhAnKhamId}`),
+    enabled: !!benhAnKhamId,
+    refetchInterval: 5000, // Tự động cập nhật tải hàng đợi mỗi 5s
+  });
+
+  const resData = data?.data || {};
+  const routingPlan = resData.routingPlan || [];
+  const tietKiemPhut = resData.tietKiemPhut || 0;
+  const thongDiep = resData.thongDiep || '';
+  const engine = resData.engine || 'python_dynamic_router';
+
+  if (isLoading || routingPlan.length === 0) return null;
+
+  return (
+    <div className="mb-4 rounded-2xl bg-gradient-to-r from-purple-900 via-indigo-900 to-blue-900 p-5 text-white shadow-xl animate-fade-in">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3 pb-3 border-b border-white/10">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 bg-amber-400/20 rounded-xl text-amber-300">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <h4 className="font-extrabold text-base flex items-center gap-2">
+              ⭐ Lộ Trình Khám Động Tối Ưu (AI Dynamic Queue)
+            </h4>
+            <p className="text-xs text-blue-200">
+              Thuật toán Python Min-Wait Routing • {engine === 'python_dynamic_router' ? '🐍 Python Engine' : '⚡ NestJS Fallback'}
+            </p>
+          </div>
+        </div>
+        {tietKiemPhut > 0 && (
+          <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold animate-pulse">
+            ⚡ Tiết kiệm ~{tietKiemPhut} phút chờ!
+          </span>
+        )}
+      </div>
+
+      {/* Lời dặn Gemini AI */}
+      {thongDiep && (
+        <div className="bg-white/10 rounded-xl p-3.5 mb-4 text-xs text-blue-50 leading-relaxed border border-white/10 flex items-start gap-2.5">
+          <ChevronRight className="h-4 w-4 text-amber-300 shrink-0 mt-0.5" />
+          <span>{thongDiep}</span>
+        </div>
+      )}
+
+      {/* Timeline từng bước */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {routingPlan.map((step) => (
+          <div
+            key={step.buoc}
+            className={`rounded-xl p-3.5 border transition-all ${
+              step.buoc === 1
+                ? 'bg-emerald-500/20 border-emerald-400/50 shadow-md ring-2 ring-emerald-400/30'
+                : 'bg-white/8 border-white/15'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-[11px] font-extrabold px-2 py-0.5 rounded-full ${
+                step.buoc === 1 ? 'bg-emerald-400 text-emerald-950' : 'bg-white/20 text-white'
+              }`}>
+                Bước {step.buoc}
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                step.badge_color === 'emerald' ? 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/30' :
+                step.badge_color === 'amber' ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' :
+                'bg-red-400/20 text-red-300 border border-red-400/30'
+              }`}>
+                {step.so_nguoi_cho} người chờ (~{step.thoi_gian_cho_phut}p)
+              </span>
+            </div>
+
+            <p className="font-bold text-sm text-white">{step.ten_phong}</p>
+
+            {step.dich_vu && step.dich_vu.length > 0 && (
+              <p className="text-xs text-blue-200 mt-1 truncate">
+                Dịch vụ: {step.dich_vu.join(', ')}
+              </p>
+            )}
+
+            <p className={`text-[11px] mt-2 font-medium leading-tight ${
+              step.buoc === 1 ? 'text-emerald-200 font-bold' : 'text-gray-300'
+            }`}>
+              {step.khuyen_nghi}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ──── TAB XÉT NGHIỆM (XEM KẾT QUẢ TỪ CSDL & TẠO CHỈ ĐỊNH) ──── */
 function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
   const { data, isLoading } = useQuery({
     queryKey: ['xn-benh-an', benhAnKhamId],
     queryFn: () => apiGet(`/xet-nghiem/benh-an-kham/${benhAnKhamId}`),
+    enabled: !!benhAnKhamId,
+    refetchInterval: 3000,
   });
   const items = data?.data || [];
 
   return (
-    <MedCard
-      title="Danh sách chỉ định & Kết quả Cận lâm sàng"
-      action={
-        <MedButton variant="secondary" size="sm" leftIcon={<Plus className="h-4 w-4" />} onClick={onOpenModal}>
-          Chỉ định mới
-        </MedButton>
-      }
-    >
-      {isLoading && <p className="text-sm text-gray-400 py-4">Đang nạp dữ liệu kết quả xét nghiệm từ CSDL...</p>}
+    <div className="space-y-4">
+      {/* Dynamic Queue Routing Widget */}
+      <DynamicQueuePanel benhAnKhamId={benhAnKhamId} />
 
-      {items.length === 0 && !isLoading ? (
-        <div className="text-center py-6">
-          <FlaskConical className="mx-auto h-8 w-8 text-gray-300 mb-2" />
-          <p className="text-sm text-gray-400">Phiếu khám này chưa có chỉ định xét nghiệm nào</p>
-          <button
-            type="button"
-            onClick={onOpenModal}
-            className="mt-2 text-xs font-bold text-primary-600 hover:underline"
-          >
-            + Bấm vào đây để tạo chỉ định xét nghiệm
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {items.map(({ chiDinh, ketQua }) => (
-            <div key={chiDinh.id} className="rounded-xl border border-gray-200 p-4 bg-white shadow-2xs space-y-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded mr-2">
-                    {chiDinh.dichVu?.maDichVu || 'XN'}
-                  </span>
-                  <span className="font-bold text-sm text-gray-900">{chiDinh.dichVu?.tenDichVu}</span>
-                </div>
-                <StatusBadge status={chiDinh.trangThai} size="sm" />
-              </div>
+      <MedCard
+        title="Danh sách chỉ định & Kết quả Cận lâm sàng"
+        action={
+          <MedButton variant="secondary" size="sm" leftIcon={<Plus className="h-4 w-4" />} onClick={onOpenModal}>
+            Chỉ định mới
+          </MedButton>
+        }
+      >
+        {isLoading && <p className="text-sm text-gray-400 py-4">Đang nạp dữ liệu kết quả xét nghiệm từ CSDL...</p>}
 
-              {chiDinh.ghiChuChiDinh && (
-                <p className="text-xs text-gray-500 italic bg-gray-50 p-2 rounded">
-                  Ghi chú chỉ định: {chiDinh.ghiChuChiDinh}
-                </p>
-              )}
-
-              {ketQua ? (
-                <div className="mt-2 rounded-xl bg-emerald-50/60 border border-emerald-200 p-3 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-emerald-800">KẾT QUẢ TỪ PHÒNG XÉT NGHIỆM</span>
-                    <span className="text-[10px] text-emerald-600">{formatDateTime(ketQua.taoLuc || new Date())}</span>
+        {items.length === 0 && !isLoading ? (
+          <div className="text-center py-6">
+            <FlaskConical className="mx-auto h-8 w-8 text-gray-300 mb-2" />
+            <p className="text-sm text-gray-400">Phiếu khám này chưa có chỉ định xét nghiệm nào</p>
+            <button
+              type="button"
+              onClick={onOpenModal}
+              className="mt-2 text-xs font-bold text-primary-600 hover:underline"
+            >
+              + Bấm vào đây để tạo chỉ định xét nghiệm
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {items.map(({ chiDinh, ketQua }) => (
+              <div key={chiDinh.id} className="rounded-xl border border-gray-200 p-4 bg-white shadow-2xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded mr-2">
+                      {chiDinh.dichVu?.maDichVu || 'XN'}
+                    </span>
+                    <span className="font-bold text-sm text-gray-900">{chiDinh.dichVu?.tenDichVu}</span>
                   </div>
-                  <p className="text-base font-bold text-emerald-900">
-                    {ketQua.giaTri} <span className="text-xs font-normal text-emerald-700">{ketQua.donVi}</span>
-                  </p>
-                  {ketQua.nhanXet && (
-                    <p className="text-xs text-emerald-800 font-medium">Nhận xét: {ketQua.nhanXet}</p>
-                  )}
+                  <StatusBadge status={chiDinh.trangThai} size="sm" />
                 </div>
-              ) : (
-                <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded">
-                  ⏳ Đang chờ Kỹ thuật viên xử lý và nhập kết quả...
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </MedCard>
+
+                {chiDinh.ghiChuChiDinh && (
+                  <p className="text-xs text-gray-500 italic bg-gray-50 p-2 rounded">
+                    Ghi chú chỉ định: {chiDinh.ghiChuChiDinh}
+                  </p>
+                )}
+
+                {ketQua ? (
+                  <div className="mt-2 rounded-xl bg-emerald-50/60 border border-emerald-200 p-3 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-800">KẾT QUẢ TỪ PHÒNG XÉT NGHIỆM</span>
+                      <span className="text-[10px] text-emerald-600">{formatDateTime(ketQua.taoLuc || new Date())}</span>
+                    </div>
+                    <p className="text-base font-bold text-emerald-900">
+                      {ketQua.giaTri} <span className="text-xs font-normal text-emerald-700">{ketQua.donVi}</span>
+                    </p>
+                    {ketQua.nhanXet && (
+                      <p className="text-xs text-emerald-800 font-medium">Nhận xét: {ketQua.nhanXet}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded">
+                    ⏳ Đang chờ Kỹ thuật viên xử lý và nhập kết quả...
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </MedCard>
+    </div>
   );
 }
+
 
 /* ──── TAB ĐƠN THUỐC ĐÃ KÊ ──── */
 function DonThuocTab({ benhAnKhamId, onOpenModal }) {

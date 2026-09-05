@@ -51,7 +51,7 @@ export default function DashboardGiamDocPage() {
             <RefreshCw className="h-3.5 w-3.5" /> Làm mới
           </button>
           <button
-            onClick={() => navigate('/quan-ly/du-bao-luong')}
+            onClick={() => navigate('/ban-giam-doc/du-bao-luong')}
             className="flex items-center gap-1.5 px-4 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-xl text-xs font-extrabold shadow-sm transition-all"
           >
             <Sparkles className="h-3.5 w-3.5" /> Xem Dự Báo AI
@@ -111,7 +111,7 @@ export default function DashboardGiamDocPage() {
 
         {/* Đơn chờ duyệt */}
         <div
-          onClick={() => navigate('/quan-ly/phe-duyet-don')}
+          onClick={() => navigate('/ban-giam-doc/phe-duyet-don')}
           className="bg-white rounded-2xl p-5 border border-amber-200 shadow-2xs hover:border-amber-400 cursor-pointer transition-all group"
         >
           <div className="flex items-center justify-between">
@@ -141,7 +141,7 @@ export default function DashboardGiamDocPage() {
             subtitle="Số lượt tiếp nhận bệnh nhân theo ngày"
             action={
               <button
-                onClick={() => navigate('/quan-ly/tai-chinh')}
+                onClick={() => navigate('/ban-giam-doc/tai-chinh')}
                 className="text-xs text-primary-600 hover:text-primary-700 font-bold flex items-center gap-1"
               >
                 Chi tiết tài chính <ArrowRight className="h-3 w-3" />
@@ -257,7 +257,7 @@ export default function DashboardGiamDocPage() {
             <h3 className="font-bold text-gray-800 text-sm">Chức năng Điều hành nhanh</h3>
 
             <button
-              onClick={() => navigate('/quan-ly/tai-chinh')}
+              onClick={() => navigate('/ban-giam-doc/tai-chinh')}
               className="w-full text-left p-3 rounded-xl bg-gray-50 hover:bg-blue-50 text-gray-800 hover:text-blue-700 transition-colors flex items-center justify-between group"
             >
               <div className="flex items-center gap-2.5">
@@ -268,7 +268,7 @@ export default function DashboardGiamDocPage() {
             </button>
 
             <button
-              onClick={() => navigate('/quan-ly/xep-lich')}
+              onClick={() => navigate('/ban-giam-doc/xep-lich')}
               className="w-full text-left p-3 rounded-xl bg-gray-50 hover:bg-blue-50 text-gray-800 hover:text-blue-700 transition-colors flex items-center justify-between group"
             >
               <div className="flex items-center gap-2.5">
@@ -279,7 +279,7 @@ export default function DashboardGiamDocPage() {
             </button>
 
             <button
-              onClick={() => navigate('/quan-ly/tra-cuu')}
+              onClick={() => navigate('/ban-giam-doc/tra-cuu')}
               className="w-full text-left p-3 rounded-xl bg-gray-50 hover:bg-blue-50 text-gray-800 hover:text-blue-700 transition-colors flex items-center justify-between group"
             >
               <div className="flex items-center gap-2.5">
@@ -290,7 +290,7 @@ export default function DashboardGiamDocPage() {
             </button>
 
             <button
-              onClick={() => navigate('/quan-ly/phe-duyet-don')}
+              onClick={() => navigate('/ban-giam-doc/phe-duyet-don')}
               className="w-full text-left p-3 rounded-xl bg-gray-50 hover:bg-amber-50 text-gray-800 hover:text-amber-800 transition-colors flex items-center justify-between group"
             >
               <div className="flex items-center gap-2.5">

@@ -95,7 +95,7 @@ export default function HoSoBenhAnQuanLyPage() {
                   </p>
                   {activeBn.tienSuDiUng && (
                     <span className="inline-block mt-1 text-xs text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded font-medium">
-                      ⚠ Tiền sử dị ứng: {activeBenhNhan.tienSuDiUng}
+                      ⚠ Tiền sử dị ứng: {activeBn.tienSuDiUng}
                     </span>
                   )}
                 </div>
@@ -127,9 +127,17 @@ export default function HoSoBenhAnQuanLyPage() {
                         </div>
                         <div>
                           <p className="font-semibold text-gray-700">Chẩn đoán xác định:</p>
-                          <p className="text-primary-700 font-bold mt-0.5">{hs.chanDoanXacDinh || hs.chanDoanSoBo || 'Chưa chẩn đoán'}</p>
+                          <p className="text-primary-700 font-bold mt-0.5">
+                            {hs.chanDoanXacDinh || hs.chanDoanSoBo || 'Chưa chẩn đoán'}
+                            {hs.maIcd10 && (
+                              <span className="ml-2 inline-block bg-purple-100 text-purple-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-purple-200">
+                                ICD-10: {hs.maIcd10}
+                              </span>
+                            )}
+                          </p>
                         </div>
                       </div>
+
 
                       {hs.phuongPhapDieuTri && (
                         <div className="text-xs bg-white p-2.5 rounded-lg border border-gray-200">

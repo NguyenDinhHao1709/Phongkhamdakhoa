@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '../../../layouts/DashboardLayout';
 import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
@@ -17,9 +18,19 @@ const TAB_FILTERS = [
 ];
 
 export default function XetNghiemListPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState(null);
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState(null);
+
+  // Tự động mở chỉ định xét nghiệm từ URL (khi bấm vào từ Thông báo)
+  useEffect(() => {
+    const idFromParam = searchParams.get('chiDinhId');
+    if (idFromParam) {
+      setSelectedId(Number(idFromParam));
+      setFilter(null);
+    }
+  }, [searchParams]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['chi-dinh', filter, page],
@@ -62,6 +73,7 @@ export default function XetNghiemListPage() {
               <thead className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 <tr>
                   <th className="px-4 py-3">Mã CĐ</th>
+                  <th className="px-4 py-3">Bệnh Nhân</th>
                   <th className="px-4 py-3">Tên Xét Nghiệm</th>
                   <th className="px-4 py-3">Trạng Thái</th>
                   <th className="px-4 py-3">Thời Gian</th>
@@ -70,19 +82,30 @@ export default function XetNghiemListPage() {
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm">
                 {isLoading && (
-                  <tr><td colSpan={5} className="py-12 text-center text-sm text-gray-400">Đang tải...</td></tr>
+                  <tr><td colSpan={6} className="py-12 text-center text-sm text-gray-400">Đang tải...</td></tr>
                 )}
                 {!isLoading && items.length === 0 && (
-                  <tr><td colSpan={5} className="py-12 text-center text-sm text-gray-400">Không có chỉ định nào</td></tr>
+                  <tr><td colSpan={6} className="py-12 text-center text-sm text-gray-400">Không có chỉ định nào</td></tr>
                 )}
                 {items.map((cd) => (
                   <tr
                     key={cd.id}
-                    onClick={() => setSelectedId(cd.id)}
-                    className={`cursor-pointer transition-colors ${selectedId === cd.id ? 'bg-primary-50' : 'hover:bg-gray-50'}`}
+                    onClick={() => {
+                      setSelectedId(cd.id);
+                      setSearchParams({ chiDinhId: cd.id });
+                    }}
+                    className={`cursor-pointer transition-colors ${selectedId === cd.id ? 'bg-primary-50 ring-1 ring-primary-500' : 'hover:bg-gray-50'}`}
                   >
                     <td className="px-4 py-3 font-mono text-xs font-semibold text-primary-600">#{cd.id}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900">{cd.dichVu?.tenDichVu || '—'}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-gray-900 text-sm">
+                        {cd.benhAnKham?.hoSoBenhAn?.benhNhan?.hoTen || '—'}
+                      </div>
+                      <div className="text-xs text-gray-500 font-mono">
+                        {cd.benhAnKham?.hoSoBenhAn?.benhNhan?.maBenhNhan || ''}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 font-medium">{cd.dichVu?.tenDichVu || '—'}</td>
                     <td className="px-4 py-3"><StatusBadge status={cd.trangThai} size="sm" /></td>
                     <td className="px-4 py-3 text-xs text-gray-500">{formatDateTime(cd.thoiGianChiDinh)}</td>
                     <td className="px-4 py-3">
@@ -132,7 +155,11 @@ function ChiDinhDetailPanel({ id }) {
 
   const sendMut = useMutation({
     mutationFn: () => apiPatch(`/xet-nghiem/chi-dinh/${id}/gui-bac-si`),
-    onSuccess: () => { qc.invalidateQueries(['chi-dinh-detail', id]); },
+    onSuccess: () => {
+      qc.invalidateQueries(['chi-dinh']);
+      qc.invalidateQueries(['chi-dinh-detail', id]);
+      qc.invalidateQueries({ queryKey: ['thong-bao'] });
+    },
   });
 
   if (isLoading) return <MedCard><p className="text-sm text-gray-400 py-4">Đang tải...</p></MedCard>;
@@ -152,6 +179,17 @@ function ChiDinhDetailPanel({ id }) {
     <div className="space-y-4">
       {/* Info */}
       <MedCard>
+        {cd.benhAnKham?.hoSoBenhAn?.benhNhan && (
+          <div className="p-3 bg-blue-50/80 border border-blue-100 rounded-xl mb-3.5 text-xs text-gray-700 space-y-1">
+            <p>
+              Bệnh nhân: <strong className="text-primary-800 text-sm font-semibold">{cd.benhAnKham.hoSoBenhAn.benhNhan.hoTen}</strong>
+            </p>
+            <p className="text-gray-500">
+              Mã BN: <span className="font-mono font-medium text-gray-900">{cd.benhAnKham.hoSoBenhAn.benhNhan.maBenhNhan}</span>
+              {cd.benhAnKham.hoSoBenhAn.benhNhan.soDienThoai && ` • SĐT: ${cd.benhAnKham.hoSoBenhAn.benhNhan.soDienThoai}`}
+            </p>
+          </div>
+        )}
         <h3 className="text-base font-bold text-gray-900 mb-2">{cd.dichVu?.tenDichVu}</h3>
         <div className="flex items-center justify-between mb-3">
           <StatusBadge status={cd.trangThai} />

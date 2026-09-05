@@ -77,6 +77,9 @@ export class BenhAnKham {
   @Column({ name: 'chan_doan_xac_dinh', type: 'text', nullable: true })
   chanDoanXacDinh: string;
 
+  @Column({ name: 'ma_icd10', length: 50, nullable: true })
+  maIcd10: string;
+
   @Column({ name: 'ket_qua_kham', type: 'text', nullable: true })
   ketQuaKham: string;
 

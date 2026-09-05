@@ -63,20 +63,7 @@ export class XetNghiemService {
   async danhMucDichVu(loai?: string) {
     const where: any = { trangThai: 'hoat_dong' };
     if (loai) where.loai = loai;
-    let items = await this.dvRepo.find({ where, order: { tenDichVu: 'ASC' } });
-
-    if (items.length === 0) {
-      const initialServices = [
-        { maDichVu: 'XN001', tenDichVu: 'Công thức máu toàn phần (CBC)', loai: 'xet_nghiem', gia: 120000, donViKetQua: 'G/L', giaTriBinhThuong: '4.0 - 10.0' },
-        { maDichVu: 'XN002', tenDichVu: 'Sinh hóa máu (Đường huyết, Men gan, Ure, Creatinine)', loai: 'xet_nghiem', gia: 250000, donViKetQua: 'mmol/L', giaTriBinhThuong: '3.9 - 6.4' },
-        { maDichVu: 'CD001', tenDichVu: 'X-Quang ngực thẳng', loai: 'cdha', gia: 150000, donViKetQua: 'Hình ảnh', giaTriBinhThuong: 'Bình thường' },
-        { maDichVu: 'CD002', tenDichVu: 'Siêu âm ổ bụng tổng quát', loai: 'cdha', gia: 200000, donViKetQua: 'Hình ảnh', giaTriBinhThuong: 'Bình thường' },
-        { maDichVu: 'XN003', tenDichVu: 'Điện tâm đồ (ECG)', loai: 'xet_nghiem', gia: 100000, donViKetQua: 'Nhịp tim', giaTriBinhThuong: '60 - 100 bpm' },
-      ];
-      await this.dvRepo.save(this.dvRepo.create(initialServices));
-      items = await this.dvRepo.find({ where, order: { tenDichVu: 'ASC' } });
-    }
-
+    const items = await this.dvRepo.find({ where, order: { tenDichVu: 'ASC' } });
     return { data: items, message: 'OK' };
   }
 
@@ -201,83 +188,50 @@ export class XetNghiemService {
     return { data: results, message: 'OK' };
   }
 
-  // ─── UC 47: THỐNG KÊ BÁO CÁO KẾT QUẢ XÉT NGHIỆM ─────────
+  // ─── THỐNG KÊ XÉT NGHIỆM ──────────────────────────────────
   async getThongKeXetNghiem(query: { range?: string; tuNgay?: string; denNgay?: string }) {
+    const { range, tuNgay, denNgay } = query;
     const qb = this.cdRepo.createQueryBuilder('cd')
       .leftJoinAndSelect('cd.dichVu', 'dv')
       .orderBy('cd.thoiGianChiDinh', 'DESC');
 
-    const now = new Date();
-
-    if (query.tuNgay && query.denNgay) {
-      qb.andWhere('cd.thoiGianChiDinh >= :tuNgay AND cd.thoiGianChiDinh <= :denNgay', {
-        tuNgay: query.tuNgay + ' 00:00:00',
-        denNgay: query.denNgay + ' 23:59:59',
-      });
-    } else {
-      let startDate: Date;
-      switch (query.range) {
-        case 'tuan_nay':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() + 1);
-          break;
-        case 'thang_nay':
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
-        case 'hom_nay':
-        default:
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          break;
-      }
-      qb.andWhere('cd.thoiGianChiDinh >= :startDate', { startDate });
+    if (range === 'hom_nay') {
+      qb.andWhere('DATE(cd.thoiGianChiDinh) = CURDATE()');
+    } else if (range === '7days' || range === 'tuan_nay') {
+      qb.andWhere('cd.thoiGianChiDinh >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
+    } else if (range === 'thang_nay') {
+      qb.andWhere('MONTH(cd.thoiGianChiDinh) = MONTH(CURDATE()) AND YEAR(cd.thoiGianChiDinh) = YEAR(CURDATE())');
+    } else if (tuNgay && denNgay) {
+      qb.andWhere('DATE(cd.thoiGianChiDinh) BETWEEN :tuNgay AND :denNgay', { tuNgay, denNgay });
     }
 
-    const list = await qb.getMany();
+    const items = await qb.getMany();
+    const tongChiDinh = items.length;
+    const coKetQua = items.filter(i => i.trangThai === TrangThaiChiDinh.CO_KET_QUA).length;
+    const dangXuLy = items.filter(i => i.trangThai === TrangThaiChiDinh.DANG_XU_LY || i.trangThai === TrangThaiChiDinh.CHO_LAY_MAU).length;
 
-    const tongChiDinh = list.length;
-    const daHoanThanh = list.filter(c => c.trangThai === TrangThaiChiDinh.CO_KET_QUA).length;
-    const dangXuLy = list.filter(c => c.trangThai === TrangThaiChiDinh.DANG_XU_LY || c.trangThai === TrangThaiChiDinh.DANG_LAY_MAU).length;
-    const choLayMau = list.filter(c => c.trangThai === TrangThaiChiDinh.CHO_LAY_MAU).length;
-
-    // Phân loại xét nghiệm máu vs chẩn đoán hình ảnh
-    const soXetNghiem = list.filter(c => c.dichVu?.loai === 'xet_nghiem').length;
-    const soCdha = list.filter(c => c.dichVu?.loai === 'cdha').length;
-    const soKhac = tongChiDinh - soXetNghiem - soCdha;
-
-    // Top 5 dịch vụ chỉ định nhiều nhất
-    const dvCounts: Record<string, { ten: string; count: number }> = {};
-    list.forEach(c => {
-      const ten = c.dichVu?.tenDichVu || 'Khác';
-      if (!dvCounts[ten]) dvCounts[ten] = { ten, count: 0 };
-      dvCounts[ten].count++;
+    // Phân bố theo loại dịch vụ
+    const phanBoLoai: Record<string, number> = {};
+    items.forEach(i => {
+      const loai = i.dichVu?.loai || 'khac';
+      phanBoLoai[loai] = (phanBoLoai[loai] || 0) + 1;
     });
 
-    const topDichVu = Object.values(dvCounts)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-
     return {
-      success: true,
       data: {
         tongChiDinh,
-        daHoanThanh,
+        coKetQua,
         dangXuLy,
-        choLayMau,
-        tyLeHoanThanh: tongChiDinh > 0 ? `${Math.round((daHoanThanh / tongChiDinh) * 100)}%` : '0%',
-        coCauLoai: [
-          { name: 'Xét nghiệm sinh hóa / máu', value: soXetNghiem },
-          { name: 'Chẩn đoán hình ảnh (X-Quang, Siêu âm)', value: soCdha },
-          { name: 'Khác', value: soKhac },
-        ],
-        topDichVu,
-        danhSachMoiNhat: list.slice(0, 10).map(c => ({
-          id: c.id,
-          tenDichVu: c.dichVu?.tenDichVu,
-          loai: c.dichVu?.loai,
-          trangThai: c.trangThai,
-          thoiGianChiDinh: c.thoiGianChiDinh,
-          thoiGianCoKetQua: c.thoiGianCoKetQua,
+        hoanThanh: coKetQua,
+        tyLeHoanThanh: tongChiDinh > 0 ? Math.round((coKetQua / tongChiDinh) * 100) : 0,
+        phanBoLoai: Object.entries(phanBoLoai).map(([loai, count]) => ({
+          loai: loai === 'xet_nghiem' ? 'Xét nghiệm máu' : loai === 'cdha' ? 'Chẩn đoán hình ảnh' : 'Khác',
+          count,
+          pct: tongChiDinh > 0 ? Math.round((count / tongChiDinh) * 100) : 0,
         })),
+        dsChiDinh: items.slice(0, 50),
       },
+      message: 'OK',
     };
   }
 }

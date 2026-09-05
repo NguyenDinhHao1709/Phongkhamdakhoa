@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPatch } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
@@ -16,6 +17,9 @@ const TRANG_THAI_CONFIG = {
 };
 
 export default function DuyetYeuCauPage() {
+  const [searchParams] = useSearchParams();
+  const donIdParam = searchParams.get('donId');
+
   const queryClient = useQueryClient();
   const [filterStatus, setFilterStatus] = useState('cho_xu_ly');
   const [selectedDon, setSelectedDon] = useState(null);
@@ -28,7 +32,25 @@ export default function DuyetYeuCauPage() {
     queryFn: () => apiGet(`/quan-ly/don-tu?trangThai=${filterStatus}`),
   });
 
-  const donList = data?.data || [];
+  const donList = Array.isArray(data?.data)
+    ? data.data
+    : (Array.isArray(data?.data?.data) ? data.data.data : (Array.isArray(data) ? data : []));
+
+  // Tự động mở đơn khi click từ Thông báo
+  useEffect(() => {
+    if (donIdParam) {
+      setFilterStatus('all');
+    }
+  }, [donIdParam]);
+
+  useEffect(() => {
+    if (donIdParam && donList.length > 0) {
+      const found = donList.find((d) => d.id === Number(donIdParam));
+      if (found) {
+        setSelectedDon(found);
+      }
+    }
+  }, [donIdParam, donList]);
 
   const duyetMutation = useMutation({
     mutationFn: ({ id, action, ghiChuXuLy }) =>

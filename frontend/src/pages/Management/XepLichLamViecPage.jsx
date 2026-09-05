@@ -39,9 +39,12 @@ export default function XepLichLamViecPage() {
     queryFn: () => apiGet(`/quan-ly/lich-lam-viec?weekStart=${weekStartStr}`),
   });
 
-  const caList = data?.data?.caLamViecList || [];
-  const nvList = data?.data?.nhanVienList || [];
-  const phanCaList = data?.data?.lichPhanCa || [];
+  const payload = data?.data?.data || data?.data || data || {};
+  const caList = payload.caLamViecList || [];
+  const nvList = (payload.nhanVienList || []).filter(
+    n => !n.chucVu?.toLowerCase().includes('giám đốc') && !n.vaiTro?.toLowerCase().includes('giam doc')
+  );
+  const phanCaList = payload.lichPhanCa || [];
 
   // Tạo mảng 7 ngày trong tuần
   const weekDays = useMemo(() => {

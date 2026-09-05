@@ -22,9 +22,14 @@ export default function TraCuuTongHopPage() {
     setSelectedItem(null);
     try {
       const res = await apiGet(`/quan-ly/tra-cuu?keyword=${encodeURIComponent(keyword.trim())}`);
-      setResult(res?.data || { nhanSu: [], benhNhan: [] });
+      const raw = res?.data?.data || res?.data || res || {};
+      setResult({
+        nhanSu: Array.isArray(raw.nhanSu) ? raw.nhanSu : [],
+        benhNhan: Array.isArray(raw.benhNhan) ? raw.benhNhan : [],
+      });
     } catch (err) {
       console.error(err);
+      setResult({ nhanSu: [], benhNhan: [] });
     } finally {
       setLoading(false);
     }

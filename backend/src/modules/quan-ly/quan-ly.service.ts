@@ -20,6 +20,7 @@ import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
 import { HoaDonChiTiet } from '../thanh-toan/entities/hoa-don-chi-tiet.entity';
 import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
+import { ThongBaoService } from '../thong-bao/thong-bao.service';
 
 @Injectable()
 export class QuanLyService {
@@ -41,6 +42,7 @@ export class QuanLyService {
     @InjectRepository(HoaDonChiTiet) private hoaDonChiTietRepo: Repository<HoaDonChiTiet>,
     @InjectRepository(ChiDinhCanLamSang) private clsRepo: Repository<ChiDinhCanLamSang>,
     @InjectRepository(DonThuoc) private donThuocRepo: Repository<DonThuoc>,
+    private readonly thongBaoService: ThongBaoService,
   ) {}
 
   // ==========================================
@@ -466,31 +468,28 @@ export class QuanLyService {
     })).sort((a, b) => a.ngay.localeCompare(b.ngay));
 
     return {
-      success: true,
-      data: {
-        tongThucThu,
-        tongTienGiam,
-        tongGiaoDich: hoaDons.length,
-        byPhuongThuc,
-        timelineData,
-        danhSachHoaDon: hoaDons.map(hd => ({
-          id: hd.id,
-          maHoaDon: hd.maHoaDon,
-          benhNhanTen: hd.benhNhan?.hoTen,
-          benhNhanSdt: hd.benhNhan?.soDienThoai,
-          tongTien: Number(hd.tongTien),
-          soTienGiam: Number(hd.soTienGiam),
-          thucThu: Number(hd.thucThu),
-          phuongThuc: hd.phuongThucThanhToan,
-          ngayThanhToan: hd.ngayThanhToan,
-          thuNganTen: hd.thuNgan?.hoTen,
-          chiTiet: hd.chiTiet?.map(c => ({
-            loaiPhi: c.loaiPhi,
-            moTa: c.moTa,
-            thanhTien: Number(c.thanhTien),
-          })),
+      tongThucThu,
+      tongTienGiam,
+      tongGiaoDich: hoaDons.length,
+      byPhuongThuc,
+      timelineData,
+      danhSachHoaDon: hoaDons.map(hd => ({
+        id: hd.id,
+        maHoaDon: hd.maHoaDon,
+        benhNhanTen: hd.benhNhan?.hoTen,
+        benhNhanSdt: hd.benhNhan?.soDienThoai,
+        tongTien: Number(hd.tongTien),
+        soTienGiam: Number(hd.soTienGiam),
+        thucThu: Number(hd.thucThu),
+        phuongThuc: hd.phuongThucThanhToan,
+        ngayThanhToan: hd.ngayThanhToan,
+        thuNganTen: hd.thuNgan?.hoTen,
+        chiTiet: hd.chiTiet?.map(c => ({
+          loaiPhi: c.loaiPhi,
+          moTa: c.moTa,
+          thanhTien: Number(c.thanhTien),
         })),
-      },
+      })),
     };
   }
 
@@ -507,26 +506,23 @@ export class QuanLyService {
     }
 
     const list = await qb.getMany();
-    return {
-      success: true,
-      data: list.map(d => ({
-        id: d.id,
-        loaiDon: d.loaiDon,
-        noiDung: d.noiDung,
-        fileDinhKem: d.fileDinhKem,
-        ngayGui: d.ngayGui,
-        trangThai: d.trangThai,
-        ghiChuXuLy: d.ghiChuXuLy,
-        ngayXuLy: d.ngayXuLy,
-        nguoiGui: {
-          id: d.nguoiGui?.id,
-          hoTen: d.nguoiGui?.hoTen,
-          chucVu: d.nguoiGui?.chucVu,
-          soDienThoai: d.nguoiGui?.soDienThoai,
-          email: d.nguoiGui?.email,
-        },
-      })),
-    };
+    return list.map(d => ({
+      id: d.id,
+      loaiDon: d.loaiDon,
+      noiDung: d.noiDung,
+      fileDinhKem: d.fileDinhKem,
+      ngayGui: d.ngayGui,
+      trangThai: d.trangThai,
+      ghiChuXuLy: d.ghiChuXuLy,
+      ngayXuLy: d.ngayXuLy,
+      nguoiGui: {
+        id: d.nguoiGui?.id,
+        hoTen: d.nguoiGui?.hoTen,
+        chucVu: d.nguoiGui?.chucVu,
+        soDienThoai: d.nguoiGui?.soDienThoai,
+        email: d.nguoiGui?.email,
+      },
+    }));
   }
 
   async duyetDonTu(id: number, action: 'duyet' | 'tu_choi', ghiChuXuLy?: string) {
@@ -538,6 +534,26 @@ export class QuanLyService {
     don.ngayXuLy = new Date();
 
     await this.donGuiRepo.save(don);
+
+    // Thông báo cho người gửi đơn
+    try {
+      const nvGui = await this.nhanVienRepo.findOne({ where: { id: don.nguoiGuiId } });
+      const targetUserId = nvGui?.nguoiDungId || don.nguoiGuiId;
+      if (targetUserId) {
+        const statusText = action === 'duyet' ? 'đã được PHÊ DUYỆT' : 'đã bị TỪ CHỐI';
+        await this.thongBaoService.taoThongBao({
+          nguoiNhanId: targetUserId,
+          tieuDe: `Kết quả phê duyệt đơn: ${don.loaiDon}`,
+          noiDung: `Đơn [${don.loaiDon}] của bạn ${statusText}. Ghi chú: ${don.ghiChuXuLy}`,
+          loai: 'don_tu',
+          doiTuongBang: 'don_gui',
+          doiTuongId: don.id,
+        });
+      }
+    } catch (e) {
+      console.error('Lỗi gửi thông báo kết quả duyệt đơn:', e);
+    }
+
     return {
       success: true,
       message: action === 'duyet' ? 'Phê duyệt đơn thành công' : 'Đã từ chối đơn yêu cầu',
@@ -558,6 +574,21 @@ export class QuanLyService {
     });
 
     const saved = await this.donGuiRepo.save(don);
+
+    // Bắn thông báo đến Ban Giám Đốc
+    try {
+      const senderName = nv ? `${nv.hoTen} (${nv.chucVu || 'Nhân viên'})` : 'Nhân viên';
+      await this.thongBaoService.taoThongBaoTheoRole('ban_giam_doc', {
+        tieuDe: `Đơn trình Giám đốc mới: ${dto.loaiDon}`,
+        noiDung: `${senderName} vừa gửi đơn yêu cầu [${dto.loaiDon}]. Nội dung: ${dto.noiDung.substring(0, 80)}${dto.noiDung.length > 80 ? '...' : ''}`,
+        loai: 'don_tu',
+        doiTuongBang: 'don_gui',
+        doiTuongId: saved.id,
+      });
+    } catch (e) {
+      console.error('Lỗi gửi thông báo đơn từ cho Ban Giám Đốc:', e);
+    }
+
     return {
       success: true,
       message: 'Gửi đơn trình Giám đốc thành công!',
@@ -571,7 +602,7 @@ export class QuanLyService {
   async traCuuTongHop(keyword: string) {
     const term = (keyword || '').trim();
     if (!term) {
-      return { success: true, data: { nhanSu: [], benhNhan: [] } };
+      return { nhanSu: [], benhNhan: [] };
     }
 
     // 1. Tìm nhân sự
@@ -589,32 +620,29 @@ export class QuanLyService {
       .getMany();
 
     return {
-      success: true,
-      data: {
-        nhanSu: nhanSu.map(nv => ({
-          id: nv.id,
-          hoTen: nv.hoTen,
-          chucVu: nv.chucVu,
-          soDienThoai: nv.soDienThoai,
-          email: nv.email,
-          diaChi: nv.diaChi,
-          soCmnd: nv.soCmnd,
-          vaiTro: nv.nguoiDung?.vaiTro?.tenVaiTro,
-          trangThai: nv.nguoiDung?.trangThai,
-        })),
-        benhNhan: benhNhan.map(bn => ({
-          id: bn.id,
-          maBenhNhan: bn.maBenhNhan,
-          hoTen: bn.hoTen,
-          soDienThoai: bn.soDienThoai,
-          soCmnd: bn.soCmnd,
-          gioiTinh: bn.gioiTinh,
-          ngaySinh: bn.ngaySinh,
-          diaChi: bn.diaChi,
-          nhomMau: bn.nhomMau,
-          diUng: bn.diUng,
-        })),
-      },
+      nhanSu: nhanSu.map(nv => ({
+        id: nv.id,
+        hoTen: nv.hoTen,
+        chucVu: nv.chucVu,
+        soDienThoai: nv.soDienThoai,
+        email: nv.email,
+        diaChi: nv.diaChi,
+        soCmnd: nv.soCmnd,
+        vaiTro: nv.nguoiDung?.vaiTro?.tenVaiTro,
+        trangThai: nv.nguoiDung?.trangThai,
+      })),
+      benhNhan: benhNhan.map(bn => ({
+        id: bn.id,
+        maBenhNhan: bn.maBenhNhan,
+        hoTen: bn.hoTen,
+        soDienThoai: bn.soDienThoai,
+        soCmnd: bn.soCmnd,
+        gioiTinh: bn.gioiTinh,
+        ngaySinh: bn.ngaySinh,
+        diaChi: bn.diaChi,
+        nhomMau: bn.nhomMau,
+        diUng: bn.diUng,
+      })),
     };
   }
 
@@ -649,27 +677,31 @@ export class QuanLyService {
 
     const lichList = await qb.getMany();
 
+    // Chỉ xếp lịch trực cho nhân viên y tế và vận hành (Bác sĩ, KTV, Lễ tân, Thu ngân, Nhà thuốc), loại bỏ Ban Giám Đốc và Admin
+    const nhanVienYTe = allNhanVien.filter(n => {
+      const ma = n.nguoiDung?.vaiTro?.maVaiTro;
+      const cv = (n.chucVu || '').toLowerCase();
+      return ma !== 'ban_giam_doc' && ma !== 'quan_tri_vien' && ma !== 'quan_tri_vien_cap_cao' && !cv.includes('giám đốc');
+    });
+
     return {
-      success: true,
-      data: {
-        caLamViecList: allCa,
-        nhanVienList: allNhanVien.map(n => ({
-          id: n.id,
-          hoTen: n.hoTen,
-          chucVu: n.chucVu,
-          vaiTro: n.nguoiDung?.vaiTro?.tenVaiTro,
-        })),
-        lichPhanCa: lichList.map(l => ({
-          id: l.id,
-          nhanVienId: l.nhanVienId,
-          nhanVienTen: l.nhanVien?.hoTen,
-          chucVu: l.nhanVien?.chucVu,
-          caLamViecId: l.caLamViecId,
-          tenCa: l.caLamViec?.tenCa,
-          ngayLam: l.ngayLam,
-          ghiChu: l.ghiChu,
-        })),
-      },
+      caLamViecList: allCa,
+      nhanVienList: nhanVienYTe.map(n => ({
+        id: n.id,
+        hoTen: n.hoTen,
+        chucVu: n.chucVu,
+        vaiTro: n.nguoiDung?.vaiTro?.tenVaiTro,
+      })),
+      lichPhanCa: lichList.map(l => ({
+        id: l.id,
+        nhanVienId: l.nhanVienId,
+        nhanVienTen: l.nhanVien?.hoTen,
+        chucVu: l.nhanVien?.chucVu,
+        caLamViecId: l.caLamViecId,
+        tenCa: l.caLamViec?.tenCa,
+        ngayLam: l.ngayLam,
+        ghiChu: l.ghiChu,
+      })),
     };
   }
 

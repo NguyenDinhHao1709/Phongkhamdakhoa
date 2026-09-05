@@ -56,3 +56,5 @@ export function MedButton({
   );
 }
 
+export default MedButton;
+

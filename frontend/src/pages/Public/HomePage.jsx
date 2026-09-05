@@ -9,7 +9,7 @@ import useAuthStore from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import SearchResultsModal from './SearchResultsModal';
 import AiTriageChatbot from './AiTriageChatbot';
-import { MedButton } from '../../design-system/components/Button/MedButton';
+import MedButton from '../../design-system/components/Button/MedButton';
 
 const ROLE_HOME = {
   quan_tri_vien_cap_cao: '/quan-tri',

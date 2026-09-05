@@ -7,75 +7,46 @@ import {
   Stethoscope, Users, Calendar, ClipboardList,
   FlaskConical, Pill, Receipt, BarChart3,
   LogOut, ChevronLeft, ChevronRight, Bell,
-  User, Settings, FileText, Clock, Video, Package,
-  BrainCircuit, TrendingUp, Server, Database, Layers,
+  User, Settings,
 } from 'lucide-react';
 
 const MENU_CONFIG = {
   tiep_tan: [
-    { to: '/tiep-tan/hang-doi', icon: ClipboardList, label: 'Hàng đợi & Điều phối' },
-    { to: '/tiep-tan/lich-hen', icon: Calendar, label: 'Quản lý Lịch hẹn' },
-    { to: '/tiep-tan/tiep-nhan', icon: Stethoscope, label: 'Tiếp nhận bệnh nhân' },
-    { to: '/tiep-tan/benh-nhan', icon: Users, label: 'Danh sách Bệnh nhân' },
-    { to: '/tiep-tan/ai-triage', icon: BrainCircuit, label: '🤖 AI Phân Luồng' },
-    { to: '/tiep-tan/thong-ke', icon: BarChart3, label: 'Thống kê khách hàng' },
-    { to: '/tiep-tan/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
-    { to: '/tiep-tan/lich-lam-viec', icon: Clock, label: 'Lịch làm việc' },
-    { to: '/tiep-tan/gui-don', icon: FileText, label: 'Gửi đơn Giám đốc' },
+    { to: '/tiep-tan/hang-doi', icon: ClipboardList, label: 'Hàng đợi' },
+    { to: '/tiep-tan/lich-hen', icon: Calendar, label: 'Lịch hẹn' },
+    { to: '/tiep-tan/benh-nhan', icon: Users, label: 'Bệnh nhân' },
+    { to: '/tiep-tan/tiep-nhan', icon: Stethoscope, label: 'Tiếp nhận' },
   ],
   bac_si: [
     { to: '/bac-si/phong-kham', icon: Stethoscope, label: 'Phòng khám lâm sàng' },
-    { to: '/bac-si/kham-truc-tuyen', icon: Video, label: 'Khám trực tuyến' },
-    { to: '/bac-si/ho-so-benh-an', icon: ClipboardList, label: 'Quản lý Hồ sơ bệnh án' },
-    { to: '/bac-si/lich-hen', icon: Calendar, label: 'Lịch tư vấn & Lịch hẹn' },
-    { to: '/bac-si/thong-ke', icon: BarChart3, label: 'Thống kê bệnh nhân' },
+    { to: '/bac-si/kham-truc-tuyen', icon: Video, label: 'Tư vấn Online & Đặt lịch' },
+    { to: '/bac-si/ho-so-benh-an', icon: ClipboardList, label: 'Hồ sơ bệnh án (EMR)' },
+    { to: '/bac-si/lich-hen', icon: Calendar, label: 'Quản lý lịch hẹn' },
+    { to: '/bac-si/thong-ke', icon: BarChart3, label: 'Báo cáo & Thống kê' },
+    { to: '/bac-si/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
+    { to: '/bac-si/gui-don', icon: Send, label: 'Gửi đơn Giám Đốc' },
     { to: '/bac-si/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
-    { to: '/bac-si/lich-lam-viec', icon: Clock, label: 'Lịch làm việc' },
-    { to: '/bac-si/gui-don', icon: FileText, label: 'Gửi đơn Giám đốc' },
   ],
+
   ky_thuat_vien: [
-    { to: '/ky-thuat-vien/xet-nghiem', icon: FlaskConical, label: 'Xét nghiệm & CLS' },
-    { to: '/ky-thuat-vien/thong-ke', icon: BarChart3, label: 'Thống kê kết quả' },
-    { to: '/ky-thuat-vien/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
-    { to: '/ky-thuat-vien/lich-lam-viec', icon: Clock, label: 'Lịch làm việc' },
-    { to: '/ky-thuat-vien/gui-don', icon: FileText, label: 'Gửi đơn Giám đốc' },
+    { to: '/ky-thuat-vien/xet-nghiem', icon: FlaskConical, label: 'Xét nghiệm' },
   ],
   nhan_vien_nha_thuoc: [
     { to: '/nha-thuoc/don-thuoc', icon: Pill, label: 'Đơn thuốc' },
-    { to: '/nha-thuoc/kho-thuoc', icon: Package, label: 'Kho thuốc' },
-    { to: '/nha-thuoc/thong-ke', icon: BarChart3, label: 'Thống kê & Báo cáo' },
-    { to: '/nha-thuoc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
-    { to: '/nha-thuoc/lich-lam-viec', icon: Clock, label: 'Lịch làm việc' },
-    { to: '/nha-thuoc/gui-don', icon: FileText, label: 'Gửi đơn Giám đốc' },
+    { to: '/nha-thuoc/kho-thuoc', icon: Pill, label: 'Kho thuốc' },
   ],
   thu_ngan: [
-    { to: '/thu-ngan/hoa-don', icon: Receipt, label: 'Thu ngân & Hóa đơn' },
-    { to: '/thu-ngan/thong-ke', icon: BarChart3, label: 'Báo cáo doanh thu' },
-    { to: '/thu-ngan/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
-    { to: '/thu-ngan/lich-lam-viec', icon: Clock, label: 'Lịch làm việc' },
-    { to: '/thu-ngan/gui-don', icon: FileText, label: 'Gửi đơn Giám đốc' },
+    { to: '/thu-ngan/hoa-don', icon: Receipt, label: 'Hóa đơn' },
   ],
   quan_tri_vien: [
-    { to: '/quan-tri/tong-quan', icon: Server, label: 'Tổng quan hệ thống' },
-    { to: '/quan-tri/nhan-vien', icon: Users, label: 'Tài khoản & Nhân sự' },
-    { to: '/quan-tri/phan-quyen', icon: Settings, label: 'Phân quyền hệ thống' },
-    { to: '/quan-tri/danh-muc', icon: Layers, label: 'Danh mục dùng chung' },
-    { to: '/quan-tri/sao-luu', icon: Database, label: 'Sao lưu & CSDL' },
+    { to: '/quan-ly/thong-ke', icon: BarChart3, label: 'Thống kê' },
+    { to: '/quan-ly/nhan-vien', icon: Users, label: 'Nhân viên' },
+    { to: '/quan-ly/cai-dat', icon: Settings, label: 'Cài đặt' },
   ],
   quan_tri_vien_cap_cao: [
-    { to: '/quan-tri/tong-quan', icon: Server, label: 'Tổng quan hệ thống' },
-    { to: '/quan-tri/nhan-vien', icon: Users, label: 'Tài khoản & Nhân sự' },
-    { to: '/quan-tri/phan-quyen', icon: Settings, label: 'Phân quyền hệ thống' },
-    { to: '/quan-tri/danh-muc', icon: Layers, label: 'Danh mục dùng chung' },
-    { to: '/quan-tri/sao-luu', icon: Database, label: 'Sao lưu & CSDL' },
-  ],
-  ban_giam_doc: [
-    { to: '/ban-giam-doc/thong-ke', icon: BarChart3, label: 'Dashboard Giám Đốc' },
-    { to: '/ban-giam-doc/tai-chinh', icon: Receipt, label: 'Báo cáo tài chính' },
-    { to: '/ban-giam-doc/du-bao-luong', icon: TrendingUp, label: '📈 Dự Báo Lưu Lượng AI' },
-    { to: '/ban-giam-doc/xep-lich', icon: Calendar, label: 'Xếp lịch làm việc' },
-    { to: '/ban-giam-doc/tra-cuu', icon: ClipboardList, label: 'Tra cứu hồ sơ' },
-    { to: '/ban-giam-doc/phe-duyet-don', icon: FileText, label: 'Phê duyệt đơn' },
+    { to: '/quan-ly/thong-ke', icon: BarChart3, label: 'Thống kê' },
+    { to: '/quan-ly/nhan-vien', icon: Users, label: 'Nhân viên' },
+    { to: '/quan-ly/cai-dat', icon: Settings, label: 'Cài đặt' },
   ],
 };
 
@@ -141,7 +112,7 @@ export function DashboardLayout({ children }) {
         <div className="border-t border-gray-100 p-2">
           {!collapsed && (
             <div className="px-3 py-2 mb-1">
-              <p className="text-xs font-semibold text-gray-800 truncate">{user?.hoTen || user?.tenDangNhap}</p>
+              <p className="text-xs font-semibold text-gray-800 truncate">{user?.tenDangNhap}</p>
               <p className="text-xs text-gray-500">{VAI_TRO_LABEL[user?.vaiTro] || user?.vaiTro}</p>
             </div>
           )}
@@ -189,3 +160,4 @@ export function DashboardLayout({ children }) {
     </div>
   );
 }
+

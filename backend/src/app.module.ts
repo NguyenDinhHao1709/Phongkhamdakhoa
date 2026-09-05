@@ -14,6 +14,7 @@ import { QuanLyModule } from './modules/quan-ly/quan-ly.module';
 import { ThanhToanModule } from './modules/thanh-toan/thanh-toan.module';
 import { NhaThuocModule } from './modules/nha-thuoc/nha-thuoc.module';
 import { AiModule } from './modules/ai/ai.module';
+import { ThongBaoModule } from './modules/thong-bao/thong-bao.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { AiModule } from './modules/ai/ai.module';
     ThanhToanModule,    // Sprint 4
     NhaThuocModule,     // Sprint 4
     AiModule,           // Sprint 5 (Public AI)
+    ThongBaoModule,     // Realtime & In-app Notifications
   ],
 })
 export class AppModule {}
