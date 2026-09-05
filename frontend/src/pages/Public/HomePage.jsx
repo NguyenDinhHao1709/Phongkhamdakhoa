@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   Stethoscope, Calendar, Bot, ShieldCheck, Heart, User, LogIn,
   Search, ArrowRight, Activity, PhoneCall, Sparkles, CheckCircle2,
-  FileText, Clock, MapPin, Award, BookOpen, UserCheck
+  FileText, Clock, MapPin, Award, BookOpen, UserCheck, MessageCircle, X, BrainCircuit
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { apiGet, apiPost } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import SearchResultsModal from './SearchResultsModal';
+import AiTriageChatbot from './AiTriageChatbot';
 
 const ROLE_HOME = {
   quan_tri_vien_cap_cao: '/quan-ly',
@@ -35,13 +36,17 @@ export default function HomePage() {
   // Doctors from Database State
   const [dbDoctors, setDbDoctors] = useState([]);
 
-  // AI Symptom State
+  // AI Symptom State (Legacy - quick analyze)
   const [trieuChungInput, setTrieuChungInput] = useState('');
   const [aiResult, setAiResult] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
 
+  // AI Triage Chatbot Floating (Gemini)
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false);
+
   // Article Modal State
   const [selectedArticle, setSelectedArticle] = useState(null);
+
 
   useEffect(() => {
     fetchPublicDoctors();
@@ -557,6 +562,39 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
+
+      {/* ─── FLOATING AI TRIAGE CHATBOT BUTTON ───────────────────────── */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+        {/* Chatbot popup */}
+        {isChatbotOpen && (
+          <div className="animate-fade-in">
+            <AiTriageChatbot mode="floating" onClose={() => setIsChatbotOpen(false)} />
+          </div>
+        )}
+
+        {/* Floating Toggle Button */}
+        <button
+          onClick={() => setIsChatbotOpen(!isChatbotOpen)}
+          className={`group relative flex items-center gap-2.5 rounded-2xl shadow-xl font-bold text-sm transition-all duration-300 ${
+            isChatbotOpen
+              ? 'bg-gray-700 text-white px-4 py-3'
+              : 'bg-gradient-to-r from-primary-700 to-indigo-700 text-white px-5 py-3.5 hover:scale-105 hover:shadow-2xl'
+          }`}
+        >
+          {isChatbotOpen ? (
+            <><X className="h-5 w-5" /> Đóng AI</>
+          ) : (
+            <>
+              <div className="relative">
+                <BrainCircuit className="h-5 w-5 text-amber-300" />
+                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 bg-emerald-400 rounded-full border-2 border-primary-700 animate-pulse"></span>
+              </div>
+              <span>Tư Vấn AI</span>
+              <span className="text-[10px] bg-amber-400 text-amber-900 font-extrabold px-1.5 py-0.5 rounded-full">MIỄN PHÍ</span>
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   FlaskConical, Pill, Receipt, BarChart3,
   LogOut, ChevronLeft, ChevronRight, Bell,
   User, Settings, FileText, Clock, Video, Package,
+  BrainCircuit, TrendingUp,
 } from 'lucide-react';
 
 const MENU_CONFIG = {
@@ -16,6 +17,7 @@ const MENU_CONFIG = {
     { to: '/tiep-tan/lich-hen', icon: Calendar, label: 'Quản lý Lịch hẹn' },
     { to: '/tiep-tan/tiep-nhan', icon: Stethoscope, label: 'Tiếp nhận bệnh nhân' },
     { to: '/tiep-tan/benh-nhan', icon: Users, label: 'Danh sách Bệnh nhân' },
+    { to: '/tiep-tan/ai-triage', icon: BrainCircuit, label: '🤖 AI Phân Luồng' },
     { to: '/tiep-tan/thong-ke', icon: BarChart3, label: 'Thống kê khách hàng' },
     { to: '/tiep-tan/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
     { to: '/tiep-tan/lich-lam-viec', icon: Clock, label: 'Lịch làm việc' },
@@ -48,12 +50,20 @@ const MENU_CONFIG = {
   quan_tri_vien: [
     { to: '/quan-ly/thong-ke', icon: BarChart3, label: 'Thống kê' },
     { to: '/quan-ly/nhan-vien', icon: Users, label: 'Nhân viên' },
+    { to: '/quan-ly/du-bao-luong', icon: TrendingUp, label: '📈 Dự Báo Lưu Lượng AI' },
     { to: '/quan-ly/cai-dat', icon: Settings, label: 'Cài đặt' },
   ],
   quan_tri_vien_cap_cao: [
     { to: '/quan-ly/thong-ke', icon: BarChart3, label: 'Thống kê' },
     { to: '/quan-ly/nhan-vien', icon: Users, label: 'Nhân viên' },
+    { to: '/quan-ly/du-bao-luong', icon: TrendingUp, label: '📈 Dự Báo Lưu Lượng AI' },
     { to: '/quan-ly/cai-dat', icon: Settings, label: 'Cài đặt' },
+  ],
+  ban_giam_doc: [
+    { to: '/quan-ly/thong-ke', icon: BarChart3, label: 'Thống kê' },
+    { to: '/quan-ly/nhan-vien', icon: Users, label: 'Nhân viên' },
+    { to: '/quan-ly/du-bao-luong', icon: TrendingUp, label: '📈 Dự Báo Lưu Lượng AI' },
+    { to: '/quan-ly/phan-quyen', icon: Settings, label: 'Phân quyền' },
   ],
 };
 
