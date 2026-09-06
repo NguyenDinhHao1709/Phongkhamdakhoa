@@ -19,8 +19,15 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 export class HoSoBenhAnController {
   constructor(private readonly service: HoSoBenhAnService) {}
 
+  @Get('cua-toi')
+  @Roles('benh_nhan', 'bac_si', 'tiep_tan', 'quan_tri_vien')
+  @ApiOperation({ summary: 'Bệnh nhân xem toàn bộ lịch sử EMR cá nhân' })
+  emrCuaToi(@CurrentUser() user: any) {
+    return this.service.emrCuaToi(user.id);
+  }
+
   @Get('lich-su/:benhNhanId')
-  @Roles('bac_si', 'tiep_tan', 'quan_tri_vien')
+  @Roles('bac_si', 'tiep_tan', 'quan_tri_vien', 'benh_nhan')
   @ApiOperation({ summary: 'Lịch sử khám của bệnh nhân' })
   lichSuKham(@Param('benhNhanId', ParseIntPipe) benhNhanId: number) {
     return this.service.lichSuKham(benhNhanId);

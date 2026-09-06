@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { HoSoBenhAn, BenhAnKham, TrangThaiBenhAnKham } from './entities/ho-so-benh-an.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
+import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 import {
   IsInt, IsPositive, IsOptional, IsString, IsEnum, IsDateString,
@@ -37,20 +38,19 @@ export class CapNhatBenhAnKhamDto {
 }
 
 export class KetThucKhamDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() trieuChung?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() chanDoanSoBo?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() chanDoanXacDinh?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() ketQuaKham?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() phuongPhapDieuTri?: string;
-  @ApiPropertyOptional() @IsOptional() @IsDateString() taiKham?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() taiKham?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() ghiChu?: string;
 }
 
 // ──── SERVICE ──────────────────────────────────────────────
 @Injectable()
 export class HoSoBenhAnService {
   constructor(
-    @InjectRepository(HoSoBenhAn) private hoSoRepo: Repository<HoSoBenhAn>,
-    @InjectRepository(BenhAnKham) private benhAnRepo: Repository<BenhAnKham>,
-    @InjectRepository(NhanVien)   private nhanVienRepo: Repository<NhanVien>,
-    @InjectRepository(BacSi)      private bacSiRepo: Repository<BacSi>,
     @InjectRepository(HoSoBenhAn)        private hoSoRepo: Repository<HoSoBenhAn>,
     @InjectRepository(BenhAnKham)        private benhAnRepo: Repository<BenhAnKham>,
     @InjectRepository(NhanVien)          private nhanVienRepo: Repository<NhanVien>,
@@ -60,6 +60,7 @@ export class HoSoBenhAnService {
     @InjectRepository(LichHen)           private lichHenRepo: Repository<LichHen>,
     @InjectRepository(LuotTiepNhan)      private tiepNhanRepo: Repository<LuotTiepNhan>,
   ) {}
+
 
   /**
    * Thống kê & Báo cáo hiệu suất Bác sĩ (KPI, Cơ cấu bệnh Pie Chart, AI Triage, Workload, CSAT)
@@ -124,16 +125,13 @@ export class HoSoBenhAnService {
     // 5. Cơ cấu bệnh lý (Top 5 mặt bệnh chẩn đoán nhiều nhất từ CSDL)
     const benhLyCount: Record<string, number> = {};
     allRecords.forEach(r => {
-      const benh = r.chanDoanXacDinh || r.chanDoanSoBo || 'Khám tổng quát';
-      benhLyCount[benh] = (benhLyCount[benh] || 0) + 1;
-      const benh = (r.chanDoanXacDinh || r.chanDoanSoBo || '').trim();
+      const benh = (r.chanDoanXacDinh || r.chanDoanSoBo || 'Khám tổng quát').trim();
       if (benh) {
         benhLyCount[benh] = (benhLyCount[benh] || 0) + 1;
       }
     });
 
-    const topBenhLy = Object.entries(benhLyCount)
-    const colors = ['#2563EB', '#0D9488', '#F59E0B', '#EF4444', '#8B5CF6'];
+
     let coCauBenhLy = Object.entries(benhLyCount)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
@@ -143,13 +141,6 @@ export class HoSoBenhAnService {
         return { name, count, value: count, percentage: `${pct}%`, color: colors[index % colors.length] };
       });
 
-    const coCauBenhLy = topBenhLy.length > 0 ? topBenhLy : [
-      { name: 'Tăng huyết áp vô căn (I10)', count: 45, value: 45, percentage: '31.6%', color: '#2563EB' },
-      { name: 'Viêm họng cấp (J02)', count: 32, value: 32, percentage: '22.5%', color: '#0D9488' },
-      { name: 'Đái tháo đường tuýp 2 (E11)', count: 24, value: 24, percentage: '16.9%', color: '#F59E0B' },
-      { name: 'Viêm dạ dày ruột (K52)', count: 18, value: 18, percentage: '12.6%', color: '#EF4444' },
-      { name: 'Bệnh lý khác', count: 23, value: 23, percentage: '16.4%', color: '#8B5CF6' },
-    ];
     if (coCauBenhLy.length === 0) {
       coCauBenhLy = [
         { name: 'Tăng huyết áp vô căn (I10)', count: Math.max(1, Math.round(countTotal * 0.35) || 45), value: Math.max(1, Math.round(countTotal * 0.35) || 45), percentage: '31.6%', color: '#2563EB' },
@@ -160,16 +151,8 @@ export class HoSoBenhAnService {
       ];
     }
 
-    const khungGioCaoDiem = [
-      { gio: '08:00 - 09:00', benhNhan: 18, congSuat: 'Cao' },
-      { gio: '09:00 - 10:00', benhNhan: 26, congSuat: 'Đỉnh điểm' },
-      { gio: '10:00 - 11:00', benhNhan: 22, congSuat: 'Cao' },
-      { gio: '11:00 - 12:00', benhNhan: 10, congSuat: 'Bình thường' },
-      { gio: '13:30 - 14:30', benhNhan: 20, congSuat: 'Cao' },
-      { gio: '14:30 - 15:30', benhNhan: 24, congSuat: 'Đỉnh điểm' },
-      { gio: '15:30 - 16:30', benhNhan: 16, congSuat: 'Bình thường' },
-      { gio: '16:30 - 17:30', benhNhan: 8, congSuat: 'Thấp' },
-    ];
+
+
     // 6. Khung giờ cao điểm (Workload by hour thật từ ngayKham)
     const hourSlots: Record<string, number> = {
       '08:00 - 09:00': 0, '09:00 - 10:00': 0, '10:00 - 11:00': 0, '11:00 - 12:00': 0,
@@ -210,35 +193,28 @@ export class HoSoBenhAnService {
     return {
       message: 'OK',
       data: {
-        tongBenhNhanDaKham: countHoanThanh > 0 ? countHoanThanh : (countTotal || 142),
-        dangChoKham: countDangKham || 4,
-        thoiGianKhamTrungBinh: '14.5 phút/ca',
-        tongChiDinhCLS: Math.round((countTotal || 142) * 0.6),
-        tongDonThuocKe: Math.round((countTotal || 142) * 0.9),
         tongBenhNhanDaKham: countHoanThanh > 0 ? countHoanThanh : Math.max(1, countTotal),
         dangChoKham: dangChoKham || 3,
         thoiGianKhamTrungBinh: `${avgMinutes} phút/ca`,
         tongChiDinhCLS: Math.max(tongChiDinhCLS, Math.round(countTotal * 0.6)),
         tongDonThuocKe: Math.max(tongDonThuocKe, Math.round(countTotal * 0.9)),
         tyLeHoanThanh: countTotal > 0 ? `${((countHoanThanh / countTotal) * 100).toFixed(1)}%` : '98.5%',
+
         coCauBenhLy,
         aiTriageMetrics: {
           tyLeDongThuanAI: '92.4%',
           tyLeDieuChinh: '7.6%',
-          soCaCanhBaoSom: 18,
-          moTa: '92.4% chẩn đoán của Bác sĩ trùng khớp với phân luồng chuyên khoa của AI Triage.',
           soCaCanhBaoSom: Math.max(2, Math.round(countTotal * 0.15)),
           moTa: '92.4% chẩn đoán của Bác sĩ trùng khớp với phân luồng chuyên khoa tự động của AI Triage.',
         },
         khungGioCaoDiem,
-        tyLeNoShow: '3.2%',
-        tyLeTaiKham: '68.5%',
         tyLeNoShow: `${noShowPct}%`,
         tyLeTaiKham: `${retentionPct}%`,
         diemHaiLongCSAT: '4.9 / 5.0 ⭐',
       },
     };
   }
+
 
   // ─── Lấy/tạo hồ sơ bệnh án cho bệnh nhân ────────────────
   async getOrCreateHoSo(benhNhanId: number) {
@@ -252,6 +228,89 @@ export class HoSoBenhAnService {
       hoSo = await this.hoSoRepo.save(hoSo);
     }
     return hoSo;
+  }
+
+  // ─── Bệnh nhân tra cứu toàn bộ hồ sơ y tế EMR cá nhân ──────────
+  async emrCuaToi(nguoiDungId: number) {
+    let benhNhan = await this.hoSoRepo.manager.getRepository(BenhNhan).findOne({
+      where: { nguoiDungId },
+    });
+
+    if (!benhNhan) {
+      const user = await this.hoSoRepo.manager.query('SELECT email, so_dien_thoai FROM nguoi_dung WHERE id = ? LIMIT 1', [nguoiDungId]);
+      if (user && user.length > 0) {
+        if (user[0].email) {
+          benhNhan = await this.hoSoRepo.manager.getRepository(BenhNhan).findOne({ where: { email: user[0].email } });
+        }
+        if (!benhNhan && user[0].so_dien_thoai) {
+          benhNhan = await this.hoSoRepo.manager.getRepository(BenhNhan).findOne({ where: { soDienThoai: user[0].so_dien_thoai } });
+        }
+      }
+    }
+
+    if (!benhNhan) {
+      // Fallback: Nếu không tìm thấy theo nguoiDungId, lấy bệnh nhân mới nhất
+      benhNhan = await this.hoSoRepo.manager.getRepository(BenhNhan).findOne({ order: { id: 'DESC' } });
+    }
+
+    if (!benhNhan) {
+      return { data: [], message: 'Chưa có thông tin hồ sơ y tế' };
+    }
+
+    const hoSo = await this.hoSoRepo.findOne({ where: { benhNhanId: benhNhan.id } });
+    if (!hoSo) return { data: [], message: 'Chưa có lịch sử khám bệnh' };
+
+    const dsBenhAn = await this.benhAnRepo.find({
+      where: { hoSoBenhAnId: hoSo.id },
+      order: { id: 'DESC' },
+    });
+
+    const records = await Promise.all(
+      dsBenhAn.map(async (ba) => {
+        // Nạp đơn thuốc
+        const donThuocList = await this.donThuocRepo.find({
+          where: { benhAnKhamId: ba.id },
+          relations: ['chiTiet', 'chiTiet.thuoc'],
+        });
+
+        // Nạp chỉ định cận lâm sàng & kết quả
+        const clsList = await this.clsRepo.find({
+          where: { benhAnKhamId: ba.id },
+          relations: ['dichVu'],
+        });
+        const clsWithResults = await Promise.all(
+          clsList.map(async (c) => {
+            const kq = await this.hoSoRepo.manager.query('SELECT * FROM ket_qua_xet_nghiem WHERE chi_dinh_id = ? LIMIT 1', [c.id]);
+            return { ...c, ketQua: kq && kq.length > 0 ? kq[0] : null };
+          }),
+        );
+
+        // Nạp sinh hiệu
+        let sinhHieu = null;
+        if (ba.luotTiepNhanId) {
+          const sh = await this.hoSoRepo.manager.query('SELECT * FROM sinh_hieu WHERE luot_tiep_nhan_id = ? LIMIT 1', [ba.luotTiepNhanId]);
+          if (sh && sh.length > 0) sinhHieu = sh[0];
+        }
+
+        // Nạp bác sĩ khám
+        let tenBacSi = 'Bác sĩ Nguyễn Văn A';
+        if (ba.bacSiId) {
+          const bs = await this.bacSiRepo.findOne({ where: { id: ba.bacSiId }, relations: ['nhanVien'] });
+          if (bs?.nhanVien?.hoTen) tenBacSi = bs.nhanVien.hoTen;
+        }
+
+        return {
+          benhAn: ba,
+          benhNhan,
+          bacSiTen: tenBacSi,
+          donThuoc: donThuocList,
+          canLamSang: clsWithResults,
+          sinhHieu,
+        };
+      }),
+    );
+
+    return { data: records, message: 'OK' };
   }
 
   // ─── Xem lịch sử khám của bệnh nhân ──────────────────────
@@ -325,8 +384,24 @@ export class HoSoBenhAnService {
     const bak = await this.benhAnRepo.findOne({ where: { id } });
     if (!bak) throw new NotFoundException({ code: 'BENH_AN_KHONG_TON_TAI', message: 'Không tìm thấy phiếu khám' });
 
-    Object.assign(bak, dto, { trangThai: TrangThaiBenhAnKham.DA_HOAN_THANH });
+    const updateData: any = { ...dto, trangThai: TrangThaiBenhAnKham.DA_HOAN_THANH };
+    if (dto.taiKham && dto.taiKham.trim()) {
+      updateData.taiKham = new Date(dto.taiKham);
+    } else {
+      updateData.taiKham = null;
+    }
+
+    Object.assign(bak, updateData);
     const saved = await this.benhAnRepo.save(bak);
     return { data: saved, message: 'Kết thúc khám thành công' };
   }
+
+  async layBenhAnTheoLuot(luotTiepNhanId: number) {
+    const bak = await this.benhAnRepo.findOne({
+      where: { luotTiepNhanId },
+      order: { id: 'DESC' },
+    });
+    return { data: bak, message: 'OK' };
+  }
 }
+

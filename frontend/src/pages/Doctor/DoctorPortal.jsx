@@ -2,16 +2,17 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { DashboardLayout } from '../../layouts/DashboardLayout';
 
-const PhongKhamPage = lazy(() => import('./PhongKham/PhongKhamPage'));
-const KhamTrucTuyenPage = lazy(() => import('./KhamTrucTuyen/KhamTrucTuyenPage'));
-const HoSoBenhAnQuanLyPage = lazy(() => import('./HoSoBenhAn/HoSoBenhAnQuanLyPage'));
-const LichHenBacSiPage = lazy(() => import('./LichHen/LichHenBacSiPage'));
-const ThongKeBacSiPage = lazy(() => import('./ThongKe/ThongKeBacSiPage'));
+const PhongKhamPage = lazy(() => import('./PhongKham/PhongKhamPage.jsx'));
+const KhamTrucTuyenPage = lazy(() => import('./KhamTrucTuyen/KhamTrucTuyenPage.jsx'));
+const HoSoBenhAnQuanLyPage = lazy(() => import('./HoSoBenhAn/HoSoBenhAnQuanLyPage.jsx'));
+const LichHenBacSiPage = lazy(() => import('./LichHen/LichHenBacSiPage.jsx'));
+const ThongKeBacSiPage = lazy(() => import('./ThongKe/ThongKeBacSiPage.jsx'));
 
 // Shared staff pages
-const ThongTinCaNhanPage = lazy(() => import('../Receptionist/NhanVienShared/ThongTinCaNhanPage'));
-const LichLamViecPage = lazy(() => import('../Receptionist/NhanVienShared/LichLamViecPage'));
-const GuiDonGiamDocPage = lazy(() => import('../Receptionist/NhanVienShared/GuiDonGiamDocPage'));
+const ThongTinCaNhanPage = lazy(() => import('../Receptionist/NhanVienShared/ThongTinCaNhanPage.jsx'));
+const LichLamViecPage = lazy(() => import('../Receptionist/NhanVienShared/LichLamViecPage.jsx'));
+const GuiDonGiamDocPage = lazy(() => import('../Receptionist/NhanVienShared/GuiDonGiamDocPage.jsx'));
+
 
 function Loader() {
   return (

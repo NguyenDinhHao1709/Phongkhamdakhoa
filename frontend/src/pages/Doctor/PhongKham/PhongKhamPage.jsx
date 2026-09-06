@@ -10,8 +10,9 @@ import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
 import {
   Stethoscope, AlertTriangle, FileText, ClipboardList, FlaskConical,
-  CheckCircle2, ChevronRight, Activity, Plus, X, HeartPulse, Pill, Calendar, Clock, Search
+  CheckCircle2, ChevronRight, Activity, Plus, X, HeartPulse, Pill, Calendar, Clock, Search, Sparkles
 } from 'lucide-react';
+
 
 function useHangDoi() {
   return useQuery({
@@ -230,17 +231,71 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
 
   // Kết thúc khám
   const finishMut = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
+      let activeId = benhAnId;
+      if (!activeId) {
+        // Tự động tạo/lấy phiếu khám nếu chưa bấm "Bắt đầu khám"
+        const res = await createMut.mutateAsync();
+        activeId = res?.data?.id;
+      }
+      if (!activeId) {
+        throw new Error('KHONG_TAO_DUOC_BENH_AN');
+      }
+      if (!form.chanDoanXacDinh || !form.chanDoanXacDinh.trim()) {
+        throw new Error('CHUA_NHAP_CHAN_DOAN_XAC_DINH');
+      }
       const payload = { ...form };
-      if (!payload.taiKham) delete payload.taiKham;
-      return apiPatch(`/ho-so-benh-an/benh-an-kham/${benhAnId}/ket-thuc`, payload);
+      if (!payload.taiKham || !payload.taiKham.trim()) delete payload.taiKham;
+      return apiPatch(`/ho-so-benh-an/benh-an-kham/${activeId}/ket-thuc`, payload);
     },
     onSuccess: () => {
       apiPatch(`/tiep-nhan/${luot.id}/trang-thai`, { trangThai: 'hoan_thanh' });
       qc.invalidateQueries(['tiep-nhan']);
       onComplete();
     },
+    onError: (err) => {
+      if (err.message === 'CHUA_NHAP_CHAN_DOAN_XAC_DINH') {
+        alert('⚠️ BẮT BUỘC CHẨN ĐOÁN ICD-10:\nVui lòng nhập "Chẩn đoán xác định" (kèm mã bệnh ICD-10) ở Tab Khám lâm sàng trước khi Kết thúc khám!');
+        setTab('kham');
+      } else if (err.message === 'KHONG_TAO_DUOC_BENH_AN') {
+        alert('Không thể tạo phiếu khám cho bệnh nhân này. Vui lòng bấm nút "Bắt đầu khám" trước!');
+      } else {
+        console.error('Error in finishMut:', err);
+        alert('Lỗi kết thúc khám. Vui lòng kiểm tra dữ liệu và thử lại.');
+      }
+    },
   });
+
+  const handleSaveDraft = async () => {
+    try {
+      let activeId = benhAnId;
+      if (!activeId) {
+        const res = await createMut.mutateAsync();
+        activeId = res?.data?.id;
+      }
+      if (activeId) {
+        await apiPatch(`/ho-so-benh-an/benh-an-kham/${activeId}`, form);
+        alert('Đã lưu nháp hồ sơ khám thành công!');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Lỗi lưu nháp hồ sơ. Vui lòng thử lại.');
+    }
+  };
+
+  const handleOpenDonThuoc = async () => {
+    let activeId = benhAnId;
+    if (!activeId) {
+      const res = await handleBatDauKham();
+      activeId = res?.data?.id;
+    }
+    if (!form.chanDoanXacDinh || !form.chanDoanXacDinh.trim()) {
+      alert('⚠️ BẮT BUỘC CHẨN ĐOÁN ICD-10:\nVui lòng nhập "Chẩn đoán xác định" (kèm mã bệnh ICD-10) ở Tab Khám lâm sàng trước khi Kê đơn thuốc!');
+      setTab('kham');
+      return;
+    }
+    setShowDonThuocModal(true);
+  };
 
 
   const handleBatDauKham = async () => {
@@ -310,10 +365,7 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
               variant="secondary"
               size="sm"
               leftIcon={<Pill className="h-4 w-4 text-emerald-600" />}
-              onClick={async () => {
-                if (!benhAnId) await handleBatDauKham();
-                setShowDonThuocModal(true);
-              }}
+              onClick={handleOpenDonThuoc}
             >
               + Kê đơn thuốc
             </MedButton>
@@ -383,24 +435,92 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
           {tab === 'kham' && (
             <MedCard>
               <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); finishMut.mutate(); }}>
-                {[
-                  { key: 'trieuChung', label: 'Triệu chứng', rows: 3, placeholder: 'Mô tả triệu chứng bệnh nhân...' },
-                  { key: 'chanDoanSoBo', label: 'Chẩn đoán sơ bộ', rows: 2 },
-                  { key: 'chanDoanXacDinh', label: 'Chẩn đoán xác định', rows: 2 },
-                  { key: 'ketQuaKham', label: 'Kết quả khám', rows: 3, placeholder: 'Kết quả khám lâm sàng...' },
-                  { key: 'phuongPhapDieuTri', label: 'Phương pháp điều trị', rows: 2 },
-                ].map(({ key, label, rows, placeholder }) => (
-                  <div key={key}>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">{label}</label>
-                    <textarea
-                      rows={rows}
-                      value={form[key]}
-                      onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                      placeholder={placeholder || `Nhập ${label.toLowerCase()}...`}
-                      className="w-full rounded-lg border border-gray-300 bg-white py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    />
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Triệu chứng</label>
+                  <textarea
+                    rows={3}
+                    value={form.trieuChung}
+                    onChange={(e) => setForm((f) => ({ ...f, trieuChung: e.target.value }))}
+                    placeholder="Mô tả triệu chứng bệnh nhân..."
+                    className="w-full rounded-lg border border-gray-300 bg-white py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Chẩn đoán sơ bộ</label>
+                  <textarea
+                    rows={2}
+                    value={form.chanDoanSoBo}
+                    onChange={(e) => setForm((f) => ({ ...f, chanDoanSoBo: e.target.value }))}
+                    placeholder="Nhập chẩn đoán ban đầu (trước khi làm cận lâm sàng)..."
+                    className="w-full rounded-lg border border-gray-300 bg-white py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+
+                {/* Chẩn đoán xác định + ICD-10 (bắt buộc) */}
+                <div className="p-3.5 bg-blue-50/50 border border-blue-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-bold text-gray-900">
+                      Chẩn đoán xác định <span className="text-xs font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-200 ml-1">* Bắt buộc kèm mã ICD-10</span>
+                    </label>
                   </div>
-                ))}
+
+                  {/* Danh sách thẻ ICD-10 chọn nhanh */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-xs font-bold text-blue-800 mr-1">⚡ Mã ICD-10 hay dùng:</span>
+                    {[
+                      'J00 - Viêm mũi họng cấp',
+                      'J20 - Viêm phế quản cấp',
+                      'K29.5 - Viêm dạ dày mạn',
+                      'I10 - Tăng huyết áp vô căn',
+                      'E11 - Đái tháo đường typ 2',
+                      'A09 - Viêm dạ dày ruột cấp',
+                      'M54.5 - Đau lưng thắt lưng',
+                    ].map((icd) => (
+                      <button
+                        key={icd}
+                        type="button"
+                        onClick={() => setForm((f) => ({
+                          ...f,
+                          chanDoanXacDinh: f.chanDoanXacDinh ? `${f.chanDoanXacDinh}; ${icd}` : icd,
+                        }))}
+                        className="text-xs bg-white hover:bg-blue-100 text-blue-700 font-medium px-2.5 py-1 rounded-lg border border-blue-300 transition-colors shadow-2xs cursor-pointer flex items-center gap-1"
+                      >
+                        + {icd}
+                      </button>
+                    ))}
+                  </div>
+
+                  <textarea
+                    rows={2}
+                    value={form.chanDoanXacDinh}
+                    onChange={(e) => setForm((f) => ({ ...f, chanDoanXacDinh: e.target.value }))}
+                    placeholder="VD: E11 - Đái tháo đường tuýp 2, K29.5 - Viêm dạ dày mạn..."
+                    className="w-full rounded-lg border border-blue-400 bg-white py-2.5 px-3 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-2xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Kết quả khám</label>
+                  <textarea
+                    rows={3}
+                    value={form.ketQuaKham}
+                    onChange={(e) => setForm((f) => ({ ...f, ketQuaKham: e.target.value }))}
+                    placeholder="Kết quả khám lâm sàng chi tiết..."
+                    className="w-full rounded-lg border border-gray-300 bg-white py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Phương pháp điều trị</label>
+                  <textarea
+                    rows={2}
+                    value={form.phuongPhapDieuTri}
+                    onChange={(e) => setForm((f) => ({ ...f, phuongPhapDieuTri: e.target.value }))}
+                    placeholder="Nhập phương pháp điều trị..."
+                    className="w-full rounded-lg border border-gray-300 bg-white py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1.5">Ngày tái khám</label>
@@ -425,7 +545,7 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
                   <MedButton
                     variant="secondary"
                     type="button"
-                    onClick={() => apiPatch(`/ho-so-benh-an/benh-an-kham/${benhAnId}`, form)}
+                    onClick={handleSaveDraft}
                   >
                     Lưu nháp
                   </MedButton>
@@ -464,9 +584,11 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
       {showChiDinhModal && benhAnId && (
         <TaoChiDinhModal
           benhAnKhamId={benhAnId}
+          luotId={luot.id}
           onClose={() => setShowChiDinhModal(false)}
           onSuccess={() => {
             qc.invalidateQueries(['xn-benh-an', benhAnId]);
+            qc.invalidateQueries(['tiep-nhan']);
             setShowChiDinhModal(false);
             setTab('xn');
           }}
@@ -654,7 +776,7 @@ function VitalsModal({ luotId, initialData, onClose, onSuccess }) {
 }
 
 /* ──── MODAL CHỈ ĐỊNH CẬN LÂM SÀNG (LẤY DỮ LIỆU TỪ CSDL) ──── */
-function TaoChiDinhModal({ benhAnKhamId, onClose, onSuccess }) {
+function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [ghiChu, setGhiChu] = useState('');
   const [loading, setLoading] = useState(false);
@@ -696,6 +818,11 @@ function TaoChiDinhModal({ benhAnKhamId, onClose, onSuccess }) {
         benhAnKhamId,
         dsChiDinh,
       });
+
+      // Tự động đổi trạng thái bệnh nhân trên hàng đợi sang "Đang làm Cận lâm sàng" (dang_cls)
+      if (luotId) {
+        await apiPatch(`/tiep-nhan/${luotId}/trang-thai`, { trangThai: 'dang_cls' });
+      }
 
       onSuccess();
     } catch (err) {
@@ -1182,7 +1309,7 @@ function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
                   <div className="mt-2 rounded-xl bg-emerald-50/60 border border-emerald-200 p-3 space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-emerald-800">KẾT QUẢ TỪ PHÒNG XÉT NGHIỆM</span>
-                      <span className="text-[10px] text-emerald-600">{formatDateTime(ketQua.taoLuc || new Date())}</span>
+                      <span className="text-[10px] text-emerald-600">{formatDateTime(ketQua.thoiGianNhap || ketQua.taoLuc || new Date())}</span>
                     </div>
                     <p className="text-base font-bold text-emerald-900">
                       {ketQua.giaTri} <span className="text-xs font-normal text-emerald-700">{ketQua.donVi}</span>

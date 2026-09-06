@@ -7,8 +7,9 @@ import {
   Stethoscope, Users, Calendar, ClipboardList,
   FlaskConical, Pill, Receipt, BarChart3,
   LogOut, ChevronLeft, ChevronRight, Bell,
-  User, Settings,
+  User, Settings, Video, Clock, Send,
 } from 'lucide-react';
+
 
 const MENU_CONFIG = {
   tiep_tan: [
@@ -29,7 +30,11 @@ const MENU_CONFIG = {
   ],
 
   ky_thuat_vien: [
-    { to: '/ky-thuat-vien/xet-nghiem', icon: FlaskConical, label: 'Xét nghiệm' },
+    { to: '/ky-thuat-vien/xet-nghiem', icon: FlaskConical, label: 'Xét nghiệm & CĐHA' },
+    { to: '/ky-thuat-vien/thong-ke', icon: BarChart3, label: 'Báo cáo & Thống kê' },
+    { to: '/ky-thuat-vien/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
+    { to: '/ky-thuat-vien/gui-don', icon: Send, label: 'Gửi đơn Giám Đốc' },
+    { to: '/ky-thuat-vien/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   nhan_vien_nha_thuoc: [
     { to: '/nha-thuoc/don-thuoc', icon: Pill, label: 'Đơn thuốc' },

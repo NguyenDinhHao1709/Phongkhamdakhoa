@@ -75,7 +75,6 @@ export class XetNghiemService {
       if (nv) {
         const bs = await this.cdRepo.manager.getRepository(BacSi).findOne({ where: { nhanVienId: nv.id } });
         if (bs) bacSiId = bs.id;
-        else bacSiId = nv.id;
       }
     }
 
@@ -83,7 +82,7 @@ export class XetNghiemService {
       this.cdRepo.create({
         benhAnKhamId: dto.benhAnKhamId,
         dichVuXetNghiemId: item.dichVuXetNghiemId,
-        bacSiChiDinhId: bacSiId || nguoiDungId,
+        bacSiChiDinhId: bacSiId || 1,
         ghiChuChiDinh: item.ghiChuChiDinh,
       }),
     );
@@ -96,11 +95,14 @@ export class XetNghiemService {
     const { trangThai, page = 1, limit = 20 } = dto;
     const qb = this.cdRepo.createQueryBuilder('cd')
       .leftJoinAndSelect('cd.dichVu', 'dv')
-      .orderBy('cd.thoi_gian_chi_dinh', 'DESC')
+      .leftJoinAndSelect('cd.benhAnKham', 'bak')
+      .leftJoinAndSelect('bak.hoSoBenhAn', 'hs')
+      .leftJoinAndSelect('hs.benhNhan', 'bn')
+      .orderBy('cd.thoiGianChiDinh', 'DESC')
       .skip((page - 1) * limit).take(limit);
 
-    if (trangThai) qb.andWhere('cd.trang_thai = :trangThai', { trangThai });
-    else qb.andWhere('cd.trang_thai != :huy', { huy: 'huy' });
+    if (trangThai) qb.andWhere('cd.trangThai = :trangThai', { trangThai });
+    else qb.andWhere('cd.trangThai != :huy', { huy: 'huy' });
 
     const [items, total] = await qb.getManyAndCount();
     return {
@@ -112,36 +114,66 @@ export class XetNghiemService {
 
   // ─── CHI TIẾT 1 CHỈ ĐỊNH + KẾT QUẢ ────────────────────────
   async chiTietChiDinh(id: number) {
-    const cd = await this.cdRepo.findOne({ where: { id }, relations: ['dichVu'] });
+    const cd = await this.cdRepo.findOne({
+      where: { id },
+      relations: ['dichVu', 'benhAnKham', 'benhAnKham.hoSoBenhAn', 'benhAnKham.hoSoBenhAn.benhNhan'],
+    });
     if (!cd) throw new NotFoundException({ code: 'CHI_DINH_KHONG_TON_TAI', message: 'Không tìm thấy chỉ định' });
     const kq = await this.kqRepo.findOne({ where: { chiDinhId: id } });
     return { data: { chiDinh: cd, ketQua: kq }, message: 'OK' };
   }
 
   // ─── CẬP NHẬT TRẠNG THÁI CHỈ ĐỊNH ─────────────────────────
-  async capNhatTrangThaiChiDinh(id: number, dto: CapNhatTrangThaiChiDinhDto, kyThuatVienId?: number) {
+  async capNhatTrangThaiChiDinh(id: number, dto: CapNhatTrangThaiChiDinhDto, nguoiDungId?: number) {
     const cd = await this.cdRepo.findOne({ where: { id } });
     if (!cd) throw new NotFoundException({ code: 'CHI_DINH_KHONG_TON_TAI', message: 'Không tìm thấy chỉ định' });
+
+    let ktvTableId: number | null = null;
+    if (nguoiDungId) {
+      const nv = await this.cdRepo.manager.getRepository(NhanVien).findOne({ where: { nguoiDungId } });
+      if (nv) {
+        const ktv = await this.cdRepo.manager.query('SELECT id FROM ky_thuat_vien WHERE nhan_vien_id = ? LIMIT 1', [nv.id]);
+        if (ktv && ktv.length > 0) {
+          ktvTableId = ktv[0].id;
+        }
+      }
+    }
 
     const updates: any = { trangThai: dto.trangThai };
 
     if (dto.trangThai === 'dang_lay_mau') {
       updates.thoiGianLayMau = new Date();
-      if (kyThuatVienId) updates.kyThuatVienId = kyThuatVienId;
+      if (ktvTableId) updates.kyThuatVienId = ktvTableId;
     }
     if (dto.trangThai === 'co_ket_qua') {
       updates.thoiGianCoKetQua = new Date();
     }
 
     await this.cdRepo.update(id, updates);
-    const updated = await this.cdRepo.findOne({ where: { id }, relations: ['dichVu'] });
+    const updated = await this.cdRepo.findOne({
+      where: { id },
+      relations: ['dichVu', 'benhAnKham', 'benhAnKham.hoSoBenhAn', 'benhAnKham.hoSoBenhAn.benhNhan'],
+    });
     return { data: updated, message: 'Cập nhật trạng thái thành công' };
   }
 
   // ─── NHẬP KẾT QUẢ XÉT NGHIỆM ──────────────────────────────
-  async nhapKetQua(chiDinhId: number, dto: NhapKetQuaDto, nhapBoiId: number) {
+  async nhapKetQua(chiDinhId: number, dto: NhapKetQuaDto, nguoiDungId: number) {
     const cd = await this.cdRepo.findOne({ where: { id: chiDinhId } });
     if (!cd) throw new NotFoundException({ code: 'CHI_DINH_KHONG_TON_TAI', message: 'Không tìm thấy chỉ định' });
+
+    let ktvTableId: number | null = null;
+    if (nguoiDungId) {
+      const nv = await this.cdRepo.manager.getRepository(NhanVien).findOne({ where: { nguoiDungId } });
+      if (nv) {
+        const ktv = await this.cdRepo.manager.query('SELECT id FROM ky_thuat_vien WHERE nhan_vien_id = ? LIMIT 1', [nv.id]);
+        if (ktv && ktv.length > 0) {
+          ktvTableId = ktv[0].id;
+        }
+      }
+    }
+
+    const nhapBoiId = ktvTableId || null;
 
     // Upsert kết quả
     let kq = await this.kqRepo.findOne({ where: { chiDinhId } });

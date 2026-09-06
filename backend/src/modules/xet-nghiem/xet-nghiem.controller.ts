@@ -37,12 +37,13 @@ export class XetNghiemController {
   }
 
   // ─── DANH SÁCH CHỈ ĐỊNH (KTV view) ─────────────────────────
-  @Get('chi-dinh')
+  @Get(['', 'chi-dinh'])
   @Roles('ky_thuat_vien', 'bac_si')
   @ApiOperation({ summary: 'Danh sách chỉ định xét nghiệm (lọc theo trạng thái)' })
   danhSachChiDinh(@Query() dto: TimKiemChiDinhDto) {
     return this.service.danhSachChiDinh(dto);
   }
+
 
   // ─── CHI TIẾT 1 CHỈ ĐỊNH ──────────────────────────────────
   @Get('chi-dinh/:id')
