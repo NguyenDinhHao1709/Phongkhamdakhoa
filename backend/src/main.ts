@@ -14,7 +14,7 @@ async function bootstrap() {
   });
 
   // Serve uploads folder from project root
-  app.useStaticAssets(join(__dirname, '..', '..', 'uploads'), {
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
   });
 

@@ -7,6 +7,10 @@ import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 
+import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
+import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
+import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
+
 @Injectable()
 export class ThanhToanService {
   constructor(
@@ -18,6 +22,12 @@ export class ThanhToanService {
     private readonly tiepNhanRepo: Repository<LuotTiepNhan>,
     @InjectRepository(NhanVien)
     private readonly nhanVienRepo: Repository<NhanVien>,
+    @InjectRepository(BenhAnKham)
+    private readonly benhAnRepo: Repository<BenhAnKham>,
+    @InjectRepository(ChiDinhCanLamSang)
+    private readonly clsRepo: Repository<ChiDinhCanLamSang>,
+    @InjectRepository(DonThuoc)
+    private readonly donThuocRepo: Repository<DonThuoc>,
   ) {}
 
   /**
@@ -101,9 +111,9 @@ export class ThanhToanService {
   }
 
   /**
-   * Tự động tạo / cập nhật Hóa đơn từ lượt khám bệnh (LuotTiepNhan)
+   * Tự động tạo / cập nhật Hóa đơn từ lượt khám bệnh (Tổng hợp Khám + Cận lâm sàng + Đơn thuốc + BHYT)
    */
-  async taoHoacCapNhatTuLuotKham(luotTiepNhanId: number) {
+  async taoHoacCapNhatTuLuotKham(luotTiepNhanId: number, apDungBhyt?: boolean) {
     const luot = await this.tiepNhanRepo.findOne({
       where: { id: luotTiepNhanId },
       relations: ['benhNhan'],
@@ -113,7 +123,7 @@ export class ThanhToanService {
       throw new NotFoundException('Không tìm thấy lượt tiếp nhận');
     }
 
-    // Kiểm tra hóa đơn đã có chưa
+    // 1. Kiểm tra hóa đơn đã có chưa
     let hd = await this.hoaDonRepo.findOne({
       where: { luotTiepNhanId },
       relations: ['chiTiet'],
@@ -135,39 +145,114 @@ export class ThanhToanService {
       });
     }
 
-    // Mặc định thêm Phí khám bệnh (150,000 đ) nếu chưa có
+    // 2. Tổng hợp các khoản viện phí từ Phiếu Khám thực tế
     const items: Partial<HoaDonChiTiet>[] = [
       {
         loaiPhi: 'kham_benh',
-        moTa: 'Phí khám bệnh tổng quát',
+        moTa: 'Phí khám bệnh chuyên khoa',
         soLuong: 1,
         donGia: 150000,
         thanhTien: 150000,
       },
     ];
 
-    let tongTien = items.reduce((acc, cur) => acc + (cur.thanhTien || 0), 0);
+    const bak = await this.benhAnRepo.findOne({
+      where: { luotTiepNhanId },
+    });
+
+    if (bak) {
+      // 2.1 Lấy danh sách Chỉ định Cận lâm sàng (Xét nghiệm / CĐHA)
+      const clsList = await this.clsRepo.find({
+        where: { benhAnKhamId: bak.id },
+        relations: ['dichVu'],
+      });
+
+      clsList.forEach((cd) => {
+        const gia = Number(cd.dichVu?.gia || 80000);
+        items.push({
+          loaiPhi: cd.dichVu?.loai === 'cdha' ? 'cdha' : 'xet_nghiem',
+          moTa: `Dịch vụ CLS: ${cd.dichVu?.tenDichVu || 'Xét nghiệm'}`,
+          soLuong: 1,
+          donGia: gia,
+          thanhTien: gia,
+        });
+      });
+
+      // 2.2 Lấy danh sách Thuốc kê đơn
+      const donThuocList = await this.donThuocRepo.find({
+        where: { benhAnKhamId: bak.id },
+        relations: ['chiTiet', 'chiTiet.thuoc'],
+      });
+
+      donThuocList.forEach((dt) => {
+        if (dt.chiTiet && dt.chiTiet.length > 0) {
+          dt.chiTiet.forEach((ct) => {
+            const donGia = Number(ct.thuoc?.giaBan || 10000);
+            const soLuong = Number(ct.soLuong || 1);
+            items.push({
+              loaiPhi: 'thuoc',
+              moTa: `Thuốc: ${ct.thuoc?.tenThuoc || 'Thuốc'} (${ct.soLuong} ${ct.thuoc?.donViTinh || 'đơn vị'})`,
+              soLuong,
+              donGia,
+              thanhTien: donGia * soLuong,
+            });
+          });
+        }
+      });
+    }
+
+    const tongTien = items.reduce((acc, cur) => acc + (cur.thanhTien || 0), 0);
+
+    // 3. Tính toán BHYT: Mức hưởng 80% chuẩn BHYT Việt Nam
+    const coBhyt = apDungBhyt ?? (Boolean(luot.benhNhan?.soCmnd) || (luot.ghiChu || '').toLowerCase().includes('bhyt'));
+    const soTienGiam = coBhyt ? Math.round(tongTien * 0.8) : Number(hd.soTienGiam || 0);
+    const thucThu = Math.max(0, tongTien - soTienGiam);
 
     hd.tongTien = tongTien;
-    hd.thucThu = tongTien - Number(hd.soTienGiam);
-    hd.chiTiet = items as HoaDonChiTiet[];
+    hd.soTienGiam = soTienGiam;
+    hd.thucThu = thucThu;
+    hd.ghiChu = coBhyt
+      ? `BHYT chi trả 80% danh mục viện phí (Giảm ${soTienGiam.toLocaleString('vi-VN')} đ)`
+      : (hd.ghiChu || 'Khám dịch vụ tự chi trả');
+
+    // Xóa chi tiết cũ nếu đã lưu
+    if (hd.id) {
+      await this.hoaDonChiTietRepo.delete({ hoaDonId: hd.id });
+    }
 
     const saved = await this.hoaDonRepo.save(hd);
+
+    const chiTietEntities = items.map((it) =>
+      this.hoaDonChiTietRepo.create({
+        ...it,
+        hoaDonId: saved.id,
+      })
+    );
+    await this.hoaDonChiTietRepo.save(chiTietEntities);
+
+    const fullHd = await this.hoaDonRepo.findOne({
+      where: { id: saved.id },
+      relations: ['benhNhan', 'chiTiet'],
+    });
+
     return {
-      message: 'Tạo hóa đơn thành công',
-      data: saved,
+      message: 'Tạo hóa đơn tổng hợp viện phí thành công',
+      data: fullHd,
     };
   }
 
   /**
-   * Thu ngân Xác nhận Thanh toán
+   * Thu ngân Xác nhận Thanh toán (Hỗ trợ BHYT, Tiền mặt, Chuyển khoản, POS)
    */
   async xacNhanThanhToan(
     id: number,
     userId: number,
-    dto: { phuongThucThanhToan: string; soTienGiam?: number; ghiChu?: string },
+    dto: { phuongThucThanhToan: string; soTienGiam?: number; ghiChu?: string; apDungBhyt?: boolean },
   ) {
-    const hd = await this.hoaDonRepo.findOne({ where: { id } });
+    const hd = await this.hoaDonRepo.findOne({
+      where: { id },
+      relations: ['benhNhan', 'luotTiepNhan'],
+    });
     if (!hd) {
       throw new NotFoundException('Không tìm thấy hóa đơn');
     }
@@ -178,8 +263,16 @@ export class ThanhToanService {
 
     const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
 
-    const soTienGiam = Number(dto.soTienGiam || 0);
     const tongTien = Number(hd.tongTien);
+    let soTienGiam = Number(dto.soTienGiam);
+
+    // Nếu chọn thanh toán hình thức BHYT hoặc gắn cờ apDungBhyt mà chưa nhập soTienGiam
+    if ((dto.phuongThucThanhToan === 'bao_hiem' || dto.apDungBhyt) && (isNaN(soTienGiam) || soTienGiam === 0)) {
+      soTienGiam = Math.round(tongTien * 0.8);
+    } else if (isNaN(soTienGiam)) {
+      soTienGiam = Number(hd.soTienGiam || 0);
+    }
+
     const thucThu = Math.max(0, tongTien - soTienGiam);
 
     hd.trangThai = 'da_thanh_toan';
@@ -188,9 +281,20 @@ export class ThanhToanService {
     hd.thucThu = thucThu;
     hd.ngayThanhToan = new Date();
     if (nv) hd.thuNganId = nv.id;
-    if (dto.ghiChu) hd.ghiChu = dto.ghiChu;
+    if (dto.ghiChu) {
+      hd.ghiChu = dto.ghiChu;
+    } else if (dto.phuongThucThanhToan === 'bao_hiem' || dto.apDungBhyt) {
+      hd.ghiChu = `Đã khấu trừ BHYT 80% (~${soTienGiam.toLocaleString('vi-VN')} đ). Thu thực tế: ${thucThu.toLocaleString('vi-VN')} đ`;
+    }
 
     const updated = await this.hoaDonRepo.save(hd);
+
+    // Cập nhật trạng thái lượt tiếp nhận sang hoàn thành
+    if (hd.luotTiepNhanId) {
+      await this.tiepNhanRepo.update(hd.luotTiepNhanId, {
+        trangThai: 'hoan_thanh' as any,
+      });
+    }
 
     return {
       message: 'Xác nhận thanh toán hóa đơn thành công',

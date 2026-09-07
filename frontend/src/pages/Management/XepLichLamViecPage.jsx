@@ -41,9 +41,7 @@ export default function XepLichLamViecPage() {
 
   const payload = data?.data?.data || data?.data || data || {};
   const caList = payload.caLamViecList || [];
-  const nvList = (payload.nhanVienList || []).filter(
-    n => !n.chucVu?.toLowerCase().includes('giám đốc') && !n.vaiTro?.toLowerCase().includes('giam doc')
-  );
+  const nvList = payload.nhanVienList || [];
   const phanCaList = payload.lichPhanCa || [];
 
   // Tạo mảng 7 ngày trong tuần
@@ -85,6 +83,9 @@ export default function XepLichLamViecPage() {
         ghiChu: '',
       });
     },
+    onError: (err) => {
+      alert(`⚠️ KHÔNG THỂ PHÂN CA:\n${err?.error?.message || err?.message || 'Có lỗi xung đột lịch làm việc'}`);
+    },
   });
 
   // Mutation xóa ca trực
@@ -92,6 +93,9 @@ export default function XepLichLamViecPage() {
     mutationFn: (id) => apiDelete(`/quan-ly/lich-lam-viec/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quan-ly-lich-lam-viec'] });
+    },
+    onError: (err) => {
+      alert(`Lỗi xóa ca trực: ${err?.error?.message || err?.message}`);
     },
   });
 
@@ -101,6 +105,29 @@ export default function XepLichLamViecPage() {
       alert('Vui lòng chọn nhân viên');
       return;
     }
+
+    // Kiểm tra trùng ca ngay trên giao diện
+    const isDuplicate = phanCaList.some(
+      (p) =>
+        Number(p.nhanVienId) === Number(form.nhanVienId) &&
+        Number(p.caLamViecId) === Number(form.caLamViecId) &&
+        p.ngayLam === form.ngayLam
+    );
+
+    if (isDuplicate) {
+      alert(`⚠️ CẢNH BÁO XUNG ĐỘT TRÙNG CA:\nNhân viên này đã được phân công ca làm việc này vào ngày ${form.ngayLam}. Vui lòng không xếp trùng!`);
+      return;
+    }
+
+    // Kiểm tra số ca trong ngày
+    const shiftsInDay = phanCaList.filter(
+      (p) => Number(p.nhanVienId) === Number(form.nhanVienId) && p.ngayLam === form.ngayLam
+    );
+    if (shiftsInDay.length >= 2) {
+      alert(`⚠️ CẢNH BÁO QUÁ TẢI:\nNhân viên này đã có 2 ca trực trong ngày ${form.ngayLam}. Quy chuẩn y tế không cho phép xếp quá 2 ca/ngày.`);
+      return;
+    }
+
     saveMutation.mutate([{
       nhanVienId: Number(form.nhanVienId),
       caLamViecId: Number(form.caLamViecId),

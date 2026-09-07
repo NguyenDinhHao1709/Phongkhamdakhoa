@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, RefreshCw, Stethoscope, AlertTriangle, ShieldAlert, XCircle, CheckCircle2 } from 'lucide-react';
+import { Calendar, Clock, RefreshCw, Stethoscope, AlertTriangle, ShieldAlert, XCircle, CheckCircle2, Video } from 'lucide-react';
 import { apiGet, apiPatch } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../design-system/components/Badge/StatusBadge';
 import { formatDate } from '../../utils/formatDate';
+import TelehealthVideoModal from '../../components/Telehealth/TelehealthVideoModal';
 
 export default function LichHenBenhNhanPage() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [cancelingId, setCancelingId] = useState(null);
   const [msg, setMsg] = useState({ type: '', text: '' });
+  const [videoCall, setVideoCall] = useState({ open: false, doctorName: '', info: {} });
 
   useEffect(() => {
     fetchData();
@@ -157,25 +159,51 @@ export default function LichHenBenhNhanPage() {
                   </div>
                 </div>
 
-                {/* Nút Hủy Lịch */}
-                {!isCanceled && !isCompleted && (
-                  <div className="flex md:flex-col justify-end gap-2 border-t md:border-t-0 pt-3 md:pt-0">
-                    <MedButton
-                      variant="danger"
-                      size="sm"
-                      loading={cancelingId === lh.id}
-                      onClick={() => handleCancelAppointment(lh)}
-                      leftIcon={<XCircle className="h-4 w-4" />}
-                    >
-                      Hủy lịch hẹn
-                    </MedButton>
-                  </div>
-                )}
+                {/* Nút hành động */}
+                <div className="flex md:flex-col justify-end gap-2 border-t md:border-t-0 pt-3 md:pt-0">
+                  {!isCanceled && !isCompleted && (
+                    <>
+                      <MedButton
+                        variant="primary"
+                        size="sm"
+                        onClick={() =>
+                          setVideoCall({
+                            open: true,
+                            doctorName: lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách',
+                            info: { gioKham: `${lh.gioHen} ngày ${formatDate(lh.ngayHen)}` },
+                          })
+                        }
+                        leftIcon={<Video className="h-4 w-4" />}
+                      >
+                        Khám qua Video
+                      </MedButton>
+
+                      <MedButton
+                        variant="danger"
+                        size="sm"
+                        loading={cancelingId === lh.id}
+                        onClick={() => handleCancelAppointment(lh)}
+                        leftIcon={<XCircle className="h-4 w-4" />}
+                      >
+                        Hủy lịch hẹn
+                      </MedButton>
+                    </>
+                  )}
+                </div>
               </div>
             );
           })
         )}
       </div>
+
+      {/* Modal Video Call Telehealth cho Bệnh nhân */}
+      <TelehealthVideoModal
+        isOpen={videoCall.open}
+        onClose={() => setVideoCall({ open: false, doctorName: '', info: {} })}
+        participantName={videoCall.doctorName}
+        role="patient"
+        appointmentInfo={videoCall.info}
+      />
     </div>
   );
 }

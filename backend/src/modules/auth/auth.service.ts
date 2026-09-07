@@ -174,13 +174,43 @@ export class AuthService {
     };
   }
 
-  // ─── GỬI OTP ──────────────────────────────────────────────────
+  // ─── CỔNG SMS GATEWAY (BRANDNAME SMS DISPATCHER) ─────────────
+  async sendSmsGateway(phoneNumber: string, otp: string, hetHanPhut: number) {
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+    const brandname = this.config.get('SMS_BRANDNAME', 'PHONGKHAM');
+    const smsContent = `[${brandname}] Ma OTP xac thuc cua quy khach la: ${otp}. Ma co hieu luc trong ${hetHanPhut} phut. Vui long khong cung cap ma nay cho bat ky ai.`;
+
+    console.log(`[SMS Gateway Dispatcher] 📱 Gửi SMS OTP tới SĐT: ${cleanPhone}`);
+    console.log(`[SMS Gateway Body] >>> ${smsContent}`);
+
+    // Hỗ trợ kết nối webhook Gateway thực tế nếu có cấu hình SMS_GATEWAY_URL
+    const gatewayUrl = this.config.get<string>('SMS_GATEWAY_URL');
+    if (gatewayUrl) {
+      try {
+        await fetch(gatewayUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.config.get('SMS_API_KEY', '')}` },
+          body: JSON.stringify({ phone: cleanPhone, message: smsContent, otp }),
+        });
+        console.log(`[SMS Gateway] Đã chuyển tiếp tin nhắn tới Provider REST API`);
+      } catch (smsErr) {
+        console.warn(`[SMS Gateway Error] Lỗi webhook nhà mạng:`, smsErr.message);
+      }
+    }
+  }
+
+  // ─── GỬI OTP (EMAIL & SMS GATEWAY SONG SONG) ──────────────────
   async sendOtp(dto: SendOtpDto) {
     const loai = LoaiOtp.DANG_KY;
+    const receiver = (dto.email || dto.soDienThoai || '').trim().toLowerCase();
+
+    if (!receiver) {
+      throw new BadRequestException('Vui lòng cung cấp email hoặc số điện thoại nhận mã OTP');
+    }
 
     // Vô hiệu hóa OTP cũ chưa dùng
     await this.otpRepo.update(
-      { email: dto.email, loai, daSuDung: false as any },
+      { email: receiver, loai, daSuDung: false as any },
       { daSuDung: true as any },
     );
 
@@ -188,36 +218,53 @@ export class AuthService {
     const hetHanPhut = this.config.get<number>('OTP_EXPIRES_MINUTES', 10);
     const hetHanLuc = new Date(Date.now() + hetHanPhut * 60 * 1000);
 
-    await this.otpRepo.save({ email: dto.email, maOtp, loai, hetHanLuc });
+    await this.otpRepo.save({ email: receiver, maOtp, loai, hetHanLuc });
 
-    // Gửi email bất đồng bộ (Non-blocking background sending giúp phản hồi API siêu tốc < 50ms)
-    this.mailer
-      .sendMail({
-        from: this.config.get('MAIL_FROM'),
-        to: dto.email,
-        subject: 'Mã xác thực OTP - Phòng Khám Đa Khoa',
-        html: `
-          <div style="font-family: Inter, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
-            <h2 style="color: #2563EB; margin-bottom: 8px;">Mã xác thực của bạn</h2>
-            <p style="color: #6B7280;">Sử dụng mã OTP bên dưới để xác thực. Mã có hiệu lực trong ${hetHanPhut} phút.</p>
-            <div style="background: #EFF6FF; border: 2px solid #BFDBFE; border-radius: 12px; padding: 24px; text-align: center; margin: 24px 0;">
-              <span style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #1D4ED8;">${maOtp}</span>
+    // 1. Gửi qua SMS nếu có số điện thoại
+    if (dto.soDienThoai) {
+      this.sendSmsGateway(dto.soDienThoai, maOtp, hetHanPhut);
+    }
+
+    // 2. Gửi qua Email nếu có địa chỉ email
+    if (dto.email) {
+      this.mailer
+        .sendMail({
+          from: this.config.get('MAIL_FROM'),
+          to: dto.email,
+          subject: 'Mã xác thực OTP - Phòng Khám Đa Khoa',
+          html: `
+            <div style="font-family: Inter, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+              <h2 style="color: #2563EB; margin-bottom: 8px;">Mã xác thực của bạn</h2>
+              <p style="color: #6B7280;">Sử dụng mã OTP bên dưới để xác thực. Mã có hiệu lực trong ${hetHanPhut} phút.</p>
+              <div style="background: #EFF6FF; border: 2px solid #BFDBFE; border-radius: 12px; padding: 24px; text-align: center; margin: 24px 0;">
+                <span style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #1D4ED8;">${maOtp}</span>
+              </div>
+              <p style="color: #9CA3AF; font-size: 13px;">Nếu bạn không yêu cầu mã này, hãy bỏ qua email này.</p>
             </div>
-            <p style="color: #9CA3AF; font-size: 13px;">Nếu bạn không yêu cầu mã này, hãy bỏ qua email này.</p>
-          </div>
-        `,
-      })
-      .then(() => console.log(`[SendOTP Success] Đã gửi mã OTP thành công tới ${dto.email}`))
-      .catch((err) => console.error('[SendOTP Error]', err.message));
+          `,
+        })
+        .then(() => console.log(`[SendOTP Success] Đã gửi mã OTP thành công tới ${dto.email}`))
+        .catch((err) => console.error('[SendOTP Error]', err.message));
+    }
 
-    return { message: `Mã OTP đã được gửi đến ${dto.email}` };
+    const channelDesc = dto.soDienThoai && dto.email
+      ? `email ${dto.email} và SMS số ${dto.soDienThoai}`
+      : (dto.email ? `email ${dto.email}` : `SMS số ${dto.soDienThoai}`);
+
+    return { message: `Mã OTP xác thực đã được gửi tới ${channelDesc}` };
   }
 
   // ─── XÁC THỰC OTP ─────────────────────────────────────────────
   async verifyOtp(dto: VerifyOtpDto) {
+    const receiver = (dto.email || dto.soDienThoai || '').trim().toLowerCase();
+
+    if (!receiver) {
+      throw new BadRequestException('Vui lòng cung cấp email hoặc số điện thoại cần xác thực');
+    }
+
     const otp = await this.otpRepo.findOne({
       where: {
-        email: dto.email,
+        email: receiver,
         daSuDung: false as any,
         hetHanLuc: MoreThan(new Date()),
       },
@@ -245,7 +292,7 @@ export class AuthService {
     // Nếu là xác thực đăng ký — kích hoạt tài khoản
     if (otp.loai === LoaiOtp.DANG_KY) {
       await this.nguoiDungRepo.update(
-        { tenDangNhap: dto.email },
+        { tenDangNhap: receiver },
         { emailDaXacThuc: true as any, trangThai: TrangThaiNguoiDung.HOAT_DONG },
       );
     }

@@ -1,7 +1,8 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, Query,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query, Res,
   UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseIntPipe,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -41,6 +42,19 @@ export class QuanLyController {
   @ApiOperation({ summary: 'Xem thông số bảng dữ liệu và trạng thái sao lưu database' })
   getBackupInfo() {
     return this.quanLyService.getDatabaseBackupInfo();
+  }
+
+  @Get('export-sql-dump')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Tải xuống tệp sao lưu dữ liệu toàn diện định dạng .SQL' })
+  async exportSqlDump(@Res() res: Response) {
+    const sql = await this.quanLyService.exportSqlDump();
+    const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+    const filename = `phong_kham_backup_${timestamp}.sql`;
+
+    res.setHeader('Content-Type', 'application/sql; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(sql);
   }
 
   // ─── UC 17: DASHBOARD TỔNG QUAN BAN GIÁM ĐỐC ─────────────

@@ -8,7 +8,7 @@ import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge
 import { apiGet, apiPost, apiPatch } from '../../../services/api';
 import { formatDateTime } from '../../../utils/formatDate';
 import { TRANG_THAI_XET_NGHIEM } from '../../../utils/constants';
-import { FlaskConical, Send, ChevronRight, Search, Eye } from 'lucide-react';
+import { FlaskConical, Send, ChevronRight, Search, Eye, UploadCloud, Image, FileText, CheckCircle2, ExternalLink } from 'lucide-react';
 
 const TAB_FILTERS = [
   { key: null, label: 'Tất cả' },
@@ -141,7 +141,43 @@ function ChiDinhDetailPanel({ id }) {
     queryFn: () => apiGet(`/xet-nghiem/chi-dinh/${id}`),
   });
 
-  const [result, setResult] = useState({ giaTri: '', donVi: '', nhanXet: '' });
+  const [result, setResult] = useState({ giaTri: '', donVi: '', nhanXet: '', fileDinhKem: '' });
+  const [uploadingFile, setUploadingFile] = useState(false);
+
+  useEffect(() => {
+    if (kq) {
+      setResult({
+        giaTri: kq.giaTri || '',
+        donVi: kq.donVi || cd?.dichVu?.donViKetQua || '',
+        nhanXet: kq.nhanXet || '',
+        fileDinhKem: kq.fileDinhKem || '',
+      });
+    } else if (cd?.dichVu) {
+      setResult((prev) => ({
+        ...prev,
+        donVi: cd.dichVu.donViKetQua || '',
+        giaTri: prev.giaTri || cd.dichVu.giaTriBinhThuong || '',
+      }));
+    }
+  }, [kq, cd]);
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploadingFile(true);
+    try {
+      const res = await apiPost('/xet-nghiem/upload', formData);
+      const url = res?.data?.url || res?.url;
+      setResult((prev) => ({ ...prev, fileDinhKem: url }));
+    } catch (err) {
+      console.error('Lỗi tải file:', err);
+      alert('Không thể upload file: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setUploadingFile(false);
+    }
+  };
 
   const statusMut = useMutation({
     mutationFn: (trangThai) => apiPatch(`/xet-nghiem/chi-dinh/${id}/trang-thai`, { trangThai }),
@@ -229,7 +265,7 @@ function ChiDinhDetailPanel({ id }) {
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Giá trị</label>
                 <input
                   type="text"
-                  value={kq?.giaTri || result.giaTri}
+                  value={result.giaTri}
                   onChange={(e) => setResult((r) => ({ ...r, giaTri: e.target.value }))}
                   placeholder={cd.dichVu?.giaTriBinhThuong || 'Nhập giá trị'}
                   className="w-full rounded-lg border border-gray-300 bg-white py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -239,24 +275,82 @@ function ChiDinhDetailPanel({ id }) {
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Đơn vị</label>
                 <input
                   type="text"
-                  value={kq?.donVi || result.donVi}
+                  value={result.donVi}
                   onChange={(e) => setResult((r) => ({ ...r, donVi: e.target.value }))}
                   placeholder={cd.dichVu?.donViKetQua || ''}
                   className="w-full rounded-lg border border-gray-300 bg-white py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
               </div>
             </div>
+
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Nhận xét</label>
               <textarea
-                rows={3}
-                value={kq?.nhanXet || result.nhanXet}
+                rows={2}
+                value={result.nhanXet}
                 onChange={(e) => setResult((r) => ({ ...r, nhanXet: e.target.value }))}
                 placeholder="Nhận xét kết quả xét nghiệm..."
                 className="w-full rounded-lg border border-gray-300 bg-white py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
             </div>
-            <div className="flex justify-end gap-3">
+
+            {/* Upload File / Ảnh kết quả */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Image className="h-3.5 w-3.5 text-primary-600" />
+                  Ảnh / File kết quả xét nghiệm (X-Quang, siêu âm, phiếu in)
+                </span>
+                {uploadingFile && <span className="text-[11px] text-primary-600 animate-pulse">Đang tải file...</span>}
+              </label>
+
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors shadow-2xs">
+                  <UploadCloud className="h-4 w-4 text-primary-600" />
+                  <span>{uploadingFile ? 'Đang tải...' : 'Chọn file ảnh / PDF'}</span>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={handleFileUpload}
+                    disabled={uploadingFile}
+                    className="hidden"
+                  />
+                </label>
+                {result.fileDinhKem && (
+                  <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Đã đính kèm
+                  </span>
+                )}
+              </div>
+
+              {/* Preview ảnh / link */}
+              {result.fileDinhKem && (
+                <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    {result.fileDinhKem.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
+                      <img
+                        src={result.fileDinhKem.startsWith('http') ? result.fileDinhKem : `http://localhost:5000${result.fileDinhKem}`}
+                        alt="Ảnh kết quả"
+                        className="h-10 w-10 object-cover rounded-lg border shrink-0"
+                      />
+                    ) : (
+                      <FileText className="h-8 w-8 text-primary-600 shrink-0" />
+                    )}
+                    <span className="text-xs text-gray-600 font-mono truncate">{result.fileDinhKem}</span>
+                  </div>
+                  <a
+                    href={result.fileDinhKem.startsWith('http') ? result.fileDinhKem : `http://localhost:5000${result.fileDinhKem}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-1.5 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg flex items-center gap-1 text-xs font-semibold"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" /> Xem
+                  </a>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
               <MedButton variant="primary" type="submit" loading={resultMut.isLoading}>
                 Lưu kết quả
               </MedButton>

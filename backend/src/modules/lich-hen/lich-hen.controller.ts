@@ -74,5 +74,12 @@ export class LichHenController {
   ) {
     return this.service.capNhatTrangThai(id, dto);
   }
+
+  @Post('nhac-lich-tu-dong')
+  @Roles('tiep_tan', 'quan_tri_vien')
+  @ApiOperation({ summary: 'Kích hoạt quét và gửi email nhắc lịch hẹn tự động trong 24h tới' })
+  guiNhacLichTuDong() {
+    return this.service.guiNhacLichTuDong();
+  }
 }
 

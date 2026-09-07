@@ -83,5 +83,12 @@ export class NhaThuocController {
   ) {
     return this.nhaThuocService.getThongKeNhaThuoc({ khoangThoiGian, tuNgay, denNgay, trangThai, duongDung });
   }
+
+  @Get('du-bao-nhu-cau')
+  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
+  @ApiOperation({ summary: 'Dự báo nhu cầu thuốc ML (Holt-Winters) và cảnh báo điểm đặt hàng lại' })
+  getDuBaoNhuCauThuoc(@Query('horizonDays') horizonDays?: number) {
+    return this.nhaThuocService.getDuBaoNhuCauThuoc(horizonDays ? Number(horizonDays) : 14);
+  }
 }
 

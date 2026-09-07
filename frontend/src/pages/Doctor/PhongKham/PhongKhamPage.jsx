@@ -10,8 +10,10 @@ import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
 import {
   Stethoscope, AlertTriangle, FileText, ClipboardList, FlaskConical,
-  CheckCircle2, ChevronRight, Activity, Plus, X, HeartPulse, Pill, Calendar, Clock, Search, Sparkles
+  CheckCircle2, ChevronRight, Activity, Plus, X, HeartPulse, Pill, Calendar, Clock, Search, Sparkles, Printer
 } from 'lucide-react';
+import InPhieuKhamModal from '../../../components/Print/InPhieuKhamModal';
+import InDonThuocModal from '../../../components/Print/InDonThuocModal';
 
 
 function useHangDoi() {
@@ -176,6 +178,8 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
   const [showChiDinhModal, setShowChiDinhModal] = useState(false);
   const [showDonThuocModal, setShowDonThuocModal] = useState(false);
   const [showTaiKhamModal, setShowTaiKhamModal] = useState(false);
+  const [showInPhieuKham, setShowInPhieuKham] = useState(false);
+  const [showInDonThuoc, setShowInDonThuoc] = useState(false);
 
   const [form, setForm] = useState({
     trieuChung: '', chanDoanSoBo: '', chanDoanXacDinh: '',
@@ -219,6 +223,26 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
     queryFn: () => apiGet(`/tiep-nhan/${luot.id}/sinh-hieu`),
   });
   const sinhHieu = shData?.data;
+
+  // Lấy đơn thuốc để in
+  const { data: donThuocPrintData } = useQuery({
+    queryKey: ['don-thuoc-benh-an', benhAnId],
+    queryFn: () => apiGet(`/nha-thuoc/don-thuoc?benhAnKhamId=${benhAnId}`),
+    enabled: !!benhAnId,
+  });
+  const currentDonThuoc = donThuocPrintData?.data?.[0];
+
+  // Lấy danh sách xét nghiệm để in
+  const { data: xnPrintData } = useQuery({
+    queryKey: ['xn-benh-an', benhAnId],
+    queryFn: () => apiGet(`/xet-nghiem/benh-an-kham/${benhAnId}`),
+    enabled: !!benhAnId,
+  });
+  const currentDsXn = (xnPrintData?.data || []).map((x) => ({
+    tenDichVu: x.chiDinh?.dichVu?.tenDichVu,
+    ketQua: x.ketQua ? `${x.ketQua.giaTri} ${x.ketQua.donVi || ''}` : 'Chờ KQ',
+    ghiChuKetQua: x.ketQua?.nhanXet || '',
+  }));
 
   // Tạo phiếu khám
   const createMut = useMutation({
@@ -376,6 +400,28 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
               onClick={() => setShowTaiKhamModal(true)}
             >
               + Hẹn tái khám
+            </MedButton>
+            <MedButton
+              variant="secondary"
+              size="sm"
+              leftIcon={<Printer className="h-4 w-4 text-blue-600" />}
+              onClick={() => setShowInPhieuKham(true)}
+            >
+              In Phiếu Khám
+            </MedButton>
+            <MedButton
+              variant="secondary"
+              size="sm"
+              leftIcon={<Printer className="h-4 w-4 text-emerald-600" />}
+              onClick={() => {
+                if (!currentDonThuoc) {
+                  alert('Chưa có đơn thuốc nào được lập cho lượt khám này. Vui lòng bấm "Kê đơn thuốc" trước.');
+                  return;
+                }
+                setShowInDonThuoc(true);
+              }}
+            >
+              In Đơn Thuốc
             </MedButton>
           </div>
         </div>
@@ -617,6 +663,27 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
           }}
         />
       )}
+
+      {/* Modal In Phiếu Khám Bệnh Chuẩn Bộ Y Tế */}
+      <InPhieuKhamModal
+        isOpen={showInPhieuKham}
+        onClose={() => setShowInPhieuKham(false)}
+        benhAn={bakData?.data || { ...form, maLuotKham: luot.maLuotKham }}
+        benhNhan={bn}
+        bacSi={luot.bacSi || { nhanVien: { hoTen: 'BS. Chuyên Khoa I' } }}
+        sinhHieu={sinhHieu}
+        dsXetNghiem={currentDsXn}
+      />
+
+      {/* Modal In Đơn Thuốc Chuẩn Bộ Y Tế */}
+      <InDonThuocModal
+        isOpen={showInDonThuoc}
+        onClose={() => setShowInDonThuoc(false)}
+        donThuoc={currentDonThuoc}
+        benhNhan={bn}
+        bacSi={luot.bacSi || { nhanVien: { hoTen: 'BS. Kê Đơn' } }}
+        chanDoan={form.chanDoanXacDinh || bakData?.data?.chanDoanXacDinh || 'Viêm họng cấp tính'}
+      />
     </div>
   );
 }
@@ -1316,6 +1383,32 @@ function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
                     </p>
                     {ketQua.nhanXet && (
                       <p className="text-xs text-emerald-800 font-medium">Nhận xét: {ketQua.nhanXet}</p>
+                    )}
+                    {ketQua.fileDinhKem && (
+                      <div className="mt-2 pt-2 border-t border-emerald-200/60 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          {ketQua.fileDinhKem.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
+                            <img
+                              src={ketQua.fileDinhKem.startsWith('http') ? ketQua.fileDinhKem : `http://localhost:5000${ketQua.fileDinhKem}`}
+                              alt="Hình ảnh kết quả"
+                              className="h-12 w-12 object-cover rounded-lg border border-emerald-300 shadow-2xs cursor-pointer hover:scale-105 transition-transform"
+                              onClick={() => window.open(ketQua.fileDinhKem.startsWith('http') ? ketQua.fileDinhKem : `http://localhost:5000${ketQua.fileDinhKem}`, '_blank')}
+                            />
+                          ) : null}
+                          <div>
+                            <p className="text-xs font-bold text-emerald-900">📎 Có tệp đính kèm kết quả (X-Quang / Siêu âm / PDF)</p>
+                            <span className="text-[10px] text-emerald-700 font-mono truncate max-w-xs block">{ketQua.fileDinhKem}</span>
+                          </div>
+                        </div>
+                        <a
+                          href={ketQua.fileDinhKem.startsWith('http') ? ketQua.fileDinhKem : `http://localhost:5000${ketQua.fileDinhKem}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs"
+                        >
+                          Xem tệp lớn ↗
+                        </a>
+                      </div>
                     )}
                   </div>
                 ) : (

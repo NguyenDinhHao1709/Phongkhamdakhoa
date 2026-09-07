@@ -5,6 +5,7 @@ import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { apiGet, apiPost } from '../../../services/api';
 import { formatDateTime } from '../../../utils/formatDate';
+import TelehealthVideoModal from '../../../components/Telehealth/TelehealthVideoModal';
 import {
   Video, MessageSquare, Send, Calendar, Clock, User,
   FileText, Pill, CheckCircle2, ShieldCheck
@@ -12,6 +13,7 @@ import {
 
 export default function KhamTrucTuyenPage() {
   const [selectedLich, setSelectedLich] = useState(null);
+  const [showVideoModal, setShowVideoModal] = useState(false);
   const [messages, setMessages] = useState([
     { sender: 'benh_nhan', text: 'Chào bác sĩ, dạo này tôi hay bị đau đầu về chiều và hoa mắt.', time: '09:00' },
     { sender: 'bac_si', text: 'Chào anh/chị. Triệu chứng này xuất hiện bao lâu rồi? Anh/chị có bị đo huyết áp gần đây không?', time: '09:02' },
@@ -132,7 +134,12 @@ export default function KhamTrucTuyenPage() {
                 >
                   + Đặt lịch khám trực tiếp hộ BN
                 </MedButton>
-                <MedButton variant="primary" size="sm" leftIcon={<Video className="h-4 w-4" />}>
+                <MedButton
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Video className="h-4 w-4" />}
+                  onClick={() => setShowVideoModal(true)}
+                >
                   Mở Video Call
                 </MedButton>
               </div>
@@ -229,6 +236,15 @@ export default function KhamTrucTuyenPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Video Call Telehealth */}
+      <TelehealthVideoModal
+        isOpen={showVideoModal}
+        onClose={() => setShowVideoModal(false)}
+        participantName={activeLich?.benhNhan?.hoTen || 'Bệnh nhân'}
+        role="doctor"
+        appointmentInfo={activeLich || {}}
+      />
 
       {/* Modal Đặt lịch khám trực tiếp hộ bệnh nhân */}
       {showDatLichModal && activeLich && (

@@ -1,8 +1,11 @@
 import {
   Controller, Get, Post, Patch, Body, Param, Query,
-  ParseIntPipe, UseGuards,
+  ParseIntPipe, UseGuards, UseInterceptors, UploadedFile, BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 import {
   XetNghiemService,
   TaoChiDinhDto, CapNhatTrangThaiChiDinhDto,
@@ -19,6 +22,40 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @Controller('xet-nghiem')
 export class XetNghiemController {
   constructor(private readonly service: XetNghiemService) {}
+
+  // ─── UPLOAD FILE / ẢNH KẾT QUẢ XÉT NGHIỆM ─────────────────
+  @Post('upload')
+  @Roles('ky_thuat_vien', 'bac_si', 'quan_tri_vien')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads',
+        filename: (req, file, callback) => {
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = extname(file.originalname);
+          callback(null, `kqxn-${uniqueSuffix}${ext}`);
+        },
+      }),
+      limits: { fileSize: 15 * 1024 * 1024 },
+    }),
+  )
+  @ApiOperation({ summary: 'Upload file / ảnh kết quả xét nghiệm (X-Quang, siêu âm, tài liệu...)' })
+  uploadFileKQXN(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('Vui lòng chọn file ảnh hoặc tài liệu kết quả');
+    }
+    const fileUrl = `/uploads/${file.filename}`;
+    return {
+      message: 'Upload file kết quả thành công',
+      data: {
+        filename: file.filename,
+        originalname: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+        url: fileUrl,
+      },
+    };
+  }
 
   // ─── DANH MỤC DỊCH VỤ ─────────────────────────────────────
   @Get('dich-vu')

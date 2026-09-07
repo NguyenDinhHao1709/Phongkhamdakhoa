@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, In, Like } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -711,25 +711,50 @@ export class QuanLyService {
     }
 
     for (const item of body) {
-      const existing = await this.lichLamViecRepo.findOne({
+      const nv = await this.nhanVienRepo.findOne({ where: { id: item.nhanVienId } });
+      const caMoi = await this.caLamViecRepo.findOne({ where: { id: item.caLamViecId } });
+      const nvTen = nv ? nv.hoTen : `Nhân viên #${item.nhanVienId}`;
+      const caTen = caMoi ? caMoi.tenCa : `Ca #${item.caLamViecId}`;
+
+      // 1. Kiểm tra trùng đúng ca làm việc trong ngày
+      const duplicateShift = await this.lichLamViecRepo.findOne({
         where: {
           nhanVienId: item.nhanVienId,
           caLamViecId: item.caLamViecId,
           ngayLam: item.ngayLam,
         },
       });
-      if (existing) {
-        existing.ghiChu = item.ghiChu || existing.ghiChu;
-        await this.lichLamViecRepo.save(existing);
-      } else {
-        const newLich = this.lichLamViecRepo.create({
-          nhanVienId: item.nhanVienId,
-          caLamViecId: item.caLamViecId,
-          ngayLam: item.ngayLam,
-          ghiChu: item.ghiChu || null,
+
+      if (duplicateShift) {
+        throw new ConflictException({
+          code: 'TRUNG_CA_LAM_VIEC',
+          message: `Xung đột lịch trực: Nhân viên "${nvTen}" đã được phân công "${caTen}" trong ngày ${item.ngayLam}. Vui lòng không xếp trùng ca!`,
         });
-        await this.lichLamViecRepo.save(newLich);
       }
+
+      // 2. Kiểm tra giới hạn tối đa 2 ca/ngày để đảm bảo sức khỏe y tế
+      const existingShifts = await this.lichLamViecRepo.find({
+        where: {
+          nhanVienId: item.nhanVienId,
+          ngayLam: item.ngayLam,
+        },
+      });
+
+      if (existingShifts.length >= 2) {
+        throw new BadRequestException({
+          code: 'VUOT_QUA_SO_CA_TOI_DA',
+          message: `Cảnh báo quá tải: Nhân viên "${nvTen}" đã có ${existingShifts.length} ca trực trong ngày ${item.ngayLam}. Quy chế y tế giới hạn tối đa 2 ca/ngày để đảm bảo an toàn khám chữa bệnh.`,
+        });
+      }
+
+      // 3. Tạo mới ca làm việc hợp lệ
+      const newLich = this.lichLamViecRepo.create({
+        nhanVienId: item.nhanVienId,
+        caLamViecId: item.caLamViecId,
+        ngayLam: item.ngayLam,
+        ghiChu: item.ghiChu || null,
+      });
+      await this.lichLamViecRepo.save(newLich);
     }
 
     return {
@@ -845,4 +870,69 @@ export class QuanLyService {
       tables,
     };
   }
+
+  // ─── ADMIN: XUẤT BẢN SAO LƯU .SQL TOÀN DIỆN ───────────────────
+  async exportSqlDump(): Promise<string> {
+    const tableList: any[] = await this.nguoiDungRepo.query(`
+      SELECT table_name AS tableName
+      FROM information_schema.tables
+      WHERE table_schema = DATABASE()
+      ORDER BY table_name ASC
+    `);
+
+    let sql = `-- ========================================================\n`;
+    sql += `-- HỆ THỐNG PHÒNG KHÁM ĐA KHOA - BẢN SAO LƯU CƠ SỞ DỮ LIỆU\n`;
+    sql += `-- Thời gian tạo: ${new Date().toLocaleString('vi-VN')}\n`;
+    sql += `-- Tổng số bảng: ${tableList.length}\n`;
+    sql += `-- ========================================================\n\n`;
+    sql += `SET NAMES utf8mb4;\n`;
+    sql += `SET FOREIGN_KEY_CHECKS = 0;\n\n`;
+
+    for (const { tableName } of tableList) {
+      try {
+        // 1. DDL Create Table
+        const createResult: any[] = await this.nguoiDungRepo.query(`SHOW CREATE TABLE \`${tableName}\``);
+        const createSql = createResult[0]?.['Create Table'] || '';
+
+        sql += `-- --------------------------------------------------------\n`;
+        sql += `-- Cấu trúc bảng \`${tableName}\`\n`;
+        sql += `-- --------------------------------------------------------\n`;
+        sql += `DROP TABLE IF EXISTS \`${tableName}\`;\n`;
+        sql += `${createSql};\n\n`;
+
+        // 2. Data Rows
+        const rows: any[] = await this.nguoiDungRepo.query(`SELECT * FROM \`${tableName}\``);
+        if (rows && rows.length > 0) {
+          sql += `-- Dữ liệu bảng \`${tableName}\` (${rows.length} dòng)\n`;
+          const keys = Object.keys(rows[0]);
+          const colsStr = keys.map((k) => `\`${k}\``).join(', ');
+
+          for (const row of rows) {
+            const valuesStr = keys
+              .map((k) => {
+                const val = row[k];
+                if (val === null || val === undefined) return 'NULL';
+                if (typeof val === 'number') return val;
+                if (typeof val === 'boolean') return val ? 1 : 0;
+                if (val instanceof Date) return `'${val.toISOString().slice(0, 19).replace('T', ' ')}'`;
+                const escaped = String(val).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                return `'${escaped}'`;
+              })
+              .join(', ');
+
+            sql += `INSERT INTO \`${tableName}\` (${colsStr}) VALUES (${valuesStr});\n`;
+          }
+          sql += `\n`;
+        }
+      } catch (tableErr) {
+        sql += `-- Lỗi khi sao lưu bảng \`${tableName}\`: ${tableErr.message}\n\n`;
+      }
+    }
+
+    sql += `SET FOREIGN_KEY_CHECKS = 1;\n`;
+    sql += `-- Hoàn tất bản sao lưu CSDL phong_kham lúc ${new Date().toLocaleString('vi-VN')}\n`;
+
+    return sql;
+  }
 }
+

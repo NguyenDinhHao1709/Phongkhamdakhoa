@@ -4,6 +4,7 @@ import {
   CreateDateColumn,
 } from 'typeorm';
 import { BenhNhan } from '../../benh-nhan/entities/benh-nhan.entity';
+import { BacSi } from '../../nhan-vien/entities/bac-si.entity';
 
 export enum TrangThaiHoSo {
   HOAT_DONG = 'hoat_dong',
@@ -112,5 +113,9 @@ export class BenhAnKham {
   @ManyToOne(() => HoSoBenhAn, (hsba) => hsba.dsBenhAnKham)
   @JoinColumn({ name: 'ho_so_benh_an_id' })
   hoSoBenhAn: HoSoBenhAn;
+
+  @ManyToOne(() => BacSi)
+  @JoinColumn({ name: 'bac_si_id' })
+  bacSi: BacSi;
 }
 

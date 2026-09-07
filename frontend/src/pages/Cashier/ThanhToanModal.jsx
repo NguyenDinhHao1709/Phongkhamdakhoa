@@ -134,17 +134,46 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
                 <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Phương thức thanh toán</label>
                 <select
                   value={phuongThuc}
-                  onChange={(e) => setPhuongThuc(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPhuongThuc(val);
+                    if (val === 'bao_hiem') {
+                      setSoTienGiam(Math.round(tongTien * 0.8));
+                    }
+                  }}
                   disabled={hoaDon?.trangThai === 'da_thanh_toan'}
-                  className="w-full rounded-lg border border-gray-300 p-2.5 text-sm bg-white focus:ring-2 focus:ring-primary-500"
+                  className="w-full rounded-lg border border-gray-300 p-2.5 text-sm bg-white focus:ring-2 focus:ring-primary-500 font-medium"
                 >
                   <option value="tien_mat">💵 Tiền mặt</option>
+                  <option value="bao_hiem">🏥 Bảo hiểm Y tế (BHYT - Hưởng 80%)</option>
                   <option value="chuyen_khoan">🏦 Chuyển khoản ngân hàng</option>
-                  <option value="the">💳 Thẻ ATM / QTM</option>
+                  <option value="the">💳 Thẻ ATM / POS</option>
                   <option value="vnpay">📲 VNPay QR</option>
                   <option value="momo">📱 Ví MoMo</option>
                 </select>
               </div>
+
+              {/* BHYT Quick Toggle Button */}
+              {hoaDon?.trangThai !== 'da_thanh_toan' && (
+                <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                      🏥 Chế độ BHYT (Đồng chi trả 80%)
+                    </p>
+                    <p className="text-[11px] text-blue-700 mt-0.5">BHYT thanh toán 80%, người bệnh tự trả 20%</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPhuongThuc('bao_hiem');
+                      setSoTienGiam(Math.round(tongTien * 0.8));
+                    }}
+                    className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                  >
+                    Áp dụng 80%
+                  </button>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Ghi chú thanh toán</label>
@@ -153,7 +182,7 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
                   value={ghiChu}
                   onChange={(e) => setGhiChu(e.target.value)}
                   disabled={hoaDon?.trangThai === 'da_thanh_toan'}
-                  placeholder="Ghi chú thêm (nếu có)..."
+                  placeholder="Ghi chú số thẻ BHYT hoặc mã giao dịch..."
                   className="w-full rounded-lg border border-gray-300 p-2.5 text-sm"
                 />
               </div>
@@ -161,23 +190,31 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
 
             <div className="rounded-xl bg-gray-50 p-4 border border-gray-200 space-y-2.5">
               <div className="flex justify-between text-sm text-gray-600">
-                <span>Tổng tiền dịch vụ:</span>
-                <span className="font-medium">{formatCurrency(tongTien)}</span>
+                <span>Tổng viện phí dịch vụ:</span>
+                <span className="font-semibold text-gray-900">{formatCurrency(tongTien)}</span>
               </div>
-              <div className="flex items-center justify-between text-sm text-gray-600">
-                <span>Giảm giá / Chiết khấu:</span>
+              <div className="flex items-center justify-between text-sm text-emerald-700">
+                <span>Khấu trừ BHYT / Giảm giá:</span>
                 <input
                   type="number"
                   min="0"
                   value={soTienGiam}
-                  onChange={(e) => setSoTienGiam(e.target.value)}
+                  onChange={(e) => setSoTienGiam(Number(e.target.value))}
                   disabled={hoaDon?.trangThai === 'da_thanh_toan'}
-                  className="w-28 rounded border border-gray-300 p-1 text-right text-sm font-semibold"
+                  className="w-28 rounded border border-gray-300 p-1 text-right text-sm font-bold text-emerald-700 bg-white"
                 />
               </div>
+              {Number(soTienGiam) > 0 && (
+                <div className="text-[11px] text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
+                  ✓ BHYT/Ưu đãi chi trả: {((Number(soTienGiam) / (tongTien || 1)) * 100).toFixed(0)}%
+                </div>
+              )}
               <div className="border-t pt-2 flex justify-between items-center">
-                <span className="text-base font-bold text-gray-900">Thực thu:</span>
-                <span className="text-xl font-bold text-primary-600">{formatCurrency(thucThu)}</span>
+                <div>
+                  <span className="text-base font-bold text-gray-900 block">Bệnh nhân thanh toán:</span>
+                  <span className="text-[11px] text-gray-500 font-medium">(Thực thu viện phí)</span>
+                </div>
+                <span className="text-xl font-black text-primary-600">{formatCurrency(thucThu)}</span>
               </div>
             </div>
           </div>

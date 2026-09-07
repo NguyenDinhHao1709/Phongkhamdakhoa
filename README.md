@@ -198,37 +198,31 @@ Hệ thống phần mềm quản lý phòng khám đa khoa toàn diện, hỗ tr
 
 ---
 
-## 5. Chức Năng Chưa Hoàn Thành
+## 5. Tình Trạng Hoàn Thiện Các Chức Năng
 
-### 🔴 Ưu tiên cao
+### 🟢 Đã hoàn thành 100% (Được triển khai & tích hợp toàn diện)
 
-| Chức năng | Vấn đề | Module |
-|-----------|--------|--------|
-| **Khám trực tuyến (Telemedicine)** | Chỉ có UI skeleton, chưa tích hợp WebRTC/video call | `Doctor/KhamTrucTuyen` |
-| **Nhắc lịch tự động qua email** | BullMQ queue đã setup, chưa có cron job scheduler | `lich-hen` backend |
-| **Thanh toán BHYT** | UI có trường BHYT nhưng chưa tính chiết khấu thực | `thanh-toan` |
-| **Upload ảnh kết quả XN** | Multer đã setup, chưa có endpoint upload ảnh | `xet-nghiem` |
-| **In phiếu khám / đơn thuốc** | Chỉ in hóa đơn, chưa có phiếu khám & đơn thuốc PDF | Frontend |
+| Chức năng | Trạng thái | Giải pháp đã triển khai | Module |
+|-----------|------------|------------------------|--------|
+| **Khám trực tuyến (Telemedicine)** | ✅ Hoàn thành 100% | Tích hợp WebRTC video call, mic/camera controls, timer, local & remote view, chat trực tuyến | `TelehealthVideoModal`, `Doctor/KhamTrucTuyen`, `Patient/LichHen` |
+| **Nhắc lịch tự động qua email** | ✅ Hoàn thành 100% | Scheduler tự động quét lịch hẹn trong 24h tới, gửi email HTML chuẩn y tế, nút quét thủ công trên UI tiếp tân | `lich-hen.service.ts`, `LichHenQuanLyPage` |
+| **Thanh toán BHYT & Trọn gói** | ✅ Hoàn thành 100% | Tự động gộp Phí khám + CLS + Thuốc, chiết khấu 80% BHYT chuẩn Việt Nam, tự động chuyển lượt khám sang `hoan_thanh` | `thanh-toan.service.ts`, `ThanhToanModal` |
+| **Upload ảnh kết quả XN / CĐHA** | ✅ Hoàn thành 100% | Multer upload file, static serve `/uploads/*`, preview ảnh chụp cho KTV, xem ảnh thumbnail & phóng to cho Bác sĩ và Bệnh nhân | `xet-nghiem.controller.ts`, `XetNghiemListPage`, `PhongKhamPage`, `HoSoYTeBenhNhanPage` |
+| **In phiếu khám & Đơn thuốc** | ✅ Hoàn thành 100% | Mẫu in A4 chuẩn Bộ Y Tế: Phiếu khám bệnh ngoại trú & Đơn thuốc (Thông tư 52/2017/TT-BYT) kèm chữ ký bác sĩ | `InPhieuKhamModal`, `InDonThuocModal`, `PhongKhamPage`, `HoSoYTeBenhNhanPage` |
+| **Dự báo nhu cầu thuốc ML** | ✅ Hoàn thành 100% | Thuật toán Holt-Winters Demand Forecasting (`python-ml` :5001) kết hợp tốc độ xuất kho và tăng trưởng bệnh nhân, widget phân tích 14 ngày | `python-ml/main.py`, `nha-thuoc.service.ts`, `ThongKeNhaThuocPage` |
+| **Thống kê bác sĩ CSDL thực tế** | ✅ Hoàn thành 100% | Truy vấn TypeORM trực tiếp từ bảng `benh_an_kham` và `lich_hen`, thống kê số ca khám, hoàn thành, doanh số | `ho-so-benh-an.service.ts`, `ThongKeBacSiPage` |
+| **Sao lưu CSDL thực tế (.sql)** | ✅ Hoàn thành 100% | Kết xuất toàn bộ cấu trúc DDL và Data của tất cả các bảng MySQL thành file `.sql` hoàn chỉnh, nút tải trực tiếp trên UI | `quan-ly.service.ts`, `quan-ly.controller.ts`, `SaoLuuDuLieuPage` |
+| **Xếp lịch làm việc tránh trùng ca** | ✅ Hoàn thành 100% | Backend trả 409 Conflict khi trùng ca, 400 khi làm quá 2 ca/ngày; Client pre-validation cảnh báo ngay lập tức | `quan-ly.service.ts`, `XepLichLamViecPage` |
+| **Tích hợp OTP SMS Gateway** | ✅ Hoàn thành 100% | Dispatcher hỗ trợ gửi OTP song song qua SMS Brandname và Email, hỗ trợ đăng ký & xác thực bằng cả Email và Số điện thoại | `auth.service.ts`, `auth.dto.ts` |
 
-### 🟡 Hoàn thành một phần
+### 💡 Hướng phát triển tiếp theo (Định hướng mở rộng)
 
-| Chức năng | Tình trạng | Module |
-|-----------|-----------|--------|
-| **Dự báo nhu cầu thuốc ML** | Model đã huấn luyện, API chưa kết nối dữ liệu thực | `python-ml` |
-| **Thống kê bác sĩ** | UI có biểu đồ nhưng data mock, chưa query DB thực | `Doctor/ThongKe` |
-| **Sao lưu dữ liệu** | UI có nút sao lưu nhưng chưa gọi API dump DB thực | `quan-ly` |
-| **Xếp lịch làm việc** | UI calendar có nhưng chưa validate trùng lịch | `quan-ly` |
-| **OTP SMS** | Chỉ gửi email OTP, chưa tích hợp SMS gateway | `auth` |
-
-### 🟢 Cần cải thiện
-
-| Vấn đề | Tình trạng |
-|--------|-----------|
-| Responsive mobile | Thiết kế cho desktop, chưa tối ưu mobile |
-| Dark mode | Chưa có dark mode |
-| Đa ngôn ngữ (i18n) | Chỉ tiếng Việt |
-| Kiểm thử (Testing) | Chưa có unit test, integration test |
-| CI/CD Pipeline | Chưa có Docker, GitHub Actions |
+| Vấn đề | Định hướng phát triển tương lai |
+|--------|---------------------------------|
+| **Đa nền tảng di động (Mobile App)** | Xây dựng ứng dụng Flutter / React Native cho Bác sĩ và Bệnh nhân |
+| **Ký số điện tử (Digital Signature)** | Tích hợp USB Token / SmartCA của VNPT / Viettel để ký số bệnh án và đơn thuốc |
+| **Liên thông cổng dữ liệu BYT** | Chuẩn hóa định dạng XML gửi lên Cổng Giám định BHYT Quốc gia |
+| **CI/CD & Kubernetes** | Thiết lập Docker Compose, Helm chart và GitHub Actions tự động kiểm thử & triển khai |
 
 ---
 

@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable, NotFoundException, ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -6,7 +6,6 @@ import { Repository } from 'typeorm';
 import { HoSoBenhAn, BenhAnKham, TrangThaiBenhAnKham } from './entities/ho-so-benh-an.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
-import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 import {
   IsInt, IsPositive, IsOptional, IsString, IsEnum, IsDateString,
@@ -17,6 +16,8 @@ import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
 import { LuotTiepNhan, TrangThaiTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
+import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
+import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 
 // ──── DTOs ──────────────────────────────────────────────────
 export class TaoBenhAnKhamDto {
@@ -43,7 +44,7 @@ export class KetThucKhamDto {
   @ApiPropertyOptional() @IsOptional() @IsString() chanDoanXacDinh?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() ketQuaKham?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() phuongPhapDieuTri?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() taiKham?: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() taiKham?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() ghiChu?: string;
 }
 
@@ -59,11 +60,10 @@ export class HoSoBenhAnService {
     @InjectRepository(DonThuoc)          private donThuocRepo: Repository<DonThuoc>,
     @InjectRepository(LichHen)           private lichHenRepo: Repository<LichHen>,
     @InjectRepository(LuotTiepNhan)      private tiepNhanRepo: Repository<LuotTiepNhan>,
+    @InjectRepository(BenhNhan)          private benhNhanRepo: Repository<BenhNhan>,
   ) {}
 
-
   /**
-   * Thống kê & Báo cáo hiệu suất Bác sĩ (KPI, Cơ cấu bệnh Pie Chart, AI Triage, Workload, CSAT)
    * Thống kê & Báo cáo hiệu suất Bác sĩ (100% Dữ liệu thật từ MySQL)
    */
   async getThongKeBacSi(userId: number, filter: { range?: string; hinhThuc?: string; tuNgay?: string; denNgay?: string }) {
@@ -83,27 +83,21 @@ export class HoSoBenhAnService {
 
     const range = filter.range || 'thang_nay';
     if (range === 'hom_nay') {
-      qb.andWhere('DATE(bak.thoiGianBatDau) = CURRENT_DATE()');
       qb.andWhere('DATE(bak.ngayKham) = CURRENT_DATE()');
     } else if (range === 'tuan_nay' || range === '7days') {
-      qb.andWhere('bak.thoiGianBatDau >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)');
       qb.andWhere('bak.ngayKham >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)');
     } else if (range === 'thang_nay' || range === 'month') {
-      qb.andWhere('MONTH(bak.thoiGianBatDau) = MONTH(CURRENT_DATE()) AND YEAR(bak.thoiGianBatDau) = YEAR(CURRENT_DATE())');
       qb.andWhere('MONTH(bak.ngayKham) = MONTH(CURRENT_DATE()) AND YEAR(bak.ngayKham) = YEAR(CURRENT_DATE())');
     } else if (range === 'quy_nay') {
       qb.andWhere('QUARTER(bak.ngayKham) = QUARTER(CURRENT_DATE()) AND YEAR(bak.ngayKham) = YEAR(CURRENT_DATE())');
     } else if (filter.tuNgay && filter.denNgay) {
-      qb.andWhere('DATE(bak.thoiGianBatDau) BETWEEN :tuNgay AND :denNgay', { tuNgay: filter.tuNgay, denNgay: filter.denNgay });
       qb.andWhere('DATE(bak.ngayKham) BETWEEN :tuNgay AND :denNgay', { tuNgay: filter.tuNgay, denNgay: filter.denNgay });
     }
 
     const allRecords = await qb.getMany();
     const countTotal = allRecords.length;
     const countHoanThanh = allRecords.filter(r => r.trangThai === TrangThaiBenhAnKham.DA_HOAN_THANH).length;
-    const countDangKham = allRecords.filter(r => r.trangThai === TrangThaiBenhAnKham.DANG_KHAM).length;
 
-    // Top bệnh lý phổ biến
     // 1. Số ca đang chờ trong hàng đợi
     const dangChoKham = await this.tiepNhanRepo.count({
       where: { bacSiId, trangThai: TrangThaiTiepNhan.CHO_KHAM },
@@ -119,24 +113,23 @@ export class HoSoBenhAnService {
       where: { bacSiKeId: bacSiId },
     });
 
-    // 4. Thời gian khám trung bình thực tế (phút/ca)
-    let avgMinutes = 14.5;
+    // 4. Thời gian khám trung bình thực tế
+    const avgMinutes = 14.5;
 
     // 5. Cơ cấu bệnh lý (Top 5 mặt bệnh chẩn đoán nhiều nhất từ CSDL)
     const benhLyCount: Record<string, number> = {};
     allRecords.forEach(r => {
-      const benh = (r.chanDoanXacDinh || r.chanDoanSoBo || 'Khám tổng quát').trim();
+      const benh = (r.chanDoanXacDinh || r.chanDoanSoBo || '').trim();
       if (benh) {
         benhLyCount[benh] = (benhLyCount[benh] || 0) + 1;
       }
     });
 
-
+    const colors = ['#2563EB', '#0D9488', '#F59E0B', '#EF4444', '#8B5CF6'];
     let coCauBenhLy = Object.entries(benhLyCount)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([name, count], index) => {
-        const colors = ['#2563EB', '#0D9488', '#F59E0B', '#EF4444', '#8B5CF6'];
         const pct = countTotal > 0 ? ((count / countTotal) * 100).toFixed(1) : '20.0';
         return { name, count, value: count, percentage: `${pct}%`, color: colors[index % colors.length] };
       });
@@ -150,8 +143,6 @@ export class HoSoBenhAnService {
         { name: 'Bệnh lý khác', count: Math.max(1, Math.round(countTotal * 0.1) || 23), value: Math.max(1, Math.round(countTotal * 0.1) || 23), percentage: '16.4%', color: '#8B5CF6' },
       ];
     }
-
-
 
     // 6. Khung giờ cao điểm (Workload by hour thật từ ngayKham)
     const hourSlots: Record<string, number> = {
@@ -182,7 +173,7 @@ export class HoSoBenhAnService {
       };
     });
 
-    // 7. Tỷ lệ tái khám & Hủy lịch (No-show) thật từ CSDL
+    // 7. Tỷ lệ tái khám & Hủy lịch (No-show)
     const totalAppointments = await this.lichHenRepo.count({ where: { bacSiId } });
     const cancelledAppointments = await this.lichHenRepo.count({ where: { bacSiId, trangThai: TrangThaiLichHen.DA_HUY } });
     const noShowPct = totalAppointments > 0 ? ((cancelledAppointments / totalAppointments) * 100).toFixed(1) : '3.2';
@@ -199,7 +190,6 @@ export class HoSoBenhAnService {
         tongChiDinhCLS: Math.max(tongChiDinhCLS, Math.round(countTotal * 0.6)),
         tongDonThuocKe: Math.max(tongDonThuocKe, Math.round(countTotal * 0.9)),
         tyLeHoanThanh: countTotal > 0 ? `${((countHoanThanh / countTotal) * 100).toFixed(1)}%` : '98.5%',
-
         coCauBenhLy,
         aiTriageMetrics: {
           tyLeDongThuanAI: '92.4%',
@@ -215,6 +205,67 @@ export class HoSoBenhAnService {
     };
   }
 
+  // ─── EMR Bệnh nhân cá nhân ──────────────────────────────
+  async emrCuaToi(userId: number) {
+    let bn = await this.benhNhanRepo.findOne({ where: { nguoiDungId: userId } });
+    if (!bn) {
+      const u = await this.benhAnRepo.manager.getRepository(NguoiDung).findOne({ where: { id: userId } });
+      if (u) {
+        bn = await this.benhNhanRepo.findOne({
+          where: [{ email: u.tenDangNhap }, { soDienThoai: u.tenDangNhap }],
+        });
+      }
+    }
+    if (!bn) {
+      return {
+        data: { benhNhan: null, lichSuKham: [] },
+        message: 'Chưa có thông tin bệnh nhân liên kết',
+      };
+    }
+
+    const hoSo = await this.hoSoRepo.findOne({ where: { benhNhanId: bn.id } });
+    if (!hoSo) {
+      return {
+        data: { benhNhan: bn, lichSuKham: [] },
+        message: 'Chưa có hồ sơ bệnh án',
+      };
+    }
+
+    const dsKham = await this.benhAnRepo.createQueryBuilder('bak')
+      .leftJoinAndSelect('bak.bacSi', 'bs')
+      .leftJoinAndSelect('bs.nhanVien', 'nv')
+      .where('bak.hoSoBenhAnId = :hoSoId', { hoSoId: hoSo.id })
+      .orderBy('bak.ngayKham', 'DESC')
+      .getMany();
+
+    const lichSuKham = await Promise.all(
+      dsKham.map(async (bak) => {
+        const xn = await this.clsRepo.find({
+          where: { benhAnKhamId: bak.id },
+          relations: ['dichVu'],
+        });
+        const dt = await this.donThuocRepo.find({
+          where: { benhAnKhamId: bak.id },
+          relations: ['chiTiet', 'chiTiet.thuoc'],
+        });
+        return {
+          ...bak,
+          bacSi: bak.bacSi?.nhanVien?.hoTen || 'Bác sĩ điều trị',
+          xetNghiem: xn,
+          donThuoc: dt,
+        };
+      })
+    );
+
+    return {
+      data: {
+        benhNhan: bn,
+        maHoSo: hoSo.maHoSo,
+        lichSuKham,
+      },
+      message: 'OK',
+    };
+  }
 
   // ─── Lấy/tạo hồ sơ bệnh án cho bệnh nhân ────────────────
   async getOrCreateHoSo(benhNhanId: number) {
@@ -228,89 +279,6 @@ export class HoSoBenhAnService {
       hoSo = await this.hoSoRepo.save(hoSo);
     }
     return hoSo;
-  }
-
-  // ─── Bệnh nhân tra cứu toàn bộ hồ sơ y tế EMR cá nhân ──────────
-  async emrCuaToi(nguoiDungId: number) {
-    let benhNhan = await this.hoSoRepo.manager.getRepository(BenhNhan).findOne({
-      where: { nguoiDungId },
-    });
-
-    if (!benhNhan) {
-      const user = await this.hoSoRepo.manager.query('SELECT email, so_dien_thoai FROM nguoi_dung WHERE id = ? LIMIT 1', [nguoiDungId]);
-      if (user && user.length > 0) {
-        if (user[0].email) {
-          benhNhan = await this.hoSoRepo.manager.getRepository(BenhNhan).findOne({ where: { email: user[0].email } });
-        }
-        if (!benhNhan && user[0].so_dien_thoai) {
-          benhNhan = await this.hoSoRepo.manager.getRepository(BenhNhan).findOne({ where: { soDienThoai: user[0].so_dien_thoai } });
-        }
-      }
-    }
-
-    if (!benhNhan) {
-      // Fallback: Nếu không tìm thấy theo nguoiDungId, lấy bệnh nhân mới nhất
-      benhNhan = await this.hoSoRepo.manager.getRepository(BenhNhan).findOne({ order: { id: 'DESC' } });
-    }
-
-    if (!benhNhan) {
-      return { data: [], message: 'Chưa có thông tin hồ sơ y tế' };
-    }
-
-    const hoSo = await this.hoSoRepo.findOne({ where: { benhNhanId: benhNhan.id } });
-    if (!hoSo) return { data: [], message: 'Chưa có lịch sử khám bệnh' };
-
-    const dsBenhAn = await this.benhAnRepo.find({
-      where: { hoSoBenhAnId: hoSo.id },
-      order: { id: 'DESC' },
-    });
-
-    const records = await Promise.all(
-      dsBenhAn.map(async (ba) => {
-        // Nạp đơn thuốc
-        const donThuocList = await this.donThuocRepo.find({
-          where: { benhAnKhamId: ba.id },
-          relations: ['chiTiet', 'chiTiet.thuoc'],
-        });
-
-        // Nạp chỉ định cận lâm sàng & kết quả
-        const clsList = await this.clsRepo.find({
-          where: { benhAnKhamId: ba.id },
-          relations: ['dichVu'],
-        });
-        const clsWithResults = await Promise.all(
-          clsList.map(async (c) => {
-            const kq = await this.hoSoRepo.manager.query('SELECT * FROM ket_qua_xet_nghiem WHERE chi_dinh_id = ? LIMIT 1', [c.id]);
-            return { ...c, ketQua: kq && kq.length > 0 ? kq[0] : null };
-          }),
-        );
-
-        // Nạp sinh hiệu
-        let sinhHieu = null;
-        if (ba.luotTiepNhanId) {
-          const sh = await this.hoSoRepo.manager.query('SELECT * FROM sinh_hieu WHERE luot_tiep_nhan_id = ? LIMIT 1', [ba.luotTiepNhanId]);
-          if (sh && sh.length > 0) sinhHieu = sh[0];
-        }
-
-        // Nạp bác sĩ khám
-        let tenBacSi = 'Bác sĩ Nguyễn Văn A';
-        if (ba.bacSiId) {
-          const bs = await this.bacSiRepo.findOne({ where: { id: ba.bacSiId }, relations: ['nhanVien'] });
-          if (bs?.nhanVien?.hoTen) tenBacSi = bs.nhanVien.hoTen;
-        }
-
-        return {
-          benhAn: ba,
-          benhNhan,
-          bacSiTen: tenBacSi,
-          donThuoc: donThuocList,
-          canLamSang: clsWithResults,
-          sinhHieu,
-        };
-      }),
-    );
-
-    return { data: records, message: 'OK' };
   }
 
   // ─── Xem lịch sử khám của bệnh nhân ──────────────────────
@@ -340,9 +308,9 @@ export class HoSoBenhAnService {
 
     let bacSiTableId: number | null = null;
     if (nguoiDungId) {
-      const nv = await this.benhAnRepo.manager.getRepository(NhanVien).findOne({ where: { nguoiDungId } });
+      const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId } });
       if (nv) {
-        const bs = await this.benhAnRepo.manager.getRepository(BacSi).findOne({ where: { nhanVienId: nv.id } });
+        const bs = await this.bacSiRepo.findOne({ where: { nhanVienId: nv.id } });
         if (bs) bacSiTableId = bs.id;
         else bacSiTableId = nv.id;
       }
@@ -358,6 +326,15 @@ export class HoSoBenhAnService {
     });
     const saved = await this.benhAnRepo.save(bak);
     return { data: saved, message: 'Tạo phiếu khám thành công' };
+  }
+
+  // ─── Lấy phiếu khám theo lượt tiếp nhận ──────────────────
+  async layBenhAnTheoLuot(luotTiepNhanId: number) {
+    const bak = await this.benhAnRepo.findOne({
+      where: { luotTiepNhanId },
+      relations: ['hoSoBenhAn', 'hoSoBenhAn.benhNhan', 'bacSi', 'bacSi.nhanVien'],
+    });
+    return { data: bak, message: 'OK' };
   }
 
   // ─── Lấy chi tiết phiếu khám ─────────────────────────────
@@ -384,24 +361,11 @@ export class HoSoBenhAnService {
     const bak = await this.benhAnRepo.findOne({ where: { id } });
     if (!bak) throw new NotFoundException({ code: 'BENH_AN_KHONG_TON_TAI', message: 'Không tìm thấy phiếu khám' });
 
-    const updateData: any = { ...dto, trangThai: TrangThaiBenhAnKham.DA_HOAN_THANH };
-    if (dto.taiKham && dto.taiKham.trim()) {
-      updateData.taiKham = new Date(dto.taiKham);
-    } else {
-      updateData.taiKham = null;
-    }
-
-    Object.assign(bak, updateData);
+    Object.assign(bak, dto, {
+      trangThai: TrangThaiBenhAnKham.DA_HOAN_THANH,
+      thoiGianKetThuc: new Date(),
+    });
     const saved = await this.benhAnRepo.save(bak);
     return { data: saved, message: 'Kết thúc khám thành công' };
   }
-
-  async layBenhAnTheoLuot(luotTiepNhanId: number) {
-    const bak = await this.benhAnRepo.findOne({
-      where: { luotTiepNhanId },
-      order: { id: 'DESC' },
-    });
-    return { data: bak, message: 'OK' };
-  }
 }
-

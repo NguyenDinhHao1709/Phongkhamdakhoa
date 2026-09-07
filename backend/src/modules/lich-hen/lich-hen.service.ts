@@ -1,8 +1,10 @@
 import {
-  Injectable, NotFoundException, ConflictException, BadRequestException,
+  Injectable, NotFoundException, ConflictException, BadRequestException, OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, Between } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import * as nodemailer from 'nodemailer';
 import { LichHen, TrangThaiLichHen } from './entities/lich-hen.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { TaoLichHenDto, CapNhatTrangThaiLichHenDto, TimKiemLichHenDto, LaySlotTrongDto } from './dto/lich-hen.dto';
@@ -15,11 +17,33 @@ const ALL_SLOTS = [
 ];
 
 @Injectable()
-export class LichHenService {
+export class LichHenService implements OnModuleInit {
+  private mailer: nodemailer.Transporter;
+
   constructor(
     @InjectRepository(LichHen) private repo: Repository<LichHen>,
     private dataSource: DataSource,
-  ) {}
+    private config: ConfigService,
+  ) {
+    this.mailer = nodemailer.createTransport({
+      host: config.get('MAIL_HOST', 'smtp.gmail.com'),
+      port: config.get<number>('MAIL_PORT', 587),
+      secure: false,
+      auth: {
+        user: config.get('MAIL_USER'),
+        pass: config.get('MAIL_PASS'),
+      },
+    });
+  }
+
+  onModuleInit() {
+    // Tự động quét và nhắc lịch hẹn mỗi 30 phút
+    setInterval(() => {
+      this.guiNhacLichTuDong().catch((err) =>
+        console.error('[LichHenScheduler] Lỗi tự động nhắc lịch:', err.message)
+      );
+    }, 30 * 60 * 1000);
+  }
 
   // ─── DANH SÁCH ────────────────────────────────────────────────
   async findAll(dto: TimKiemLichHenDto) {
@@ -234,5 +258,99 @@ export class LichHenService {
     const updated = await this.repo.findOne({ where: { id }, relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'] });
     return { data: updated, message: 'Cập nhật trạng thái lịch hẹn thành công' };
   }
+
+  // ─── NHẮC LỊCH KHÁM TỰ ĐỘNG QUA EMAIL TRƯỚC 24H ─────────────
+  async guiNhacLichTuDong() {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    // Lấy các lịch hẹn ngày mai hoặc hôm nay chưa được nhắc
+    const qb = this.repo.createQueryBuilder('lh')
+      .leftJoinAndSelect('lh.benhNhan', 'bn')
+      .leftJoinAndSelect('lh.bacSi', 'bs')
+      .leftJoinAndSelect('bs.nhanVien', 'nv')
+      .where('lh.ngayHen IN (:...ngays)', { ngays: [todayStr, tomorrowStr] })
+      .andWhere('lh.trangThai IN (:...trangThais)', {
+        trangThais: [TrangThaiLichHen.CHO_XAC_NHAN, TrangThaiLichHen.DA_XAC_NHAN],
+      })
+      .andWhere('(lh.ghiChu IS NULL OR lh.ghiChu NOT LIKE :daNhac)', { daNhac: '%[ĐÃ_NHẮC_LỊCH]%' });
+
+    const danhSach = await qb.getMany();
+    const ketQuaGui: any[] = [];
+
+    for (const lh of danhSach) {
+      const bn = lh.benhNhan;
+      const email = bn?.email;
+      const bacSiTen = lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ trực phòng khám';
+
+      if (email) {
+        try {
+          await this.mailer.sendMail({
+            from: this.config.get('MAIL_FROM', 'Phong Kham <no-reply@phongkham.vn>'),
+            to: email,
+            subject: `[Nhắc Lịch Hẹn Khám] - Ngày ${lh.ngayHen} lúc ${lh.gioHen} - Phòng Khám Đa Khoa`,
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; rounded: 16px;">
+                <div style="text-align: center; border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 20px;">
+                  <h2 style="color: #1e40af; margin: 0;">PHÒNG KHÁM ĐA KHOA QUỐC TẾ</h2>
+                  <p style="color: #6b7280; font-size: 13px; margin: 4px 0 0 0;">THÔNG BÁO NHẮC LỊCH KHÁM BỆNH TỰ ĐỘNG</p>
+                </div>
+
+                <p>Kính gửi Quý người bệnh: <strong>${bn.hoTen}</strong>,</p>
+                <p>Phòng khám xin nhắc Quý khách về lịch hẹn khám bệnh sắp tới:</p>
+
+                <div style="background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 16px; margin: 16px 0; border-radius: 8px;">
+                  <p style="margin: 4px 0;">📅 <strong>Ngày khám:</strong> ${lh.ngayHen}</p>
+                  <p style="margin: 4px 0;">⏰ <strong>Giờ khám:</strong> ${lh.gioHen}</p>
+                  <p style="margin: 4px 0;">🩺 <strong>Bác sĩ phụ trách:</strong> ${bacSiTen}</p>
+                  <p style="margin: 4px 0;">🔖 <strong>Mã lịch hẹn:</strong> ${lh.maLichHen}</p>
+                  <p style="margin: 4px 0;">📍 <strong>Hình thức:</strong> ${lh.hinhThuc === 'truc_tuyen' ? 'Khám Online Telehealth' : 'Khám trực tiếp tại phòng khám'}</p>
+                </div>
+
+                <div style="background-color: #fffbeb; border: 1px solid #fde68a; padding: 12px; border-radius: 8px; font-size: 13px; color: #92400e;">
+                  <strong>⚠️ Lưu ý quan trọng trước khi đi khám:</strong>
+                  <ul style="margin: 6px 0 0 0; padding-left: 20px;">
+                    <li>Vui lòng có mặt trước giờ hẹn 10 - 15 phút tại Quầy tiếp tân để làm thủ tục.</li>
+                    <li>Mang theo CCCD/VNeID và thẻ BHYT (nếu có) để hưởng quyền lợi chiết khấu 80%.</li>
+                    <li>Nếu có chỉ định xét nghiệm máu / đường huyết, vui lòng nhịn ăn sáng từ 6 - 8 tiếng.</li>
+                  </ul>
+                </div>
+
+                <p style="margin-top: 24px; font-size: 12px; color: #9ca3af; text-align: center;">
+                  Hotline hỗ trợ: 1900 6868 | Địa chỉ: 123 Nguyễn Văn Cừ, Quận 5, TP.HCM
+                </p>
+              </div>
+            `,
+          });
+          console.log(`[LichHenReminder] Đã gửi email nhắc lịch cho BN ${bn.hoTen} (${email})`);
+        } catch (mailErr) {
+          console.warn(`[LichHenReminder] Không thể gửi mail tới ${email}:`, mailErr.message);
+        }
+      }
+
+      // Đánh dấu đã nhắc lịch
+      const thoiGianNhac = new Date().toLocaleString('vi-VN');
+      lh.ghiChu = `${lh.ghiChu || ''} [ĐÃ_NHẮC_LỊCH: ${thoiGianNhac}]`.trim();
+      await this.repo.save(lh);
+
+      ketQuaGui.push({
+        id: lh.id,
+        maLichHen: lh.maLichHen,
+        benhNhan: bn?.hoTen,
+        email: email || 'Không có email',
+        ngayHen: lh.ngayHen,
+        gioHen: lh.gioHen,
+      });
+    }
+
+    return {
+      message: `Đã quét và gửi nhắc lịch tự động cho ${ketQuaGui.length} bệnh nhân có lịch hẹn trong 24 giờ tới.`,
+      soLuong: ketQuaGui.length,
+      danhSach: ketQuaGui,
+    };
+  }
 }
+
 

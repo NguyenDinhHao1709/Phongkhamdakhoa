@@ -8,7 +8,8 @@ import { apiGet } from '../../services/api';
 export default function SaoLuuDuLieuPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [backupSuccess, setBackupSuccess] = useState(false);
+  const [backupSuccess, setBackupSuccess] = useState('');
+  const [exportingSql, setExportingSql] = useState(false);
 
   const fetchBackupInfo = async () => {
     setLoading(true);
@@ -26,8 +27,32 @@ export default function SaoLuuDuLieuPage() {
     fetchBackupInfo();
   }, []);
 
+  const handleDownloadSqlDump = async () => {
+    setExportingSql(true);
+    try {
+      const sqlContent = await apiGet('/quan-ly/export-sql-dump');
+      const textToSave = typeof sqlContent === 'string' ? sqlContent : JSON.stringify(sqlContent, null, 2);
+      const blob = new Blob([textToSave], { type: 'application/sql;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.href = url;
+      const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+      downloadAnchor.download = `phong_kham_backup_${timestamp}.sql`;
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      window.URL.revokeObjectURL(url);
+
+      setBackupSuccess('Đã xuất và tải xuống bản sao lưu toàn diện Cơ sở dữ liệu (.sql) thành công!');
+      setTimeout(() => setBackupSuccess(''), 6000);
+    } catch (err) {
+      alert('Lỗi xuất bản sao lưu SQL: ' + (err?.error?.message || err?.message || ''));
+    } finally {
+      setExportingSql(false);
+    }
+  };
+
   const handleDownloadSnapshot = () => {
-    setBackupSuccess(true);
     // Export JSON metadata snapshot
     const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
       JSON.stringify(data, null, 2)
@@ -42,7 +67,8 @@ export default function SaoLuuDuLieuPage() {
     downloadAnchor.click();
     downloadAnchor.remove();
 
-    setTimeout(() => setBackupSuccess(false), 5000);
+    setBackupSuccess('Đã tải xuống bản sao lưu Metadata (.json) thành công!');
+    setTimeout(() => setBackupSuccess(''), 5000);
   };
 
   return (
@@ -59,18 +85,25 @@ export default function SaoLuuDuLieuPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={fetchBackupInfo}
-            className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2"
+            className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer"
           >
             <RefreshCw className="h-4 w-4" /> Làm mới
           </button>
           <button
             onClick={handleDownloadSnapshot}
-            className="px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold transition-all shadow-md flex items-center gap-2"
+            className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer border border-gray-300"
           >
-            <Download className="h-4 w-4" /> Xuất bản sao lưu Snapshot
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Xuất Metadata (.JSON)
+          </button>
+          <button
+            onClick={handleDownloadSqlDump}
+            disabled={exportingSql}
+            className="px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" /> {exportingSql ? 'Đang kết xuất .SQL...' : 'Tải Sao Lưu CSDL (.SQL)'}
           </button>
         </div>
       </div>
@@ -78,7 +111,7 @@ export default function SaoLuuDuLieuPage() {
       {backupSuccess && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl text-sm flex items-center gap-3 animate-fade-in">
           <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-          <span>Đã khởi tạo và tải xuống bản sao lưu metadata CSDL thành công!</span>
+          <span>{backupSuccess}</span>
         </div>
       )}
 

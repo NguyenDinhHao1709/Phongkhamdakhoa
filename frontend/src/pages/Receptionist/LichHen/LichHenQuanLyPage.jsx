@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Search, Filter, Plus, CheckCircle, XCircle, RefreshCw, UserCheck, Stethoscope, Clock, ShieldCheck, Eye, Phone, User, FileText, MapPin } from 'lucide-react';
+import { Calendar, Search, Filter, Plus, CheckCircle, XCircle, RefreshCw, UserCheck, Stethoscope, Clock, ShieldCheck, Eye, Phone, User, FileText, MapPin, Mail } from 'lucide-react';
 import { apiGet, apiPost, apiPatch } from '../../../services/api';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
@@ -8,6 +8,7 @@ import { formatDate } from '../../../utils/formatDate';
 export default function LichHenQuanLyPage() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [sendingReminder, setSendingReminder] = useState(false);
   const [filterDate, setFilterDate] = useState(''); // Mặc định rỗng để lấy tất cả lịch hẹn
   const [filterStatus, setFilterStatus] = useState('');
   const [filterBacSiId, setFilterBacSiId] = useState('');
@@ -99,6 +100,19 @@ export default function LichHenQuanLyPage() {
     }
   };
 
+  const handleTriggerReminder = async () => {
+    setSendingReminder(true);
+    try {
+      const res = await apiPost('/lich-hen/nhac-lich-tu-dong');
+      alert(`✓ KẾT QUẢ QUÉT NHẮC LỊCH:\n${res?.message || 'Đã gửi nhắc lịch thành công!'}`);
+      fetchData();
+    } catch (err) {
+      alert(err?.error?.message || err?.message || 'Không thể gửi nhắc lịch tự động');
+    } finally {
+      setSendingReminder(false);
+    }
+  };
+
   // Lọc tìm kiếm theo từ khóa
   const filteredList = list.filter((lh) => {
     const kw = searchKeyword.toLowerCase().trim();
@@ -119,7 +133,15 @@ export default function LichHenQuanLyPage() {
             Tra cứu, xem chi tiết, lọc và duyệt danh sách lịch hẹn của bệnh nhân đăng ký khám
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <MedButton
+            variant="secondary"
+            onClick={handleTriggerReminder}
+            loading={sendingReminder}
+            leftIcon={<Mail className="h-4 w-4 text-blue-600" />}
+          >
+            Quét & Nhắc lịch Email 24h
+          </MedButton>
           <MedButton variant="secondary" onClick={fetchData} leftIcon={<RefreshCw className="h-4 w-4" />}>
             Làm mới
           </MedButton>

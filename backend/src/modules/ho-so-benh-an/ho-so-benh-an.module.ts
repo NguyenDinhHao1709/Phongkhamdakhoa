@@ -10,6 +10,8 @@ import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHen } from '../lich-hen/entities/lich-hen.entity';
 import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
 
+import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -21,6 +23,7 @@ import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
       DonThuoc,
       LichHen,
       LuotTiepNhan,
+      BenhNhan,
     ]),
   ],
   controllers: [HoSoBenhAnController],
@@ -28,4 +31,3 @@ import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
   exports: [HoSoBenhAnService, TypeOrmModule],
 })
 export class HoSoBenhAnModule {}
-

@@ -1,9 +1,14 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../../services/api';
 import { formatDateTime, formatDate } from '../../utils/formatDate';
-import { FileText, Activity, Pill, FlaskConical, Stethoscope, User, AlertTriangle, Clock } from 'lucide-react';
+import { FileText, Activity, Pill, FlaskConical, Stethoscope, User, AlertTriangle, Clock, Printer } from 'lucide-react';
+import InPhieuKhamModal from '../../components/Print/InPhieuKhamModal';
+import InDonThuocModal from '../../components/Print/InDonThuocModal';
 
 export default function HoSoYTeBenhNhanPage() {
+  const [printPhieuKham, setPrintPhieuKham] = useState({ open: false, record: null });
+  const [printDonThuoc, setPrintDonThuoc] = useState({ open: false, donThuoc: null, record: null });
   const { data, isLoading } = useQuery({
     queryKey: ['emr-cua-toi'],
     queryFn: () => apiGet('/ho-so-benh-an/cua-toi'),
@@ -90,13 +95,31 @@ export default function HoSoYTeBenhNhanPage() {
                 </p>
               </div>
             </div>
-            <span className={`text-xs font-semibold px-3 py-1 rounded-full border self-start sm:self-auto ${
-              ba.trangThai === 'da_hoan_thanh'
-                ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                : 'text-amber-700 bg-amber-50 border-amber-200'
-            }`}>
-              {ba.trangThai === 'da_hoan_thanh' ? '✓ Đã hoàn thành' : '⏳ Đang khám'}
-            </span>
+            <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+              <button
+                type="button"
+                onClick={() => setPrintPhieuKham({ open: true, record: item })}
+                className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center gap-1 transition"
+              >
+                <Printer className="h-3.5 w-3.5" /> In phiếu khám
+              </button>
+              {donThuoc && donThuoc.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setPrintDonThuoc({ open: true, donThuoc: donThuoc[0], record: item })}
+                  className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 flex items-center gap-1 transition"
+                >
+                  <Printer className="h-3.5 w-3.5" /> In đơn thuốc
+                </button>
+              )}
+              <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
+                ba.trangThai === 'da_hoan_thanh'
+                  ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                  : 'text-amber-700 bg-amber-50 border-amber-200'
+              }`}>
+                {ba.trangThai === 'da_hoan_thanh' ? '✓ Đã hoàn thành' : '⏳ Đang khám'}
+              </span>
+            </div>
           </div>
 
           {/* Chẩn đoán & Sinh hiệu */}
@@ -178,6 +201,21 @@ export default function HoSoYTeBenhNhanPage() {
                             <strong>Nhận xét KTV:</strong> {c.ketQua.nhan_xet || c.ketQua.nhanXet}
                           </p>
                         )}
+                        {(c.ketQua.file_dinh_kem || c.ketQua.fileDinhKem) && (
+                          <div className="mt-2 pt-1.5 border-t border-purple-200/60 flex items-center justify-between">
+                            <span className="text-[11px] font-semibold text-purple-800 flex items-center gap-1">
+                              📎 Tệp kết quả / Ảnh chụp đính kèm
+                            </span>
+                            <a
+                              href={(c.ketQua.file_dinh_kem || c.ketQua.fileDinhKem).startsWith('http') ? (c.ketQua.file_dinh_kem || c.ketQua.fileDinhKem) : `http://localhost:5000${c.ketQua.file_dinh_kem || c.ketQua.fileDinhKem}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs font-bold text-primary-600 hover:text-primary-700 bg-white px-2.5 py-1 rounded-md border border-purple-200 shadow-2xs hover:underline"
+                            >
+                              Xem / Tải ảnh ↗
+                            </a>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -224,6 +262,38 @@ export default function HoSoYTeBenhNhanPage() {
           )}
         </div>
       ))}
+
+      {/* Modal In Phiếu Khám Bệnh cho Bệnh Nhân */}
+      <InPhieuKhamModal
+        isOpen={printPhieuKham.open}
+        onClose={() => setPrintPhieuKham({ open: false, record: null })}
+        benhAn={printPhieuKham.record?.benhAnKham}
+        benhNhan={latestBenhNhan || printPhieuKham.record?.benhNhan}
+        bacSi={{ nhanVien: { hoTen: printPhieuKham.record?.bacSi?.nhanVien?.hoTen || 'Bác sĩ điều trị' } }}
+        sinhHieu={printPhieuKham.record?.sinhHieu}
+        dsXetNghiem={(printPhieuKham.record?.canLamSang || []).map((c) => ({
+          tenDichVu: c.dichVu?.tenDichVu,
+          ketQua: c.ketQua ? `${c.ketQua.gia_tri || c.ketQua.giaTri || ''} ${c.ketQua.don_vi || c.ketQua.donVi || ''}` : 'Chờ KQ',
+          ghiChuKetQua: c.ketQua?.nhan_xet || c.ketQua?.nhanXet || '',
+        }))}
+      />
+
+      {/* Modal In Đơn Thuốc cho Bệnh Nhân */}
+      <InDonThuocModal
+        isOpen={printDonThuoc.open}
+        onClose={() => setPrintDonThuoc({ open: false, donThuoc: null, record: null })}
+        donThuoc={printDonThuoc.donThuoc ? {
+          ...printDonThuoc.donThuoc,
+          chiTiet: (printDonThuoc.donThuoc.chiTietDonThuoc || []).map((ct) => ({
+            thuoc: ct.thuoc,
+            soLuong: ct.soLuong,
+            lieuDung: ct.lieuDung || ct.huongDanSuDung,
+          })),
+        } : null}
+        benhNhan={latestBenhNhan || printDonThuoc.record?.benhNhan}
+        bacSi={{ nhanVien: { hoTen: printDonThuoc.record?.bacSi?.nhanVien?.hoTen || 'Bác sĩ điều trị' } }}
+        chanDoan={printDonThuoc.record?.benhAnKham?.chanDoanXacDinh || 'Đơn thuốc điều trị ngoại trú'}
+      />
     </div>
   );
 }

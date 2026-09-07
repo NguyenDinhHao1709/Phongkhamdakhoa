@@ -14,15 +14,27 @@ export class LoginDto {
 }
 
 export class SendOtpDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsEmail()
-  email: string;
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  soDienThoai?: string;
 }
 
 export class VerifyOtpDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsEmail()
-  email: string;
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  soDienThoai?: string;
 
   @ApiProperty()
   @IsString()

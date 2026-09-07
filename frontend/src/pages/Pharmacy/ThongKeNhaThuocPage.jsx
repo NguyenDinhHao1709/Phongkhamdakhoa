@@ -10,7 +10,7 @@ import { formatDateTime } from '../../utils/formatDate';
 import {
   BarChart3, AlertTriangle, Clock, DollarSign, Printer, Search, Pill,
   FileSpreadsheet, ShoppingCart, PlusCircle, ClipboardCheck, ArrowUpRight,
-  TrendingUp, CheckCircle2, Filter, RotateCcw, Calendar
+  TrendingUp, CheckCircle2, Filter, RotateCcw, Calendar, Sparkles
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -40,6 +40,14 @@ export default function ThongKeNhaThuocPage() {
       return apiGet(`/nha-thuoc/thong-ke?${params.toString()}`);
     },
   });
+
+  // Query Dự báo nhu cầu thuốc Machine Learning
+  const { data: forecastRes, isLoading: loadingForecast } = useQuery({
+    queryKey: ['du-bao-nhu-cau-thuoc'],
+    queryFn: () => apiGet('/nha-thuoc/du-bao-nhu-cau?horizonDays=14'),
+  });
+  const forecastData = forecastRes?.data || [];
+  const forecastEngine = forecastRes?.engine || 'python_holt_winters_engine';
 
   const stats = data?.data || {
     tongSoThuoc: 0,
@@ -395,6 +403,85 @@ export default function ThongKeNhaThuocPage() {
             <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-600 mb-2" />
             <p className="text-sm font-bold text-emerald-800">Kho thuốc an toàn theo tiêu chí lọc</p>
             <p className="text-xs text-emerald-600 mt-0.5">Không có loại thuốc nào cạn kiệt hay cận date thuộc nhóm lọc đã chọn</p>
+          </div>
+        )}
+      </MedCard>
+
+      {/* 2.5 DỰ BÁO NHU CẦU THUỐC ML (PYTHON HOLT-WINTERS & DEMAND PREDICTION) */}
+      <MedCard
+        title={
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-purple-600" />
+            <span>Dự Báo Nhu Cầu Thuốc 14 Ngày Tới (Machine Learning)</span>
+            <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+              {forecastEngine === 'python_holt_winters_engine' ? '🐍 Python ML Microservice' : '⚡ NestJS Integrated ML'}
+            </span>
+          </div>
+        }
+        subtitle="Thuật toán Holt-Winters kết hợp tốc độ xuất kho và hệ số tăng trưởng lưu lượng bệnh nhân để tính điểm đặt hàng lại (Reorder Point)"
+      >
+        {loadingForecast ? (
+          <p className="text-xs text-gray-400 py-4 text-center">Đang chạy mô hình dự báo Holt-Winters...</p>
+        ) : forecastData.length === 0 ? (
+          <p className="text-xs text-gray-400 py-4 text-center">Chưa có đủ dữ liệu lịch sử để dự báo nhu cầu</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-purple-50/60 text-purple-900 border-b border-purple-100 text-[11px] uppercase tracking-wider font-bold">
+                  <th className="px-3.5 py-2.5">Mã thuốc</th>
+                  <th className="px-3.5 py-2.5">Tên thuốc</th>
+                  <th className="px-3.5 py-2.5 text-center">ĐVT</th>
+                  <th className="px-3.5 py-2.5 text-right">Tồn hiện tại</th>
+                  <th className="px-3.5 py-2.5 text-right">Tốc độ xuất/ngày</th>
+                  <th className="px-3.5 py-2.5 text-right">Dự báo 7 ngày</th>
+                  <th className="px-3.5 py-2.5 text-right">Dự báo 14 ngày</th>
+                  <th className="px-3.5 py-2.5 text-center">Tồn kho còn (ngày)</th>
+                  <th className="px-3.5 py-2.5 text-center">Khuyến nghị nhập</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {forecastData.slice(0, 10).map((item) => (
+                  <tr key={item.id || item.maThuoc} className="hover:bg-purple-50/20 transition-colors">
+                    <td className="px-3.5 py-2.5 font-mono font-bold text-gray-700">{item.maThuoc}</td>
+                    <td className="px-3.5 py-2.5 font-bold text-gray-900">{item.tenThuoc}</td>
+                    <td className="px-3.5 py-2.5 text-center text-gray-500">{item.donViTinh}</td>
+                    <td className="px-3.5 py-2.5 text-right font-extrabold text-gray-900">
+                      {item.tonKhoHienTai}
+                    </td>
+                    <td className="px-3.5 py-2.5 text-right text-gray-600 font-medium">
+                      ~{item.tieuThuTrungBinhNgay}
+                    </td>
+                    <td className="px-3.5 py-2.5 text-right font-bold text-blue-700 bg-blue-50/30">
+                      {item.duBaoTieuThu7Ngay}
+                    </td>
+                    <td className="px-3.5 py-2.5 text-right font-bold text-purple-700 bg-purple-50/30">
+                      {item.duBaoTieuThu14Ngay}
+                    </td>
+                    <td className="px-3.5 py-2.5 text-center">
+                      <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
+                        item.soNgayConLai <= 3 ? 'bg-red-100 text-red-700' :
+                        item.soNgayConLai <= 7 ? 'bg-amber-100 text-amber-700' :
+                        'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        {item.soNgayConLai > 365 ? '>1 năm' : `~${item.soNgayConLai} ngày`}
+                      </span>
+                    </td>
+                    <td className="px-3.5 py-2.5 text-center">
+                      {item.canNhapHang ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-700 border border-red-200 animate-pulse">
+                          ⚠️ Nhập +{item.soLuongDeXuatNhap} {item.donViTinh}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold text-emerald-700 bg-emerald-50">
+                          ✓ Đủ tồn kho
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </MedCard>
