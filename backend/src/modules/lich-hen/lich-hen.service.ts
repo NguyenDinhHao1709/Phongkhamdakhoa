@@ -47,7 +47,7 @@ export class LichHenService implements OnModuleInit {
 
   // ─── DANH SÁCH ────────────────────────────────────────────────
   async findAll(dto: TimKiemLichHenDto) {
-    const { ngay, bacSiId, trangThai, page = 1, limit = 20 } = dto;
+    const { ngay, bacSiId, trangThai, hinhThuc, loai, page = 1, limit = 20 } = dto;
     const skip = (page - 1) * limit;
 
     const qb = this.repo.createQueryBuilder('lh')
@@ -61,6 +61,11 @@ export class LichHenService implements OnModuleInit {
     if (ngay) qb.andWhere('lh.ngay_hen = :ngay', { ngay });
     if (bacSiId) qb.andWhere('lh.bac_si_id = :bacSiId', { bacSiId });
     if (trangThai) qb.andWhere('lh.trang_thai = :trangThai', { trangThai });
+
+    const hinhThucFilter = hinhThuc || (loai === 'online' ? 'truc_tuyen' : loai === 'truc_tiep' ? 'truc_tiep' : undefined);
+    if (hinhThucFilter) {
+      qb.andWhere('lh.hinh_thuc = :hinhThucFilter', { hinhThucFilter });
+    }
 
     const [items, total] = await qb.getManyAndCount();
     return {
@@ -163,6 +168,9 @@ export class LichHenService implements OnModuleInit {
           maBenhNhan: MaGeneratorService.generateMaBenhNhan(countBn + 1),
           hoTen: dto.hoTen,
           soDienThoai: dto.soDienThoai,
+          email: dto.email || null,
+          ngaySinh: dto.ngaySinh || null,
+          gioiTinh: dto.gioiTinh || null,
         });
         const savedBn = await benhNhanRepo.save(newBn);
         finalBenhNhanId = savedBn.id;

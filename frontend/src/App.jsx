@@ -6,6 +6,7 @@ import useAuthStore from "./store/authStore";
    Lazy-loaded pages — code splitting for performance
    ================================================================ */
 const HomePage        = lazy(() => import("./pages/Public/HomePage.jsx"));
+const PublicDatLichPage = lazy(() => import("./pages/Public/PublicDatLichPage.jsx"));
 const LoginPage       = lazy(() => import("./pages/Login/LoginPage.jsx"));
 const RegisterPage    = lazy(() => import("./pages/Login/RegisterPage.jsx"));
 const UnauthorizedPage = lazy(() => import("./pages/Unauthorized/UnauthorizedPage.jsx"));
@@ -93,6 +94,7 @@ export default function App() {
 
         {/* Public Homepage cho Khách vãng lai */}
         <Route path="/" element={<HomePage />} />
+        <Route path="/dat-lich" element={<PublicDatLichPage />} />
 
         {/* Receptionist Portal */}
         <Route

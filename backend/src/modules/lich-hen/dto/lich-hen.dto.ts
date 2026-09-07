@@ -21,6 +21,21 @@ export class TaoLichHenDto {
   @IsString()
   soDienThoai?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  ngaySinh?: string;
+
+  @ApiPropertyOptional({ enum: ['nam', 'nu', 'khac'] })
+  @IsOptional()
+  @IsString()
+  gioiTinh?: string;
+
   @ApiPropertyOptional({ example: 2 })
   @IsOptional()
   @IsInt()
@@ -87,6 +102,16 @@ export class TimKiemLichHenDto {
   @IsOptional()
   @IsString()
   trangThai?: string;
+
+  @ApiPropertyOptional({ enum: ['truc_tiep', 'truc_tuyen'] })
+  @IsOptional()
+  @IsString()
+  hinhThuc?: string;
+
+  @ApiPropertyOptional({ description: 'Alias for hinhThuc (online / truc_tiep)' })
+  @IsOptional()
+  @IsString()
+  loai?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

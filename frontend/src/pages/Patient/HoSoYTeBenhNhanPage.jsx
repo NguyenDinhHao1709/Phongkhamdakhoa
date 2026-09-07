@@ -14,8 +14,9 @@ export default function HoSoYTeBenhNhanPage() {
     queryFn: () => apiGet('/ho-so-benh-an/cua-toi'),
   });
 
-  const records = data?.data || [];
-  const latestBenhNhan = records[0]?.benhNhan;
+  const res = data?.data;
+  const records = Array.isArray(res) ? res : (res?.lichSuKham || []);
+  const latestBenhNhan = res?.benhNhan || records[0]?.benhNhan;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-12">
@@ -77,50 +78,57 @@ export default function HoSoYTeBenhNhanPage() {
       )}
 
       {/* Danh sách các lần khám (xếp theo mới nhất) */}
-      {records.map(({ benhAn: ba, bacSiTen, donThuoc, canLamSang, sinhHieu }, idx) => (
-        <div key={ba.id} className="rounded-2xl bg-white p-6 shadow-xs border border-gray-200 space-y-6">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-4 gap-2">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-600 font-bold text-sm">
-                #{records.length - idx}
+      {records.map((item, idx) => {
+        const ba = item.benhAn || item.benhAnKham || item;
+        const bacSiTen = item.bacSiTen || (typeof item.bacSi === 'string' ? item.bacSi : item.bacSi?.nhanVien?.hoTen) || 'Bác sĩ điều trị';
+        const donThuoc = item.donThuoc || [];
+        const canLamSang = item.canLamSang || item.xetNghiem || [];
+        const sinhHieu = item.sinhHieu;
+
+        return (
+          <div key={ba.id || idx} className="rounded-2xl bg-white p-6 shadow-xs border border-gray-200 space-y-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-4 gap-2">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-600 font-bold text-sm">
+                  #{records.length - idx}
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base">
+                    Lần khám ngày {formatDateTime(ba.ngayKham || ba.taoLuc)}
+                  </h3>
+                  <p className="text-xs text-gray-500 flex items-center gap-1.5 mt-0.5">
+                    <Stethoscope className="h-3.5 w-3.5 text-primary-600" /> {bacSiTen}
+                    {ba.luotTiepNhanId && ` · Mã lượt khám #${ba.luotTiepNhanId}`}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-base">
-                  Lần khám ngày {formatDateTime(ba.ngayKham || ba.taoLuc)}
-                </h3>
-                <p className="text-xs text-gray-500 flex items-center gap-1.5 mt-0.5">
-                  <Stethoscope className="h-3.5 w-3.5 text-primary-600" /> {bacSiTen}
-                  {ba.luotTiepNhanId && ` · Mã lượt khám #${ba.luotTiepNhanId}`}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-              <button
-                type="button"
-                onClick={() => setPrintPhieuKham({ open: true, record: item })}
-                className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center gap-1 transition"
-              >
-                <Printer className="h-3.5 w-3.5" /> In phiếu khám
-              </button>
-              {donThuoc && donThuoc.length > 0 && (
+              <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
                 <button
                   type="button"
-                  onClick={() => setPrintDonThuoc({ open: true, donThuoc: donThuoc[0], record: item })}
-                  className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 flex items-center gap-1 transition"
+                  onClick={() => setPrintPhieuKham({ open: true, record: item })}
+                  className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center gap-1 transition cursor-pointer"
                 >
-                  <Printer className="h-3.5 w-3.5" /> In đơn thuốc
+                  <Printer className="h-3.5 w-3.5" /> In phiếu khám
                 </button>
-              )}
-              <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
-                ba.trangThai === 'da_hoan_thanh'
-                  ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                  : 'text-amber-700 bg-amber-50 border-amber-200'
-              }`}>
-                {ba.trangThai === 'da_hoan_thanh' ? '✓ Đã hoàn thành' : '⏳ Đang khám'}
-              </span>
+                {donThuoc && donThuoc.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPrintDonThuoc({ open: true, donThuoc: donThuoc[0], record: item })}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Printer className="h-3.5 w-3.5" /> In đơn thuốc
+                  </button>
+                )}
+                <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
+                  ba.trangThai === 'da_hoan_thanh'
+                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                    : 'text-amber-700 bg-amber-50 border-amber-200'
+                }`}>
+                  {ba.trangThai === 'da_hoan_thanh' ? '✓ Đã hoàn thành' : '⏳ Đang khám'}
+                </span>
+              </div>
             </div>
-          </div>
 
           {/* Chẩn đoán & Sinh hiệu */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -246,7 +254,7 @@ export default function HoSoYTeBenhNhanPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-xs">
-                      {dt.chiTietDonThuoc?.map((ct) => (
+                      {(dt.chiTietDonThuoc || dt.chiTiet || []).map((ct) => (
                         <tr key={ct.id}>
                           <td className="px-4 py-2.5 font-bold text-gray-900">{ct.thuoc?.tenThuoc || 'Thuốc'}</td>
                           <td className="px-4 py-2.5 text-center">{ct.dvt || ct.thuoc?.donViTinh || 'Viên'}</td>
@@ -261,17 +269,18 @@ export default function HoSoYTeBenhNhanPage() {
             </div>
           )}
         </div>
-      ))}
+      );
+    })}
 
       {/* Modal In Phiếu Khám Bệnh cho Bệnh Nhân */}
       <InPhieuKhamModal
         isOpen={printPhieuKham.open}
         onClose={() => setPrintPhieuKham({ open: false, record: null })}
-        benhAn={printPhieuKham.record?.benhAnKham}
+        benhAn={printPhieuKham.record?.benhAn || printPhieuKham.record?.benhAnKham || printPhieuKham.record}
         benhNhan={latestBenhNhan || printPhieuKham.record?.benhNhan}
-        bacSi={{ nhanVien: { hoTen: printPhieuKham.record?.bacSi?.nhanVien?.hoTen || 'Bác sĩ điều trị' } }}
+        bacSi={{ nhanVien: { hoTen: printPhieuKham.record?.bacSiTen || printPhieuKham.record?.bacSi?.nhanVien?.hoTen || (typeof printPhieuKham.record?.bacSi === 'string' ? printPhieuKham.record?.bacSi : 'Bác sĩ điều trị') } }}
         sinhHieu={printPhieuKham.record?.sinhHieu}
-        dsXetNghiem={(printPhieuKham.record?.canLamSang || []).map((c) => ({
+        dsXetNghiem={(printPhieuKham.record?.canLamSang || printPhieuKham.record?.xetNghiem || []).map((c) => ({
           tenDichVu: c.dichVu?.tenDichVu,
           ketQua: c.ketQua ? `${c.ketQua.gia_tri || c.ketQua.giaTri || ''} ${c.ketQua.don_vi || c.ketQua.donVi || ''}` : 'Chờ KQ',
           ghiChuKetQua: c.ketQua?.nhan_xet || c.ketQua?.nhanXet || '',
@@ -284,15 +293,16 @@ export default function HoSoYTeBenhNhanPage() {
         onClose={() => setPrintDonThuoc({ open: false, donThuoc: null, record: null })}
         donThuoc={printDonThuoc.donThuoc ? {
           ...printDonThuoc.donThuoc,
-          chiTiet: (printDonThuoc.donThuoc.chiTietDonThuoc || []).map((ct) => ({
+          chiTiet: (printDonThuoc.donThuoc.chiTiet || printDonThuoc.donThuoc.chiTietDonThuoc || []).map((ct) => ({
             thuoc: ct.thuoc,
             soLuong: ct.soLuong,
             lieuDung: ct.lieuDung || ct.huongDanSuDung,
+            donViTinh: ct.thuoc?.donViTinh || ct.dvt || 'Viên',
           })),
         } : null}
         benhNhan={latestBenhNhan || printDonThuoc.record?.benhNhan}
-        bacSi={{ nhanVien: { hoTen: printDonThuoc.record?.bacSi?.nhanVien?.hoTen || 'Bác sĩ điều trị' } }}
-        chanDoan={printDonThuoc.record?.benhAnKham?.chanDoanXacDinh || 'Đơn thuốc điều trị ngoại trú'}
+        bacSi={{ nhanVien: { hoTen: printDonThuoc.record?.bacSiTen || printDonThuoc.record?.bacSi?.nhanVien?.hoTen || (typeof printDonThuoc.record?.bacSi === 'string' ? printDonThuoc.record?.bacSi : 'Bác sĩ điều trị') } }}
+        chanDoan={printDonThuoc.record?.chanDoanXacDinh || printDonThuoc.record?.benhAn?.chanDoanXacDinh || printDonThuoc.record?.benhAnKham?.chanDoanXacDinh || 'Đơn thuốc điều trị ngoại trú'}
       />
     </div>
   );

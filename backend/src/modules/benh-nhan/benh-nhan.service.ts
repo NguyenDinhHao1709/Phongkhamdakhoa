@@ -17,7 +17,7 @@ export class BenhNhanService {
   // ─── DANH SÁCH + TÌM KIẾM ĐA TẦNG ──────────────────────────────
   async findAll(dto: TimKiemBenhNhanDto) {
     const {
-      q, tuNgay, denNgay, gioiTinh, doTuoi,
+      q, search, tuNgay, denNgay, gioiTinh, doTuoi,
       coDiUng, chuaHoanThien, moiDangKyHomNay,
       page = 1, limit = 20,
     } = dto;
@@ -26,10 +26,11 @@ export class BenhNhanService {
     const qb = this.repo.createQueryBuilder('bn');
 
     // 1. Tìm kiếm nhanh theo từ khóa (Tên, Mã BN, CCCD, SĐT)
-    if (q && q.trim() !== '') {
+    const keyword = (q || search || '').trim();
+    if (keyword !== '') {
       qb.andWhere(
         '(bn.ho_ten LIKE :q OR bn.ma_benh_nhan LIKE :q OR bn.so_cmnd LIKE :q OR bn.so_dien_thoai LIKE :q)',
-        { q: `%${q.trim()}%` },
+        { q: `%${keyword}%` },
       );
     }
 

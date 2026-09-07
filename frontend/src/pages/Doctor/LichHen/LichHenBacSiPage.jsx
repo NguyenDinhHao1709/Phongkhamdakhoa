@@ -37,8 +37,9 @@ export default function LichHenBacSiPage() {
   ];
 
   const filteredItems = items.filter((item) => {
-    if (filterLoai === 'truc_tiep') return item.hinhThucKham === 'truc_tiep';
-    if (filterLoai === 'online') return item.hinhThucKham === 'online';
+    const isOnline = item.hinhThuc === 'truc_tuyen' || item.hinhThucKham === 'online';
+    if (filterLoai === 'truc_tiep') return !isOnline;
+    if (filterLoai === 'online') return isOnline;
     return true;
   });
 
@@ -109,10 +110,10 @@ export default function LichHenBacSiPage() {
 
                 <div className="flex items-center justify-between text-xs bg-gray-50 p-2.5 rounded-lg border border-gray-100">
                   <span className="flex items-center gap-1 font-semibold text-gray-700">
-                    <Clock className="h-3.5 w-3.5 text-primary-600" /> {item.gioKham}
+                    <Clock className="h-3.5 w-3.5 text-primary-600" /> {item.gioHen || item.gioKham}
                   </span>
-                  <span className={`px-2 py-0.5 rounded font-bold ${item.hinhThucKham === 'online' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                    {item.hinhThucKham === 'online' ? '🎥 Online' : '🏥 Trực tiếp'}
+                  <span className={`px-2 py-0.5 rounded font-bold ${item.hinhThuc === 'truc_tuyen' || item.hinhThucKham === 'online' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {item.hinhThuc === 'truc_tuyen' || item.hinhThucKham === 'online' ? '🎥 Online' : '🏥 Trực tiếp'}
                   </span>
                 </div>
 

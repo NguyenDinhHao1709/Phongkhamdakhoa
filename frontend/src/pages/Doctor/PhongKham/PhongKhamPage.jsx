@@ -106,7 +106,7 @@ export default function PhongKhamPage() {
       <div className="flex-1 min-w-[480px] overflow-y-auto pr-1">
         {currentLuot ? (
           <KhamBenhPanel
-
+            key={currentLuot.id}
             luot={currentLuot}
             initialTab={tabParam}
             onComplete={() => setSelectedLuot(null)}

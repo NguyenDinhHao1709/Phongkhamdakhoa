@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { Calendar, Clock, Stethoscope, CheckCircle, AlertCircle, User, HeartPulse, ShieldAlert, CreditCard } from 'lucide-react';
+import {
+  Calendar, Clock, Stethoscope, CheckCircle, AlertCircle, User,
+  HeartPulse, ShieldAlert, CreditCard, Video, Building2, Wifi, MapPin
+} from 'lucide-react';
 import { apiGet, apiPost } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import useAuthStore from '../../store/authStore';
@@ -24,6 +28,10 @@ const CHUYEN_KHOA_LIST = [
 
 export default function DatLichKhamPage() {
   const { user } = useAuthStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialHinhThuc = searchParams.get('hinhThuc') === 'truc_tuyen' ? 'truc_tuyen' : 'truc_tiep';
+  const [hinhThuc, setHinhThuc] = useState(initialHinhThuc);
+
   const [bacSiList, setBacSiList] = useState([]);
   const [selectedSlot, setSelectedSlot] = useState('08:00');
   const [submitting, setSubmitting] = useState(false);
@@ -51,6 +59,12 @@ export default function DatLichKhamPage() {
   useEffect(() => {
     fetchBacSi();
   }, []);
+
+  // Cập nhật URL khi đổi hình thức khám
+  const handleSelectHinhThuc = (type) => {
+    setHinhThuc(type);
+    setSearchParams({ hinhThuc: type });
+  };
 
   const fetchBacSi = async () => {
     try {
@@ -90,11 +104,13 @@ export default function DatLichKhamPage() {
         bacSiId: data.bacSiId ? Number(data.bacSiId) : null,
         ngayHen: data.ngayHen,
         gioHen: selectedSlot,
+        hinhThuc: hinhThuc,
         lyDoKham: (data.chuyenKhoa ? `[Chuyên khoa: ${data.chuyenKhoa}] ` : '') + (data.lyDoKham || ''),
       };
 
       const res = await apiPost('/lich-hen', payload);
-      setSuccessMsg('Đặt lịch khám thành công! Mã lịch hẹn của bạn là: ' + (res.data?.maLichHen || 'LH2026') + '. Vui lòng tạm ứng 40.000đ (1/5 phí khám) để xác nhận lịch.');
+      const hinhThucText = hinhThuc === 'truc_tuyen' ? 'Khám tư vấn Online (Telehealth)' : 'Khám trực tiếp tại phòng khám';
+      setSuccessMsg(`Đặt lịch ${hinhThucText} thành công! Mã lịch hẹn của bạn là: ${res.data?.maLichHen || 'LH2026'}. Vui lòng tạm ứng 40.000đ (1/5 phí khám) để xác nhận lịch.`);
       reset({
         chuyenKhoa: '',
         bacSiId: '',
@@ -111,11 +127,98 @@ export default function DatLichKhamPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Đặt lịch khám trực tuyến</h1>
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Đặt lịch khám bệnh</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Chọn chuyên khoa, bác sĩ và khung giờ khám chủ động cho bạn (Đặt trước 4 tiếng - 30 ngày)
+          Lựa chọn hình thức khám trực tiếp hoặc tư vấn từ xa, chọn bác sĩ và khung giờ thuận tiện (Đặt trước 4 tiếng - 30 ngày)
         </p>
       </div>
+
+      {/* ─── HÌNH THỨC KHÁM: TRỰC TIẾP vs TƯ VẤN ONLINE ─── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <button
+          type="button"
+          onClick={() => handleSelectHinhThuc('truc_tiep')}
+          className={`relative p-5 rounded-2xl border-2 text-left transition-all duration-200 flex flex-col justify-between ${
+            hinhThuc === 'truc_tiep'
+              ? 'bg-blue-50/60 border-blue-600 shadow-md ring-2 ring-blue-200'
+              : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className={`p-3 rounded-xl ${hinhThuc === 'truc_tiep' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700'}`}>
+              <Building2 className="h-6 w-6" />
+            </div>
+            {hinhThuc === 'truc_tiep' && (
+              <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2.5 py-1 rounded-full flex items-center gap-1">
+                <CheckCircle className="h-3.5 w-3.5" /> Đang chọn
+              </span>
+            )}
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-900 text-base">🏥 Khám trực tiếp tại phòng khám</h3>
+            <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+              Khám lâm sàng với bác sĩ chuyên khoa, đo sinh hiệu và thực hiện xét nghiệm/siêu âm cận lâm sàng tại phòng khám.
+            </p>
+          </div>
+          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2 text-xs text-blue-700 font-medium">
+            <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+            <span>123 Đường Y Học, Quận 1, TP.HCM</span>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSelectHinhThuc('truc_tuyen')}
+          className={`relative p-5 rounded-2xl border-2 text-left transition-all duration-200 flex flex-col justify-between ${
+            hinhThuc === 'truc_tuyen'
+              ? 'bg-purple-50/60 border-purple-600 shadow-md ring-2 ring-purple-200'
+              : 'bg-white border-gray-200 hover:border-purple-300 hover:bg-gray-50'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className={`p-3 rounded-xl ${hinhThuc === 'truc_tuyen' ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700'}`}>
+              <Video className="h-6 w-6" />
+            </div>
+            {hinhThuc === 'truc_tuyen' && (
+              <span className="text-xs font-bold text-purple-700 bg-purple-100 px-2.5 py-1 rounded-full flex items-center gap-1">
+                <CheckCircle className="h-3.5 w-3.5" /> Đang chọn
+              </span>
+            )}
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-900 text-base">🎥 Khám tư vấn Online (Telehealth)</h3>
+            <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+              Bác sĩ gọi Video trực tuyến từ xa, tư vấn phác đồ điều trị, đọc kết quả xét nghiệm và cấp đơn thuốc điện tử tại nhà.
+            </p>
+          </div>
+          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2 text-xs text-purple-700 font-medium">
+            <Wifi className="h-3.5 w-3.5 flex-shrink-0" />
+            <span>Phòng khám ảo qua Video Call WebRTC</span>
+          </div>
+        </button>
+      </div>
+
+      {/* Thông điệp hướng dẫn tương ứng theo hình thức khám */}
+      {hinhThuc === 'truc_tiep' ? (
+        <div className="rounded-2xl bg-blue-50/80 p-4 border border-blue-200 text-xs text-blue-900 flex items-start gap-3">
+          <Building2 className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold text-sm">Hướng dẫn khi Khám trực tiếp tại phòng khám:</p>
+            <p>• Quý khách vui lòng có mặt trước giờ hẹn <strong>15 phút</strong> tại Quầy tiếp đón để được tiếp tân đo sinh hiệu (huyết áp, nhiệt độ, SpO2) và cấp số thứ tự vào phòng khám.</p>
+            <p>• Đem theo CCCD/BHYT (nếu có) và các sổ khám bệnh, đơn thuốc cũ để bác sĩ tiện đối chiếu.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl bg-purple-50/80 p-4 border border-purple-200 text-xs text-purple-900 flex items-start gap-3">
+          <Video className="h-5 w-5 text-purple-600 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold text-sm">Hướng dẫn khi Khám tư vấn Online (Telehealth):</p>
+            <p>• Tại thời điểm hẹn khám, quý khách truy cập mục <strong>"Lịch hẹn của tôi"</strong> và nhấn nút <strong>"Vào phòng tư vấn Video"</strong> để kết nối trực tiếp với Bác sĩ.</p>
+            <p>• Vui lòng chuẩn bị điện thoại thông minh hoặc laptop có webcam, micro và đường truyền Internet ổn định trong không gian yên tĩnh.</p>
+            <p>• Sau buổi khám, đơn thuốc điện tử và hướng dẫn chăm sóc sẽ được bác sĩ gửi ngay vào hồ sơ y tế của bạn.</p>
+          </div>
+        </div>
+      )}
 
       {successMsg && (
         <div className="flex items-center gap-3 rounded-2xl bg-success-light p-4 text-sm text-success-main border border-success-main/30 animate-fade-in">
@@ -263,9 +366,12 @@ export default function DatLichKhamPage() {
             variant="primary"
             size="lg"
             loading={submitting}
-            leftIcon={<Calendar className="h-5 w-5" />}
+            leftIcon={hinhThuc === 'truc_tuyen' ? <Video className="h-5 w-5" /> : <Calendar className="h-5 w-5" />}
+            className={hinhThuc === 'truc_tuyen' ? 'bg-purple-600 hover:bg-purple-700' : ''}
           >
-            Xác nhận & Thanh toán Tạm ứng (40.000đ)
+            {hinhThuc === 'truc_tuyen'
+              ? 'Xác nhận Đặt khám Tư vấn Online (Tạm ứng 40.000đ)'
+              : 'Xác nhận Đặt khám Trực tiếp (Tạm ứng 40.000đ)'}
           </MedButton>
         </div>
       </form>

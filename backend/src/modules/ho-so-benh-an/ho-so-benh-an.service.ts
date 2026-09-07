@@ -15,7 +15,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
-import { LuotTiepNhan, TrangThaiTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
+import { LuotTiepNhan, TrangThaiTiepNhan, SinhHieu } from '../tiep-nhan/entities/tiep-nhan.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 
@@ -248,11 +248,26 @@ export class HoSoBenhAnService {
           where: { benhAnKhamId: bak.id },
           relations: ['chiTiet', 'chiTiet.thuoc'],
         });
+        const sh = bak.luotTiepNhanId
+          ? await this.tiepNhanRepo.manager.getRepository(SinhHieu).findOne({ where: { luotTiepNhanId: bak.luotTiepNhanId } })
+          : null;
+
+        const dtWithAliases = dt.map((d) => ({
+          ...d,
+          chiTietDonThuoc: d.chiTiet,
+        }));
+
+        const bacSiTen = bak.bacSi?.nhanVien?.hoTen || 'Bác sĩ điều trị';
         return {
           ...bak,
-          bacSi: bak.bacSi?.nhanVien?.hoTen || 'Bác sĩ điều trị',
+          benhAn: bak,
+          benhAnKham: bak,
+          bacSi: bak.bacSi,
+          bacSiTen,
           xetNghiem: xn,
-          donThuoc: dt,
+          canLamSang: xn,
+          donThuoc: dtWithAliases,
+          sinhHieu: sh,
         };
       })
     );
@@ -291,6 +306,7 @@ export class HoSoBenhAnService {
 
     const dsBenhAn = await this.benhAnRepo.find({
       where: { hoSoBenhAnId: hoSo.id },
+      relations: ['bacSi', 'bacSi.nhanVien'],
       order: { ngayKham: 'DESC' },
     });
     return { data: dsBenhAn, message: 'OK' };

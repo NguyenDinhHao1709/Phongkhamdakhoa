@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   Stethoscope, Calendar, Bot, ShieldCheck, Heart, User, LogIn,
   Search, ArrowRight, Activity, PhoneCall, Sparkles, CheckCircle2,
-  FileText, Clock, MapPin, Award, BookOpen, UserCheck, MessageCircle, X, BrainCircuit
+  FileText, Clock, MapPin, Award, BookOpen, UserCheck, MessageCircle, X, BrainCircuit,
+  Video, Building2
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import SearchResultsModal from './SearchResultsModal';
+import PublicDatLichModal from './PublicDatLichModal';
 import AiTriageChatbot from './AiTriageChatbot';
 import MedButton from '../../design-system/components/Button/MedButton';
 
@@ -42,6 +44,10 @@ export default function HomePage() {
   // Article Modal State
   const [selectedArticle, setSelectedArticle] = useState(null);
 
+  // Public Booking Modal State
+  const [isPublicBookingOpen, setIsPublicBookingOpen] = useState(false);
+  const [bookingHinhThuc, setBookingHinhThuc] = useState('truc_tiep');
+  const [bookingDoctor, setBookingDoctor] = useState(null);
 
   useEffect(() => {
     fetchPublicDoctors();
@@ -77,13 +83,14 @@ export default function HomePage() {
     setIsSearchModalOpen(true);
   };
 
-
-  const handleBookingClick = () => {
-    if (!isAuthenticated) {
-      alert('Vui lòng Đăng nhập hoặc Đăng ký tài khoản Bệnh nhân để thực hiện Đặt lịch khám trực tuyến.');
-      navigate('/login');
+  const handleBookingClick = (hinhThuc = 'truc_tiep', doctor = null) => {
+    if (isAuthenticated && user?.vaiTro === 'benh_nhan') {
+      const doctorParam = doctor?.id ? `&bacSiId=${doctor.id}` : '';
+      navigate(`/benh-nhan/dat-lich?hinhThuc=${hinhThuc}${doctorParam}`);
     } else {
-      navigate('/benh-nhan/dat-lich');
+      setBookingHinhThuc(hinhThuc);
+      setBookingDoctor(doctor);
+      setIsPublicBookingOpen(true);
     }
   };
 
@@ -142,6 +149,13 @@ export default function HomePage() {
           <nav className="hidden lg:flex items-center gap-6 text-sm font-medium text-gray-600">
             <a href="#hero" className="hover:text-primary-600 transition-colors">Trang chủ</a>
             <a href="#chuyen-khoa" className="hover:text-primary-600 transition-colors">Chuyên khoa</a>
+            <button
+              type="button"
+              onClick={() => handleBookingClick('truc_tiep')}
+              className="hover:text-primary-600 transition-colors font-semibold text-primary-700 flex items-center gap-1"
+            >
+              <Calendar className="h-4 w-4 text-primary-600" /> Đặt lịch khám
+            </button>
             <button
               type="button"
               onClick={() => setIsChatbotOpen(true)}
@@ -214,16 +228,25 @@ export default function HomePage() {
                 </div>
               </form>
 
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start pt-2">
+              <div className="flex flex-col sm:flex-row gap-3.5 justify-center lg:justify-start pt-2">
                 <MedButton
                   size="lg"
                   variant="primary"
-                  onClick={handleBookingClick}
-                  leftIcon={<Calendar className="h-5 w-5" />}
+                  onClick={() => handleBookingClick('truc_tiep')}
+                  leftIcon={<Building2 className="h-5 w-5" />}
                   className="shadow-md shadow-primary-500/20"
                 >
-                  Đặt lịch khám trực tuyến
+                  🏥 Đặt lịch Khám trực tiếp
                 </MedButton>
+
+                <button
+                  type="button"
+                  onClick={() => handleBookingClick('truc_tuyen')}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-sm bg-purple-50 text-purple-700 border-2 border-purple-200 hover:bg-purple-100 hover:border-purple-300 transition-all shadow-sm"
+                >
+                  <Video className="h-5 w-5 text-purple-600" />
+                  <span>🎥 Khám tư vấn Online (Telehealth)</span>
+                </button>
               </div>
             </div>
 
@@ -331,9 +354,22 @@ export default function HomePage() {
                     <p className="text-xs text-gray-500 leading-relaxed">{bs.moTa}</p>
                   </div>
 
-                  <MedButton variant="primary" size="sm" onClick={handleBookingClick} className="w-full">
-                    Đặt lịch khám ngay
-                  </MedButton>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleBookingClick('truc_tiep', bs)}
+                      className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold transition-colors shadow-sm"
+                    >
+                      <Building2 className="h-3.5 w-3.5" /> Khám trực tiếp
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBookingClick('truc_tuyen', bs)}
+                      className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-bold transition-colors"
+                    >
+                      <Video className="h-3.5 w-3.5" /> Tư vấn Online
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -420,6 +456,19 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ─── PUBLIC GUEST BOOKING MODAL (TRỰC TIẾP & ONLINE) ───────── */}
+      {isPublicBookingOpen && (
+        <PublicDatLichModal
+          isOpen={isPublicBookingOpen}
+          onClose={() => {
+            setIsPublicBookingOpen(false);
+            setBookingDoctor(null);
+          }}
+          initialHinhThuc={bookingHinhThuc}
+          initialDoctor={bookingDoctor}
+        />
       )}
 
       {/* ─── FOOTER ────────────────────────────────────────────────── */}

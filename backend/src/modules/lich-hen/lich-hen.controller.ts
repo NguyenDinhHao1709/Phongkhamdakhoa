@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Lịch hẹn')
 @ApiBearerAuth()
@@ -19,6 +20,13 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @Controller('lich-hen')
 export class LichHenController {
   constructor(private readonly service: LichHenService) {}
+
+  @Public()
+  @Post('dat-lich-khach')
+  @ApiOperation({ summary: 'Khách chưa có tài khoản đặt lịch khám trực tiếp hoặc online (Public)' })
+  datLichKhach(@Body() dto: TaoLichHenDto) {
+    return this.service.create(dto, undefined, 'benh_nhan');
+  }
 
   @Get()
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien')
@@ -34,9 +42,9 @@ export class LichHenController {
     return this.service.layLichHenCuaToi(user.id);
   }
 
+  @Public()
   @Get('slot-trong')
-  @Roles('tiep_tan', 'bac_si', 'benh_nhan')
-  @ApiOperation({ summary: 'Lấy danh sách slot giờ còn trống của bác sĩ' })
+  @ApiOperation({ summary: 'Lấy danh sách slot giờ còn trống của bác sĩ (Public)' })
   laySlotTrong(@Query() dto: LaySlotTrongDto) {
     return this.service.laySlotTrong(dto);
   }
@@ -52,7 +60,7 @@ export class LichHenController {
   @Roles('tiep_tan', 'bac_si', 'benh_nhan')
   @ApiOperation({ summary: 'Tạo lịch hẹn mới' })
   create(@Body() dto: TaoLichHenDto, @CurrentUser() user: any) {
-    return this.service.create(dto, user.id, user.vai_tro);
+    return this.service.create(dto, user?.id, user?.vai_tro || 'benh_nhan');
   }
 
   @Patch(':id/huy')

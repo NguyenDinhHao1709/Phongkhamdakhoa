@@ -95,6 +95,11 @@ export class TimKiemBenhNhanDto {
   @IsString()
   q?: string;
 
+  @ApiPropertyOptional({ description: 'Tìm theo tên, mã BN, CMND, SĐT (alias)' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
   @ApiPropertyOptional({ description: 'Từ ngày đăng ký (YYYY-MM-DD)' })
   @IsOptional()
   @IsString()

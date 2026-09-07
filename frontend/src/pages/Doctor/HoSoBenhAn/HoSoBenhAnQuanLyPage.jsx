@@ -16,7 +16,7 @@ export default function HoSoBenhAnQuanLyPage() {
   // Lấy danh sách bệnh nhân
   const { data: bnData, isLoading: bnLoading } = useQuery({
     queryKey: ['benh-nhan-list-emr', searchTerm],
-    queryFn: () => apiGet(`/benh-nhan?search=${encodeURIComponent(searchTerm)}`),
+    queryFn: () => apiGet(`/benh-nhan?q=${encodeURIComponent(searchTerm)}&search=${encodeURIComponent(searchTerm)}`),
   });
 
   const bnList = bnData?.data || [];

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, RefreshCw, Stethoscope, AlertTriangle, ShieldAlert, XCircle, CheckCircle2, Video } from 'lucide-react';
+import { Calendar, Clock, RefreshCw, Stethoscope, AlertTriangle, ShieldAlert, XCircle, CheckCircle2, Video, Building2 } from 'lucide-react';
 import { apiGet, apiPatch } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../design-system/components/Badge/StatusBadge';
@@ -132,6 +132,15 @@ export default function LichHenBenhNhanPage() {
                     <span className="text-xs font-semibold text-primary-700 bg-primary-50 px-2.5 py-0.5 rounded-full border border-primary-200">
                       Tạm ứng 1/5: 40.000 đ
                     </span>
+                    {lh.hinhThuc === 'truc_tuyen' ? (
+                      <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200 flex items-center gap-1">
+                        <Video className="h-3.5 w-3.5 text-purple-600" /> Tư vấn Online
+                      </span>
+                    ) : (
+                      <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200 flex items-center gap-1">
+                        <Building2 className="h-3.5 w-3.5 text-blue-600" /> Khám tại PK
+                      </span>
+                    )}
                   </div>
 
                   <div className="text-sm text-gray-600 space-y-1">
@@ -163,20 +172,27 @@ export default function LichHenBenhNhanPage() {
                 <div className="flex md:flex-col justify-end gap-2 border-t md:border-t-0 pt-3 md:pt-0">
                   {!isCanceled && !isCompleted && (
                     <>
-                      <MedButton
-                        variant="primary"
-                        size="sm"
-                        onClick={() =>
-                          setVideoCall({
-                            open: true,
-                            doctorName: lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách',
-                            info: { gioKham: `${lh.gioHen} ngày ${formatDate(lh.ngayHen)}` },
-                          })
-                        }
-                        leftIcon={<Video className="h-4 w-4" />}
-                      >
-                        Khám qua Video
-                      </MedButton>
+                      {lh.hinhThuc === 'truc_tuyen' ? (
+                        <MedButton
+                          variant="primary"
+                          size="sm"
+                          onClick={() =>
+                            setVideoCall({
+                              open: true,
+                              doctorName: lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách',
+                              info: { gioKham: `${lh.gioHen} ngày ${formatDate(lh.ngayHen)}` },
+                            })
+                          }
+                          className="bg-purple-600 hover:bg-purple-700 text-white"
+                          leftIcon={<Video className="h-4 w-4" />}
+                        >
+                          Vào phòng khám Video
+                        </MedButton>
+                      ) : (
+                        <div className="text-xs text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200 text-center font-medium">
+                          📍 Đến khám tại CS1: 123 Đường Y Học
+                        </div>
+                      )}
 
                       <MedButton
                         variant="danger"

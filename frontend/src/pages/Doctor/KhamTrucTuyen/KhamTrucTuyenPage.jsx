@@ -98,7 +98,7 @@ export default function KhamTrucTuyenPage() {
                 </div>
                 <p className="font-semibold text-gray-900 text-sm">{item.benhNhan?.hoTen}</p>
                 <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
-                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {item.gioKham}</span>
+                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {item.gioHen || item.gioKham}</span>
                   <span>• {item.benhNhan?.soDienThoai}</span>
                 </div>
                 <p className="text-xs text-gray-600 line-clamp-1 mt-1.5 bg-gray-100 p-1.5 rounded-md">
@@ -121,7 +121,7 @@ export default function KhamTrucTuyenPage() {
                 <div>
                   <h4 className="font-bold text-gray-900">{activeLich.benhNhan?.hoTen}</h4>
                   <p className="text-xs text-gray-500">
-                    SĐT: {activeLich.benhNhan?.soDienThoai} | Khám lúc: {activeLich.gioKham}
+                    SĐT: {activeLich.benhNhan?.soDienThoai} | Khám lúc: {activeLich.gioHen || activeLich.gioKham}
                   </p>
                 </div>
               </div>
