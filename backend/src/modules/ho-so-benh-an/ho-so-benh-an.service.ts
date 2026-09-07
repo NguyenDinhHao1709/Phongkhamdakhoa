@@ -1,5 +1,5 @@
-﻿import {
-  Injectable, NotFoundException, ConflictException,
+import {
+  Injectable, NotFoundException, ConflictException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -361,7 +361,16 @@ export class HoSoBenhAnService {
     const bak = await this.benhAnRepo.findOne({ where: { id } });
     if (!bak) throw new NotFoundException({ code: 'BENH_AN_KHONG_TON_TAI', message: 'Không tìm thấy phiếu khám' });
 
+    const chanDoan = (dto.chanDoanXacDinh || bak.chanDoanXacDinh || '').trim();
+    if (!chanDoan) {
+      throw new BadRequestException({
+        code: 'CHUA_NHAP_CHAN_DOAN_XAC_DINH',
+        message: 'Bác sĩ bắt buộc phải nhập Chẩn đoán xác định (kèm mã chuẩn ICD-10) trước khi kết thúc ca khám.',
+      });
+    }
+
     Object.assign(bak, dto, {
+      chanDoanXacDinh: chanDoan,
       trangThai: TrangThaiBenhAnKham.DA_HOAN_THANH,
       thoiGianKetThuc: new Date(),
     });

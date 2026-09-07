@@ -65,10 +65,11 @@ export class CapNhatTrangThaiLichHenDto {
   @IsString()
   ghiChu?: string;
 
-  @ApiProperty({ description: 'Optimistic lock version — lấy từ GET trước khi UPDATE' })
+  @ApiPropertyOptional({ description: 'Optimistic lock version — lấy từ GET trước khi UPDATE' })
+  @IsOptional()
   @IsInt()
   @Min(0)
-  phienBan: number;
+  phienBan?: number;
 }
 
 export class TimKiemLichHenDto {

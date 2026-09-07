@@ -1,0 +1,3868 @@
+{
+  "info": {
+    "_postman_id": "c8f2b3e4-pkdk-42a1-9876-123456789abc",
+    "name": "Phòng Khám Đa Khoa Quốc Tế - Backend Test Cases (SRS v2.0)",
+    "description": "Bộ kiểm thử API toàn diện cho 12 phân hệ backend theo tài liệu đặc tả SRS (IEEE 830 / ISO 29148).\nBao gồm 88+ test cases từ Module 1 đến Module 12 với cơ chế Dynamic Chaining tự động liên kết dữ liệu giữa các bước.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "bacSiToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "tiepTanToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentLuotId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentBenhAnId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentChiDinhId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentDonThuocId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentHoaDonId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentLichHenId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01. Module Auth & OTP (TC-AUTH)",
+      "item": [
+        {
+          "name": "[TC-AUTH-01] Đăng nhập Bác sĩ hợp lệ",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenDangNhap\": \"bacsi\",\n  \"matKhau\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns valid JWT accessToken', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "    pm.expect(jsonData.data).to.have.property('accessToken');",
+                  "    pm.collectionVariables.set('authToken', jsonData.data.accessToken);",
+                  "    pm.collectionVariables.set('bacSiToken', jsonData.data.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', jsonData.data.refreshToken);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AUTH-02] Đăng nhập sai mật khẩu (401 Unauthorized)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenDangNhap\": \"bacsi\",\n  \"matKhau\": \"sai_mat_khau_123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401 Unauthorized', function () { pm.response.to.have.status(401); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AUTH-03] Đăng nhập Admin lấy token quản trị",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenDangNhap\": \"admin\",\n  \"matKhau\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Save adminToken', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('adminToken', jsonData.data.accessToken);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AUTH-04] Đăng ký tài khoản bệnh nhân mới (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"patient_1788752322457@gmail.com\",\n  \"matKhau\": \"Pass@123456\",\n  \"hoTen\": \"Trần Bệnh Nhân Test\",\n  \"soDienThoai\": \"0924143558\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Save registeredPatientEmail', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data && jsonData.data.user) pm.collectionVariables.set('registeredPatientEmail', jsonData.data.user.email);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AUTH-05] Đăng ký với tài khoản đã tồn tại (409 Conflict)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{registeredPatientEmail}}\",\n  \"matKhau\": \"Pass@123456\",\n  \"hoTen\": \"Trùng Lặp\",\n  \"soDienThoai\": \"0900000001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409 Conflict', function () { pm.response.to.have.status(409); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AUTH-06] Gửi mã OTP xác thực email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/send-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "send-otp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nguyendinhhao170909@gmail.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AUTH-07] Xác thực mã OTP sai (400 Bad Request)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-otp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-otp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nguyendinhhao170909@gmail.com\",\n  \"otp\": \"000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AUTH-08] Lấy thông tin tài khoản hiện tại (/auth/me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AUTH-09] Làm mới Access Token (/auth/refresh)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AUTH-10] Đăng nhập Tiếp tân lấy tiepTanToken",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenDangNhap\": \"tieptan\",\n  \"matKhau\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Save tiepTanToken', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('tiepTanToken', jsonData.data.accessToken);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02. Module Tiếp Nhận & Sinh Hiệu (TC-TN)",
+      "item": [
+        {
+          "name": "[TC-TN-01] Lấy danh sách hàng đợi khám hôm nay",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tiep-nhan/hang-doi",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tiep-nhan",
+                "hang-doi"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TN-02] Tiếp nhận bệnh nhân mới vào phòng khám (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tiep-nhan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tiep-nhan"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"benhNhanId\": 1,\n  \"phongKhamId\": 2,\n  \"bacSiId\": 1,\n  \"lyDoKham\": \"Đau đầu, chóng mặt và sốt nhẹ\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Generated queue ticket', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.have.property('id');",
+                  "    pm.collectionVariables.set('currentLuotId', jsonData.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TN-03] Tiếp nhận thiếu trường bắt buộc phongKhamId (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tiep-nhan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tiep-nhan"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"benhNhanId\": 1,\n  \"lyDoKham\": \"Thiếu phòng khám\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TN-04] Đo và ghi nhận sinh hiệu chuẩn (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tiep-nhan/{{currentLuotId}}/sinh-hieu",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tiep-nhan",
+                "{{currentLuotId}}",
+                "sinh-hieu"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mach\": 78,\n  \"huyetApTamThu\": 120,\n  \"huyetApTamTruong\": 80,\n  \"nhietDo\": 37,\n  \"nhipTho\": 18,\n  \"spo2\": 98,\n  \"chieuCao\": 170,\n  \"canNang\": 65\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () { pm.response.to.have.status(201); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TN-05] Cảnh báo sinh hiệu nguy kịch (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tiep-nhan/{{currentLuotId}}/sinh-hieu",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tiep-nhan",
+                "{{currentLuotId}}",
+                "sinh-hieu"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mach\": 120,\n  \"huyetApTamThu\": 195,\n  \"huyetApTamTruong\": 125,\n  \"nhietDo\": 39.5,\n  \"spo2\": 91\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () { pm.response.to.have.status(201); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TN-06] Xem sinh hiệu của lượt tiếp nhận",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tiep-nhan/{{currentLuotId}}/sinh-hieu",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tiep-nhan",
+                "{{currentLuotId}}",
+                "sinh-hieu"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TN-07] Chuyển trạng thái lượt khám sang dang_kham",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tiep-nhan/{{currentLuotId}}/trang-thai",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tiep-nhan",
+                "{{currentLuotId}}",
+                "trang-thai"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trangThai\": \"dang_kham\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TN-08] Cập nhật trạng thái lượt khám không tồn tại (404)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tiep-nhan/999999/trang-thai",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tiep-nhan",
+                "999999",
+                "trang-thai"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trangThai\": \"dang_kham\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () { pm.response.to.have.status(404); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03. Module Hồ Sơ Bệnh Nhân (TC-BN)",
+      "item": [
+        {
+          "name": "[TC-BN-01] Tìm kiếm danh sách bệnh nhân",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/benh-nhan?limit=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "benh-nhan?limit=10"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-BN-02] Xem chi tiết hồ sơ bệnh nhân ID=1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/benh-nhan/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "benh-nhan",
+                "1"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-BN-03] Tạo hồ sơ bệnh nhân mới (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/benh-nhan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "benh-nhan"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hoTen\": \"Hoàng Minh Trí\",\n  \"ngaySinh\": \"1995-08-20\",\n  \"gioiTinh\": \"nam\",\n  \"soDienThoai\": \"0981120338\",\n  \"diaChi\": \"Quận 1, TP. Hồ Chí Minh\",\n  \"tienSuBenh\": \"Tăng huyết áp nhẹ\",\n  \"diUngThuoc\": \"Không dị ứng\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () { pm.response.to.have.status(201); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-BN-04] Tạo bệnh nhân có số điện thoại sai định dạng (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/benh-nhan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "benh-nhan"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hoTen\": \"Lỗi SĐT\",\n  \"ngaySinh\": \"1990-01-01\",\n  \"gioiTinh\": \"nam\",\n  \"soDienThoai\": \"123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-BN-05] Cập nhật tiền sử dị ứng và địa chỉ bệnh nhân",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/benh-nhan/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "benh-nhan",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"diaChi\": \"Bình Thạnh, TP.HCM\",\n  \"diUngThuoc\": \"Dị ứng Penicillin, Paracetamol nhẹ\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-BN-06] Tra cứu thông tin và mức hưởng thẻ BHYT",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/benh-nhan/tra-cuu-bhyt/GD4791234567890",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "benh-nhan",
+                "tra-cuu-bhyt",
+                "GD4791234567890"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04. Module Lịch Hẹn & Nhắc Lịch (TC-LH)",
+      "item": [
+        {
+          "name": "[TC-LH-01] Lấy danh sách lịch hẹn",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lich-hen",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lich-hen"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-LH-02] Bệnh nhân xem lịch hẹn của mình (/lich-hen/cua-toi)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lich-hen/cua-toi",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lich-hen",
+                "cua-toi"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-LH-03] Xem danh sách slot giờ còn trống của bác sĩ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lich-hen/slot-trong?bacSiId=1&ngay=2026-09-15",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lich-hen",
+                "slot-trong?bacSiId=1&ngay=2026-09-15"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-LH-04] Đặt lịch khám mới kèm cọc 1/5 (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lich-hen",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lich-hen"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"benhNhanId\": 1,\n  \"bacSiId\": 1,\n  \"ngayHen\": \"2026-10-15\",\n  \"gioHen\": \"08:30:00\",\n  \"lyDoKham\": \"Khám tổng quát định kỳ\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Save currentLichHenId', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data && jsonData.data.id) pm.collectionVariables.set('currentLichHenId', jsonData.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-LH-05] Đặt trùng lịch hẹn trong cùng khung giờ (409 Conflict)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lich-hen",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lich-hen"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"benhNhanId\": 2,\n  \"bacSiId\": 1,\n  \"ngayHen\": \"2026-10-15\",\n  \"gioHen\": \"08:30:00\",\n  \"lyDoKham\": \"Trùng slot đã đặt\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409 Conflict', function () { pm.response.to.have.status(409); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-LH-06] Cập nhật trạng thái lịch hẹn (da_xac_nhan)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lich-hen/{{currentLichHenId}}/trang-thai",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lich-hen",
+                "{{currentLichHenId}}",
+                "trang-thai"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trangThai\": \"da_xac_nhan\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-LH-07] Chi tiết 1 lịch hẹn theo ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lich-hen/{{currentLichHenId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lich-hen",
+                "{{currentLichHenId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-LH-08] Hủy lịch hẹn không tồn tại (404)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lich-hen/999999/huy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lich-hen",
+                "999999",
+                "huy"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () { pm.response.to.have.status(404); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-LH-09] Quét và gửi email nhắc lịch khám tự động 24h",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/lich-hen/nhac-lich-tu-dong",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lich-hen",
+                "nhac-lich-tu-dong"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05. Module Hồ Sơ Bệnh Án & Lâm Sàng (TC-HSBA)",
+      "item": [
+        {
+          "name": "[TC-HSBA-01] Bác sĩ tạo phiếu khám cho lượt tiếp nhận mới (Dynamic)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ho-so-benh-an/benh-an-kham/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ho-so-benh-an",
+                "benh-an-kham",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"luotTiepNhanId\": \"{{currentLuotId}}\",\n  \"hinhThucKham\": \"truc_tiep\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });",
+                  "pm.test('Save currentBenhAnId', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data && jsonData.data.id) pm.collectionVariables.set('currentBenhAnId', jsonData.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-HSBA-02] Lấy phiếu khám bệnh theo lượt tiếp nhận",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ho-so-benh-an/benh-an-kham/luot/{{currentLuotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ho-so-benh-an",
+                "benh-an-kham",
+                "luot",
+                "{{currentLuotId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-HSBA-03] Bác sĩ lưu nháp triệu chứng & chẩn đoán sơ bộ",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ho-so-benh-an/benh-an-kham/{{currentBenhAnId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ho-so-benh-an",
+                "benh-an-kham",
+                "{{currentBenhAnId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trieuChung\": \"Ho nhiều, sốt 38.5 độ, đau họng ngày thứ 3\",\n  \"chanDoanSoBo\": \"Theo dõi Viêm amidan cấp / Viêm họng\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-HSBA-04] Kết thúc khám thiếu chẩn đoán xác định (Chặn 400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ho-so-benh-an/benh-an-kham/{{currentBenhAnId}}/ket-thuc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ho-so-benh-an",
+                "benh-an-kham",
+                "{{currentBenhAnId}}",
+                "ket-thuc"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chanDoanXacDinh\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-HSBA-05] Hoàn tất ca khám với mã ICD-10 chuẩn",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ho-so-benh-an/benh-an-kham/{{currentBenhAnId}}/ket-thuc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ho-so-benh-an",
+                "benh-an-kham",
+                "{{currentBenhAnId}}",
+                "ket-thuc"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chanDoanXacDinh\": \"Viêm amidan cấp tính (J03.9)\",\n  \"phuongPhapDieuTri\": \"Ngoại trú, dùng kháng sinh Amoxicillin\",\n  \"ghiChu\": \"Uống nhiều nước ấm\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-HSBA-06] Xem lịch sử các lần khám bệnh của bệnh nhân ID=1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ho-so-benh-an/lich-su/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ho-so-benh-an",
+                "lich-su",
+                "1"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-HSBA-07] Bác sĩ xem báo cáo hiệu suất cá nhân DB thực",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ho-so-benh-an/thong-ke-bac-si?range=hom_nay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ho-so-benh-an",
+                "thong-ke-bac-si?range=hom_nay"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-HSBA-08] Bệnh nhân xem hồ sơ sức khỏe điện tử EMR (/cua-toi)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ho-so-benh-an/cua-toi",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ho-so-benh-an",
+                "cua-toi"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06. Module Cận Lâm Sàng & Xét Nghiệm (TC-CLS)",
+      "item": [
+        {
+          "name": "[TC-CLS-01] Lấy danh mục dịch vụ cận lâm sàng niêm yết",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/xet-nghiem/dich-vu",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "xet-nghiem",
+                "dich-vu"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-CLS-02] Bác sĩ tạo phiếu chỉ định nhiều dịch vụ cận lâm sàng",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/xet-nghiem/chi-dinh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "xet-nghiem",
+                "chi-dinh"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"benhAnKhamId\": \"{{currentBenhAnId}}\",\n  \"dsChiDinh\": [\n    {\n      \"dichVuXetNghiemId\": 1,\n      \"ghiChuChiDinh\": \"Kiểm tra công thức máu\"\n    },\n    {\n      \"dichVuXetNghiemId\": 2,\n      \"ghiChuChiDinh\": \"Kiểm tra đường huyết\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Save currentChiDinhId', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data && jsonData.data.length > 0) pm.collectionVariables.set('currentChiDinhId', jsonData.data[0].id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-CLS-03] KTV lấy danh sách các mẫu chờ xét nghiệm",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/xet-nghiem/chi-dinh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "xet-nghiem",
+                "chi-dinh"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-CLS-04] KTV nhập trị số kết quả xét nghiệm",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/xet-nghiem/chi-dinh/{{currentChiDinhId}}/ket-qua",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "xet-nghiem",
+                "chi-dinh",
+                "{{currentChiDinhId}}",
+                "ket-qua"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"giaTri\": \"5.4\",\n  \"donVi\": \"mmol/L\",\n  \"nhanXet\": \"Đường huyết trong giới hạn bình thường\",\n  \"fileDinhKem\": \"/uploads/kq_sample.png\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-CLS-05] KTV chuyển kết quả cho Bác sĩ",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/xet-nghiem/chi-dinh/{{currentChiDinhId}}/gui-bac-si",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "xet-nghiem",
+                "chi-dinh",
+                "{{currentChiDinhId}}",
+                "gui-bac-si"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-CLS-06] Bác sĩ xem toàn bộ kết quả xét nghiệm ca khám",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/xet-nghiem/benh-an-kham/{{currentBenhAnId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "xet-nghiem",
+                "benh-an-kham",
+                "{{currentBenhAnId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-CLS-07] Chi tiết 1 chỉ định xét nghiệm",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/xet-nghiem/chi-dinh/{{currentChiDinhId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "xet-nghiem",
+                "chi-dinh",
+                "{{currentChiDinhId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-CLS-08] Báo cáo thống kê hoạt động xét nghiệm / CĐHA",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/xet-nghiem/thong-ke?range=hom_nay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "xet-nghiem",
+                "thong-ke?range=hom_nay"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07. Module Nhà Thuốc & Kho Dược FEFO (TC-NT)",
+      "item": [
+        {
+          "name": "[TC-NT-01] Tra cứu danh mục thuốc & tồn kho",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nha-thuoc/thuoc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nha-thuoc",
+                "thuoc"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-NT-02] Tạo mới thuốc vào danh mục (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nha-thuoc/thuoc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nha-thuoc",
+                "thuoc"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maThuoc\": \"TH_1788752322457\",\n  \"tenThuoc\": \"Paracetamol 500mg Kháng Viêm\",\n  \"tenHoatChat\": \"Paracetamol\",\n  \"donViTinh\": \"viên\",\n  \"giaNhap\": 800,\n  \"giaBan\": 1500,\n  \"duongDung\": \"Uống\",\n  \"mucTonToiThieu\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-NT-03] Bác sĩ kê đơn thuốc điện tử (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nha-thuoc/don-thuoc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nha-thuoc",
+                "don-thuoc"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"benhAnKhamId\": \"{{currentBenhAnId}}\",\n  \"ghiChu\": \"Uống sau ăn no\",\n  \"chiTiet\": [\n    {\n      \"thuocId\": 1,\n      \"soLuong\": 10,\n      \"cachDung\": \"Ngày 2 lần, mỗi lần 1 viên sau ăn\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });",
+                  "pm.test('Save currentDonThuocId', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data && jsonData.data.id) pm.collectionVariables.set('currentDonThuocId', jsonData.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-NT-04] Lấy danh sách đơn thuốc cần cấp phát",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nha-thuoc/don-thuoc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nha-thuoc",
+                "don-thuoc"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-NT-05] Xem chi tiết đơn thuốc kèm lô FEFO",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nha-thuoc/don-thuoc/{{currentDonThuocId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nha-thuoc",
+                "don-thuoc",
+                "{{currentDonThuocId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-NT-06] Thống kê doanh số nhà thuốc và tồn kho",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nha-thuoc/thong-ke?khoangThoiGian=hom_nay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nha-thuoc",
+                "thong-ke?khoangThoiGian=hom_nay"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-NT-07] Dự báo nhu cầu thuốc 14 ngày tới (ML Holt-Winters)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nha-thuoc/du-bao-nhu-cau?horizonDays=14",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nha-thuoc",
+                "du-bao-nhu-cau?horizonDays=14"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-NT-08] Dược sĩ cấp phát thuốc trừ kho theo FEFO",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nha-thuoc/don-thuoc/{{currentDonThuocId}}/cap-phat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nha-thuoc",
+                "don-thuoc",
+                "{{currentDonThuocId}}",
+                "cap-phat"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200, 201 or 400', function () { pm.expect([200, 201, 400]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-NT-09] Cấp phát lại đơn thuốc đã xuất kho (Báo lỗi 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nha-thuoc/don-thuoc/{{currentDonThuocId}}/cap-phat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nha-thuoc",
+                "don-thuoc",
+                "{{currentDonThuocId}}",
+                "cap-phat"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08. Module Viện Phí & Thanh Toán (TC-TT)",
+      "item": [
+        {
+          "name": "[TC-TT-01] Lấy hoặc tính tổng viện phí trọn gói theo lượt",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/thanh-toan/hoa-don/luot-kham/{{currentLuotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "thanh-toan",
+                "hoa-don",
+                "luot-kham",
+                "{{currentLuotId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Save currentHoaDonId', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data && jsonData.data.id) pm.collectionVariables.set('currentHoaDonId', jsonData.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TT-02] Tạo hóa đơn thanh toán không BHYT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/thanh-toan/hoa-don",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "thanh-toan",
+                "hoa-don"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"luotKhamId\": \"{{currentLuotId}}\",\n  \"apDungBhyt\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TT-03] Tạo hóa đơn áp dụng chiết khấu BHYT 80%",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/thanh-toan/hoa-don",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "thanh-toan",
+                "hoa-don"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"luotKhamId\": \"{{currentLuotId}}\",\n  \"apDungBhyt\": true,\n  \"tyLeBhyt\": 80\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TT-04] Lấy danh sách hóa đơn viện phí",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/thanh-toan/danh-sach",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "thanh-toan",
+                "danh-sach"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TT-05] Tạo URL thanh toán VNPay Sandbox",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/thanh-toan/vnpay/tao-url",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "thanh-toan",
+                "vnpay",
+                "tao-url"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hoaDonId\": \"{{currentHoaDonId}}\",\n  \"soTien\": 150000,\n  \"nganHang\": \"NCB\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TT-06] Webhook IPN VNPay thành công (TEST_VALID_HASH)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/thanh-toan/vnpay/callback?vnp_ResponseCode=00&vnp_TxnRef=HD20260001_123&vnp_SecureHash=TEST_VALID_HASH",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "thanh-toan",
+                "vnpay",
+                "callback?vnp_ResponseCode=00&vnp_TxnRef=HD20260001_123&vnp_SecureHash=TEST_VALID_HASH"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TT-07] Webhook IPN chữ ký số giả mạo (400 Bad Request)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/thanh-toan/vnpay/callback?vnp_ResponseCode=00&vnp_TxnRef=HD20260001_123&vnp_SecureHash=fake_checksum_xyz",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "thanh-toan",
+                "vnpay",
+                "callback?vnp_ResponseCode=00&vnp_TxnRef=HD20260001_123&vnp_SecureHash=fake_checksum_xyz"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TT-08] Lấy dữ liệu in biên lai tài chính song ngữ",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/thanh-toan/in-hoa-don/{{currentHoaDonId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "thanh-toan",
+                "in-hoa-don",
+                "{{currentHoaDonId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "09. Module Quản Trị Hệ Thống & Lịch Trực (TC-QL)",
+      "item": [
+        {
+          "name": "[TC-QL-01] Xem thông số kỹ thuật hệ thống (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quan-ly/system-overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quan-ly",
+                "system-overview"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-QL-02] Tiếp tân cố truy cập trang Quản trị (403 Forbidden)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tiepTanToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quan-ly/system-overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quan-ly",
+                "system-overview"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 403 Forbidden', function () { pm.response.to.have.status(403); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-QL-03] Xem thông số 31 bảng CSDL và dung lượng",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quan-ly/backup-info",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quan-ly",
+                "backup-info"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-QL-04] Tải bản sao lưu CSDL toàn diện .sql",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quan-ly/export-sql-dump",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quan-ly",
+                "export-sql-dump"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-QL-05] Lấy bảng phân ca trực tuần",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quan-ly/lich-lam-viec?weekStart=2026-09-07",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quan-ly",
+                "lich-lam-viec?weekStart=2026-09-07"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-QL-06] Phân ca làm việc hợp lệ cho nhân viên",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quan-ly/lich-lam-viec",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quan-ly",
+                "lich-lam-viec"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"nhanVienId\": 1,\n    \"caLamViecId\": 1,\n    \"ngayLam\": \"2026-11-20\",\n    \"ghiChu\": \"khoi_tao_ca\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-QL-07] Xếp trùng ca trực trong cùng ngày (409 Conflict)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quan-ly/lich-lam-viec",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quan-ly",
+                "lich-lam-viec"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"nhanVienId\": 1,\n    \"caLamViecId\": 1,\n    \"ngayLam\": \"2026-11-20\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409 Conflict', function () { pm.response.to.have.status(409); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-QL-08] Xếp quá 2 ca trực trong ngày (400 hoặc 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quan-ly/lich-lam-viec",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quan-ly",
+                "lich-lam-viec"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"nhanVienId\": 1,\n    \"caLamViecId\": 2,\n    \"ngayLam\": \"2026-11-20\"\n  },\n  {\n    \"nhanVienId\": 1,\n    \"caLamViecId\": 3,\n    \"ngayLam\": \"2026-11-20\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 or 409', function () { pm.expect([400, 409]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-QL-09] Lấy danh mục dùng chung (Master Data)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quan-ly/danh-muc-tong-hop",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quan-ly",
+                "danh-muc-tong-hop"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-QL-10] Báo cáo KPI tổng quan Ban Giám Đốc",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quan-ly/dashboard-stats?range=hom_nay",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quan-ly",
+                "dashboard-stats?range=hom_nay"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10. Module Nhân Sự & Đơn Từ (TC-NV)",
+      "item": [
+        {
+          "name": "[TC-NV-01] Xem hồ sơ cá nhân nhân viên đang đăng nhập",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nhan-vien/ho-so-ca-nhan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nhan-vien",
+                "ho-so-ca-nhan"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-NV-02] Cập nhật số điện thoại và địa chỉ liên lạc",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nhan-vien/ho-so-ca-nhan",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nhan-vien",
+                "ho-so-ca-nhan"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"soDienThoai\": \"0911223344\",\n  \"diaChi\": \"TP. Thủ Đức, TP.HCM\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-NV-03] Nhân viên gửi đơn xin nghỉ phép",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nhan-vien/don-tu",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nhan-vien",
+                "don-tu"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loaiDon\": \"nghi_phep\",\n  \"tuNgay\": \"2026-09-20\",\n  \"denNgay\": \"2026-09-21\",\n  \"lyDo\": \"Nghỉ phép gia đình\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-NV-04] Ban giám đốc xem danh sách các đơn từ cần xét duyệt",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nhan-vien/don-tu/danh-sach",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nhan-vien",
+                "don-tu",
+                "danh-sach"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-NV-05] Lấy danh sách bác sĩ Public",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nhan-vien/bac-si-public",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nhan-vien",
+                "bac-si-public"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11. Module Thông Báo Hệ Thống (TC-TB)",
+      "item": [
+        {
+          "name": "[TC-TB-01] Lấy danh sách thông báo và số lượng chưa đọc",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/thong-bao",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "thong-bao"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TB-02] Đánh dấu đọc tất cả thông báo",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/thong-bao/doc-tat-ca",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "thong-bao",
+                "doc-tat-ca"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TB-03] Truy cập thông báo không có token (401 Unauthorized)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/thong-bao",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "thong-bao"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401 Unauthorized', function () { pm.response.to.have.status(401); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-TB-04] Đánh dấu 1 thông báo đã đọc",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/thong-bao/1/doc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "thong-bao",
+                "1",
+                "doc"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 404', function () { pm.expect([200, 404]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "12. Module Trí Tuệ Nhân Tạo & Dự Báo (TC-AI)",
+      "item": [
+        {
+          "name": "[TC-AI-01] Phân loại triệu chứng bệnh nhân bằng Gemini AI",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/triage",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "triage"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trieuChung\": \"Đau tức ngực trái lan ra vai, vã mồ hôi, khó thở\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AI-02] Gửi triệu chứng rỗng (400 Bad Request)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/triage",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "triage"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trieuChung\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AI-03] Dynamic Queue Routing - Tối ưu lộ trình xét nghiệm",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bacSiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/dynamic-queue/{{currentBenhAnId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "dynamic-queue",
+                "{{currentBenhAnId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AI-04] Dự báo lưu lượng bệnh nhân 7 ngày tới (Holt-Winters)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/forecast",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "forecast"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"horizon\": 7,\n  \"history_days\": 90\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AI-05] Dự báo nhu cầu thuốc 14 ngày tới từ Microservice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/forecast-medicine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "forecast-medicine"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"horizon_days\": 14,\n  \"items\": [\n    {\n      \"maThuoc\": \"TH001\",\n      \"tenThuoc\": \"Paracetamol\",\n      \"tonKhoTong\": 50\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "[TC-AI-06] Kiểm tra trạng thái Microservice AI & Machine Learning",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ai/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ai",
+                "health"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

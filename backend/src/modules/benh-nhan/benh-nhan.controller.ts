@@ -37,6 +37,13 @@ export class BenhNhanController {
     return this.service.findByMa(ma);
   }
 
+  @Get('tra-cuu-bhyt/:soBhyt')
+  @Roles('tiep_tan', 'bac_si', 'thu_ngan', 'quan_tri_vien', 'benh_nhan')
+  @ApiOperation({ summary: 'Kiểm tra thông tin và mức hưởng thẻ BHYT' })
+  traCuuBhyt(@Param('soBhyt') soBhyt: string) {
+    return this.service.traCuuBhyt(soBhyt);
+  }
+
   @Post()
   @Roles('tiep_tan', 'quan_tri_vien')
   @ApiOperation({ summary: 'Tạo hồ sơ bệnh nhân mới' })

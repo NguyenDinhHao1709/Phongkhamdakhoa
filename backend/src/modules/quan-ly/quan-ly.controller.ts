@@ -59,7 +59,7 @@ export class QuanLyController {
 
   // ─── UC 17: DASHBOARD TỔNG QUAN BAN GIÁM ĐỐC ─────────────
   @Get('dashboard-stats')
-  @Roles('ban_giam_doc')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Chỉ số hoạt động tổng quan KPI của phòng khám' })
   getDashboardStats(
     @Query('range') range?: string,
@@ -126,7 +126,7 @@ export class QuanLyController {
   }
 
   @Post('lich-lam-viec')
-  @Roles('ban_giam_doc')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Lưu phân ca làm việc cho nhân viên' })
   xepLichLamViec(@Body() body: any) {
     const list = Array.isArray(body) ? body : [body];
@@ -134,7 +134,7 @@ export class QuanLyController {
   }
 
   @Delete('lich-lam-viec/:id')
-  @Roles('ban_giam_doc')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Xóa ca trực' })
   xoaLichLamViec(@Param('id', ParseIntPipe) id: number) {
     return this.quanLyService.xoaLichPhanCa(id);

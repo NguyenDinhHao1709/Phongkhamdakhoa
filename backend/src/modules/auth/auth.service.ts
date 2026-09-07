@@ -80,8 +80,8 @@ export class AuthService {
       hoTen: dto.hoTen,
       soDienThoai: dto.soDienThoai,
       email: dto.email,
-      gioiTinh: dto.gioiTinh as any,
-      ngaySinh: dto.ngaySinh,
+      gioiTinh: (dto.gioiTinh || 'nam') as any,
+      ngaySinh: dto.ngaySinh || '1995-01-01',
     });
     await this.benhNhanRepo.save(newPatient);
 

@@ -76,15 +76,15 @@ export class RegisterPatientDto {
   @IsNotEmpty({ message: 'Số điện thoại không được để trống' })
   soDienThoai: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional({ enum: ['nam', 'nu', 'khac'], default: 'nam' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'Giới tính không được để trống' })
-  gioiTinh: string;
+  gioiTinh?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional({ example: '1995-01-01' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'Ngày sinh không được để trống' })
-  ngaySinh: string;
+  ngaySinh?: string;
 }
 
 // ─── DTO ĐỔI MẬT KHẨU ────────────────────────────────────

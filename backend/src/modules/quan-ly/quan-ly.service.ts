@@ -710,6 +710,10 @@ export class QuanLyService {
       throw new BadRequestException('Dữ liệu phân ca không được để trống');
     }
 
+    if (body.length === 1 && body[0].ghiChu === 'khoi_tao_ca') {
+      await this.lichLamViecRepo.delete({ nhanVienId: body[0].nhanVienId, ngayLam: body[0].ngayLam });
+    }
+
     for (const item of body) {
       const nv = await this.nhanVienRepo.findOne({ where: { id: item.nhanVienId } });
       const caMoi = await this.caLamViecRepo.findOne({ where: { id: item.caLamViecId } });
@@ -825,16 +829,16 @@ export class QuanLyService {
   // ─── ADMIN: DANH MỤC DÙNG CHUNG (MASTER DATA) ─────────────────
   async getDanhMucTongHop() {
     const phongBans = await this.nguoiDungRepo.query(
-      'SELECT id, ma_phong_ban, ten_phong_ban, mo_ta FROM phong_ban ORDER BY id ASC'
+      'SELECT id, ten_phong_ban, mo_ta FROM phong_ban ORDER BY id ASC'
     );
     const phongKhams = await this.nguoiDungRepo.query(
-      'SELECT id, ma_phong, ten_phong, vi_tri, trang_thai FROM phong_kham ORDER BY id ASC'
+      'SELECT id, ten_phong, vi_tri, chuyen_khoa, trang_thai FROM phong_kham ORDER BY id ASC'
     );
     const dichVus = await this.nguoiDungRepo.query(
-      'SELECT id, ma_dich_vu, ten_dich_vu, gia_tien, thoi_gian_tra_kq_phut, trang_thai FROM dich_vu_xet_nghiem ORDER BY id ASC'
+      'SELECT id, ma_dich_vu, ten_dich_vu, loai, gia, don_vi_ket_qua, trang_thai FROM dich_vu_xet_nghiem ORDER BY id ASC'
     );
     const thuocs = await this.nguoiDungRepo.query(
-      'SELECT id, ma_thuoc, ten_thuoc, hoat_chat, don_vi_tinh, gia_ban, so_luong_ton, trang_thai FROM thuoc ORDER BY id ASC'
+      'SELECT id, ma_thuoc, ten_thuoc, ten_hoat_chat, don_vi_tinh, gia_ban, ton_kho_tong, trang_thai FROM thuoc ORDER BY id ASC'
     );
 
     return {

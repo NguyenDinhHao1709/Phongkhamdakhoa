@@ -3,11 +3,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { NhanVien } from './entities/nhan-vien.entity';
 import { BacSi } from './entities/bac-si.entity';
 import { KyThuatVien } from './entities/ky-thuat-vien.entity';
+import { DonGui } from './entities/don-gui.entity';
 import { NhanVienService } from './nhan-vien.service';
 import { NhanVienController } from './nhan-vien.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([NhanVien, BacSi, KyThuatVien])],
+  imports: [TypeOrmModule.forFeature([NhanVien, BacSi, KyThuatVien, DonGui])],
   controllers: [NhanVienController],
   providers: [NhanVienService],
   exports: [NhanVienService, TypeOrmModule],

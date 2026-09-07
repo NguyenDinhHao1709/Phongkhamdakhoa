@@ -1,6 +1,6 @@
 import {
   IsString, IsNotEmpty, IsOptional, IsEnum, IsDateString,
-  IsEmail, MaxLength, IsInt, Min,
+  IsEmail, MaxLength, IsInt, Min, Matches,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
@@ -35,6 +35,7 @@ export class TaoBenhNhanDto {
   @IsOptional()
   @Transform(({ value }) => (value === '' ? null : value))
   @IsString()
+  @Matches(/^[0-9]{10,11}$/, { message: 'Số điện thoại không đúng định dạng (10-11 chữ số)' })
   @MaxLength(15)
   soDienThoai?: string;
 
@@ -59,6 +60,11 @@ export class TaoBenhNhanDto {
   @IsOptional()
   @IsString()
   diUng?: string;
+
+  @ApiPropertyOptional({ example: 'Penicillin' })
+  @IsOptional()
+  @IsString()
+  diUngThuoc?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

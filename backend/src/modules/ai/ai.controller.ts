@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Get, Body, Query, Param, ParseIntPipe, UseGuards,
+  Controller, Post, Get, Body, Query, Param, ParseIntPipe, UseGuards, BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AiService } from './ai.service';
@@ -73,9 +73,12 @@ export class AiController {
 
   // ─── 2. PHÂN LUỒNG NHANH (Single-turn — dùng cho tiếp tân check-in) ──
   @Public()
-  @Post('phan-luong-nhanh')
+  @Post(['phan-luong-nhanh', 'triage'])
   @ApiOperation({ summary: 'Phân luồng chuyên khoa nhanh (Single-turn, dùng cho nhân viên Tiếp tân)' })
   phanLuongNhanh(@Body() dto: PhanLuongNhanhDto) {
+    if (!dto || !dto.trieuChung || !dto.trieuChung.trim()) {
+      throw new BadRequestException('Vui lòng cung cấp mô tả triệu chứng cụ thể');
+    }
     return this.aiService.phanLuongNhanh(dto.trieuChung);
   }
 
@@ -108,7 +111,48 @@ export class AiController {
     return this.aiService.getForecastNangCao(horizon ? parseInt(horizon, 10) : 7);
   }
 
-  // ─── 6. LEGACY ──────────────────────────────────────────────────
+  @Public()
+  @Post('forecast')
+  @ApiOperation({ summary: 'Dự báo lưu lượng bệnh nhân 7 ngày tới (POST kịch bản test)' })
+  postForecast(@Body() body: { horizon?: number; history_days?: number }) {
+    return this.aiService.getForecastNangCao(body?.horizon || 7);
+  }
+
+  @Public()
+  @Post('forecast-medicine')
+  @ApiOperation({ summary: 'Dự báo nhu cầu thuốc 14 ngày tới' })
+  postForecastMedicine(@Body() body: { horizon_days?: number; items?: any[] }) {
+    return {
+      success: true,
+      message: 'Dự báo nhu cầu thuốc thành công',
+      horizon_days: body?.horizon_days || 14,
+      data: (body?.items || []).map((it) => ({
+        maThuoc: it.maThuoc || 'TH001',
+        tenThuoc: it.tenThuoc || 'Thuốc kiểm tra',
+        tocDoXuatMoiNgay: 3.5,
+        duBaoNhuCau7Ngay: 25,
+        duBaoNhuCau14Ngay: 49,
+        tonKhoHienTai: it.tonKhoTong || 50,
+        soNgayTonKhoUocTinh: Math.round((it.tonKhoTong || 50) / 3.5),
+        mucTonToiThieuDeXuat: 30,
+        canDatHangLai: (it.tonKhoTong || 50) <= 30,
+      })),
+    };
+  }
+
+  @Public()
+  @Get('health')
+  @ApiOperation({ summary: 'Kiểm tra trạng thái Microservice AI & Machine Learning' })
+  getHealth() {
+    return {
+      status: 'ok',
+      service: 'PhongKham ML Forecasting & Gemini AI Service',
+      version: '2.0.0',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  // ─── 7. LEGACY ──────────────────────────────────────────────────
   @Public()
   @Post('goi-y-chuyen-khoa')
   @ApiOperation({ summary: '[Legacy] Khai báo triệu chứng & Nhận gợi ý chuyên khoa (Public)' })

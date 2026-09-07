@@ -140,8 +140,12 @@ export class LichHenService implements OnModuleInit {
           gioHen: dto.gioHen,
         },
       });
-      if (trung) {
-        throw new ConflictException({ code: 'LICH_HEN_TRUNG_GIO', message: 'Bác sĩ đã có lịch hẹn vào khung giờ này' });
+      if (trung && trung.trangThai !== TrangThaiLichHen.DA_HUY) {
+        if (trung.benhNhanId === dto.benhNhanId && trung.lyDoKham === dto.lyDoKham) {
+          await this.repo.delete(trung.id);
+        } else {
+          throw new ConflictException({ code: 'LICH_HEN_TRUNG_GIO', message: 'Bác sĩ đã có lịch hẹn vào khung giờ này' });
+        }
       }
     }
 
@@ -236,7 +240,7 @@ export class LichHenService implements OnModuleInit {
 
   // ─── CẬP NHẬT TRẠNG THÁI (Optimistic Lock) ────────────────────
   async capNhatTrangThai(id: number, dto: CapNhatTrangThaiLichHenDto) {
-    const result = await this.repo
+    const qb = this.repo
       .createQueryBuilder()
       .update(LichHen)
       .set({
@@ -245,8 +249,13 @@ export class LichHenService implements OnModuleInit {
         phienBan: () => 'phien_ban + 1',
         capNhatLuc: new Date(),
       })
-      .where('id = :id AND phien_ban = :phienBan', { id, phienBan: dto.phienBan })
-      .execute();
+      .where('id = :id', { id });
+
+    if (dto.phienBan !== undefined) {
+      qb.andWhere('phien_ban = :phienBan', { phienBan: dto.phienBan });
+    }
+
+    const result = await qb.execute();
 
     if (result.affected === 0) {
       throw new ConflictException({

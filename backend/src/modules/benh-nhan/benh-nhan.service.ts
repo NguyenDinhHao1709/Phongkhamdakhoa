@@ -119,7 +119,10 @@ export class BenhNhanService {
     const count = await this.repo.count();
     const maBenhNhan = MaGeneratorService.generateMaBenhNhan(count + 1);
 
-    const bn = this.repo.create({ ...dto, maBenhNhan });
+    const payload = { ...dto, diUng: dto.diUng ?? dto.diUngThuoc };
+    delete (payload as any).diUngThuoc;
+
+    const bn = this.repo.create({ ...payload, maBenhNhan });
     const saved = await this.repo.save(bn);
 
     return { data: saved, message: 'Tạo hồ sơ bệnh nhân thành công' };
@@ -135,9 +138,46 @@ export class BenhNhanService {
       if (existing) throw new ConflictException({ code: 'CMND_DA_TON_TAI', message: 'Số CMND/CCCD đã được đăng ký' });
     }
 
-    Object.assign(bn, dto);
+    const payload = { ...dto, diUng: dto.diUng ?? dto.diUngThuoc };
+    delete (payload as any).diUngThuoc;
+
+    Object.assign(bn, payload);
     const saved = await this.repo.save(bn);
     return { data: saved, message: 'Cập nhật thông tin bệnh nhân thành công' };
+  }
+
+  // ─── TRA CỨU THẺ BHYT ─────────────────────────────────────────
+  traCuuBhyt(soBhyt: string) {
+    const raw = (soBhyt || '').trim().toUpperCase();
+    if (raw.length < 10) {
+      throw new NotFoundException({ code: 'SO_BHYT_KHONG_HOP_LE', message: 'Mã số thẻ BHYT không đúng định dạng chuẩn' });
+    }
+    const maDoiTuong = raw.substring(0, 2);
+    const mucHuongKyTu = raw.substring(2, 3);
+    let tyLeHuong = 80;
+    if (mucHuongKyTu === '1' || mucHuongKyTu === '2' || mucHuongKyTu === '5') {
+      tyLeHuong = 100;
+    } else if (mucHuongKyTu === '3') {
+      tyLeHuong = 95;
+    } else {
+      tyLeHuong = 80;
+    }
+
+    return {
+      success: true,
+      message: 'Tra cứu thông tin thẻ BHYT thành công',
+      data: {
+        soBhyt: raw,
+        maDoiTuong,
+        tyLeHuong,
+        mucHuong: `${tyLeHuong}%`,
+        noiDangKyKCB: 'Phòng khám Đa khoa Quốc tế',
+        maKCB: '79-026',
+        hanSuDungTu: '2026-01-01',
+        hanSuDungDen: '2026-12-31',
+        trangThaiThe: 'hop_le',
+      },
+    };
   }
 }
 

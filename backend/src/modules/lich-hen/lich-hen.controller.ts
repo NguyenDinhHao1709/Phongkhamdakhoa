@@ -56,7 +56,7 @@ export class LichHenController {
   }
 
   @Patch(':id/huy')
-  @Roles('benh_nhan')
+  @Roles('benh_nhan', 'tiep_tan', 'quan_tri_vien', 'bac_si')
   @ApiOperation({ summary: 'Bệnh nhân hủy lịch hẹn (Có kiểm tra ranh giới 2 tiếng & Hoàn cọc 1/5)' })
   huyLichHen(
     @Param('id', ParseIntPipe) id: number,

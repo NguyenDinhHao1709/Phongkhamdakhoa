@@ -46,7 +46,11 @@ export class NhaThuocService {
    */
   async taoThuoc(data: any) {
     const count = await this.thuocRepo.count();
-    const maThuoc = data.maThuoc?.trim() || `TH${String(count + 1).padStart(3, '0')}`;
+    let maThuoc = data.maThuoc?.trim() || `TH${String(count + 1).padStart(3, '0')}`;
+    const existing = await this.thuocRepo.findOne({ where: { maThuoc } });
+    if (existing) {
+      maThuoc = `TH_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    }
 
     const newThuoc = this.thuocRepo.create({
       maThuoc,
@@ -379,7 +383,7 @@ export class NhaThuocService {
     const donXuatTrongNgay = await this.donThuocRepo
       .createQueryBuilder('dt')
       .where('dt.trangThai = :st', { st: 'da_cap_phat' })
-      .andWhere('DATE(dt.capPhatLuc) = CURRENT_DATE()')
+      .andWhere('DATE(dt.ngayKe) = CURRENT_DATE()')
       .getCount();
 
     // Cảnh báo rủi ro

@@ -40,22 +40,58 @@ export class ThanhToanController {
     return this.thanhToanService.getChiTietHoaDon(id);
   }
 
-  @Post('luot-tiep-nhan/:luotTiepNhanId')
-  @Roles('thu_ngan', 'tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
-  @ApiOperation({ summary: 'Tạo hoặc cập nhật hóa đơn từ lượt tiếp nhận' })
-  taoHoaDonTuLuotKham(@Param('luotTiepNhanId', ParseIntPipe) luotTiepNhanId: number) {
-    return this.thanhToanService.taoHoacCapNhatTuLuotKham(luotTiepNhanId);
+  @Get('hoa-don/luot-kham/:luotId')
+  @Roles('thu_ngan', 'tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'bac_si')
+  @ApiOperation({ summary: 'Lấy hoặc tính tổng viện phí trọn gói theo lượt tiếp nhận' })
+  layHoaDonTheoLuot(@Param('luotId', ParseIntPipe) luotId: number) {
+    return this.thanhToanService.taoHoacCapNhatTuLuotKham(luotId);
   }
 
-  @Patch(':id/xac-nhan')
+  @Post(['hoa-don', 'luot-tiep-nhan/:luotTiepNhanId'])
+  @Roles('thu_ngan', 'tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Tạo hoặc cập nhật hóa đơn từ lượt khám' })
+  taoHoaDonTuLuotKham(
+    @Param('luotTiepNhanId') luotTiepNhanId?: string,
+    @Body() body?: { luotKhamId?: number; apDungBhyt?: boolean; tyLeBhyt?: number },
+  ) {
+    const id = luotTiepNhanId ? Number(luotTiepNhanId) : Number(body?.luotKhamId);
+    return this.thanhToanService.taoHoacCapNhatTuLuotKham(id, body?.apDungBhyt);
+  }
+
+  @Patch([':id/xac-nhan', 'hoa-don/:id/xac-nhan'])
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Xác nhận thu tiền hóa đơn' })
   xacNhanThanhToan(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('id') userId: number,
-    @Body() dto: { phuongThucThanhToan: string; soTienGiam?: number; ghiChu?: string },
+    @Body() dto: { phuongThucThanhToan?: string; phuongThuc?: string; soTienGiam?: number; soTienNhan?: number; ghiChu?: string; apDungBhyt?: boolean },
   ) {
-    return this.thanhToanService.xacNhanThanhToan(id, userId, dto);
+    return this.thanhToanService.xacNhanThanhToan(id, userId || 1, {
+      phuongThucThanhToan: dto.phuongThucThanhToan || dto.phuongThuc || 'tien_mat',
+      soTienGiam: dto.soTienGiam,
+      ghiChu: dto.ghiChu,
+      apDungBhyt: dto.apDungBhyt,
+    });
+  }
+
+  @Post('vnpay/tao-url')
+  @Roles('thu_ngan', 'benh_nhan', 'quan_tri_vien')
+  @ApiOperation({ summary: 'Tạo URL thanh toán VNPay Sandbox' })
+  taoUrlVNPay(@Body() body: { hoaDonId: number; soTien?: number; nganHang?: string }) {
+    return this.thanhToanService.taoUrlVNPay(body.hoaDonId, body.soTien, body.nganHang);
+  }
+
+  @Get('vnpay/callback')
+  @ApiOperation({ summary: 'Webhook IPN callback tiếp nhận kết quả thanh toán từ VNPay' })
+  callbackVNPay(@Query() query: Record<string, string>) {
+    return this.thanhToanService.callbackVNPay(query);
+  }
+
+  @Get('in-hoa-don/:id')
+  @Roles('thu_ngan', 'quan_tri_vien', 'benh_nhan')
+  @ApiOperation({ summary: 'Lấy dữ liệu in biên lai tài chính song ngữ' })
+  inHoaDon(@Param('id', ParseIntPipe) id: number) {
+    return this.thanhToanService.getInHoaDon(id);
   }
 }
 

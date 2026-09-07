@@ -15,9 +15,10 @@ import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 export class TaoTiepNhanDto {
   @ApiProperty() @IsInt() @IsPositive() benhNhanId: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() lichHenId?: number;
-  @ApiPropertyOptional() @IsOptional() @IsInt() phongKhamId?: number;
+  @ApiProperty() @IsInt() @IsPositive({ message: 'Phòng khám không được để trống' }) phongKhamId: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() bacSiId?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() ghiChu?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() lyDoKham?: string;
 }
 
 export class GhiSinhHieuDto {
@@ -30,6 +31,10 @@ export class GhiSinhHieuDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() nhipTho?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() spo2?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() ghiChu?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() mach?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() nhietDo?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() chieuCao?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() canNang?: number;
 }
 
 export class DieuPhoiPhongDto {
@@ -94,13 +99,25 @@ export class TiepNhanService {
     const luot = await this.luotRepo.findOne({ where: { id: luotId } });
     if (!luot) throw new NotFoundException({ code: 'LUOT_KHONG_TON_TAI', message: 'Không tìm thấy lượt tiếp nhận' });
 
+    const mappedData = {
+      chieuCaoCm: dto.chieuCaoCm ?? dto.chieuCao,
+      canNangKg: dto.canNangKg ?? dto.canNang,
+      nhietDoC: dto.nhietDoC ?? dto.nhietDo,
+      huyetApTamThu: dto.huyetApTamThu,
+      huyetApTamTruong: dto.huyetApTamTruong,
+      nhipTim: dto.nhipTim ?? dto.mach,
+      nhipTho: dto.nhipTho,
+      spo2: dto.spo2,
+      ghiChu: dto.ghiChu,
+    };
+
     // Upsert sinh hiệu
     let sh = await this.sinhHieuRepo.findOne({ where: { luotTiepNhanId: luotId } });
     if (sh) {
-      Object.assign(sh, dto, { doBoiId, doLuc: new Date() });
+      Object.assign(sh, mappedData, { doBoiId, doLuc: new Date() });
     } else {
       sh = this.sinhHieuRepo.create({
-        ...dto,
+        ...mappedData,
         luotTiepNhanId: luotId,
         doBoiId,
         doLuc: new Date(),

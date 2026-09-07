@@ -74,8 +74,8 @@ export class XetNghiemController {
   }
 
   // ─── DANH SÁCH CHỈ ĐỊNH (KTV view) ─────────────────────────
-  @Get(['', 'chi-dinh'])
-  @Roles('ky_thuat_vien', 'bac_si')
+  @Get(['', 'chi-dinh', 'danh-sach-cho'])
+  @Roles('ky_thuat_vien', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Danh sách chỉ định xét nghiệm (lọc theo trạng thái)' })
   danhSachChiDinh(@Query() dto: TimKiemChiDinhDto) {
     return this.service.danhSachChiDinh(dto);
@@ -84,7 +84,7 @@ export class XetNghiemController {
 
   // ─── CHI TIẾT 1 CHỈ ĐỊNH ──────────────────────────────────
   @Get('chi-dinh/:id')
-  @Roles('ky_thuat_vien', 'bac_si')
+  @Roles('ky_thuat_vien', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Chi tiết chỉ định + kết quả (nếu có)' })
   chiTietChiDinh(@Param('id', ParseIntPipe) id: number) {
     return this.service.chiTietChiDinh(id);
@@ -92,7 +92,7 @@ export class XetNghiemController {
 
   // ─── CẬP NHẬT TRẠNG THÁI ──────────────────────────────────
   @Patch('chi-dinh/:id/trang-thai')
-  @Roles('ky_thuat_vien')
+  @Roles('ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'KTV cập nhật trạng thái (lấy mẫu → xử lý → có kết quả)' })
   capNhatTrangThai(
     @Param('id', ParseIntPipe) id: number,
@@ -103,8 +103,8 @@ export class XetNghiemController {
   }
 
   // ─── NHẬP KẾT QUẢ ──────────────────────────────────────────
-  @Post('chi-dinh/:id/ket-qua')
-  @Roles('ky_thuat_vien')
+  @Post(['chi-dinh/:id/ket-qua', 'ket-qua/:id'])
+  @Roles('ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'KTV nhập kết quả xét nghiệm' })
   nhapKetQua(
     @Param('id', ParseIntPipe) id: number,
@@ -116,7 +116,7 @@ export class XetNghiemController {
 
   // ─── GỬI CHO BÁC SĨ ───────────────────────────────────────
   @Patch('chi-dinh/:id/gui-bac-si')
-  @Roles('ky_thuat_vien')
+  @Roles('ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Đánh dấu đã gửi kết quả cho bác sĩ' })
   guiKetQuaChoBacSi(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.service.guiKetQuaChoBacSi(id);
@@ -124,7 +124,7 @@ export class XetNghiemController {
 
   // ─── XEM TOÀN BỘ KQ CỦA 1 PHIẾU KHÁM ─────────────────────
   @Get('benh-an-kham/:benhAnKhamId')
-  @Roles('bac_si', 'ky_thuat_vien')
+  @Roles('bac_si', 'ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Tất cả chỉ định + kết quả XN của 1 phiếu khám' })
   ketQuaTheoBenhAnKham(@Param('benhAnKhamId', ParseIntPipe) id: number) {
     return this.service.ketQuaTheoBenhAnKham(id);

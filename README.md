@@ -480,6 +480,8 @@ KLTN/
 
 Swagger UI: **`http://localhost:5000/api/docs`**
 
+> 📄 **Tài liệu Đặc tả & Toàn bộ Test Cases Backend:** Xem chi tiết tại [SRS.md](file:///d:/KLTN/SRS.md) (Bao quát 12 phân hệ: Auth, Tiếp Nhận, Bệnh Nhân, Lịch Hẹn, Bệnh Án, Cận Lâm Sàng, Nhà Thuốc, Thanh Toán, Quản Trị, Nhân Sự, WebSocket, AI Triaging & Forecasting).
+
 ### Các endpoint quan trọng
 
 ```

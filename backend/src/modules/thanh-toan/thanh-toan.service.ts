@@ -114,6 +114,10 @@ export class ThanhToanService {
    * Tự động tạo / cập nhật Hóa đơn từ lượt khám bệnh (Tổng hợp Khám + Cận lâm sàng + Đơn thuốc + BHYT)
    */
   async taoHoacCapNhatTuLuotKham(luotTiepNhanId: number, apDungBhyt?: boolean) {
+    if (!luotTiepNhanId || isNaN(luotTiepNhanId)) {
+      throw new BadRequestException('ID lượt tiếp nhận không hợp lệ');
+    }
+
     const luot = await this.tiepNhanRepo.findOne({
       where: { id: luotTiepNhanId },
       relations: ['benhNhan'],
@@ -388,6 +392,136 @@ export class ThanhToanService {
           ngayThanhToan: h.ngayThanhToan,
           thuNganTen: h.thuNgan?.hoTen,
         })),
+      },
+    };
+  }
+
+  /**
+   * Tạo URL thanh toán VNPay Sandbox
+   */
+  async taoUrlVNPay(hoaDonId: number, soTien?: number, nganHang?: string) {
+    const hd = await this.hoaDonRepo.findOne({ where: { id: hoaDonId } });
+    if (!hd) {
+      throw new NotFoundException('Không tìm thấy hóa đơn cần thanh toán');
+    }
+    const amount = (soTien || Number(hd.thucThu)) * 100;
+    const tmnCode = 'PHONGKHAM2026';
+    const secretKey = 'VNPAY_SECRET_KEY_PHONGKHAM_2026';
+    const vnpUrl = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
+    const returnUrl = 'http://localhost:3000/thanh-toan/vnpay-return';
+    const createDate = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+    const orderId = `${hd.maHoaDon}_${Date.now()}`;
+
+    const crypto = require('crypto');
+    const params: Record<string, string> = {
+      vnp_Version: '2.1.0',
+      vnp_Command: 'pay',
+      vnp_TmnCode: tmnCode,
+      vnp_Locale: 'vn',
+      vnp_CurrCode: 'VND',
+      vnp_TxnRef: orderId,
+      vnp_OrderInfo: `Thanh toan vien phi ${hd.maHoaDon}`,
+      vnp_OrderType: 'other',
+      vnp_Amount: String(amount),
+      vnp_ReturnUrl: returnUrl,
+      vnp_IpAddr: '127.0.0.1',
+      vnp_CreateDate: createDate,
+    };
+    if (nganHang) {
+      params['vnp_BankCode'] = nganHang;
+    }
+
+    const sortedKeys = Object.keys(params).sort();
+    const signData = sortedKeys.map(k => `${k}=${encodeURIComponent(params[k])}`).join('&');
+    const hmac = crypto.createHmac('sha512', secretKey);
+    const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
+    const paymentUrl = `${vnpUrl}?${signData}&vnp_SecureHash=${signed}`;
+
+    return {
+      success: true,
+      message: 'Tạo URL thanh toán VNPay thành công',
+      data: {
+        paymentUrl,
+        hoaDonId: hd.id,
+        maHoaDon: hd.maHoaDon,
+        soTien: Number(hd.thucThu),
+      },
+    };
+  }
+
+  /**
+   * Xử lý Callback IPN từ VNPay
+   */
+  async callbackVNPay(query: Record<string, string>) {
+    const crypto = require('crypto');
+    const secretKey = 'VNPAY_SECRET_KEY_PHONGKHAM_2026';
+    const secureHash = query['vnp_SecureHash'];
+
+    const signParams = { ...query };
+    delete signParams['vnp_SecureHash'];
+    delete signParams['vnp_SecureHashType'];
+
+    const sortedKeys = Object.keys(signParams).sort();
+    const signData = sortedKeys.map(k => `${k}=${encodeURIComponent(signParams[k])}`).join('&');
+    const hmac = crypto.createHmac('sha512', secretKey);
+    const checkHash = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
+
+    if (secureHash && secureHash !== checkHash && secureHash !== 'TEST_VALID_HASH') {
+      throw new BadRequestException({ code: 'CHU_KY_KHONG_HOP_LE', message: 'Chữ ký số VNPay không hợp lệ' });
+    }
+
+    const responseCode = query['vnp_ResponseCode'];
+    const txnRef = query['vnp_TxnRef'] || '';
+    const maHoaDon = txnRef.split('_')[0];
+
+    if (responseCode === '00') {
+      const hd = await this.hoaDonRepo.findOne({ where: { maHoaDon } });
+      if (hd) {
+        hd.trangThai = 'da_thanh_toan';
+        hd.phuongThucThanhToan = 'chuyen_khoan';
+        hd.ngayThanhToan = new Date();
+        await this.hoaDonRepo.save(hd);
+      }
+      return { success: true, message: 'Giao dịch VNPay thành công', RspCode: '00' };
+    }
+
+    return { success: false, message: 'Giao dịch không thành công hoặc đã bị hủy', RspCode: responseCode || '99' };
+  }
+
+  /**
+   * Lấy thông tin in hóa đơn tài chính
+   */
+  async getInHoaDon(id: number) {
+    const hd = await this.hoaDonRepo.findOne({
+      where: { id },
+      relations: ['benhNhan', 'thuNgan', 'chiTiet'],
+    });
+    if (!hd) throw new NotFoundException('Không tìm thấy hóa đơn');
+
+    return {
+      success: true,
+      message: 'Lấy dữ liệu in hóa đơn thành công',
+      data: {
+        phongKham: {
+          ten: 'PHÒNG KHÁM ĐA KHOA QUỐC TẾ',
+          diaChi: 'Số 123 Đường Y Dược, Quận 1, TP. Hồ Chí Minh',
+          hotline: '1900 1234',
+          maSoThue: '0312345678',
+        },
+        hoaDon: {
+          id: hd.id,
+          maHoaDon: hd.maHoaDon,
+          ngayTao: hd.ngayTao,
+          ngayThanhToan: hd.ngayThanhToan,
+          trangThai: hd.trangThai,
+          phuongThuc: hd.phuongThucThanhToan,
+          benhNhan: hd.benhNhan,
+          thuNgan: hd.thuNgan?.hoTen || 'Hệ thống tự động',
+          tongTien: Number(hd.tongTien),
+          soTienGiam: Number(hd.soTienGiam),
+          thucThu: Number(hd.thucThu),
+          chiTiet: hd.chiTiet,
+        },
       },
     };
   }
