@@ -33,6 +33,11 @@ Thumbs.db
 scratch/
 .system_generated/
 
+# Runtime uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/uploads/avatars/
+
 # Python
 venv/
 **/venv/
