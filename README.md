@@ -551,6 +551,7 @@ POST   /api/thanh-toan/:id                Xác nhận thanh toán
 **6. Báo cáo & BI nâng cao**
 - Xuất báo cáo Excel/PDF theo chuẩn Bộ Y Tế
 - Dashboard real-time (WebSocket)
+
 - Dự báo nhu cầu nhân lực
 
 **7. Tích hợp thiết bị y tế**

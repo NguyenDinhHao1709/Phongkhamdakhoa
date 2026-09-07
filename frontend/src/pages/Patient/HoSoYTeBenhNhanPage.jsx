@@ -331,6 +331,11 @@ export default function HoSoYTeBenhNhanPage() {
                                     </button>
                                   </div>
                                 </div>
+                              ) : isCoKetQua ? (
+                                <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100 text-xs text-emerald-800 flex items-center gap-2">
+                                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                                  <span>Kết quả đã hoàn tất và đang được đồng bộ. Vui lòng tải lại hồ sơ sau ít phút nếu chưa hiển thị chi tiết.</span>
+                                </div>
                               ) : (
                                 <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200">
                                   <div className="flex items-center gap-2">
@@ -459,4 +464,3 @@ export default function HoSoYTeBenhNhanPage() {
     </div>
   );
 }
-

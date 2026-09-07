@@ -5,7 +5,7 @@ import { HoSoBenhAnService } from './ho-so-benh-an.service';
 import { HoSoBenhAn, BenhAnKham } from './entities/ho-so-benh-an.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
-import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
+import { ChiDinhCanLamSang, KetQuaXetNghiem } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHen } from '../lich-hen/entities/lich-hen.entity';
 import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
@@ -20,6 +20,7 @@ import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
       NhanVien,
       BacSi,
       ChiDinhCanLamSang,
+      KetQuaXetNghiem,
       DonThuoc,
       LichHen,
       LuotTiepNhan,

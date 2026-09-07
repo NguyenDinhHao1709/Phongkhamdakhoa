@@ -8,7 +8,7 @@ import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge
 import { apiGet, apiPost, apiPatch } from '../../../services/api';
 import { formatDateTime } from '../../../utils/formatDate';
 import { TRANG_THAI_XET_NGHIEM } from '../../../utils/constants';
-import { FlaskConical, Send, ChevronRight, Search, Eye, UploadCloud, Image, FileText, CheckCircle2, ExternalLink } from 'lucide-react';
+import { FlaskConical, Send, ChevronRight, Eye, UploadCloud, Image, FileText, CheckCircle2, ExternalLink, ClipboardList, UserRound, Clock3, AlertCircle } from 'lucide-react';
 
 const TAB_FILTERS = [
   { key: null, label: 'Tất cả' },
@@ -159,7 +159,6 @@ function ChiDinhDetailPanel({ id }) {
       setResult((prev) => ({
         ...prev,
         donVi: cd.dichVu.donViKetQua || '',
-        giaTri: prev.giaTri || cd.dichVu.giaTriBinhThuong || '',
       }));
     }
   }, [kq, cd]);
@@ -215,28 +214,38 @@ function ChiDinhDetailPanel({ id }) {
 
   return (
     <div className="space-y-4">
-      {/* Info */}
+      {/* Thông tin hành chính và chỉ định */}
       <MedCard>
         {cd.benhAnKham?.hoSoBenhAn?.benhNhan && (
-          <div className="p-3 bg-blue-50/80 border border-blue-100 rounded-xl mb-3.5 text-xs text-gray-700 space-y-1">
-            <p>
-              Bệnh nhân: <strong className="text-primary-800 text-sm font-semibold">{cd.benhAnKham.hoSoBenhAn.benhNhan.hoTen}</strong>
-            </p>
-            <p className="text-gray-500">
-              Mã BN: <span className="font-mono font-medium text-gray-900">{cd.benhAnKham.hoSoBenhAn.benhNhan.maBenhNhan}</span>
-              {cd.benhAnKham.hoSoBenhAn.benhNhan.soDienThoai && ` • SĐT: ${cd.benhAnKham.hoSoBenhAn.benhNhan.soDienThoai}`}
-            </p>
+          <div className="p-3.5 bg-sky-50/70 border border-sky-100 rounded-xl mb-4 text-xs text-gray-700">
+            <div className="flex items-center gap-2 mb-2 text-sky-800 font-bold uppercase tracking-wide">
+              <UserRound className="h-4 w-4" /> Thông tin người bệnh
+            </div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+              <p className="col-span-2">Họ và tên: <strong className="text-sm text-gray-900">{cd.benhAnKham.hoSoBenhAn.benhNhan.hoTen}</strong></p>
+              <p>Mã người bệnh: <span className="font-mono font-medium text-gray-900">{cd.benhAnKham.hoSoBenhAn.benhNhan.maBenhNhan}</span></p>
+              <p>Giới tính: <span className="font-medium text-gray-900">{cd.benhAnKham.hoSoBenhAn.benhNhan.gioiTinh === 'nam' ? 'Nam' : cd.benhAnKham.hoSoBenhAn.benhNhan.gioiTinh === 'nu' ? 'Nữ' : '—'}</span></p>
+              <p>Ngày sinh: <span className="font-medium text-gray-900">{cd.benhAnKham.hoSoBenhAn.benhNhan.ngaySinh ? formatDateTime(cd.benhAnKham.hoSoBenhAn.benhNhan.ngaySinh).split(' ')[0] : '—'}</span></p>
+              <p>Số điện thoại: <span className="font-medium text-gray-900">{cd.benhAnKham.hoSoBenhAn.benhNhan.soDienThoai || '—'}</span></p>
+            </div>
           </div>
         )}
-        <h3 className="text-base font-bold text-gray-900 mb-2">{cd.dichVu?.tenDichVu}</h3>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Chỉ định cận lâm sàng</p>
+            <h3 className="text-base font-bold text-gray-900">{cd.dichVu?.tenDichVu}</h3>
+          </div>
           <StatusBadge status={cd.trangThai} />
-          <span className="text-xs text-gray-400">#{cd.id}</span>
         </div>
-        <div className="space-y-1.5 text-sm text-gray-600">
-          {cd.dichVu?.donViKetQua && <p>Đơn vị: <strong>{cd.dichVu.donViKetQua}</strong></p>}
-          {cd.dichVu?.giaTriBinhThuong && <p>Bình thường: <strong>{cd.dichVu.giaTriBinhThuong}</strong></p>}
-          {cd.ghiChuChiDinh && <p>Ghi chú BS: <em>{cd.ghiChuChiDinh}</em></p>}
+        <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 border-t border-gray-100 pt-3">
+          <p>Mã chỉ định: <strong className="font-mono text-gray-900">#{cd.id}</strong></p>
+          <p>Loại: <strong className="text-gray-900">{cd.dichVu?.loai === 'cdha' ? 'Chẩn đoán hình ảnh' : 'Xét nghiệm'}</strong></p>
+          <p className="flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" /> Thời gian: <strong className="text-gray-900">{formatDateTime(cd.thoiGianChiDinh)}</strong></p>
+          <p>Đơn vị: <strong className="text-gray-900">Khoa xét nghiệm</strong></p>
+        </div>
+        <div className="mt-3 p-2.5 rounded-lg bg-gray-50 border border-gray-100 text-xs text-gray-600 space-y-1">
+          <p className="font-semibold text-gray-700 flex items-center gap-1.5"><ClipboardList className="h-3.5 w-3.5 text-primary-600" /> Thông tin lâm sàng</p>
+          <p>Chẩn đoán / ghi chú bác sĩ: <em className="text-gray-800">{cd.ghiChuChiDinh || 'Không có ghi chú'}</em></p>
         </div>
 
         {/* Status flow button */}
@@ -257,41 +266,51 @@ function ChiDinhDetailPanel({ id }) {
 
       {/* Nhập kết quả — cho trạng thái dang_xu_ly hoặc co_ket_qua */}
       {(cd.trangThai === 'dang_xu_ly' || cd.trangThai === 'co_ket_qua') && (
-        <MedCard title="Kết quả xét nghiệm">
+        <MedCard title={cd.dichVu?.loai === 'cdha' ? 'Kết quả chẩn đoán hình ảnh' : 'Phiếu nhập kết quả xét nghiệm'}>
           <form
             className="space-y-3"
             onSubmit={(e) => { e.preventDefault(); resultMut.mutate(result); }}
           >
-            <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg border border-primary-100 bg-primary-50/50 p-3">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-primary-800 mb-2">
+                <ClipboardList className="h-3.5 w-3.5" /> KẾT QUẢ PHÂN TÍCH
+              </div>
+              <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Giá trị</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Kết quả <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={result.giaTri}
                   onChange={(e) => setResult((r) => ({ ...r, giaTri: e.target.value }))}
-                  placeholder={cd.dichVu?.giaTriBinhThuong || 'Nhập giá trị'}
+                  placeholder={cd.dichVu?.loai === 'cdha' ? 'Mô tả kết quả hình ảnh' : 'Nhập trị số hoặc kết quả định tính'}
+                  required
                   className="w-full rounded-lg border border-gray-300 bg-white py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Đơn vị</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Đơn vị đo</label>
                 <input
                   type="text"
                   value={result.donVi}
                   onChange={(e) => setResult((r) => ({ ...r, donVi: e.target.value }))}
-                  placeholder={cd.dichVu?.donViKetQua || ''}
+                  placeholder={cd.dichVu?.donViKetQua || 'Không áp dụng'}
                   className="w-full rounded-lg border border-gray-300 bg-white py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
+              </div>
+              </div>
+              <div className="mt-3 flex items-start gap-2 rounded-md bg-white border border-gray-200 px-2.5 py-2 text-xs text-gray-600">
+                <AlertCircle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                <span>Khoảng tham chiếu: <strong className="text-gray-900">{cd.dichVu?.giaTriBinhThuong || 'Chưa thiết lập'}</strong>. Đánh giá cần căn cứ tuổi, giới tính và điều kiện lấy mẫu.</span>
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Nhận xét</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Nhận xét chuyên môn / kết luận</label>
               <textarea
-                rows={2}
+                rows={3}
                 value={result.nhanXet}
                 onChange={(e) => setResult((r) => ({ ...r, nhanXet: e.target.value }))}
-                placeholder="Nhận xét kết quả xét nghiệm..."
+                placeholder={cd.dichVu?.loai === 'cdha' ? 'Mô tả phát hiện, kết luận và khuyến nghị (nếu có)...' : 'Ghi nhận xét, bất thường hoặc kết luận chuyên môn...'}
                 className="w-full rounded-lg border border-gray-300 bg-white py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
             </div>
@@ -381,4 +400,3 @@ function ChiDinhDetailPanel({ id }) {
     </div>
   );
 }
-

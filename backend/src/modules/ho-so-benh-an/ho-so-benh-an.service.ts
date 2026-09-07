@@ -15,7 +15,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ChiDinhCanLamSang, KetQuaXetNghiem } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
-import { LuotTiepNhan, TrangThaiTiepNhan, SinhHieu } from '../tiep-nhan/entities/tiep-nhan.entity';
+import { LuotTiepNhan, SinhHieu, TrangThaiTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 
@@ -57,6 +57,7 @@ export class HoSoBenhAnService {
     @InjectRepository(NhanVien)          private nhanVienRepo: Repository<NhanVien>,
     @InjectRepository(BacSi)             private bacSiRepo: Repository<BacSi>,
     @InjectRepository(ChiDinhCanLamSang) private clsRepo: Repository<ChiDinhCanLamSang>,
+    @InjectRepository(KetQuaXetNghiem)  private ketQuaClsRepo: Repository<KetQuaXetNghiem>,
     @InjectRepository(DonThuoc)          private donThuocRepo: Repository<DonThuoc>,
     @InjectRepository(LichHen)           private lichHenRepo: Repository<LichHen>,
     @InjectRepository(LuotTiepNhan)      private tiepNhanRepo: Repository<LuotTiepNhan>,
@@ -244,16 +245,13 @@ export class HoSoBenhAnService {
           where: { benhAnKhamId: bak.id },
           relations: ['dichVu'],
         });
-        const xnWithKetQua = await Promise.all(
-          xn.map(async (c) => {
-            const kq = await this.clsRepo.manager.getRepository(KetQuaXetNghiem).findOne({
-              where: { chiDinhId: c.id },
-            });
-            return {
-              ...c,
-              ketQua: kq || null,
-            };
-          })
+        const xnWithResults = await Promise.all(
+          xn.map(async (chiDinh) => ({
+            ...chiDinh,
+            ketQua: await this.ketQuaClsRepo.findOne({
+              where: { chiDinhId: chiDinh.id },
+            }),
+          })),
         );
         const dt = await this.donThuocRepo.find({
           where: { benhAnKhamId: bak.id },
@@ -275,8 +273,8 @@ export class HoSoBenhAnService {
           benhAnKham: bak,
           bacSi: bak.bacSi,
           bacSiTen,
-          xetNghiem: xnWithKetQua,
-          canLamSang: xnWithKetQua,
+          xetNghiem: xnWithResults,
+          canLamSang: xnWithResults,
           donThuoc: dtWithAliases,
           sinhHieu: sh,
         };
@@ -317,47 +315,9 @@ export class HoSoBenhAnService {
 
     const dsBenhAn = await this.benhAnRepo.find({
       where: { hoSoBenhAnId: hoSo.id },
-      relations: ['bacSi', 'bacSi.nhanVien'],
       order: { ngayKham: 'DESC' },
     });
-
-    const enriched = await Promise.all(
-      dsBenhAn.map(async (bak) => {
-        const xn = await this.clsRepo.find({
-          where: { benhAnKhamId: bak.id },
-          relations: ['dichVu'],
-        });
-        const xnWithKetQua = await Promise.all(
-          xn.map(async (c) => {
-            const kq = await this.clsRepo.manager.getRepository(KetQuaXetNghiem).findOne({
-              where: { chiDinhId: c.id },
-            });
-            return {
-              ...c,
-              ketQua: kq || null,
-            };
-          })
-        );
-        const dt = await this.donThuocRepo.find({
-          where: { benhAnKhamId: bak.id },
-          relations: ['chiTiet', 'chiTiet.thuoc'],
-        });
-        const sh = bak.luotTiepNhanId
-          ? await this.tiepNhanRepo.manager.getRepository(SinhHieu).findOne({ where: { luotTiepNhanId: bak.luotTiepNhanId } })
-          : null;
-
-        return {
-          ...bak,
-          bacSiTen: bak.bacSi?.nhanVien?.hoTen || 'Bác sĩ điều trị',
-          canLamSang: xnWithKetQua,
-          xetNghiem: xnWithKetQua,
-          donThuoc: dt,
-          sinhHieu: sh,
-        };
-      })
-    );
-
-    return { data: enriched, message: 'OK' };
+    return { data: dsBenhAn, message: 'OK' };
   }
 
   // ─── Tạo phiếu khám mới ──────────────────────────────────
