@@ -12,7 +12,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
+import { ChiDinhCanLamSang, KetQuaXetNghiem } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
 import { LuotTiepNhan, TrangThaiTiepNhan, SinhHieu } from '../tiep-nhan/entities/tiep-nhan.entity';
@@ -244,6 +244,17 @@ export class HoSoBenhAnService {
           where: { benhAnKhamId: bak.id },
           relations: ['dichVu'],
         });
+        const xnWithKetQua = await Promise.all(
+          xn.map(async (c) => {
+            const kq = await this.clsRepo.manager.getRepository(KetQuaXetNghiem).findOne({
+              where: { chiDinhId: c.id },
+            });
+            return {
+              ...c,
+              ketQua: kq || null,
+            };
+          })
+        );
         const dt = await this.donThuocRepo.find({
           where: { benhAnKhamId: bak.id },
           relations: ['chiTiet', 'chiTiet.thuoc'],
@@ -264,8 +275,8 @@ export class HoSoBenhAnService {
           benhAnKham: bak,
           bacSi: bak.bacSi,
           bacSiTen,
-          xetNghiem: xn,
-          canLamSang: xn,
+          xetNghiem: xnWithKetQua,
+          canLamSang: xnWithKetQua,
           donThuoc: dtWithAliases,
           sinhHieu: sh,
         };
@@ -309,7 +320,44 @@ export class HoSoBenhAnService {
       relations: ['bacSi', 'bacSi.nhanVien'],
       order: { ngayKham: 'DESC' },
     });
-    return { data: dsBenhAn, message: 'OK' };
+
+    const enriched = await Promise.all(
+      dsBenhAn.map(async (bak) => {
+        const xn = await this.clsRepo.find({
+          where: { benhAnKhamId: bak.id },
+          relations: ['dichVu'],
+        });
+        const xnWithKetQua = await Promise.all(
+          xn.map(async (c) => {
+            const kq = await this.clsRepo.manager.getRepository(KetQuaXetNghiem).findOne({
+              where: { chiDinhId: c.id },
+            });
+            return {
+              ...c,
+              ketQua: kq || null,
+            };
+          })
+        );
+        const dt = await this.donThuocRepo.find({
+          where: { benhAnKhamId: bak.id },
+          relations: ['chiTiet', 'chiTiet.thuoc'],
+        });
+        const sh = bak.luotTiepNhanId
+          ? await this.tiepNhanRepo.manager.getRepository(SinhHieu).findOne({ where: { luotTiepNhanId: bak.luotTiepNhanId } })
+          : null;
+
+        return {
+          ...bak,
+          bacSiTen: bak.bacSi?.nhanVien?.hoTen || 'Bác sĩ điều trị',
+          canLamSang: xnWithKetQua,
+          xetNghiem: xnWithKetQua,
+          donThuoc: dt,
+          sinhHieu: sh,
+        };
+      })
+    );
+
+    return { data: enriched, message: 'OK' };
   }
 
   // ─── Tạo phiếu khám mới ──────────────────────────────────

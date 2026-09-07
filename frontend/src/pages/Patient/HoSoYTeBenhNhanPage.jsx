@@ -2,13 +2,15 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../../services/api';
 import { formatDateTime, formatDate } from '../../utils/formatDate';
-import { FileText, Activity, Pill, FlaskConical, Stethoscope, User, AlertTriangle, Clock, Printer } from 'lucide-react';
+import { FileText, Activity, Pill, FlaskConical, Stethoscope, User, AlertTriangle, Clock, Printer, ExternalLink, Eye, CheckCircle2 } from 'lucide-react';
 import InPhieuKhamModal from '../../components/Print/InPhieuKhamModal';
 import InDonThuocModal from '../../components/Print/InDonThuocModal';
+import InKetQuaXetNghiemModal from '../../components/Print/InKetQuaXetNghiemModal';
 
 export default function HoSoYTeBenhNhanPage() {
   const [printPhieuKham, setPrintPhieuKham] = useState({ open: false, record: null });
   const [printDonThuoc, setPrintDonThuoc] = useState({ open: false, donThuoc: null, record: null });
+  const [printXetNghiem, setPrintXetNghiem] = useState({ open: false, items: [], record: null });
   const { data, isLoading } = useQuery({
     queryKey: ['emr-cua-toi'],
     queryFn: () => apiGet('/ho-so-benh-an/cua-toi'),
@@ -120,6 +122,15 @@ export default function HoSoYTeBenhNhanPage() {
                     <Printer className="h-3.5 w-3.5" /> In đơn thuốc
                   </button>
                 )}
+                {canLamSang && canLamSang.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPrintXetNghiem({ open: true, items: canLamSang, record: item })}
+                    className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <FlaskConical className="h-3.5 w-3.5" /> In kết quả XN ({canLamSang.length})
+                  </button>
+                )}
                 <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
                   ba.trangThai === 'da_hoan_thanh'
                     ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
@@ -184,50 +195,181 @@ export default function HoSoYTeBenhNhanPage() {
 
           {/* Kết quả Cận lâm sàng / Xét nghiệm */}
           {canLamSang && canLamSang.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
-                <FlaskConical className="h-4 w-4 text-purple-600" /> Kết quả Xét nghiệm & CĐHA
-              </h4>
-              <div className="grid grid-cols-1 gap-2">
-                {canLamSang.map((c) => (
-                  <div key={c.id} className="rounded-xl border border-gray-200 p-3 bg-purple-50/20 text-xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-gray-900 text-sm">{c.dichVu?.tenDichVu || 'Xét nghiệm'}</span>
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                        c.trangThai === 'co_ket_qua' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {c.trangThai === 'co_ket_qua' ? 'Có kết quả' : 'Đang xử lý'}
-                      </span>
-                    </div>
-                    {c.ketQua && (
-                      <div className="mt-1 pt-1.5 border-t border-purple-100 text-gray-800">
-                        <p className="font-bold text-emerald-900 text-sm">
-                          Giá trị: {c.ketQua.gia_tri || c.ketQua.giaTri || 'Chưa nhập'} {c.ketQua.don_vi || c.ketQua.donVi || ''}
-                        </p>
-                        {(c.ketQua.nhan_xet || c.ketQua.nhanXet) && (
-                          <p className="text-xs text-gray-600 mt-0.5">
-                            <strong>Nhận xét KTV:</strong> {c.ketQua.nhan_xet || c.ketQua.nhanXet}
-                          </p>
-                        )}
-                        {(c.ketQua.file_dinh_kem || c.ketQua.fileDinhKem) && (
-                          <div className="mt-2 pt-1.5 border-t border-purple-200/60 flex items-center justify-between">
-                            <span className="text-[11px] font-semibold text-purple-800 flex items-center gap-1">
-                              📎 Tệp kết quả / Ảnh chụp đính kèm
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-600 flex items-center gap-1.5">
+                  <FlaskConical className="h-4 w-4 text-purple-600" /> Kết quả Xét nghiệm & CĐHA ({canLamSang.length})
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setPrintXetNghiem({ open: true, items: canLamSang, record: item })}
+                  className="text-xs font-semibold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2.5 py-1 rounded-lg flex items-center gap-1 transition"
+                >
+                  <Printer className="h-3.5 w-3.5" /> In phiếu kết quả ({canLamSang.length})
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                {canLamSang.map((c) => {
+                  const kq = c.ketQua;
+                  const dv = c.dichVu || {};
+                  const giaTri = kq?.giaTri ?? kq?.gia_tri;
+                  const donVi = kq?.donVi ?? kq?.don_vi ?? dv.donViKetQua ?? '';
+                  const thamChieu = dv.giaTriBinhThuong || 'Bình thường';
+                  const nhanXet = kq?.nhanXet ?? kq?.nhan_xet;
+                  const fileDinhKem = kq?.fileDinhKem ?? kq?.file_dinh_kem;
+                  const fileUrl = fileDinhKem ? (fileDinhKem.startsWith('http') ? fileDinhKem : `http://localhost:5000${fileDinhKem}`) : null;
+                  const isImage = fileDinhKem && fileDinhKem.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+                  const isCoKetQua = c.trangThai === 'co_ket_qua' || !!kq;
+
+                  return (
+                    <div key={c.id} className="rounded-xl border border-purple-200/80 bg-gradient-to-br from-white to-purple-50/30 p-4 shadow-2xs space-y-3 transition-all hover:shadow-sm">
+                      <div className="flex items-start justify-between gap-2 border-b border-purple-100 pb-2.5">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 uppercase font-mono">
+                              {dv.maDichVu || 'XN'}
                             </span>
-                            <a
-                              href={(c.ketQua.file_dinh_kem || c.ketQua.fileDinhKem).startsWith('http') ? (c.ketQua.file_dinh_kem || c.ketQua.fileDinhKem) : `http://localhost:5000${c.ketQua.file_dinh_kem || c.ketQua.fileDinhKem}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs font-bold text-primary-600 hover:text-primary-700 bg-white px-2.5 py-1 rounded-md border border-purple-200 shadow-2xs hover:underline"
-                            >
-                              Xem / Tải ảnh ↗
-                            </a>
+                            <span className="font-bold text-gray-900 text-sm">{dv.tenDichVu || 'Xét nghiệm'}</span>
+                            <span className="text-xs text-gray-400">
+                              ({dv.loai === 'cdha' ? 'Chẩn đoán hình ảnh' : 'Xét nghiệm y khoa'})
+                            </span>
                           </div>
-                        )}
+                          {c.thoiGianChiDinh && (
+                            <p className="text-[11px] text-gray-500">
+                              Chỉ định lúc: {formatDateTime(c.thoiGianChiDinh)}
+                            </p>
+                          )}
+                        </div>
+
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1 ${
+                          isCoKetQua ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                        }`}>
+                          {isCoKetQua ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> : <Clock className="h-3.5 w-3.5 text-amber-600" />}
+                          {isCoKetQua ? 'Đã có kết quả' : 'Đang xử lý'}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {/* Hiển thị chi tiết kết quả */}
+                      {isCoKetQua && kq ? (
+                        <div className="space-y-3">
+                          {/* Grid chỉ số */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-white p-3 rounded-xl border border-purple-100 text-xs">
+                            <div className="space-y-0.5">
+                              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">
+                                Kết quả đo đạc:
+                              </span>
+                              <div className="flex items-baseline gap-1">
+                                <span className="text-lg font-extrabold text-purple-900">{giaTri || '—'}</span>
+                                {donVi && <span className="text-xs font-semibold text-purple-700">{donVi}</span>}
+                              </div>
+                            </div>
+
+                            <div className="space-y-0.5">
+                              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">
+                                Tham chiếu chuẩn:
+                              </span>
+                              <span className="text-sm font-medium text-gray-700">{thamChieu}</span>
+                            </div>
+
+                            <div className="space-y-0.5">
+                              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">
+                                Thời gian hoàn thành:
+                              </span>
+                              <span className="text-xs text-gray-600">
+                                {formatDateTime(kq.thoiGianNhap || c.thoiGianCoKetQua || new Date())}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Nhận xét chuyên môn */}
+                          {nhanXet && (
+                            <div className="rounded-lg bg-purple-50/60 p-2.5 border border-purple-200/60 text-xs text-gray-800 space-y-1">
+                              <span className="font-bold text-purple-900 flex items-center gap-1">
+                                💬 Đánh giá & Nhận xét của Kỹ thuật viên:
+                              </span>
+                              <p className="italic text-gray-700 pl-2 border-l-2 border-purple-400">
+                                "{nhanXet}"
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Tệp đính kèm / Ảnh siêu âm / X-Quang */}
+                          {fileUrl && (
+                            <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-bold text-gray-800 flex items-center gap-1.5">
+                                  📎 Tệp kết quả đính kèm (Ảnh chẩn đoán / File PDF)
+                                </span>
+                                <a
+                                  href={fileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs font-semibold text-primary-600 hover:text-primary-700 flex items-center gap-1 hover:underline"
+                                >
+                                  Mở trong tab mới <ExternalLink className="h-3 w-3" />
+                                </a>
+                              </div>
+
+                              {isImage ? (
+                                <div className="flex items-center gap-3 pt-1">
+                                  <img
+                                    src={fileUrl}
+                                    alt="Ảnh kết quả cận lâm sàng"
+                                    className="h-20 w-28 object-cover rounded-lg border border-purple-200 shadow-2xs hover:scale-105 transition-transform cursor-pointer"
+                                    onClick={() => window.open(fileUrl, '_blank')}
+                                  />
+                                  <div className="text-xs text-gray-500 space-y-1">
+                                    <p className="font-medium text-gray-700">Ảnh kết quả siêu âm / X-Quang / Nội soi</p>
+                                    <p className="text-[11px] text-gray-400">Nhấn vào ảnh để xem kích thước gốc phóng to</p>
+                                    <button
+                                      type="button"
+                                      onClick={() => window.open(fileUrl, '_blank')}
+                                      className="inline-flex items-center gap-1 text-primary-600 font-semibold hover:underline text-[11px]"
+                                    >
+                                      <Eye className="h-3 w-3" /> Xem ảnh cỡ lớn
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200">
+                                  <div className="flex items-center gap-2">
+                                    <FileText className="h-5 w-5 text-purple-600" />
+                                    <span className="text-xs font-semibold text-gray-700">Tài liệu kết quả y khoa (.PDF)</span>
+                                  </div>
+                                  <a
+                                    href={fileUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs font-bold text-primary-600 bg-white px-3 py-1 rounded border border-gray-200 hover:bg-gray-50 transition"
+                                  >
+                                    Xem tài liệu ↗
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Footer nút in chi tiết riêng phiếu này */}
+                          <div className="pt-1 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setPrintXetNghiem({ open: true, items: [c], record: item })}
+                              className="text-xs font-semibold text-purple-700 hover:text-purple-900 bg-white hover:bg-purple-50 border border-purple-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                            >
+                              <Printer className="h-3.5 w-3.5" /> Xem bản in phiếu kết quả này
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-100 text-xs text-amber-800 flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-amber-600 shrink-0 animate-pulse" />
+                          <span>Mẫu bệnh phẩm đang được phòng xét nghiệm xử lý. Bệnh nhân vui lòng theo dõi hoặc làm theo hướng dẫn của điều dưỡng.</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -303,6 +445,16 @@ export default function HoSoYTeBenhNhanPage() {
         benhNhan={latestBenhNhan || printDonThuoc.record?.benhNhan}
         bacSi={{ nhanVien: { hoTen: printDonThuoc.record?.bacSiTen || printDonThuoc.record?.bacSi?.nhanVien?.hoTen || (typeof printDonThuoc.record?.bacSi === 'string' ? printDonThuoc.record?.bacSi : 'Bác sĩ điều trị') } }}
         chanDoan={printDonThuoc.record?.chanDoanXacDinh || printDonThuoc.record?.benhAn?.chanDoanXacDinh || printDonThuoc.record?.benhAnKham?.chanDoanXacDinh || 'Đơn thuốc điều trị ngoại trú'}
+      />
+
+      {/* Modal In & Xem Phiếu Kết Quả Xét Nghiệm / CĐHA */}
+      <InKetQuaXetNghiemModal
+        isOpen={printXetNghiem.open}
+        onClose={() => setPrintXetNghiem({ open: false, items: [], record: null })}
+        items={printXetNghiem.items}
+        record={printXetNghiem.record}
+        benhNhan={latestBenhNhan || printXetNghiem.record?.benhNhan}
+        bacSi={{ nhanVien: { hoTen: printXetNghiem.record?.bacSiTen || printXetNghiem.record?.bacSi?.nhanVien?.hoTen || (typeof printXetNghiem.record?.bacSi === 'string' ? printXetNghiem.record?.bacSi : 'Bác sĩ điều trị') } }}
       />
     </div>
   );
