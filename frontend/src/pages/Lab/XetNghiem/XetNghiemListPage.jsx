@@ -141,6 +141,9 @@ function ChiDinhDetailPanel({ id }) {
     queryFn: () => apiGet(`/xet-nghiem/chi-dinh/${id}`),
   });
 
+  const cd = data?.data?.chiDinh;
+  const kq = data?.data?.ketQua;
+
   const [result, setResult] = useState({ giaTri: '', donVi: '', nhanXet: '', fileDinhKem: '' });
   const [uploadingFile, setUploadingFile] = useState(false);
 
@@ -199,8 +202,7 @@ function ChiDinhDetailPanel({ id }) {
   });
 
   if (isLoading) return <MedCard><p className="text-sm text-gray-400 py-4">Đang tải...</p></MedCard>;
-  const { chiDinh: cd, ketQua: kq } = data?.data || {};
-  if (!cd) return null;
+  if (!cd) return <MedCard><p className="text-sm text-gray-400 py-4">Không tìm thấy thông tin chỉ định #{id}</p></MedCard>;
 
   const STATUS_FLOW = {
     cho_lay_mau: { next: 'dang_lay_mau', label: 'Bắt đầu lấy mẫu' },
