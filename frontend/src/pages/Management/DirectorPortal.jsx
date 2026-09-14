@@ -6,6 +6,7 @@ import ForecastDashboard from './ForecastDashboard';
 import XepLichLamViecPage from './XepLichLamViecPage';
 import TraCuuTongHopPage from './TraCuuTongHopPage';
 import DuyetYeuCauPage from './DuyetYeuCauPage';
+import ThongTinCaNhanPage from '../Receptionist/NhanVienShared/ThongTinCaNhanPage';
 
 export default function DirectorPortal() {
   return (
@@ -28,6 +29,9 @@ export default function DirectorPortal() {
 
         {/* UC 22: Phê duyệt đơn / yêu cầu nhân viên */}
         <Route path="phe-duyet-don" element={<DuyetYeuCauPage />} />
+
+        {/* Thông tin cá nhân */}
+        <Route path="ca-nhan" element={<ThongTinCaNhanPage />} />
 
         {/* Redirect root to thong-ke */}
         <Route path="" element={<Navigate to="thong-ke" replace />} />

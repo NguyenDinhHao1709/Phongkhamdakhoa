@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import useAuthStore from '../store/authStore';
 import { VAI_TRO_LABEL } from '../utils/constants';
+import { NotificationDropdown } from '../components/NotificationDropdown';
 import {
   Stethoscope, Users, Calendar, ClipboardList,
   FlaskConical, Pill, Receipt, BarChart3,
@@ -71,6 +72,7 @@ const MENU_CONFIG = {
     { to: '/quan-tri/phan-quyen', icon: Shield, label: 'Phân quyền & Vai trò' },
     { to: '/quan-tri/danh-muc', icon: Layers, label: 'Danh mục dùng chung' },
     { to: '/quan-tri/sao-luu', icon: Database, label: 'Sao lưu & CSDL' },
+    { to: '/quan-tri/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   quan_tri_vien_cap_cao: [
     { to: '/quan-tri/tong-quan', icon: BarChart3, label: 'Tổng quan hệ thống' },
@@ -78,6 +80,7 @@ const MENU_CONFIG = {
     { to: '/quan-tri/phan-quyen', icon: Shield, label: 'Phân quyền & Vai trò' },
     { to: '/quan-tri/danh-muc', icon: Layers, label: 'Danh mục dùng chung' },
     { to: '/quan-tri/sao-luu', icon: Database, label: 'Sao lưu & CSDL' },
+    { to: '/quan-tri/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   ban_giam_doc: [
     { to: '/ban-giam-doc/thong-ke', icon: BarChart3, label: 'Dashboard tổng quan' },
@@ -86,6 +89,7 @@ const MENU_CONFIG = {
     { to: '/ban-giam-doc/xep-lich', icon: Calendar, label: 'Phân ca làm việc' },
     { to: '/ban-giam-doc/tra-cuu', icon: FileSearch, label: 'Tra cứu tổng hợp' },
     { to: '/ban-giam-doc/phe-duyet-don', icon: CheckSquare, label: 'Phê duyệt yêu cầu' },
+    { to: '/ban-giam-doc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
 };
 
@@ -95,6 +99,32 @@ export function DashboardLayout({ children }) {
   const navigate = useNavigate();
 
   const menuItems = MENU_CONFIG[user?.vaiTro] || [];
+
+  const getProfileRoute = () => {
+    switch (user?.vaiTro) {
+      case 'bac_si':
+        return '/bac-si/ca-nhan';
+      case 'tiep_tan':
+        return '/tiep-tan/ca-nhan';
+      case 'ky_thuat_vien':
+        return '/ky-thuat-vien/ca-nhan';
+      case 'duoc_si':
+      case 'nhan_vien_nha_thuoc':
+      case 'nha_thuoc':
+        return '/nha-thuoc/ca-nhan';
+      case 'thu_ngan':
+        return '/thu-ngan/ca-nhan';
+      case 'ban_giam_doc':
+        return '/ban-giam-doc/ca-nhan';
+      case 'quan_tri_vien':
+      case 'quan_tri_vien_cap_cao':
+        return '/quan-tri/ca-nhan';
+      case 'benh_nhan':
+        return '/benh-nhan/ho-so';
+      default:
+        return '/bac-si/ca-nhan';
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -150,8 +180,12 @@ export function DashboardLayout({ children }) {
         {/* Footer Sidebar */}
         <div className="border-t border-gray-100 p-2">
           {!collapsed && (
-            <div className="px-3 py-2 mb-1">
-              <p className="text-xs font-semibold text-gray-800 truncate">{user?.tenDangNhap}</p>
+            <div
+              onClick={() => navigate(getProfileRoute())}
+              className="px-3 py-2 mb-1 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors"
+              title="Xem thông tin cá nhân"
+            >
+              <p className="text-xs font-semibold text-gray-800 truncate hover:text-primary-600">{user?.tenDangNhap}</p>
               <p className="text-xs text-gray-500">{VAI_TRO_LABEL[user?.vaiTro] || user?.vaiTro}</p>
             </div>
           )}
@@ -181,11 +215,16 @@ export function DashboardLayout({ children }) {
           </button>
 
           <div className="flex items-center gap-3">
-            <button className="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 transition-colors">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500" />
-            </button>
-            <button className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-primary-700">
+            {/* Notification Dropdown (Hiển thị chuông có số thông báo đỏ và danh sách khi bấm) */}
+            <NotificationDropdown />
+
+            {/* Icon Người - Bấm để chuyển vào xem và chỉnh sửa thông tin cá nhân */}
+            <button
+              onClick={() => navigate(getProfileRoute())}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-100 text-primary-700 hover:bg-primary-200 transition-colors shadow-2xs"
+              title="Xem thông tin cá nhân"
+              data-testid="btn-header-profile"
+            >
               <User className="h-4 w-4" />
             </button>
           </div>
