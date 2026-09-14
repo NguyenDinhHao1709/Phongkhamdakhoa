@@ -35,6 +35,32 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.emit('joined', { userId });
   }
 
+  // ─── WebRTC Signaling cho Telehealth Video Call ────────────────────
+  @SubscribeMessage('call:join')
+  handleJoinCall(client: Socket, payload: { roomId: string; role: string; userName: string }) {
+    const room = `call:${payload.roomId}`;
+    client.join(room);
+    this.logger.log(`Client ${client.id} (${payload.role} - ${payload.userName}) joined call room ${room}`);
+    client.to(room).emit('call:peer_joined', { peerId: client.id, role: payload.role, userName: payload.userName });
+  }
+
+  @SubscribeMessage('call:signal')
+  handleCallSignal(client: Socket, payload: { roomId: string; targetPeerId?: string; signal: any; role?: string }) {
+    const room = `call:${payload.roomId}`;
+    if (payload.targetPeerId) {
+      this.server.to(payload.targetPeerId).emit('call:signal', { sender: client.id, signal: payload.signal, role: payload.role });
+    } else {
+      client.to(room).emit('call:signal', { sender: client.id, signal: payload.signal, role: payload.role });
+    }
+  }
+
+  @SubscribeMessage('call:leave')
+  handleLeaveCall(client: Socket, payload: { roomId: string }) {
+    const room = `call:${payload.roomId}`;
+    client.leave(room);
+    client.to(room).emit('call:peer_left', { peerId: client.id });
+  }
+
   // ─── CÁC SỰ KIỆN PHÁT RA (gọi từ Service) ────────────────────
 
   /** Hàng đợi phòng khám thay đổi (tiếp nhận mới, điều phối) */

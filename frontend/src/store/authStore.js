@@ -1,5 +1,19 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
+
+const sessionWrapper = {
+  getItem: (name) => {
+    return sessionStorage.getItem(name) || localStorage.getItem(name);
+  },
+  setItem: (name, value) => {
+    sessionStorage.setItem(name, value);
+    localStorage.setItem(name, value);
+  },
+  removeItem: (name) => {
+    sessionStorage.removeItem(name);
+    localStorage.removeItem(name);
+  },
+};
 
 const useAuthStore = create(
   persist(
@@ -40,6 +54,7 @@ const useAuthStore = create(
     }),
     {
       name: 'phong-kham-auth',
+      storage: createJSONStorage(() => sessionWrapper),
       partialize: (state) => ({
         user: state.user,
         accessToken: state.accessToken,

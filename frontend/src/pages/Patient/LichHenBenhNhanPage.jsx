@@ -3,7 +3,7 @@ import { Calendar, Clock, RefreshCw, Stethoscope, AlertTriangle, ShieldAlert, XC
 import { apiGet, apiPatch } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../design-system/components/Badge/StatusBadge';
-import { formatDate } from '../../utils/formatDate';
+import { formatDate, checkTelehealthAccess } from '../../utils/formatDate';
 import TelehealthVideoModal from '../../components/Telehealth/TelehealthVideoModal';
 
 export default function LichHenBenhNhanPage() {
@@ -173,21 +173,55 @@ export default function LichHenBenhNhanPage() {
                   {!isCanceled && !isCompleted && (
                     <>
                       {lh.hinhThuc === 'truc_tuyen' ? (
-                        <MedButton
-                          variant="primary"
-                          size="sm"
-                          onClick={() =>
-                            setVideoCall({
-                              open: true,
-                              doctorName: lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách',
-                              info: { gioKham: `${lh.gioHen} ngày ${formatDate(lh.ngayHen)}` },
-                            })
+                        (() => {
+                          const access = checkTelehealthAccess(lh.ngayHen, lh.gioHen);
+                          if (access.canJoin) {
+                            return (
+                              <div className="space-y-1">
+                                <MedButton
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={() =>
+                                    setVideoCall({
+                                      open: true,
+                                      doctorName: lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách',
+                                      info: { ...lh, gioKham: `${lh.gioHen} ngày ${formatDate(lh.ngayHen)}` },
+                                    })
+                                  }
+                                  className="bg-purple-600 hover:bg-purple-700 text-white shadow-md animate-pulse"
+                                  leftIcon={<Video className="h-4 w-4" />}
+                                >
+                                  Vào phòng khám Video
+                                </MedButton>
+                                <p className="text-[11px] text-emerald-600 font-bold text-center flex items-center justify-center gap-1">
+                                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
+                                  Phòng khám đang mở
+                                </p>
+                              </div>
+                            );
                           }
-                          className="bg-purple-600 hover:bg-purple-700 text-white"
-                          leftIcon={<Video className="h-4 w-4" />}
-                        >
-                          Vào phòng khám Video
-                        </MedButton>
+                          if (access.isTooEarly) {
+                            return (
+                              <div className="rounded-xl bg-amber-50/90 border border-amber-200 p-2.5 text-xs text-amber-900 space-y-1 max-w-[240px]">
+                                <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                                  <Clock className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
+                                  <span>Chưa tới giờ mở phòng</span>
+                                </div>
+                                <p className="text-[11px] leading-tight text-amber-700">
+                                  Phòng khám trực tuyến & chat mở trước giờ khám <strong>15 phút</strong> (lúc <strong>{access.openTimeText}</strong>).
+                                </p>
+                                <div className="text-[10px] bg-amber-200/70 text-amber-950 px-2 py-0.5 rounded font-bold inline-block">
+                                  ⏳ Còn {access.minutesUntilOpen > 60 ? `${Math.floor(access.minutesUntilOpen / 60)}h ${access.minutesUntilOpen % 60}p` : `${access.minutesUntilOpen} phút`} nữa
+                                </div>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="rounded-xl bg-gray-100 border border-gray-200 px-3 py-1.5 text-xs text-gray-500 text-center">
+                              Đã qua giờ khám trực tuyến ({access.startTimeText})
+                            </div>
+                          );
+                        })()
                       ) : (
                         <div className="text-xs text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200 text-center font-medium">
                           📍 Đến khám tại CS1: 123 Đường Y Học

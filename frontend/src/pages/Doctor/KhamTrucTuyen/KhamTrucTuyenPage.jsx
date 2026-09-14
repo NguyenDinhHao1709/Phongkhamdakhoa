@@ -4,11 +4,11 @@ import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { apiGet, apiPost } from '../../../services/api';
-import { formatDateTime } from '../../../utils/formatDate';
+import { formatDateTime, checkTelehealthAccess } from '../../../utils/formatDate';
 import TelehealthVideoModal from '../../../components/Telehealth/TelehealthVideoModal';
 import {
   Video, MessageSquare, Send, Calendar, Clock, User,
-  FileText, Pill, CheckCircle2, ShieldCheck
+  FileText, Pill, CheckCircle2, ShieldCheck, AlertCircle
 } from 'lucide-react';
 
 export default function KhamTrucTuyenPage() {
@@ -60,6 +60,9 @@ export default function KhamTrucTuyenPage() {
   };
 
   const activeLich = selectedLich || items[0];
+  const activeAccess = activeLich
+    ? checkTelehealthAccess(activeLich.ngayHen || activeLich.ngayKham, activeLich.gioHen || activeLich.gioKham)
+    : { canJoin: true };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -69,7 +72,7 @@ export default function KhamTrucTuyenPage() {
             <Video className="h-7 w-7 text-primary-600" /> Khám & Tư vấn Trực tuyến (Telehealth)
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            UC-BS-01: Khám, tư vấn từ xa và kê đơn trực tuyến cho bệnh nhân
+            UC-BS-01: Khám, tư vấn từ xa và kê đơn trực tuyến (Mở phòng & chat trước giờ khám 15 phút)
           </p>
         </div>
       </div>
@@ -82,30 +85,42 @@ export default function KhamTrucTuyenPage() {
           </h3>
           <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
             {isLoading && <p className="text-center text-sm text-gray-400 py-6">Đang tải...</p>}
-            {items.map((item) => (
-              <div
-                key={item.id}
-                onClick={() => setSelectedLich(item)}
-                className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                  activeLich?.id === item.id
-                    ? 'border-primary-500 bg-primary-50/60 ring-2 ring-primary-500/20'
-                    : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-primary-700">{item.maLichHen}</span>
-                  <StatusBadge status={item.trangThai === 'da_xac_nhan' ? 'dang_kham' : 'cho_kham'} size="sm" />
+            {items.map((item) => {
+              const itemAccess = checkTelehealthAccess(item.ngayHen || item.ngayKham, item.gioHen || item.gioKham);
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => setSelectedLich(item)}
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                    activeLich?.id === item.id
+                      ? 'border-primary-500 bg-primary-50/60 ring-2 ring-primary-500/20'
+                      : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-primary-700">{item.maLichHen}</span>
+                    {itemAccess.canJoin ? (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                        Đang mở phòng
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
+                        <Clock className="h-3 w-3 text-amber-500" /> Mở trước 15p
+                      </span>
+                    )}
+                  </div>
+                  <p className="font-semibold text-gray-900 text-sm">{item.benhNhan?.hoTen}</p>
+                  <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                    <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {item.gioHen || item.gioKham}</span>
+                    <span>• {item.benhNhan?.soDienThoai}</span>
+                  </div>
+                  <p className="text-xs text-gray-600 line-clamp-1 mt-1.5 bg-gray-100 p-1.5 rounded-md">
+                    Lý do: {item.lyDoKham}
+                  </p>
                 </div>
-                <p className="font-semibold text-gray-900 text-sm">{item.benhNhan?.hoTen}</p>
-                <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
-                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {item.gioHen || item.gioKham}</span>
-                  <span>• {item.benhNhan?.soDienThoai}</span>
-                </div>
-                <p className="text-xs text-gray-600 line-clamp-1 mt-1.5 bg-gray-100 p-1.5 rounded-md">
-                  Lý do: {item.lyDoKham}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </MedCard>
 
@@ -134,25 +149,90 @@ export default function KhamTrucTuyenPage() {
                 >
                   + Đặt lịch khám trực tiếp hộ BN
                 </MedButton>
-                <MedButton
-                  variant="primary"
-                  size="sm"
-                  leftIcon={<Video className="h-4 w-4" />}
-                  onClick={() => setShowVideoModal(true)}
-                >
-                  Mở Video Call
-                </MedButton>
+
+                {activeAccess.canJoin ? (
+                  <MedButton
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<Video className="h-4 w-4" />}
+                    onClick={() => setShowVideoModal(true)}
+                    className="bg-emerald-600 hover:bg-emerald-700 shadow-sm animate-pulse"
+                  >
+                    Mở Video Call
+                  </MedButton>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 hidden sm:inline-block">
+                      {activeAccess.isTooEarly
+                        ? `⏱️ Mở lúc ${activeAccess.openTimeText} (còn ${activeAccess.timeLeftText})`
+                        : `Đã qua giờ hẹn (${activeAccess.startTimeText})`}
+                    </span>
+                    <MedButton
+                      variant="secondary"
+                      size="sm"
+                      disabled
+                      leftIcon={<Video className="h-4 w-4 text-gray-400" />}
+                      title={activeAccess.statusMessage}
+                    >
+                      {activeAccess.isTooEarly ? 'Chưa tới giờ mở phòng' : 'Đã kết thúc'}
+                    </MedButton>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Chat & Ghi nhận kết quả */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
               {/* Khung chat */}
-              <div className="bg-white rounded-xl border border-gray-200 flex flex-col h-full">
-                <div className="p-3 border-b border-gray-100 bg-gray-50 font-semibold text-xs text-gray-700 flex items-center gap-1.5">
-                  <MessageSquare className="h-4 w-4 text-primary-600" /> Tin nhắn tư vấn trực tiếp
+              <div className="bg-white rounded-xl border border-gray-200 flex flex-col h-full overflow-hidden">
+                <div className="p-3 border-b border-gray-100 bg-gray-50 font-semibold text-xs text-gray-700 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <MessageSquare className="h-4 w-4 text-primary-600" /> Tin nhắn tư vấn trực tiếp
+                  </span>
+                  {activeAccess.canJoin ? (
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                      Phòng khám đang mở
+                    </span>
+                  ) : activeAccess.isTooEarly ? (
+                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-full">
+                      Mở trước giờ khám 15p
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                      Đã qua giờ khám
+                    </span>
+                  )}
                 </div>
+
                 <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                  {!activeAccess.canJoin && (
+                    <div className="rounded-xl bg-amber-50 border border-amber-200/80 p-3 text-xs text-amber-900 space-y-1">
+                      {activeAccess.isTooEarly ? (
+                        <>
+                          <p className="font-bold flex items-center gap-1.5 text-amber-900">
+                            <Clock className="h-4 w-4 text-amber-600 flex-shrink-0" /> Chưa đến thời gian mở phòng khám & chat trực tuyến
+                          </p>
+                          <p className="text-[11px] text-amber-700">
+                            Hệ thống chỉ mở phòng khám và kênh chat trực tuyến trước giờ khám <strong>15 phút</strong> (lúc <strong>{activeAccess.openTimeText}</strong>).
+                          </p>
+                          <p className="text-[11px] font-semibold text-amber-900">
+                            ⏳ Thời gian đếm ngược: Còn {activeAccess.timeLeftText} nữa.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-bold flex items-center gap-1.5 text-gray-700">
+                            <Clock className="h-4 w-4 text-gray-500 flex-shrink-0" /> Ca khám trực tuyến đã qua khung giờ hẹn
+                          </p>
+                          <p className="text-[11px] text-gray-600">
+                            Lịch hẹn khám này đã kết thúc khung giờ (lúc {activeAccess.startTimeText}).
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
+
                   {messages.map((m, idx) => (
                     <div
                       key={idx}
@@ -171,18 +251,27 @@ export default function KhamTrucTuyenPage() {
                     </div>
                   ))}
                 </div>
-                <form onSubmit={handleSendMessage} className="p-2 border-t flex gap-2">
-                  <input
-                    type="text"
-                    value={inputMsg}
-                    onChange={(e) => setInputMsg(e.target.value)}
-                    placeholder="Nhập tin nhắn tư vấn..."
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                  <MedButton type="submit" variant="primary" size="sm">
-                    <Send className="h-4 w-4" />
-                  </MedButton>
-                </form>
+
+                {activeAccess.canJoin ? (
+                  <form onSubmit={handleSendMessage} className="p-2 border-t flex gap-2">
+                    <input
+                      type="text"
+                      value={inputMsg}
+                      onChange={(e) => setInputMsg(e.target.value)}
+                      placeholder="Nhập tin nhắn tư vấn..."
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <MedButton type="submit" variant="primary" size="sm">
+                      <Send className="h-4 w-4" />
+                    </MedButton>
+                  </form>
+                ) : (
+                  <div className="p-2.5 bg-gray-50 border-t text-center text-xs text-gray-500 italic">
+                    {activeAccess.isTooEarly
+                      ? `🔒 Khung chat sẽ tự động mở lúc ${activeAccess.openTimeText} (trước giờ khám 15 phút)`
+                      : `🔒 Khung chat đã đóng do đã qua khung giờ hẹn`}
+                  </div>
+                )}
               </div>
 
               {/* Kết luận & Chẩn đoán Telehealth */}
