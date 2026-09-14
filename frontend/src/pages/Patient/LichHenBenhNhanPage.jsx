@@ -110,6 +110,20 @@ export default function LichHenBenhNhanPage() {
             const isCanceled = lh.trangThai === 'da_huy';
             const isCompleted = lh.trangThai === 'hoan_thanh';
 
+            // Kiểm tra xem lịch hẹn đã qua giờ khám hay chưa
+            const isPastAppointment = (() => {
+              try {
+                const timePart = (lh.gioHen || '00:00:00').trim().split('-')[0].trim();
+                const apptDate = new Date(`${lh.ngayHen?.slice(0, 10)}T${timePart.length === 5 ? timePart + ':00' : timePart}`);
+                return !isNaN(apptDate.getTime()) && new Date() > apptDate;
+              } catch {
+                return false;
+              }
+            })();
+
+            // Tự động hủy nếu đã qua giờ khám mà chưa hoàn tất
+            const isAutoCanceled = isCanceled || (isPastAppointment && !isCompleted);
+
             return (
               <div
                 key={lh.id}
@@ -120,13 +134,18 @@ export default function LichHenBenhNhanPage() {
                     <span className="font-bold text-lg text-gray-900">{lh.maLichHen}</span>
                     <StatusBadge
                       status={
-                        isCanceled
+                        isAutoCanceled
                           ? 'da_huy'
                           : isCompleted
                           ? 'hoan_thanh'
                           : lh.trangThai === 'da_xac_nhan'
-                          ? 'hoan_thanh'
+                          ? 'da_xac_nhan'
                           : 'cho_kham'
+                      }
+                      label={
+                        isAutoCanceled && !isCanceled
+                          ? 'Đã hủy (Quá giờ)'
+                          : undefined
                       }
                     />
                     <span className="text-xs font-semibold text-primary-700 bg-primary-50 px-2.5 py-0.5 rounded-full border border-primary-200">
@@ -170,7 +189,25 @@ export default function LichHenBenhNhanPage() {
 
                 {/* Nút hành động */}
                 <div className="flex md:flex-col justify-end gap-2 border-t md:border-t-0 pt-3 md:pt-0">
-                  {!isCanceled && !isCompleted && (
+                  {/* Nếu đã hoàn thành */}
+                  {isCompleted && (
+                    <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700 font-semibold text-center">
+                      ✓ Đã hoàn thành khám
+                    </div>
+                  )}
+
+                  {/* Nếu đã quá giờ khám -> Tự hủy luôn, KHÔNG HIỆN NÚT HỦY LỊCH NỮA */}
+                  {isAutoCanceled && (
+                    <div className="rounded-xl bg-gray-50 border border-gray-200 px-3.5 py-2 text-xs text-center max-w-[220px] space-y-0.5">
+                      <p className="text-gray-700 font-medium">
+                        {isPastAppointment && !isCanceled ? 'Tự động hủy (Quá giờ khám)' : 'Lịch hẹn đã hủy'}
+                      </p>
+                      <p className="text-[10px] text-gray-400">Không thể thao tác hủy</p>
+                    </div>
+                  )}
+
+                  {/* Chỉ hiển thị hành động khi ca khám còn hiệu lực và chưa tới giờ / đang trong giờ */}
+                  {!isAutoCanceled && !isCompleted && (
                     <>
                       {lh.hinhThuc === 'truc_tuyen' ? (
                         (() => {
@@ -228,6 +265,7 @@ export default function LichHenBenhNhanPage() {
                         </div>
                       )}
 
+                      {/* Nút hủy lịch hẹn: CHỈ HIỆN KHI CHƯA QUA GIỜ HẸN KHÁM */}
                       <MedButton
                         variant="danger"
                         size="sm"

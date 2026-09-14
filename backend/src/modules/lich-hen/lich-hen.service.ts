@@ -37,6 +37,14 @@ export class LichHenService implements OnModuleInit {
   }
 
   onModuleInit() {
+    // Tự động quét và hủy các lịch hẹn đã quá giờ khám ngay khi khởi động
+    this.tuDongHuyLichQuaGio().catch(() => {});
+
+    // Quét định kỳ mỗi 5 phút để tự động hủy các ca hẹn quá giờ
+    setInterval(() => {
+      this.tuDongHuyLichQuaGio().catch(() => {});
+    }, 5 * 60 * 1000);
+
     // Tự động quét và nhắc lịch hẹn mỗi 30 phút
     setInterval(() => {
       this.guiNhacLichTuDong().catch((err) =>
@@ -45,8 +53,43 @@ export class LichHenService implements OnModuleInit {
     }, 30 * 60 * 1000);
   }
 
+  // ─── TỰ ĐỘNG HỦY LỊCH HẸN ĐÃ QUA GIỜ KHÁM (NO-SHOW / HẾT HẠN) ───
+  async tuDongHuyLichQuaGio() {
+    try {
+      const now = new Date();
+      const todayStr = now.toISOString().slice(0, 10);
+      const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+
+      // Cập nhật tất cả các lịch hẹn có ngày hẹn < hôm nay hoặc ngày hẹn = hôm nay và giờ hẹn <= hiện tại
+      // mà chưa hoàn thành và chưa hủy -> chuyển sang trạng thái DA_HUY
+      const result = await this.repo.createQueryBuilder()
+        .update(LichHen)
+        .set({
+          trangThai: TrangThaiLichHen.DA_HUY,
+          ghiChu: () => `COALESCE(CONCAT(COALESCE(ghi_chu, ''), ' [Tự động hủy do quá thời gian hẹn khám]'), '[Tự động hủy do quá thời gian hẹn khám]')`
+        })
+        .where('trang_thai NOT IN (:...doneStates)', {
+          doneStates: [TrangThaiLichHen.HOAN_THANH, TrangThaiLichHen.DA_HUY],
+        })
+        .andWhere('(ngay_hen < :todayStr OR (ngay_hen = :todayStr AND gio_hen <= :currentTimeStr))', {
+          todayStr,
+          currentTimeStr,
+        })
+        .execute();
+
+      if (result.affected && result.affected > 0) {
+        console.log(`[LichHen] Đã tự động hủy ${result.affected} ca khám quá thời gian hẹn.`);
+      }
+    } catch (err: any) {
+      console.warn('[LichHen] Lỗi tự động hủy lịch quá giờ:', err.message);
+    }
+  }
+
   // ─── DANH SÁCH ────────────────────────────────────────────────
   async findAll(dto: TimKiemLichHenDto) {
+    // Tự động cập nhật các ca quá giờ trước khi lấy danh sách
+    await this.tuDongHuyLichQuaGio();
+
     const { ngay, bacSiId, trangThai, hinhThuc, loai, page = 1, limit = 20 } = dto;
     const skip = (page - 1) * limit;
 
@@ -77,6 +120,9 @@ export class LichHenService implements OnModuleInit {
 
   // ─── LỊCH HẸN CỦA TÔI (DÀNH CHO BỆNH NHÂN) ───────────────────
   async layLichHenCuaToi(userId: number) {
+    // Tự động cập nhật các ca quá giờ trước khi lấy danh sách
+    await this.tuDongHuyLichQuaGio();
+
     const qb = this.repo.createQueryBuilder('lh')
       .leftJoinAndSelect('lh.benhNhan', 'bn')
       .leftJoinAndSelect('lh.bacSi', 'bs')
