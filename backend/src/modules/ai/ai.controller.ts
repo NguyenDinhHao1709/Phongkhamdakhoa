@@ -21,8 +21,8 @@ class TriageChatDto {
 }
 
 class PatientChatDto {
-  @ApiProperty({ example: 'patient_session_uuid_xyz', description: 'Session ID của phiên chat bệnh nhân' })
-  @IsString() sessionId: string;
+  @ApiPropertyOptional({ example: 'patient_session_uuid_xyz', description: 'Session ID (tùy chọn, mặc định dùng userId)' })
+  @IsOptional() @IsString() sessionId?: string;
 
   @ApiProperty({ example: 'Giải thích giúp tôi kết quả khám gần nhất', description: 'Câu hỏi của bệnh nhân' })
   @IsString() message: string;
@@ -44,7 +44,8 @@ export class AiController {
   @Post('patient-chat')
   @ApiOperation({ summary: 'Chat Bác Sĩ Gia Đình AI (RAG ngữ cảnh bệnh án cá nhân)' })
   patientChat(@Body() dto: PatientChatDto, @CurrentUser() user: any) {
-    return this.aiService.patientChat(user.id, dto.sessionId, dto.message);
+    const sessionId = dto.sessionId ?? `patient_${user.id}`;
+    return this.aiService.patientChat(user.id, sessionId, dto.message);
   }
 
   @UseGuards(JwtAuthGuard)

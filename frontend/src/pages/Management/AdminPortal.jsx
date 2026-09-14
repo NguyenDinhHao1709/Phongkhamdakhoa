@@ -5,6 +5,7 @@ import NhanVienPage from './NhanVienPage';
 import PhanQuyenPage from './PhanQuyenPage';
 import DanhMucDungChungPage from './DanhMucDungChungPage';
 import SaoLuuDuLieuPage from './SaoLuuDuLieuPage';
+import NhatKyHeThongPage from './NhatKyHeThongPage';
 import ThongTinCaNhanPage from '../Receptionist/NhanVienShared/ThongTinCaNhanPage';
 
 export default function AdminPortal() {
@@ -26,7 +27,10 @@ export default function AdminPortal() {
         {/* 5. Sao lưu & Khôi phục CSDL */}
         <Route path="sao-luu" element={<SaoLuuDuLieuPage />} />
 
-        {/* 6. Thông tin cá nhân */}
+        {/* 6. Nhật ký hệ thống & Kiểm toán */}
+        <Route path="nhat-ky" element={<NhatKyHeThongPage />} />
+
+        {/* 7. Thông tin cá nhân */}
         <Route path="ca-nhan" element={<ThongTinCaNhanPage />} />
 
         {/* Redirect root to tong-quan */}

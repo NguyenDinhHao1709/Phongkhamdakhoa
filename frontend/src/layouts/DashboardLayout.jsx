@@ -10,7 +10,7 @@ import {
   LogOut, ChevronLeft, ChevronRight, Bell,
   User, Settings, Video, Clock, Send, Bot, Database,
   Shield, Layers, TrendingUp, DollarSign,
-  FileSearch, CheckSquare,
+  FileSearch, CheckSquare, FileText,
 } from 'lucide-react';
 
 
@@ -72,6 +72,7 @@ const MENU_CONFIG = {
     { to: '/quan-tri/phan-quyen', icon: Shield, label: 'Phân quyền & Vai trò' },
     { to: '/quan-tri/danh-muc', icon: Layers, label: 'Danh mục dùng chung' },
     { to: '/quan-tri/sao-luu', icon: Database, label: 'Sao lưu & CSDL' },
+    { to: '/quan-tri/nhat-ky', icon: FileText, label: 'Nhật ký hệ thống' },
     { to: '/quan-tri/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   quan_tri_vien_cap_cao: [
@@ -80,11 +81,12 @@ const MENU_CONFIG = {
     { to: '/quan-tri/phan-quyen', icon: Shield, label: 'Phân quyền & Vai trò' },
     { to: '/quan-tri/danh-muc', icon: Layers, label: 'Danh mục dùng chung' },
     { to: '/quan-tri/sao-luu', icon: Database, label: 'Sao lưu & CSDL' },
+    { to: '/quan-tri/nhat-ky', icon: FileText, label: 'Nhật ký hệ thống' },
     { to: '/quan-tri/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   ban_giam_doc: [
-    { to: '/ban-giam-doc/thong-ke', icon: BarChart3, label: 'Dashboard tổng quan' },
-    { to: '/ban-giam-doc/tai-chinh', icon: DollarSign, label: 'Báo cáo tài chính' },
+    { to: '/ban-giam-doc/thong-ke', icon: BarChart3, label: 'Dashboard điều hành' },
+    { to: '/ban-giam-doc/tai-chinh', icon: FileText, label: 'Báo cáo toàn diện BV' },
     { to: '/ban-giam-doc/du-bao-luong', icon: TrendingUp, label: 'Dự báo lưu lượng AI' },
     { to: '/ban-giam-doc/xep-lich', icon: Calendar, label: 'Phân ca làm việc' },
     { to: '/ban-giam-doc/tra-cuu', icon: FileSearch, label: 'Tra cứu tổng hợp' },

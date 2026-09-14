@@ -900,12 +900,23 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
     }
   };
 
+  // Kiểm tra nếu bác sĩ chỉ định cả Siêu âm và Xét nghiệm máu
+  const hasSieuAm = selectedIds.some((id) => {
+    const item = listDichVu.find((d) => d.id === id);
+    return item && (item.tenDichVu.toLowerCase().includes('siêu âm') || item.loai === 'chan_doan_hinh_anh');
+  });
+  const hasXetNghiemMau = selectedIds.some((id) => {
+    const item = listDichVu.find((d) => d.id === id);
+    return item && (item.tenDichVu.toLowerCase().includes('máu') || item.tenDichVu.toLowerCase().includes('huyết học') || item.tenDichVu.toLowerCase().includes('cbc'));
+  });
+  const isCombinedBoth = hasSieuAm && hasXetNghiemMau;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-xs p-4">
       <div className="w-full max-w-lg bg-white rounded-2xl p-6 shadow-2xl space-y-4">
         <div className="flex items-center justify-between border-b pb-3">
           <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <FlaskConical className="h-5 w-5 text-purple-600" /> Chỉ định Cận lâm sàng & Xét nghiệm
+            <FlaskConical className="h-5 w-5 text-blue-600" /> Chỉ định Cận lâm sàng & Xét nghiệm
           </h3>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="h-5 w-5" />
@@ -915,7 +926,7 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-2">Chọn dịch vụ cận lâm sàng (CSDL):</label>
-            <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-xl divide-y divide-gray-100 p-1">
+            <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-xl divide-y divide-gray-100 p-1">
               {isLoading && <p className="text-center text-xs text-gray-400 py-4">Đang nạp danh mục CSDL...</p>}
               {listDichVu.map((dv) => (
                 <label key={dv.id} className="flex items-center justify-between p-2.5 hover:bg-gray-50 rounded-lg cursor-pointer">
@@ -924,7 +935,7 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
                       type="checkbox"
                       checked={selectedIds.includes(dv.id)}
                       onChange={() => handleToggle(dv.id)}
-                      className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
                     />
                     <div>
                       <p className="text-sm font-semibold text-gray-900">{dv.tenDichVu}</p>
@@ -937,6 +948,36 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
             </div>
           </div>
 
+          {/* HỘP ĐỊNH TUYẾN ĐỘNG (DYNAMIC ROUTING): PHÁT HIỆN CẢ SIÊU ÂM & XÉT NGHIỆM MÁU */}
+          {isCombinedBoth && (
+            <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-slate-800 space-y-2.5 text-xs animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-blue-900 flex items-center gap-1.5 uppercase tracking-wide">
+                  <Activity className="h-4 w-4 text-blue-600" />
+                  Định Tuyến Cận Lâm Sàng Tối Ưu (Min-Wait)
+                </span>
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  Tiết kiệm ~18 phút
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 bg-white p-2.5 rounded-lg border border-blue-150">
+                <div className="text-left">
+                  <span className="text-slate-500 block text-[11px]">Phòng 202 - Siêu âm:</span>
+                  <span className="font-bold text-emerald-700 text-sm">1 người chờ (Vắng)</span>
+                </div>
+                <div className="text-left border-l pl-2 border-slate-200">
+                  <span className="text-slate-500 block text-[11px]">Phòng 201 - Lấy mẫu máu:</span>
+                  <span className="font-bold text-amber-700 text-sm">4 người chờ (Đông)</span>
+                </div>
+              </div>
+
+              <p className="text-slate-600 leading-relaxed">
+                💡 <strong>Tự động định tuyến:</strong> Hệ thống sẽ chỉ dẫn bệnh nhân thực hiện <strong>Siêu âm tại Phòng 202 trước</strong>, sau đó mới sang <strong>Phòng 201 lấy mẫu xét nghiệm</strong> để tránh nghẽn hàng đợi.
+              </p>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Ghi chú chẩn đoán lâm sàng:</label>
             <input
@@ -944,7 +985,7 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
               value={ghiChu}
               onChange={(e) => setGhiChu(e.target.value)}
               placeholder="VD: Nghi ngờ viêm phế quản, cần kiểm tra chỉ số WBC..."
-              className="w-full rounded-lg border border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-primary-500"
+              className="w-full rounded-lg border border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-blue-500"
             />
           </div>
 

@@ -10,6 +10,7 @@ const PublicDatLichPage = lazy(() => import("./pages/Public/PublicDatLichPage.js
 const LoginPage       = lazy(() => import("./pages/Login/LoginPage.jsx"));
 const RegisterPage    = lazy(() => import("./pages/Login/RegisterPage.jsx"));
 const UnauthorizedPage = lazy(() => import("./pages/Unauthorized/UnauthorizedPage.jsx"));
+const KioskPage       = lazy(() => import("./pages/Kiosk/KioskPage.jsx"));
 
 // Portals
 import ReceptionistPortal from "./pages/Receptionist/ReceptionistPortal.jsx";
@@ -92,9 +93,10 @@ export default function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-        {/* Public Homepage cho Khách vãng lai */}
+        {/* Public Homepage & Kiosk cho Khách vãng lai */}
         <Route path="/" element={<HomePage />} />
         <Route path="/dat-lich" element={<PublicDatLichPage />} />
+        <Route path="/kiosk" element={<KioskPage />} />
 
         {/* Receptionist Portal */}
         <Route

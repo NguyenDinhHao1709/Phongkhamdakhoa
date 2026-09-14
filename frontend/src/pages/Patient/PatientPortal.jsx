@@ -1,12 +1,13 @@
 import { useEffect } from 'react';
 import { Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
-import { Calendar, ClipboardList, FileText, Bot, LogOut, Stethoscope, User, Home } from 'lucide-react';
+import { Calendar, ClipboardList, FileText, Bot, LogOut, Stethoscope, User, Home, Ticket } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import DatLichKhamPage from './DatLichKhamPage';
 import LichHenBenhNhanPage from './LichHenBenhNhanPage';
 import HoSoYTeBenhNhanPage from './HoSoYTeBenhNhanPage';
 import ChatAiPage from './ChatAiPage';
+import TienDoKhamPage from './TienDoKhamPage';
 
 export default function PatientPortal() {
   const { user, setUser, logout } = useAuthStore();
@@ -65,6 +66,16 @@ export default function PatientPortal() {
               <Calendar className="h-4 w-4" /> Đặt lịch khám
             </NavLink>
             <NavLink
+              to="/benh-nhan/so-thu-tu"
+              className={({ isActive }) =>
+                `flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                  isActive ? 'bg-primary-50 text-primary-700' : 'text-gray-600 hover:bg-gray-100'
+                }`
+              }
+            >
+              <Ticket className="h-4 w-4 text-emerald-600" /> Tiến độ khám & STT
+            </NavLink>
+            <NavLink
               to="/benh-nhan/lich-hen"
               className={({ isActive }) =>
                 `flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-colors ${
@@ -116,6 +127,7 @@ export default function PatientPortal() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
         <Routes>
           <Route path="dat-lich" element={<DatLichKhamPage />} />
+          <Route path="so-thu-tu" element={<TienDoKhamPage />} />
           <Route path="lich-hen" element={<LichHenBenhNhanPage />} />
           <Route path="ho-so-y-te" element={<HoSoYTeBenhNhanPage />} />
           <Route path="chat-ai" element={<ChatAiPage />} />

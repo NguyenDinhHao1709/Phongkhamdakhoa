@@ -68,7 +68,15 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         useAuthStore.getState().logout();
-        window.location.href = '/login';
+        const currentPath = window.location.pathname;
+        const isPublicPage = currentPath.startsWith('/kiosk') || 
+                             currentPath.startsWith('/dat-lich') || 
+                             currentPath === '/' || 
+                             currentPath === '/login' || 
+                             currentPath === '/register';
+        if (!isPublicPage) {
+          window.location.href = '/login';
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

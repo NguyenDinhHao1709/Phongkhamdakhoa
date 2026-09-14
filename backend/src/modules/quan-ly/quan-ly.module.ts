@@ -17,6 +17,7 @@ import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
 import { HoaDonChiTiet } from '../thanh-toan/entities/hoa-don-chi-tiet.entity';
 import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
+import { NhatKyHeThong } from './entities/nhat-ky-he-thong.entity';
 import { QuanLyController } from './quan-ly.controller';
 import { QuanLyService } from './quan-ly.service';
 import { ThongBaoModule } from '../thong-bao/thong-bao.module';
@@ -41,6 +42,7 @@ import { ThongBaoModule } from '../thong-bao/thong-bao.module';
       HoaDonChiTiet,
       ChiDinhCanLamSang,
       DonThuoc,
+      NhatKyHeThong,
     ]),
     ThongBaoModule,
   ],

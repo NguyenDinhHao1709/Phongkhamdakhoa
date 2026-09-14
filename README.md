@@ -4,6 +4,13 @@
 > Đồ án tốt nghiệp — Hệ thống quản lý phòng khám đa khoa tuân theo **Quyết định 1313/QĐ-BYT** của Bộ Y Tế Việt Nam.
 
 ---
+cd D:\KLTN\backend
+npm run start:dev
+
+cd D:\KLTN\frontend
+npm run dev
+
+npx -y chrome-devtools-mcp@latest
 
 ## 📋 Mục Lục
 

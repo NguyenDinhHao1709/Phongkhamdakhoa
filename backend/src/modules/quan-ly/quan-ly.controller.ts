@@ -57,6 +57,55 @@ export class QuanLyController {
     return res.send(sql);
   }
 
+  // ─── ADMIN: NHẬT KÝ HỆ THỐNG (SYSTEM AUDIT LOG) ───────────────
+  @Get('nhat-ky')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Lấy danh sách nhật ký kiểm toán hệ thống có phân trang & bộ lọc' })
+  getDanhSachNhatKy(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('loaiNhatKy') loaiNhatKy?: string,
+    @Query('hanhDong') hanhDong?: string,
+    @Query('search') search?: string,
+    @Query('tuNgay') tuNgay?: string,
+    @Query('denNgay') denNgay?: string,
+  ) {
+    return this.quanLyService.getDanhSachNhatKy({
+      page,
+      limit,
+      loaiNhatKy,
+      hanhDong,
+      search,
+      tuNgay,
+      denNgay,
+    });
+  }
+
+  @Get('nhat-ky/thong-ke')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Lấy thống kê số liệu nhật ký hệ thống' })
+  getThongKeNhatKy() {
+    return this.quanLyService.getThongKeNhatKy();
+  }
+
+  @Post('nhat-ky')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Ghi thêm bản ghi nhật ký kiểm toán' })
+  ghiLogAudit(
+    @Body() body: any,
+    @CurrentUser() user: any,
+  ) {
+    return this.quanLyService.ghiLog({
+      nguoiDungId: user?.id,
+      tenNguoiDung: user?.tenDangNhap || body.tenNguoiDung || 'admin',
+      vaiTro: user?.vaiTro || body.vaiTro || 'quan_tri_vien',
+      hanhDong: body.hanhDong || 'THAO_TAC_HE_THONG',
+      loaiNhatKy: body.loaiNhatKy,
+      moTa: body.moTa || 'Thao tác hệ thống',
+      diaChiIp: body.diaChiIp || '127.0.0.1',
+    });
+  }
+
   // ─── UC 17: DASHBOARD TỔNG QUAN BAN GIÁM ĐỐC ─────────────
   @Get('dashboard-stats')
   @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
@@ -80,6 +129,18 @@ export class QuanLyController {
     @Query('phuongThuc') phuongThuc?: string,
   ) {
     return this.quanLyService.getBaoCaoTaiChinh({ tuNgay, denNgay, loaiPhi, phuongThuc });
+  }
+
+  // ─── UC BÁO CÁO TOÀN DIỆN BAN GIÁM ĐỐC (LÂM SÀNG, CLS, DƯỢC, PHÒNG/GIƯỜNG) ─────────
+  @Get('bao-cao-toan-dien')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Báo cáo toàn diện phòng khám cho Ban Giám Đốc' })
+  getBaoCaoToanDien(
+    @Query('tuNgay') tuNgay?: string,
+    @Query('denNgay') denNgay?: string,
+    @Query('phuongThuc') phuongThuc?: string,
+  ) {
+    return this.quanLyService.getBaoCaoToanDien({ tuNgay, denNgay, phuongThuc });
   }
 
   // ─── UC 22: PHÊ DUYỆT YÊU CẦU / ĐƠN TỪ NHÂN VIÊN ────────

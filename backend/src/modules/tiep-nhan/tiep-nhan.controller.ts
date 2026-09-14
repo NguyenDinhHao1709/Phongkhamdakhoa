@@ -64,5 +64,44 @@ export class TiepNhanController {
   capNhatTrangThai(@Param('id', ParseIntPipe) id: number, @Body() dto: CapNhatTrangThaiTiepNhanDto) {
     return this.service.capNhatTrangThai(id, dto);
   }
+
+  // ─── BÁO CÁO & DASHBOARD TIẾP ĐÓN ───────────────────────────
+  @Get('bao-cao/thong-ke')
+  @Roles('tiep_tan', 'ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thống kê tổng quan KPI và biểu đồ lưu lượng tiếp đón' })
+  getThongKeBaoCao(
+    @Query('khoangThoiGian') khoangThoiGian?: string,
+    @Query('tuNgay') tuNgay?: string,
+    @Query('denNgay') denNgay?: string,
+  ) {
+    return this.service.getThongKeBaoCao({ khoangThoiGian, tuNgay, denNgay });
+  }
+
+  @Get('bao-cao/danh-sach')
+  @Roles('tiep_tan', 'ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Danh sách chi tiết lượt tiếp đón có tìm kiếm & bộ lọc' })
+  getDanhSachBaoCao(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
+    @Query('phongKhamId') phongKhamId?: number,
+    @Query('trangThai') trangThai?: string,
+    @Query('loaiTiepNhan') loaiTiepNhan?: string,
+    @Query('khoangThoiGian') khoangThoiGian?: string,
+    @Query('tuNgay') tuNgay?: string,
+    @Query('denNgay') denNgay?: string,
+  ) {
+    return this.service.getDanhSachBaoCao({
+      page,
+      limit,
+      search,
+      phongKhamId: phongKhamId ? +phongKhamId : undefined,
+      trangThai,
+      loaiTiepNhan,
+      khoangThoiGian,
+      tuNgay,
+      denNgay,
+    });
+  }
 }
 
