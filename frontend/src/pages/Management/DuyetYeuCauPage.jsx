@@ -25,6 +25,8 @@ export default function DuyetYeuCauPage() {
   const [selectedDon, setSelectedDon] = useState(null);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [approveModalOpen, setApproveModalOpen] = useState(false);
+  const [approveNote, setApproveNote] = useState('Ban Giám Đốc đã phê duyệt');
   const [targetDonId, setTargetDonId] = useState(null);
 
   const { data, isLoading, refetch } = useQuery({
@@ -60,13 +62,23 @@ export default function DuyetYeuCauPage() {
       queryClient.invalidateQueries({ queryKey: ['giam-doc-dashboard'] });
       setRejectModalOpen(false);
       setRejectReason('');
+      setApproveModalOpen(false);
+      setApproveNote('Ban Giám Đốc đã phê duyệt');
     },
   });
 
-  const handleApprove = (id) => {
-    if (window.confirm('Xác nhận PHÊ DUYỆT yêu cầu này?')) {
-      duyetMutation.mutate({ id, action: 'duyet', ghiChuXuLy: 'Ban Giám Đốc đã phê duyệt' });
-    }
+  const handleOpenApprove = (id) => {
+    setTargetDonId(id);
+    setApproveNote('Ban Giám Đốc đã phê duyệt.');
+    setApproveModalOpen(true);
+  };
+
+  const handleConfirmApprove = () => {
+    duyetMutation.mutate({
+      id: targetDonId,
+      action: 'duyet',
+      ghiChuXuLy: approveNote.trim() || 'Ban Giám Đốc đã phê duyệt',
+    });
   };
 
   const handleOpenReject = (id) => {
@@ -186,9 +198,10 @@ export default function DuyetYeuCauPage() {
                       <X className="h-3.5 w-3.5" /> Từ chối
                     </button>
                     <button
-                      onClick={() => handleApprove(don.id)}
+                      onClick={() => handleOpenApprove(don.id)}
                       disabled={duyetMutation.isPending}
                       className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
+                      data-testid={`btn-approve-${don.id}`}
                     >
                       <Check className="h-3.5 w-3.5" /> Phê duyệt
                     </button>
@@ -199,6 +212,44 @@ export default function DuyetYeuCauPage() {
           })
         )}
       </div>
+
+      {/* Modal phê duyệt yêu cầu (nhập ý kiến chỉ đạo) */}
+      {approveModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <h3 className="font-bold text-gray-900 text-base flex items-center gap-2 text-emerald-600">
+              <CheckCircle2 className="h-5 w-5" /> Phê Duyệt Đơn Yêu Cầu
+            </h3>
+            <p className="text-xs text-gray-600">
+              Nhập ý kiến chỉ đạo hoặc phản hồi gửi đến nhân viên:
+            </p>
+            <textarea
+              value={approveNote}
+              onChange={e => setApproveNote(e.target.value)}
+              placeholder="VD: Ban Giám Đốc đã phê duyệt. Giao nhân viên B hỗ trợ ca trực..."
+              rows={3}
+              className="w-full text-xs border border-gray-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              data-testid="textarea-approve-note"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setApproveModalOpen(false)}
+                className="px-4 py-2 border border-gray-300 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-50"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleConfirmApprove}
+                disabled={duyetMutation.isPending}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-xl text-xs font-bold"
+                data-testid="btn-confirm-approve"
+              >
+                {duyetMutation.isPending ? 'Đang xử lý...' : 'Xác nhận duyệt'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal từ chối yêu cầu (nhập lý do) */}
       {rejectModalOpen && (
@@ -216,6 +267,7 @@ export default function DuyetYeuCauPage() {
               placeholder="VD: Không đủ nhân sự trực thay ca chiều ngày này, vui lòng chọn ngày khác..."
               rows={3}
               className="w-full text-xs border border-gray-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-red-500"
+              data-testid="textarea-reject-reason"
             />
             <div className="flex justify-end gap-2">
               <button
@@ -228,8 +280,9 @@ export default function DuyetYeuCauPage() {
                 onClick={handleConfirmReject}
                 disabled={duyetMutation.isPending || !rejectReason.trim()}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white rounded-xl text-xs font-bold"
+                data-testid="btn-confirm-reject"
               >
-                Xác nhận từ chối
+                {duyetMutation.isPending ? 'Đang xử lý...' : 'Xác nhận từ chối'}
               </button>
             </div>
           </div>

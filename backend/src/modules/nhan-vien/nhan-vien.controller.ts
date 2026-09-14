@@ -43,13 +43,12 @@ export class NhanVienController {
     return this.nhanVienService.taoDonTu(user.id || user.userId, body);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Get('don-tu/danh-sach')
-  @ApiOperation({ summary: 'Ban giám đốc xem danh sách các đơn từ cần xét duyệt' })
-  getDanhSachDonTu(@Query('trangThai') trangThai?: string) {
-    return this.nhanVienService.getDanhSachDonTu(trangThai);
+  @ApiOperation({ summary: 'Xem danh sách các đơn từ đã gửi hoặc cần xét duyệt' })
+  getDanhSachDonTu(@CurrentUser() user: any, @Query('trangThai') trangThai?: string) {
+    return this.nhanVienService.getDanhSachDonTu(user, trangThai);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

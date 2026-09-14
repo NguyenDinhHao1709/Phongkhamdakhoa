@@ -130,10 +130,19 @@ export class NhanVienService {
   /**
    * Lấy danh sách đơn từ
    */
-  async getDanhSachDonTu(trangThai?: string) {
+  async getDanhSachDonTu(user?: any, trangThai?: string) {
     const qb = this.donGuiRepo.createQueryBuilder('d')
       .leftJoinAndSelect('d.nguoiGui', 'nv')
       .orderBy('d.ngayGui', 'DESC');
+
+    const role = user?.vai_tro || user?.ma_vai_tro || user?.role;
+    const isDirectorOrAdmin = ['ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao'].includes(role);
+
+    if (user && !isDirectorOrAdmin) {
+      const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: user.id || user.userId } });
+      const myId = nv ? nv.id : (user.id || user.userId);
+      qb.andWhere('(d.nguoiGuiId = :myId OR nv.nguoiDungId = :userId)', { myId, userId: user.id || user.userId });
+    }
 
     if (trangThai) {
       qb.andWhere('d.trangThai = :trangThai', { trangThai });
