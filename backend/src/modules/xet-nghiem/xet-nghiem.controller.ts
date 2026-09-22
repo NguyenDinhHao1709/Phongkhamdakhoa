@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Body, Param, Query,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query,
   ParseIntPipe, UseGuards, UseInterceptors, UploadedFile, BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
@@ -102,6 +102,14 @@ export class XetNghiemController {
     return this.service.capNhatTrangThaiChiDinh(id, dto, user.id);
   }
 
+  // ─── HỦY CHỈ ĐỊNH (Bác sĩ hủy khi chưa lấy mẫu) ───────────
+  @Delete('chi-dinh/:id')
+  @Roles('bac_si', 'ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Bác sĩ hủy chỉ định cận lâm sàng khi còn chờ lấy mẫu' })
+  huyChiDinh(@Param('id', ParseIntPipe) id: number) {
+    return this.service.huyChiDinh(id);
+  }
+
   // ─── NHẬP KẾT QUẢ ──────────────────────────────────────────
   @Post(['chi-dinh/:id/ket-qua', 'ket-qua/:id'])
   @Roles('ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
@@ -135,11 +143,12 @@ export class XetNghiemController {
   @Roles('ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Báo cáo thống kê hoạt động xét nghiệm / CĐHA' })
   getThongKeXetNghiem(
+    @CurrentUser() user: any,
     @Query('range') range?: string,
     @Query('tuNgay') tuNgay?: string,
     @Query('denNgay') denNgay?: string,
   ) {
-    return this.service.getThongKeXetNghiem({ range, tuNgay, denNgay });
+    return this.service.getThongKeXetNghiem(user, { range, tuNgay, denNgay });
   }
 }
 

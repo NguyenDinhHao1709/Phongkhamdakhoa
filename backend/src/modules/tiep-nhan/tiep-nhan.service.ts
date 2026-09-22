@@ -2,14 +2,19 @@ import {
   Injectable, NotFoundException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Between, In } from 'typeorm';
 import { LuotTiepNhan, SinhHieu, TrangThaiTiepNhan } from './entities/tiep-nhan.entity';
+import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 import {
   IsOptional, IsInt, IsPositive, IsString, IsDateString,
   IsNumber, Min, Max, IsEnum,
 } from 'class-validator';
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
+import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
+import { BacSi } from '../nhan-vien/entities/bac-si.entity';
+import { LichLamViec } from '../nhan-vien/entities/lich-lam-viec.entity';
+import { OnModuleInit } from '@nestjs/common';
 
 // DTO nội tuyến cho module này
 export class TaoTiepNhanDto {
@@ -19,6 +24,16 @@ export class TaoTiepNhanDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() bacSiId?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() ghiChu?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() lyDoKham?: string;
+}
+
+export class TiepNhanTaiQuayDto {
+  @ApiPropertyOptional() @IsOptional() @IsInt() benhNhanId?: number;
+  @ApiProperty() @IsString() hoTen: string;
+  @ApiProperty() @IsString() soDienThoai: string;
+  @ApiProperty() @IsString() chuyenKhoa: string;
+  @ApiPropertyOptional() @IsOptional() @IsInt() bacSiId?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() phongKhamId?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() ghiChu?: string;
 }
 
 export class GhiSinhHieuDto {
@@ -43,36 +58,500 @@ export class DieuPhoiPhongDto {
 }
 
 export class CapNhatTrangThaiTiepNhanDto {
-  @ApiProperty({ enum: ['cho_kham', 'dang_kham', 'hoan_thanh', 'da_huy'] })
-  @IsEnum(['cho_kham', 'dang_kham', 'hoan_thanh', 'da_huy'])
+  @ApiProperty({ enum: ['cho_kham', 'dang_kham', 'dang_cls', 'da_co_kq_cls', 'hoan_thanh', 'da_huy'] })
+  @IsEnum(['cho_kham', 'dang_kham', 'dang_cls', 'da_co_kq_cls', 'hoan_thanh', 'da_huy'])
   trangThai: string;
 }
 
 @Injectable()
-export class TiepNhanService {
+export class TiepNhanService implements OnModuleInit {
   constructor(
     @InjectRepository(LuotTiepNhan) private luotRepo: Repository<LuotTiepNhan>,
     @InjectRepository(SinhHieu) private sinhHieuRepo: Repository<SinhHieu>,
+    @InjectRepository(LichHen) private lichHenRepo: Repository<LichHen>,
+    @InjectRepository(BacSi) private bacSiRepo: Repository<BacSi>,
+    @InjectRepository(BenhNhan) private benhNhanRepo: Repository<BenhNhan>,
+    @InjectRepository(LichLamViec) private lichLamViecRepo: Repository<LichLamViec>,
   ) {}
 
+  onModuleInit() {
+    this.syncLichHenDenGio().catch((err) =>
+      console.error('[TiepNhanScheduler] Không đồng bộ được lịch hẹn:', err.message)
+    );
+    setInterval(() => {
+      this.syncLichHenDenGio().catch((err) =>
+        console.error('[TiepNhanScheduler] Không đồng bộ được lịch hẹn:', err.message)
+      );
+    }, 30 * 1000);
+  }
+
   // ─── HÀNG ĐỢI PHÒNG KHÁM ─────────────────────────────────────
-  async hangDoi(phongKhamId?: number) {
+  async hangDoi(phongKhamId?: number, currentUser?: any) {
+    await this.syncLichHenDenGio();
     const qb = this.luotRepo.createQueryBuilder('ltn')
       .leftJoinAndSelect('ltn.benhNhan', 'bn')
       .leftJoinAndSelect('ltn.bacSi', 'bs')
       .leftJoinAndSelect('bs.nhanVien', 'nv')
       .leftJoinAndSelect('ltn.sinhHieu', 'sh')
-      .where('ltn.trangThai IN (:...tt)', { tt: ['cho_kham', 'dang_kham'] })
+      .where('ltn.trangThai IN (:...tt)', { tt: ['cho_kham', 'dang_kham', 'dang_cls', 'da_co_kq_cls'] })
       .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
       .orderBy('ltn.thoiGianDen', 'ASC');
 
     if (phongKhamId) qb.andWhere('ltn.phongKhamId = :phongKhamId', { phongKhamId });
+    if (currentUser?.vai_tro === 'bac_si') {
+      const bacSi = await this.bacSiRepo.findOne({
+        where: { nhanVien: { nguoiDungId: currentUser.id || currentUser.userId } },
+      });
+      if (!bacSi) return { data: [], message: 'Không tìm thấy hồ sơ bác sĩ đang đăng nhập' };
+      qb.andWhere('ltn.bac_si_id = :doctorId', { doctorId: bacSi.id });
+    }
 
     const items = await qb.getMany();
     return { data: items, message: 'Lấy hàng đợi thành công' };
   }
 
+  // ─── THÔNG TIN PHIẾU KHÁM & TIẾN TRÌNH CHO BỆNH NHÂN ────────────
+  async getPhieuKhamBenhNhan(currentUser: any) {
+    await this.syncLichHenDenGio();
+
+    let benhNhan = null;
+    const userId = currentUser?.id || currentUser?.userId;
+    if (currentUser?.benhNhanId) {
+      benhNhan = await this.benhNhanRepo.findOne({ where: { id: currentUser.benhNhanId } });
+    }
+    if (!benhNhan && userId) {
+      benhNhan = await this.benhNhanRepo.findOne({ where: { nguoiDungId: userId } });
+    }
+
+    if (!benhNhan) {
+      return {
+        data: null,
+        message: 'Không tìm thấy hồ sơ bệnh nhân tương ứng',
+      };
+    }
+
+    // Tìm lượt tiếp nhận hôm nay
+    const luot = await this.luotRepo.createQueryBuilder('ltn')
+      .leftJoinAndSelect('ltn.benhNhan', 'bn')
+      .leftJoinAndSelect('ltn.bacSi', 'bs')
+      .leftJoinAndSelect('bs.nhanVien', 'nv')
+      .where('ltn.benhNhanId = :bnId', { bnId: benhNhan.id })
+      .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
+      .andWhere('ltn.trangThai != :daHuy', { daHuy: TrangThaiTiepNhan.DA_HUY })
+      .orderBy('ltn.id', 'DESC')
+      .getOne();
+
+    if (!luot) {
+      return {
+        data: null,
+        message: 'Chưa có phiếu khám trong ngày',
+      };
+    }
+
+    const phongKhamId = luot.phongKhamId || 101;
+    const allWaitingInRoom = await this.luotRepo.createQueryBuilder('ltn')
+      .where('DATE(ltn.thoiGianDen) = CURDATE()')
+      .andWhere('ltn.phongKhamId = :phongKhamId', { phongKhamId })
+      .andWhere('ltn.trangThai IN (:...tt)', { tt: [TrangThaiTiepNhan.CHO_KHAM, TrangThaiTiepNhan.DANG_KHAM] })
+      .orderBy('ltn.id', 'ASC')
+      .getMany();
+
+    const currentServing = allWaitingInRoom.find((l) => l.trangThai === TrangThaiTiepNhan.DANG_KHAM);
+    const waitingBeforeMe = allWaitingInRoom.filter(
+      (l) => l.trangThai === TrangThaiTiepNhan.CHO_KHAM && l.id < luot.id
+    );
+
+    // ── Kiểm tra các chỉ định Cận lâm sàng & Xét nghiệm thực tế trong lần khám này ──
+    const bakRows: any[] = await this.luotRepo.manager.query(
+      `SELECT bak.id, bak.trang_thai as trangThai, bak.chan_doan_xac_dinh as chanDoanXacDinh
+       FROM benh_an_kham bak
+       WHERE bak.luot_tiep_nhan_id = ?
+       ORDER BY bak.id DESC LIMIT 1`,
+      [luot.id],
+    );
+
+    let dsChiDinh: any[] = [];
+    let hasCls = false;
+    let donThuoc: any = null;
+    let hoaDon: any = null;
+    let isCompleted = luot.trangThai === TrangThaiTiepNhan.HOAN_THANH;
+    let isDangKham = luot.trangThai === TrangThaiTiepNhan.DANG_KHAM;
+    let isDangCls = luot.trangThai === TrangThaiTiepNhan.DANG_CLS;
+    let isDaCoKqCls = luot.trangThai === TrangThaiTiepNhan.DA_CO_KQ_CLS;
+
+    if (bakRows && bakRows.length > 0) {
+      const benhAnKhamId = bakRows[0].id;
+      dsChiDinh = await this.luotRepo.manager.query(
+        `SELECT cd.id, cd.trang_thai as trangThai, cd.thoi_gian_chi_dinh as thoiGianChiDinh,
+                cd.ghi_chu_chi_dinh as ghiChuChiDinh,
+                dv.id as dichVuId, dv.ma_dich_vu as maDichVu, dv.ten_dich_vu as tenDichVu, dv.loai, dv.gia,
+                kq.gia_tri as giaTri, kq.don_vi as donVi, kq.nhan_xet as nhanXet, kq.thoi_gian_nhap as thoiGianNhap
+         FROM chi_dinh_can_lam_sang cd
+         LEFT JOIN dich_vu_xet_nghiem dv ON cd.dich_vu_xet_nghiem_id = dv.id
+         LEFT JOIN ket_qua_xet_nghiem kq ON kq.chi_dinh_id = cd.id
+         WHERE cd.benh_an_kham_id = ? AND cd.trang_thai != 'huy'
+         ORDER BY cd.thoi_gian_chi_dinh ASC`,
+        [benhAnKhamId],
+      );
+
+      // Tra cứu Đơn thuốc
+      const dtRows: any[] = await this.luotRepo.manager.query(
+        `SELECT dt.id, dt.ma_don_thuoc as maDonThuoc, dt.trang_thai as trangThai, dt.ghi_chu as ghiChu, dt.ngay_ke as ngayKe
+         FROM don_thuoc dt
+         WHERE dt.benh_an_kham_id = ?
+         ORDER BY dt.id DESC LIMIT 1`,
+        [benhAnKhamId],
+      );
+
+      if (dtRows && dtRows.length > 0) {
+        const ctRows: any[] = await this.luotRepo.manager.query(
+          `SELECT ct.id, ct.so_luong as soLuong, ct.lieu_dung as lieuDung, ct.so_ngay_dung as soNgayDung,
+                  t.ten_thuoc as tenThuoc, t.don_vi_tinh as donViTinh, t.gia_ban as giaBan
+           FROM don_thuoc_chi_tiet ct
+           LEFT JOIN thuoc t ON ct.thuoc_id = t.id
+           WHERE ct.don_thuoc_id = ?`,
+          [dtRows[0].id],
+        );
+        donThuoc = {
+          ...dtRows[0],
+          chiTiet: ctRows || [],
+          soLuongMon: ctRows?.length || 0,
+        };
+      }
+
+      if (dsChiDinh.length > 0) {
+        hasCls = true;
+        const allCompleted = dsChiDinh.every((cd) => cd.trangThai === 'co_ket_qua');
+        if (allCompleted) {
+          isDaCoKqCls = true;
+          isDangCls = false;
+        } else {
+          isDangCls = true;
+          isDaCoKqCls = false;
+        }
+
+        // Tự động đồng bộ trạng thái luot nếu đang bị lệch trên CSDL
+        if (!isCompleted && (luot.trangThai === TrangThaiTiepNhan.DANG_KHAM || (isDaCoKqCls && luot.trangThai !== TrangThaiTiepNhan.DA_CO_KQ_CLS))) {
+          const newStatus = isDaCoKqCls ? TrangThaiTiepNhan.DA_CO_KQ_CLS : TrangThaiTiepNhan.DANG_CLS;
+          await this.luotRepo.update({ id: luot.id }, { trangThai: newStatus });
+          luot.trangThai = newStatus;
+        }
+      } else {
+        hasCls = false;
+        if (!isCompleted && (luot.trangThai === TrangThaiTiepNhan.DANG_CLS || luot.trangThai === TrangThaiTiepNhan.DA_CO_KQ_CLS)) {
+          await this.luotRepo.update({ id: luot.id }, { trangThai: TrangThaiTiepNhan.DANG_KHAM });
+          luot.trangThai = TrangThaiTiepNhan.DANG_KHAM;
+          isDangKham = true;
+          isDangCls = false;
+          isDaCoKqCls = false;
+        }
+      }
+    }
+
+    // Tra cứu Hóa đơn viện phí
+    const hdRows: any[] = await this.luotRepo.manager.query(
+      `SELECT hd.id, hd.ma_hoa_don as maHoaDon, hd.tong_tien as tongTien,
+              hd.so_tien_giam as soTienGiam, hd.thuc_thu as thucThu,
+              hd.trang_thai as trangThai, hd.phuong_thuc_thanh_toan as phuongThucThanhToan,
+              hd.ngay_thanh_toan as ngayThanhToan, hd.ghi_chu as ghiChu
+       FROM hoa_don hd
+       WHERE hd.luot_tiep_nhan_id = ?
+       ORDER BY hd.id DESC LIMIT 1`,
+      [luot.id],
+    );
+    if (hdRows && hdRows.length > 0) {
+      const ctRows: any[] = await this.luotRepo.manager.query(
+        `SELECT ct.id, ct.loai_phi as loaiPhi, ct.mo_ta as moTa, ct.so_luong as soLuong,
+                ct.don_gia as donGia, ct.thanh_tien as thanhTien
+         FROM hoa_don_chi_tiet ct
+         WHERE ct.hoa_don_id = ?
+         ORDER BY ct.id ASC`,
+        [hdRows[0].id],
+      );
+      hoaDon = {
+        ...hdRows[0],
+        tongTien: Number(hdRows[0].tongTien),
+        soTienGiam: Number(hdRows[0].soTienGiam),
+        thucThu: Number(hdRows[0].thucThu),
+        chiTiet: (ctRows || []).map((c) => ({
+          ...c,
+          soLuong: Number(c.soLuong),
+          donGia: Number(c.donGia),
+          thanhTien: Number(c.thanhTien),
+        })),
+      };
+    }
+
+    const soDangGoi = currentServing?.maSoThuTu || (allWaitingInRoom.length > 0 ? allWaitingInRoom[0].maSoThuTu : '-');
+    const soNguoiPhiaTruoc = (isDangKham || isCompleted || isDangCls || isDaCoKqCls) ? 0 : waitingBeforeMe.length;
+    const uocTinhPhut = isCompleted ? 0 : Math.max(2, soNguoiPhiaTruoc * 6);
+
+    const tenPhongKham = phongKhamId === 101 ? 'Phòng 101 - Khám Nội Tổng Quát' : `Phòng ${phongKhamId} - Khám Chuyên Khoa`;
+    const tenBacSi = luot.bacSi?.nhanVien?.hoTen || 'BS. CKI Trần Văn Nam';
+
+    const isHoaDonDone = !hoaDon || hoaDon.trangThai === 'da_thanh_toan' || Number(hoaDon.thucThu) === 0;
+    const isDonThuocDone = !donThuoc || donThuoc.trangThai === 'da_cap_phat' || (donThuoc.chiTiet && donThuoc.chiTiet.length === 0) || donThuoc.soLuongMon === 0;
+    const isAllFullyCompleted = isCompleted && isHoaDonDone && isDonThuocDone;
+
+    if (isAllFullyCompleted) {
+      return {
+        data: {
+          isAllCompleted: true,
+          ticket: null,
+          completedVisit: {
+            lichHenId: luot.lichHenId,
+            luotTiepNhanId: luot.id,
+            soThuTu: luot.maSoThuTu,
+            maYTe: benhNhan.maBenhNhan,
+            hoTen: benhNhan.hoTen,
+            phongKham: tenPhongKham,
+            bacSi: tenBacSi,
+            chanDoanXacDinh: bakRows && bakRows.length > 0 ? bakRows[0].chanDoanXacDinh : null,
+            thoiGianDen: luot.thoiGianDen,
+            thoiGianHoanThanh: new Date(),
+            hoaDon,
+            donThuoc,
+          },
+        },
+        message: 'Lượt khám hôm nay đã hoàn tất toàn bộ các bước quy trình',
+      };
+    }
+
+    return {
+      data: {
+        ticket: {
+          lichHenId: luot.lichHenId,
+          luotTiepNhanId: luot.id,
+          soThuTu: luot.maSoThuTu,
+          trangThai: luot.trangThai,
+          maYTe: benhNhan.maBenhNhan,
+          hoTen: benhNhan.hoTen,
+          thoiGianLaySo: new Date(luot.thoiGianDen).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          phongKham: tenPhongKham,
+          bacSi: tenBacSi,
+          dsChiDinh,
+          hasCls,
+          donThuoc,
+          hoaDon,
+          chanDoanXacDinh: bakRows && bakRows.length > 0 ? bakRows[0].chanDoanXacDinh : null,
+        },
+        queue: {
+          soDangGoi,
+          soNguoiPhiaTruoc,
+          uocTinhPhut,
+          phongKham: tenPhongKham,
+        },
+        progress: [
+          {
+            step: 1,
+            title: '1. Đăng ký & Tiếp nhận',
+            desc: `Đã tiếp nhận và cấp số thứ tự vào phòng khám chuyên khoa (${new Date(luot.thoiGianDen).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}).`,
+            status: 'COMPLETED',
+            statusLabel: 'Đã hoàn thành',
+          },
+          {
+            step: 2,
+            title: '2. Khám lâm sàng ban đầu',
+            desc: isCompleted
+              ? `Bác sĩ đã hoàn tất khám lâm sàng và chẩn đoán bệnh án tại ${tenPhongKham}.`
+              : (hasCls || isDangCls || isDaCoKqCls)
+              ? `Bác sĩ đã hoàn tất khám lâm sàng ban đầu và chỉ định ${dsChiDinh.length} cận lâm sàng.`
+              : isDangKham
+              ? `Đang trong phòng khám ${tenPhongKham} với bác sĩ.`
+              : soNguoiPhiaTruoc === 0
+              ? `Đến lượt bạn! Bác sĩ đang mời số ${luot.maSoThuTu} vào ${tenPhongKham}.`
+              : `Bác sĩ đang khám bệnh nhân số ${soDangGoi}. Bạn là số ${luot.maSoThuTu} (còn ${soNguoiPhiaTruoc} người phía trước).`,
+            status: isCompleted || hasCls || isDangCls || isDaCoKqCls ? 'COMPLETED' : isDangKham ? 'IN_PROGRESS' : 'WAITING',
+            statusLabel: isCompleted || hasCls || isDangCls || isDaCoKqCls ? 'Đã hoàn thành' : isDangKham ? 'Đang khám trong phòng' : 'Đang chờ gọi tên',
+          },
+          {
+            step: 3,
+            title: '3. Thực hiện Cận lâm sàng (Nếu có)',
+            desc: isCompleted
+              ? 'Đã hoàn tất các chỉ định cận lâm sàng (hoặc không chỉ định thêm).'
+              : isDaCoKqCls
+              ? `Đã có đầy đủ kết quả ${dsChiDinh.length} xét nghiệm/CĐHA gửi về phòng bác sĩ.`
+              : isDangCls
+              ? `Đang thực hiện ${dsChiDinh.length} xét nghiệm / CĐHA theo chỉ định của bác sĩ. Vui lòng làm theo chỉ dẫn của nhân viên y tế.`
+              : 'Hệ thống sẽ tự động đề xuất lộ trình phòng khám vắng nhất để bạn không phải xếp hàng lâu.',
+            status: isCompleted || isDaCoKqCls ? 'LAB_COMPLETED' : isDangCls ? 'WAITING_LAB' : 'PENDING',
+            statusLabel: isCompleted || isDaCoKqCls ? 'Đã hoàn thành' : isDangCls ? 'Đang thực hiện' : 'Theo chỉ định của bác sĩ',
+            dsChiDinh,
+          },
+          {
+            step: 4,
+            title: '4. Kết luận & Nhận đơn thuốc',
+            desc: isCompleted
+              ? 'Bác sĩ đã kết luận bệnh án, tư vấn phác đồ và cấp đơn thuốc điện tử. Lượt khám đã hoàn tất.'
+              : isDaCoKqCls
+              ? 'Bác sĩ đang tiếp nhận kết quả cận lâm sàng để kết luận bệnh án và kê đơn thuốc.'
+              : 'Bác sĩ đưa ra kết luận bệnh án, tư vấn phác đồ và cấp đơn thuốc điện tử.',
+            status: isCompleted ? 'COMPLETED' : isDaCoKqCls ? 'WAITING_DOCTOR' : 'PENDING',
+            statusLabel: isCompleted ? 'Đã hoàn thành' : isDaCoKqCls ? 'Bác sĩ đang xem KQ' : 'Chưa bắt đầu',
+            donThuoc,
+            hoaDon,
+          },
+        ],
+      },
+      message: 'Lấy tiến trình phiếu khám thành công',
+    };
+  }
+
+  private async syncLichHenDenGio() {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+    const appointments = await this.lichHenRepo.find({
+      where: {
+        ngayHen: today,
+        trangThai: TrangThaiLichHen.DA_XAC_NHAN,
+      },
+    });
+
+    for (const appointment of appointments) {
+      if (appointment.gioHen > currentTime) continue;
+      const existing = await this.luotRepo.findOne({ where: { lichHenId: appointment.id } });
+      if (existing) continue;
+      const totalCount = await this.luotRepo.count();
+      const luot = this.luotRepo.create({
+        benhNhanId: appointment.benhNhanId,
+        lichHenId: appointment.id,
+        phongKhamId: appointment.phongKhamId,
+        bacSiId: appointment.bacSiId,
+        maSoThuTu: MaGeneratorService.generateSoThuTu(totalCount + 1),
+        thoiGianDen: new Date(),
+        trangThai: TrangThaiTiepNhan.CHO_KHAM,
+        ghiChu: 'Tự động đưa vào hàng đợi khi đến giờ hẹn',
+      });
+      await this.luotRepo.save(luot);
+    }
+  }
+
   // ─── TẠO LƯỢT TIẾP NHẬN ──────────────────────────────────────
+  async createTaiQuay(dto: TiepNhanTaiQuayDto, tiepTanId: number) {
+    const specialty = dto.chuyenKhoa.trim().toLowerCase();
+    if (!specialty) {
+      throw new BadRequestException({ code: 'THIEU_CHUYEN_KHOA', message: 'Phải chọn chuyên khoa trước khi tiếp nhận.' });
+    }
+
+    const allDoctors = await this.bacSiRepo.find({ relations: ['nhanVien'] });
+    const doctors = allDoctors.filter((doctor) => {
+      const docSpec = doctor.chuyenKhoa?.trim().toLowerCase() || '';
+      return docSpec === specialty || docSpec.includes(specialty) || specialty.includes(docSpec);
+    });
+
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+
+    let selectedDoctor = dto.bacSiId
+      ? allDoctors.find((doctor) => doctor.id === dto.bacSiId)
+      : null;
+
+    if (!selectedDoctor) {
+      if (!doctors.length) {
+        throw new BadRequestException({ code: 'KHONG_CO_BAC_SI', message: `Hiện chưa có bác sĩ thuộc chuyên khoa ${dto.chuyenKhoa}.` });
+      }
+      const shifts = await this.lichLamViecRepo.find({
+        where: { ngayLam: today },
+        relations: ['caLamViec'],
+      });
+      const onDuty = doctors.filter((doctor) => shifts.some((shift) =>
+        shift.nhanVienId === doctor.nhanVienId &&
+        shift.caLamViec.gioBatDau <= currentTime &&
+        shift.caLamViec.gioKetThuc > currentTime
+      ));
+      const candidates = onDuty.length ? onDuty : doctors;
+      selectedDoctor = await this.chonBacSiItTaiNhat(candidates);
+    }
+
+    if (!selectedDoctor) {
+      throw new BadRequestException({ code: 'BAC_SI_KHONG_HOP_LE', message: 'Không tìm thấy bác sĩ phù hợp.' });
+    }
+
+    let patient: BenhNhan | null = null;
+    if (dto.benhNhanId) {
+      patient = await this.benhNhanRepo.findOne({ where: { id: dto.benhNhanId } });
+    }
+    if (!patient && dto.soDienThoai) {
+      patient = await this.benhNhanRepo.findOne({ where: { soDienThoai: dto.soDienThoai.trim() } });
+    }
+    if (!patient) {
+      const patientCount = await this.benhNhanRepo.count();
+      patient = await this.benhNhanRepo.save(this.benhNhanRepo.create({
+        maBenhNhan: MaGeneratorService.generateMaBenhNhan(patientCount + 1),
+        hoTen: dto.hoTen.trim(),
+        soDienThoai: dto.soDienThoai.trim(),
+      }));
+    }
+
+    const totalCount = await this.luotRepo.count();
+    const maSoThuTu = MaGeneratorService.generateSoThuTu(totalCount + 1);
+
+    // Tự động tạo bản ghi Lịch hẹn (Đã xác nhận) để hiển thị trong Lịch hẹn & Trang chủ phía Bệnh nhân
+    let savedLichHen: LichHen | null = null;
+    try {
+      const countLichHen = await this.lichHenRepo.count();
+      const maLichHen = MaGeneratorService.generateMaLichHen(countLichHen + 1);
+      const lichHen = this.lichHenRepo.create({
+        maLichHen,
+        benhNhanId: patient.id,
+        bacSiId: selectedDoctor.id,
+        phongKhamId: dto.phongKhamId || null,
+        ngayHen: today,
+        gioHen: currentTime,
+        hinhThuc: 'truc_tiep',
+        lyDoKham: `${dto.ghiChu || 'Tiếp nhận khám ngay tại quầy'} [Chuyên khoa: ${dto.chuyenKhoa}]`,
+        trangThai: TrangThaiLichHen.DA_XAC_NHAN,
+        nguonDat: 'tiep_tan_dat',
+        ghiChu: `Tiếp nhận khám ngay tại quầy - STT: ${maSoThuTu} [Chuyên khoa: ${dto.chuyenKhoa}]`,
+      });
+      savedLichHen = await this.lichHenRepo.save(lichHen);
+    } catch (e) {
+      console.warn('[createTaiQuay] Không tạo được lịch hẹn kèm theo:', e?.message);
+    }
+
+    const luot = this.luotRepo.create({
+      benhNhanId: patient.id,
+      lichHenId: savedLichHen?.id || null,
+      tiepTanId,
+      phongKhamId: dto.phongKhamId,
+      bacSiId: selectedDoctor.id,
+      maSoThuTu,
+      thoiGianDen: new Date(),
+      trangThai: TrangThaiTiepNhan.CHO_KHAM,
+      ghiChu: `${dto.ghiChu || 'Khám trực tiếp tại quầy'} [Chuyên khoa: ${dto.chuyenKhoa}]`,
+    });
+    const saved = await this.luotRepo.save(luot);
+    const withRelations = await this.luotRepo.findOne({
+      where: { id: saved.id },
+      relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
+    });
+    return {
+      data: withRelations,
+      message: `Đã tiếp nhận trực tiếp. ${withRelations?.maSoThuTu} — ${withRelations?.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách'}.`,
+    };
+  }
+
+  private async chonBacSiItTaiNhat(doctors: BacSi[]) {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    const loads = await Promise.all(doctors.map(async (doctor) => ({
+      doctor,
+      total: await this.luotRepo.count({
+        where: {
+          bacSiId: doctor.id,
+          thoiGianDen: Between(start, end),
+          trangThai: In([TrangThaiTiepNhan.CHO_KHAM, TrangThaiTiepNhan.DANG_KHAM]),
+        },
+      }),
+    })));
+    loads.sort((a, b) => a.total - b.total || a.doctor.id - b.doctor.id);
+    return loads[0]?.doctor;
+  }
+
   async create(dto: TaoTiepNhanDto, tiepTanId: number) {
     // Đếm tổng số lượt để tạo số thứ tự duy nhất không trùng DB constraint
     const totalCount = await this.luotRepo.count();
@@ -110,6 +589,18 @@ export class TiepNhanService {
       spo2: dto.spo2,
       ghiChu: dto.ghiChu,
     };
+    if (mappedData.nhietDoC != null && (mappedData.nhietDoC < 25 || mappedData.nhietDoC > 45)) {
+      throw new BadRequestException('Nhiệt độ phải trong khoảng 25–45°C');
+    }
+    if (mappedData.spo2 != null && (mappedData.spo2 < 0 || mappedData.spo2 > 100)) {
+      throw new BadRequestException('SpO2 phải trong khoảng 0–100%');
+    }
+    if (mappedData.huyetApTamThu != null && (mappedData.huyetApTamThu < 40 || mappedData.huyetApTamThu > 300)) {
+      throw new BadRequestException('Huyết áp tâm thu không hợp lệ');
+    }
+    if (mappedData.huyetApTamTruong != null && (mappedData.huyetApTamTruong < 20 || mappedData.huyetApTamTruong > 200)) {
+      throw new BadRequestException('Huyết áp tâm trương không hợp lệ');
+    }
 
     // Upsert sinh hiệu
     let sh = await this.sinhHieuRepo.findOne({ where: { luotTiepNhanId: luotId } });
@@ -142,6 +633,21 @@ export class TiepNhanService {
   async capNhatTrangThai(luotId: number, dto: CapNhatTrangThaiTiepNhanDto) {
     const luot = await this.luotRepo.findOne({ where: { id: luotId } });
     if (!luot) throw new NotFoundException({ code: 'LUOT_KHONG_TON_TAI', message: 'Không tìm thấy lượt tiếp nhận' });
+
+    const allowedTransitions: Record<string, string[]> = {
+      [TrangThaiTiepNhan.CHO_KHAM]: [TrangThaiTiepNhan.DANG_KHAM, TrangThaiTiepNhan.DANG_CLS, TrangThaiTiepNhan.DA_HUY],
+      [TrangThaiTiepNhan.DANG_KHAM]: [TrangThaiTiepNhan.DANG_CLS, TrangThaiTiepNhan.HOAN_THANH, TrangThaiTiepNhan.DA_HUY],
+      [TrangThaiTiepNhan.DANG_CLS]: [TrangThaiTiepNhan.DA_CO_KQ_CLS, TrangThaiTiepNhan.DANG_KHAM, TrangThaiTiepNhan.DA_HUY],
+      [TrangThaiTiepNhan.DA_CO_KQ_CLS]: [TrangThaiTiepNhan.DANG_KHAM, TrangThaiTiepNhan.HOAN_THANH, TrangThaiTiepNhan.DA_HUY],
+      [TrangThaiTiepNhan.HOAN_THANH]: [],
+      [TrangThaiTiepNhan.DA_HUY]: [],
+    };
+    if (!allowedTransitions[luot.trangThai]?.includes(dto.trangThai)) {
+      throw new BadRequestException({
+        code: 'CHUYEN_TRANG_THAI_KHONG_HOP_LE',
+        message: `Không thể chuyển lượt khám từ "${luot.trangThai}" sang "${dto.trangThai}".`,
+      });
+    }
 
     // Khi chuyển sang trạng thái "Đang khám": tự động chuyển các lượt khác đang "dang_kham" của cùng bác sĩ/phòng khám sang "cho_ket_qua"
     if (dto.trangThai === 'dang_kham') {
@@ -431,5 +937,3 @@ export class TiepNhanService {
     };
   }
 }
-
-

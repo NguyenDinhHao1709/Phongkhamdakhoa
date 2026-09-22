@@ -10,9 +10,11 @@ import { ThanhToanController } from './thanh-toan.controller';
 import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
+import { LichHenModule } from '../lich-hen/lich-hen.module';
 
 @Module({
   imports: [
+    LichHenModule,
     TypeOrmModule.forFeature([
       HoaDon,
       HoaDonChiTiet,

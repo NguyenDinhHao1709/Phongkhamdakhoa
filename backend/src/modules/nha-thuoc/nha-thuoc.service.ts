@@ -1,10 +1,13 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Thuoc } from './entities/thuoc.entity';
 import { LoThuoc } from './entities/lo-thuoc.entity';
 import { DonThuoc } from './entities/don-thuoc.entity';
 import { DonThuocChiTiet } from './entities/don-thuoc-chi-tiet.entity';
+import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
+import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
+import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 
 @Injectable()
 export class NhaThuocService {
@@ -17,6 +20,13 @@ export class NhaThuocService {
     private readonly donThuocRepo: Repository<DonThuoc>,
     @InjectRepository(DonThuocChiTiet)
     private readonly donThuocChiTietRepo: Repository<DonThuocChiTiet>,
+    @InjectRepository(BenhAnKham)
+    private readonly benhAnRepo: Repository<BenhAnKham>,
+    @InjectRepository(HoaDon)
+    private readonly hoaDonRepo: Repository<HoaDon>,
+    @InjectRepository(BenhNhan)
+    private readonly benhNhanRepo: Repository<BenhNhan>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -105,7 +115,7 @@ export class NhaThuocService {
   }
 
   /**
-   * Lấy danh sách đơn thuốc từ bác sĩ kê
+   * Lấy danh sách đơn thuốc từ bác sĩ kê kèm thông tin bệnh nhân & trạng thái viện phí
    */
   async getDanhSachDonThuoc(query: { trangThai?: string; search?: string; benhAnKhamId?: number }) {
     const qb = this.donThuocRepo
@@ -129,31 +139,92 @@ export class NhaThuocService {
 
     const list = await qb.getMany();
 
+    const dataWithPatientAndPayment = await Promise.all(
+      list.map(async (dt) => {
+        let benhNhan: any = null;
+        let hd: any = null;
+        let luotTiepNhanId: number | null = null;
+
+        if (dt.benhAnKhamId) {
+          const bak = await this.benhAnRepo.findOne({
+            where: { id: dt.benhAnKhamId },
+            relations: ['hoSoBenhAn', 'hoSoBenhAn.benhNhan'],
+          });
+          if (bak) {
+            luotTiepNhanId = bak.luotTiepNhanId;
+            benhNhan = bak.hoSoBenhAn?.benhNhan || null;
+            if (!benhNhan && bak.hoSoBenhAn?.benhNhanId) {
+              benhNhan = await this.benhNhanRepo.findOne({ where: { id: bak.hoSoBenhAn.benhNhanId } });
+            }
+            if (luotTiepNhanId) {
+              hd = await this.hoaDonRepo.findOne({ where: { luotTiepNhanId } });
+            }
+          }
+        }
+
+        const trangThaiThanhToan =
+          hd?.trangThai === 'da_thanh_toan'
+            ? 'da_thanh_toan'
+            : hd
+            ? 'cho_thanh_toan'
+            : 'chua_co_hoa_don';
+
+        return {
+          id: dt.id,
+          maDonThuoc: dt.maDonThuoc,
+          benhAnKhamId: dt.benhAnKhamId,
+          luotTiepNhanId,
+          bacSi: dt.bacSiKe?.nhanVien?.hoTen || 'Bác sĩ',
+          ngayKe: dt.ngayKe,
+          trangThai: dt.trangThai,
+          ghiChu: dt.ghiChu,
+          soLuongMon: dt.chiTiet ? dt.chiTiet.length : 0,
+          benhNhan: benhNhan
+            ? {
+                id: benhNhan.id,
+                maBenhNhan: benhNhan.maBenhNhan,
+                hoTen: benhNhan.hoTen,
+                soDienThoai: benhNhan.soDienThoai,
+                gioiTinh: benhNhan.gioiTinh,
+              }
+            : null,
+          hoaDon: hd
+            ? {
+                id: hd.id,
+                maHoaDon: hd.maHoaDon,
+                tongTien: Number(hd.tongTien),
+                soTienGiam: Number(hd.soTienGiam),
+                thucThu: Number(hd.thucThu),
+                trangThai: hd.trangThai,
+                phuongThucThanhToan: hd.phuongThucThanhToan,
+                ngayThanhToan: hd.ngayThanhToan,
+              }
+            : null,
+          trangThaiThanhToan,
+          chiTiet: dt.chiTiet
+            ? dt.chiTiet.map((ct) => ({
+                id: ct.id,
+                soLuong: ct.soLuong,
+                lieuDung: ct.lieuDung,
+                soNgayDung: ct.soNgayDung,
+                thuoc: ct.thuoc
+                  ? {
+                      id: ct.thuoc.id,
+                      maThuoc: ct.thuoc.maThuoc,
+                      tenThuoc: ct.thuoc.tenThuoc,
+                      donViTinh: ct.thuoc.donViTinh,
+                      giaBan: ct.thuoc.giaBan,
+                    }
+                  : null,
+              }))
+            : [],
+        };
+      })
+    );
+
     return {
       message: 'Lấy danh sách đơn thuốc thành công',
-      data: list.map((dt) => ({
-        id: dt.id,
-        maDonThuoc: dt.maDonThuoc,
-        benhAnKhamId: dt.benhAnKhamId,
-        bacSi: dt.bacSiKe?.nhanVien?.hoTen || 'Bác sĩ',
-        ngayKe: dt.ngayKe,
-        trangThai: dt.trangThai,
-        ghiChu: dt.ghiChu,
-        soLuongMon: dt.chiTiet ? dt.chiTiet.length : 0,
-        chiTiet: dt.chiTiet ? dt.chiTiet.map((ct) => ({
-          id: ct.id,
-          soLuong: ct.soLuong,
-          lieuDung: ct.lieuDung,
-          soNgayDung: ct.soNgayDung,
-          thuoc: ct.thuoc ? {
-            id: ct.thuoc.id,
-            maThuoc: ct.thuoc.maThuoc,
-            tenThuoc: ct.thuoc.tenThuoc,
-            donViTinh: ct.thuoc.donViTinh,
-            giaBan: ct.thuoc.giaBan,
-          } : null,
-        })) : [],
-      })),
+      data: dataWithPatientAndPayment,
     };
   }
 
@@ -169,6 +240,34 @@ export class NhaThuocService {
     if (!dt) {
       throw new NotFoundException('Không tìm thấy đơn thuốc');
     }
+
+    let benhNhan: any = null;
+    let hd: any = null;
+    let luotTiepNhanId: number | null = null;
+
+    if (dt.benhAnKhamId) {
+      const bak = await this.benhAnRepo.findOne({
+        where: { id: dt.benhAnKhamId },
+        relations: ['hoSoBenhAn', 'hoSoBenhAn.benhNhan'],
+      });
+      if (bak) {
+        luotTiepNhanId = bak.luotTiepNhanId;
+        benhNhan = bak.hoSoBenhAn?.benhNhan || null;
+        if (!benhNhan && bak.hoSoBenhAn?.benhNhanId) {
+          benhNhan = await this.benhNhanRepo.findOne({ where: { id: bak.hoSoBenhAn.benhNhanId } });
+        }
+        if (luotTiepNhanId) {
+          hd = await this.hoaDonRepo.findOne({ where: { luotTiepNhanId } });
+        }
+      }
+    }
+
+    const trangThaiThanhToan =
+      hd?.trangThai === 'da_thanh_toan'
+        ? 'da_thanh_toan'
+        : hd
+        ? 'cho_thanh_toan'
+        : 'chua_co_hoa_don';
 
     // Tra cứu FEFO cho từng món thuốc trong đơn
     const chiTietCoLo = await Promise.all(
@@ -214,6 +313,30 @@ export class NhaThuocService {
         ngayKe: dt.ngayKe,
         trangThai: dt.trangThai,
         ghiChu: dt.ghiChu,
+        luotTiepNhanId,
+        benhNhan: benhNhan
+          ? {
+              id: benhNhan.id,
+              maBenhNhan: benhNhan.maBenhNhan,
+              hoTen: benhNhan.hoTen,
+              soDienThoai: benhNhan.soDienThoai,
+              gioiTinh: benhNhan.gioiTinh,
+              ngaySinh: benhNhan.ngaySinh,
+            }
+          : null,
+        hoaDon: hd
+          ? {
+              id: hd.id,
+              maHoaDon: hd.maHoaDon,
+              tongTien: Number(hd.tongTien),
+              soTienGiam: Number(hd.soTienGiam),
+              thucThu: Number(hd.thucThu),
+              trangThai: hd.trangThai,
+              phuongThucThanhToan: hd.phuongThucThanhToan,
+              ngayThanhToan: hd.ngayThanhToan,
+            }
+          : null,
+        trangThaiThanhToan,
         chiTiet: chiTietCoLo,
         tongTienDonThuoc: chiTietCoLo.reduce((sum, item) => sum + item.thanhTien, 0),
       },
@@ -224,64 +347,76 @@ export class NhaThuocService {
    * Duyệt & Xuất kho cấp phát thuốc theo thuật toán FEFO
    */
   async capPhatDonThuoc(id: number) {
-    const dt = await this.donThuocRepo.findOne({
-      where: { id },
-      relations: ['chiTiet', 'chiTiet.thuoc'],
-    });
+    const updated = await this.dataSource.transaction(async (manager) => {
+      const donRepo = manager.getRepository(DonThuoc);
+      const loRepo = manager.getRepository(LoThuoc);
+      const ctRepo = manager.getRepository(DonThuocChiTiet);
+      const thuocRepo = manager.getRepository(Thuoc);
+      const dt = await donRepo.findOne({
+        where: { id },
+        relations: ['chiTiet', 'chiTiet.thuoc'],
+        lock: { mode: 'pessimistic_write' },
+      });
 
-    if (!dt) {
-      throw new NotFoundException('Không tìm thấy đơn thuốc');
-    }
+      if (!dt) throw new NotFoundException('Không tìm thấy đơn thuốc');
+      if (dt.trangThai === 'da_cap_phat') throw new BadRequestException('Đơn thuốc này đã được cấp phát trước đó');
+      if (dt.trangThai !== 'cho_duyet') throw new BadRequestException('Đơn thuốc chưa ở trạng thái chờ cấp phát');
 
-    if (dt.trangThai === 'da_cap_phat') {
-      throw new BadRequestException('Đơn thuốc này đã được cấp phát trước đó');
-    }
-
-    // Xử lý từng thuốc trong đơn
-    for (const ct of dt.chiTiet) {
-      let cantTru = ct.soLuong;
-
-      // Lấy danh sách lô thuốc theo thứ tự hết hạn sớm nhất (FEFO)
-      const loList = await this.loThuocRepo
-        .createQueryBuilder('lo')
-        .where('lo.thuocId = :thuocId', { thuocId: ct.thuocId })
-        .andWhere('lo.soLuongTon > 0')
-        .andWhere('lo.ngayHetHan >= CURRENT_DATE()')
-        .orderBy('lo.ngayHetHan', 'ASC')
-        .getMany();
-
-      for (const lo of loList) {
-        if (cantTru <= 0) break;
-
-        const tru = Math.min(lo.soLuongTon, cantTru);
-        lo.soLuongTon -= tru;
-        cantTru -= tru;
-
-        await this.loThuocRepo.save(lo);
-        ct.loThuocId = lo.id;
+      // Kiểm tra trạng thái thanh toán viện phí tại quầy thu ngân
+      const bak = await manager.getRepository(BenhAnKham).findOne({ where: { id: dt.benhAnKhamId } });
+      if (bak?.luotTiepNhanId) {
+        const hd = await manager.getRepository(HoaDon).findOne({ where: { luotTiepNhanId: bak.luotTiepNhanId } });
+        if (hd && hd.trangThai !== 'da_thanh_toan') {
+          throw new BadRequestException(
+            `Bệnh nhân chưa thanh toán viện phí tại quầy thu ngân (Mã hóa đơn: ${hd.maHoaDon}, Thực thu: ${Number(hd.thucThu).toLocaleString('vi-VN')} đ). Vui lòng yêu cầu bệnh nhân thanh toán trước khi cấp phát thuốc!`
+          );
+        }
       }
 
-      await this.donThuocChiTietRepo.save(ct);
+      const allocations: Array<{ chiTiet: DonThuocChiTiet; lo: LoThuoc; soLuong: number }> = [];
+      for (const ct of dt.chiTiet) {
+        let remaining = ct.soLuong;
+        const batches = await loRepo.createQueryBuilder('lo')
+          .setLock('pessimistic_write')
+          .where('lo.thuocId = :thuocId', { thuocId: ct.thuocId })
+          .andWhere('lo.soLuongTon > 0')
+          .andWhere('lo.ngayHetHan >= CURRENT_DATE()')
+          .orderBy('lo.ngayHetHan', 'ASC')
+          .getMany();
 
-      // Cập nhật tồn kho tổng trong bảng `thuoc`
-      const totalStock = await this.loThuocRepo
-        .createQueryBuilder('lo')
-        .where('lo.thuocId = :thuocId', { thuocId: ct.thuocId })
-        .select('SUM(lo.soLuongTon)', 'sum')
-        .getRawOne();
+        for (const lo of batches) {
+          if (remaining <= 0) break;
+          const soLuong = Math.min(lo.soLuongTon, remaining);
+          allocations.push({ chiTiet: ct, lo, soLuong });
+          remaining -= soLuong;
+        }
+        if (remaining > 0) {
+          throw new BadRequestException(`Không đủ tồn kho hợp lệ cho thuốc ${ct.thuoc?.tenThuoc || ct.thuocId}`);
+        }
+      }
 
-      await this.thuocRepo.update(ct.thuocId, {
-        tonKhoTong: Number(totalStock?.sum || 0),
-      });
-    }
+      for (const allocation of allocations) {
+        allocation.lo.soLuongTon -= allocation.soLuong;
+        allocation.chiTiet.loThuocId = allocation.lo.id;
+        await loRepo.save(allocation.lo);
+      }
+      await ctRepo.save(dt.chiTiet);
 
-    dt.trangThai = 'da_cap_phat';
-    const updated = await this.donThuocRepo.save(dt);
+      for (const thuocId of [...new Set(dt.chiTiet.map((ct) => ct.thuocId))]) {
+        const totalStock = await loRepo.createQueryBuilder('lo')
+          .where('lo.thuocId = :thuocId', { thuocId })
+          .select('COALESCE(SUM(lo.soLuongTon), 0)', 'sum')
+          .getRawOne();
+        await thuocRepo.update(thuocId, {
+          tonKhoTong: Number(totalStock?.sum || 0),
+        });
+      }
 
-    return {
-      message: 'Cấp phát đơn thuốc thành công',
-      data: updated,
-    };
+      dt.trangThai = 'da_cap_phat';
+      return donRepo.save(dt);
+    });
+
+    return { message: 'Cấp phát đơn thuốc thành công', data: updated };
   }
 
   /**
@@ -368,8 +503,8 @@ export class NhaThuocService {
         giaBan: Number(t.giaBan),
         tonKhoTong: Number(t.tonKhoTong),
         thanhTien: Number(t.tonKhoTong) * Number(t.giaBan),
-        maLo: activeLo?.maLo || 'LO2026',
-        ngayHetHan: activeLo?.ngayHetHan ? String(activeLo.ngayHetHan) : '2026-12-31',
+        maLo: activeLo?.maLo || null,
+        ngayHetHan: activeLo?.ngayHetHan ? String(activeLo.ngayHetHan) : null,
         trangThai: Number(t.tonKhoTong) > 20 ? 'con_hang' : Number(t.tonKhoTong) > 0 ? 'canh_bao' : 'het_hang',
       };
     });
@@ -424,54 +559,53 @@ export class NhaThuocService {
       .limit(10)
       .getRawMany();
 
-    const top10Thuoc = topChiTiet.length > 0 ? topChiTiet.map((item) => ({
+    const top10Thuoc = topChiTiet.map((item) => ({
       tenThuoc: item.tenThuoc,
       maThuoc: item.maThuoc,
       soLuongKe: Number(item.tongSoLuong),
-    })) : [
-      { tenThuoc: 'Paracetamol 500mg', maThuoc: 'TH001', soLuongKe: 1250 },
-      { tenThuoc: 'Amoxicillin 500mg', maThuoc: 'TH002', soLuongKe: 840 },
-      { tenThuoc: 'Omeprazole 20mg', maThuoc: 'TH003', soLuongKe: 620 },
-      { tenThuoc: 'Amlodipine 5mg', maThuoc: 'TH004', soLuongKe: 510 },
-      { tenThuoc: 'Metformin 850mg', maThuoc: 'TH005', soLuongKe: 430 },
-    ];
+    }));
 
-    // Lưu lượng giao dịch 7 ngày
-    const luuLuongGiaoDich = [
-      { ngay: 'Thứ 2', xuat: 42, nhap: 10 },
-      { ngay: 'Thứ 3', xuat: 58, nhap: 0 },
-      { ngay: 'Thứ 4', xuat: 65, nhap: 15 },
-      { ngay: 'Thứ 5', xuat: 48, nhap: 0 },
-      { ngay: 'Thứ 6', xuat: 72, nhap: 20 },
-      { ngay: 'Thứ 7', xuat: 35, nhap: 0 },
-      { ngay: 'Chủ nhật', xuat: 18, nhap: 0 },
-    ];
+    const sapHetHanCount = await this.loThuocRepo.createQueryBuilder('lo')
+      .where('lo.soLuongTon > 0')
+      .andWhere('lo.ngayHetHan >= CURRENT_DATE()')
+      .andWhere('lo.ngayHetHan <= DATE_ADD(CURRENT_DATE(), INTERVAL 30 DAY)')
+      .getCount();
 
     return {
       message: 'Lấy thống kê nhà thuốc thành công',
       data: {
         tongSoThuoc,
         sapHetHang,
-        sapHetHanCount: 2,
-        donXuatTrongNgay: donXuatTrongNgay || 15,
+        sapHetHanCount,
+        donXuatTrongNgay,
         tongGiaTriKho,
         top10Thuoc,
-        luuLuongGiaoDich,
+        luuLuongGiaoDich: [],
         canhBaoRuiRo,
         listThuoc,
       },
     };
   }
 
-  // ─── DỰ BÁO NHU CẦU THUỐC ML (HOLT-WINTERS DEMAND PREDICTION) ───
+  // ─── DỰ BÁO NHU CẦU THUỐC ───
   async getDuBaoNhuCauThuoc(horizonDays: number = 14) {
     const thuocs = await this.thuocRepo.find();
 
+    const consumptionRows = await this.donThuocChiTietRepo.createQueryBuilder('ct')
+      .innerJoin('ct.donThuoc', 'dt')
+      .select('ct.thuocId', 'thuocId')
+      .addSelect('SUM(ct.soLuong)', 'totalQuantity')
+      .where('dt.ngayKe >= DATE_SUB(NOW(), INTERVAL 30 DAY)')
+      .andWhere('dt.trangThai IN (:...statuses)', { statuses: ['da_cap_phat', 'da_hoan_thanh'] })
+      .groupBy('ct.thuocId')
+      .getRawMany();
+    const consumptionByMedicine = new Map(
+      consumptionRows.map((row) => [Number(row.thuocId), Number(row.totalQuantity) / 30]),
+    );
+
     const itemsForForecast = thuocs.map((t) => {
       const tonKhoTong = Number(t.tonKhoTong) || 0;
-
-      // Tốc độ tiêu thụ trung bình ước tính (viên/ngày) dựa trên tồn kho và phân phối
-      const tieuThuTrungBinhNgay = Math.max(3, Math.round(tonKhoTong / 20) || 5);
+      const tieuThuTrungBinhNgay = consumptionByMedicine.get(t.id) ?? null;
 
       return {
         id: t.id,
@@ -502,56 +636,17 @@ export class NhaThuocService {
       if (response.ok) {
         const mlData: any = await response.json();
         return {
-          message: 'Dự báo nhu cầu thuốc thành công từ mô hình Python ML Holt-Winters',
+          message: 'Dự báo nhu cầu thuốc thành công',
           data: mlData.data,
-          engine: 'python_holt_winters_engine',
-          heSoTangTruong: mlData.heSoTangTruongBenhNhan,
         };
       }
     } catch (mlErr) {
-      console.warn('[DuBaoThuoc] Không thể kết nối Python ML microservice, chuyển sang fallback NestJS ML:', mlErr.message);
+      console.warn('[DuBaoThuoc] Không thể kết nối Python ML microservice:', mlErr.message);
     }
-
-    // 2. Fallback ML tại NestJS khi Python service chưa bật
-    const fallbackResults = itemsForForecast.map((item) => {
-      const velocity = item.tieuThuTrungBinhNgay;
-      const patientGrowth = 1.08; // Giả định tăng trưởng mùa vụ 8%
-      const duBao7d = Math.round(velocity * 7 * patientGrowth);
-      const duBao14d = Math.round(velocity * horizonDays * patientGrowth);
-      const daysLeft = velocity > 0 ? Math.round(item.tonKhoTong / velocity) : 999;
-      const safetyStock = Math.round(velocity * 5 * patientGrowth);
-      const canNhap = item.tonKhoTong <= safetyStock || daysLeft <= 7;
-      const soLuongNhap = canNhap ? Math.max(0, duBao14d + safetyStock - item.tonKhoTong) : 0;
-
-      let trangThai = 'an_toan';
-      if (item.tonKhoTong <= 0) trangThai = 'het_hang';
-      else if (daysLeft <= 3) trangThai = 'nguy_cap';
-      else if (daysLeft <= 7) trangThai = 'canh_bao';
-
-      return {
-        id: item.id,
-        maThuoc: item.maThuoc,
-        tenThuoc: item.tenThuoc,
-        donViTinh: item.donViTinh,
-        tonKhoHienTai: item.tonKhoTong,
-        tieuThuTrungBinhNgay: velocity,
-        duBaoTieuThu7Ngay: duBao7d,
-        duBaoTieuThu14Ngay: duBao14d,
-        soNgayConLai: daysLeft,
-        nguongAnToan: safetyStock,
-        trangThai,
-        canNhapHang: canNhap,
-        soLuongDeXuatNhap: soLuongNhap,
-      };
-    });
-
     return {
-      message: 'Dự báo nhu cầu thuốc thành công (Chế độ tích hợp NestJS Dynamic Forecasting)',
-      data: fallbackResults,
-      engine: 'nestjs_integrated_forecaster',
-      heSoTangTruong: 1.08,
+      message: 'Chưa có dữ liệu dự báo nhu cầu thuốc.',
+      data: [],
+      dataQuality: { source: 'don_thuoc_chi_tiet', historyDays: 30 },
     };
   }
 }
-
-

@@ -27,10 +27,8 @@ export default function ReceptionistPortal() {
       <Suspense fallback={<Loader />}>
         <Routes>
           <Route index element={<Navigate to="hang-doi" replace />} />
-          <Route path="hang-doi text"  element={<HangDoiPage />} />
           <Route path="hang-doi"       element={<HangDoiPage />} />
-          <Route path="tiep-nhan text" element={<TiepNhanPage />} />
-          <Route path="tiep-nhan"      element={<TiepNhanPage />} />
+          <Route path="tiep-nhan"      element={<Navigate to="/tiep-tan/lich-hen" replace />} />
           <Route path="lich-hen text"  element={<LichHenQuanLyPage />} />
           <Route path="lich-hen"       element={<LichHenQuanLyPage />} />
           <Route path="benh-nhan"              element={<BenhNhanList />} />

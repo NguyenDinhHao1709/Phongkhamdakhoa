@@ -10,13 +10,28 @@ import {
 import { apiPost } from '../../services/api';
 import useAuthStore from '../../store/authStore';
 
+const getTodayDateStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const registerSchema = z.object({
   email: z.string().email('Email không hợp lệ'),
   matKhau: z.string().min(6, 'Mật khẩu phải có ít nhất 6 ký tự'),
   xacNhanMatKhau: z.string().min(6, 'Vui lòng xác nhận lại mật khẩu'),
   hoTen: z.string().min(2, 'Họ tên không được để trống'),
   soDienThoai: z.string().regex(/(84|0[3|5|7|8|9])+([0-9]{8})\b/, 'Số điện thoại không hợp lệ (gồm 10 chữ số)'),
-  ngaySinh: z.string().min(1, 'Ngày sinh là bắt buộc đối với hồ sơ y tế'),
+  ngaySinh: z.string()
+    .min(1, 'Ngày sinh là bắt buộc đối với hồ sơ y tế')
+    .refine((val) => {
+      if (!val) return false;
+      return val <= getTodayDateStr();
+    }, {
+      message: 'Ngày sinh không được vượt quá ngày hôm nay',
+    }),
   gioiTinh: z.enum(['nam', 'nu', 'khac'], { required_error: 'Giới tính là bắt buộc' }),
 }).refine((data) => data.matKhau === data.xacNhanMatKhau, {
   message: 'Mật khẩu xác nhận không khớp',
@@ -159,81 +174,40 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50 flex-col md:flex-row">
-      {/* ─── CỘT TRÁI (LEFT 50%): BANNER NHA KHOA / Y TẾ CHẤT LƯỢNG CAO ─── */}
-      <div className="hidden md:block w-full md:w-1/2 relative bg-gray-900 overflow-hidden">
-        {/* Hình ảnh Bác sĩ & Bệnh nhân chuyên nghiệp cao cấp */}
-        <img
-          src="https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=1200&q=80"
-          alt="Bác sĩ phòng khám đa khoa"
-          className="absolute inset-0 h-full w-full object-cover object-center opacity-85"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-primary-950/90 via-primary-900/40 to-transparent" />
-
-        <div className="relative h-full flex flex-col justify-end p-12 text-white max-w-xl">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/20 backdrop-blur-md px-3.5 py-1 text-xs font-semibold text-white border border-white/30 mb-4 w-fit">
-            <Sparkles className="h-4 w-4 text-amber-300" /> Hệ thống Y tế Tiêu chuẩn Quốc tế
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-between font-sans">
+      {/* Header */}
+      <header className="w-full bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600">
+            <Stethoscope className="h-5 w-5 text-white" />
           </div>
-          <h2 className="text-3xl font-extrabold tracking-tight mb-3 text-white leading-tight">
-            Chăm Sóc Sức Khỏe Toàn Diện Cho Gia Đình Bạn
-          </h2>
-          <p className="text-sm text-blue-100 leading-relaxed mb-6">
-            Đăng ký tài khoản y tế điện tử ngay hôm nay để trải nghiệm dịch vụ khám chữa bệnh chất lượng cao, tư vấn triệu chứng AI và theo dõi hồ sơ bệnh án trực tuyến 24/7.
-          </p>
-
-          {/* Glassmorphism Trust Badges */}
-          <div className="grid grid-cols-3 gap-3 pt-4 border-t border-white/20">
-            <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/15 text-center">
-              <ShieldCheck className="h-5 w-5 text-emerald-400 mx-auto mb-1" />
-              <p className="text-xs font-bold">100% Bảo mật</p>
-              <p className="text-[10px] text-blue-200">Chuẩn HIPAA</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/15 text-center">
-              <Award className="h-5 w-5 text-amber-300 mx-auto mb-1" />
-              <p className="text-xs font-bold">Bác sĩ Đầu ngành</p>
-              <p className="text-[10px] text-blue-200">Giàu kinh nghiệm</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/15 text-center">
-              <Calendar className="h-5 w-5 text-sky-300 mx-auto mb-1" />
-              <p className="text-xs font-bold">Đặt lịch 24/7</p>
-              <p className="text-[10px] text-blue-200">Không đợi chờ</p>
-            </div>
-          </div>
+          <span className="text-lg font-bold text-gray-900 tracking-tight group-hover:text-primary-600 transition-colors">
+            Phòng Khám Đa Khoa
+          </span>
         </div>
-      </div>
 
-      {/* ─── CỘT PHẢI (RIGHT 50%): FORM ĐĂNG KÝ (STEP 1 & STEP 2) ─────────────────── */}
-      <div className="flex w-full md:w-1/2 flex-col justify-center px-6 py-8 sm:px-12 bg-white shadow-2xl z-10 relative">
-        <div className="absolute top-6 left-6 right-6 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
           <button
-            onClick={() => {
-              if (step === 2) setStep(1);
-              else navigate('/login');
-            }}
-            className="flex items-center text-sm font-medium text-gray-500 hover:text-primary-600 transition-colors"
+            onClick={() => navigate('/login')}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-bold text-gray-700 hover:bg-slate-50 transition-colors"
           >
-            <ChevronLeft className="h-4 w-4 mr-1" /> {step === 2 ? 'Sửa thông tin' : 'Quay lại'}
+            <LogIn className="h-4 w-4 text-gray-500" /> Đăng nhập
           </button>
           <button
             onClick={() => navigate('/')}
-            className="flex items-center text-sm font-semibold text-primary-600 hover:text-primary-700 transition-colors gap-1"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-gray-600 hover:text-primary-600 hover:bg-slate-50 transition-colors"
           >
             <Home className="h-4 w-4" /> Trang chủ
           </button>
         </div>
+      </header>
 
-        <div className="mx-auto w-full max-w-md my-auto pt-8">
-          {/* Header Logo */}
-          <div className="flex items-center gap-3 mb-6 cursor-pointer group" onClick={() => navigate('/')}>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600 shadow-md shadow-primary-600/20 group-hover:bg-primary-700 transition-colors">
-              <Stethoscope className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 tracking-tight group-hover:text-primary-600 transition-colors">
-                Đăng Ký Tài Khoản
-              </h1>
-              <p className="text-xs text-gray-500 font-medium mt-0.5">Phòng Khám Đa Khoa Chuẩn Quốc Tế</p>
-            </div>
+      {/* Body Form Đăng ký ở chính giữa */}
+      <main className="flex flex-grow flex-col items-center justify-center px-4 py-10">
+        <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-sm border border-gray-100">
+          <div className="mb-6 text-center">
+            <h2 className="text-2xl font-bold text-gray-900">Đăng ký tài khoản</h2>
+            <p className="mt-1 text-sm text-gray-500">Tạo hồ sơ bệnh nhân điện tử để sử dụng dịch vụ</p>
           </div>
 
           {/* Stepper Chỉ báo tiến trình */}
@@ -349,6 +323,7 @@ export default function RegisterPage() {
                   <input
                     type="date"
                     {...register('ngaySinh')}
+                    max={getTodayDateStr()}
                     className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 bg-white"
                   />
                   {errors.ngaySinh && <p className="mt-1 text-xs text-red-600 font-medium">{errors.ngaySinh.message}</p>}
@@ -465,7 +440,19 @@ export default function RegisterPage() {
             </button>
           </div>
         </div>
-      </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="w-full border-t border-gray-200 bg-white px-6 py-4">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 sm:flex-row text-xs text-gray-400">
+          <p>© 2026 Phòng Khám Đa Khoa. Đảm bảo an toàn và bảo mật dữ liệu y tế.</p>
+          <div className="flex gap-6">
+            <a href="#" className="hover:text-gray-600">Hỗ trợ kỹ thuật</a>
+            <a href="#" className="hover:text-gray-600">Điều khoản sử dụng</a>
+            <a href="#" className="hover:text-gray-600">Chính sách bảo mật</a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

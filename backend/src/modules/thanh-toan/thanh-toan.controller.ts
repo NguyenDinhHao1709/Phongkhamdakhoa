@@ -1,13 +1,16 @@
 import {
-  Controller, Get, Post, Patch, Param, Query, Body, ParseIntPipe,
+  Controller, Get, Post, Patch, Param, Query, Body, ParseIntPipe, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ThanhToanService } from './thanh-toan.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 
 @ApiTags('Thu ngân & Thanh toán')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('thanh-toan')
 export class ThanhToanController {
   constructor(private readonly thanhToanService: ThanhToanService) {}
@@ -26,11 +29,12 @@ export class ThanhToanController {
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Báo cáo thống kê doanh thu thu ngân' })
   getThongKeThuNgan(
+    @CurrentUser() user: any,
     @Query('range') range?: string,
     @Query('tuNgay') tuNgay?: string,
     @Query('denNgay') denNgay?: string,
   ) {
-    return this.thanhToanService.getThongKeThuNgan({ range, tuNgay, denNgay });
+    return this.thanhToanService.getThongKeThuNgan(user, { range, tuNgay, denNgay });
   }
 
   @Get(':id')

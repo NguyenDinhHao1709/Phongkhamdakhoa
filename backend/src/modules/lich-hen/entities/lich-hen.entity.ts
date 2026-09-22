@@ -13,7 +13,10 @@ export enum TrangThaiLichHen {
   DA_HUY         = 'da_huy',
   HOAN_THANH     = 'hoan_thanh',
   VANG_MAT       = 'vang_mat',
+  CHO_DUYET_HUY  = 'cho_duyet_huy',
 }
+
+export const CHO_PHAN_CONG_MARKER = '[CHO_PHAN_CONG]';
 
 @Entity('lich_hen')
 export class LichHen {
@@ -83,4 +86,3 @@ export class LichHen {
   @JoinColumn({ name: 'dat_boi_nhan_vien_id' })
   datBoiNhanVien: NhanVien;
 }
-

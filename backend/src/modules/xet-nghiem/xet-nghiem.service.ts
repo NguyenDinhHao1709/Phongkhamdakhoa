@@ -2,15 +2,17 @@ import {
   Injectable, NotFoundException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not } from 'typeorm';
 import {
   DichVuXetNghiem, ChiDinhCanLamSang, KetQuaXetNghiem,
   TrangThaiChiDinh,
 } from './entities/xet-nghiem.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
+import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
+import { LuotTiepNhan, TrangThaiTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
 import {
-  IsInt, IsPositive, IsOptional, IsString, IsEnum, IsArray,
+  IsInt, IsPositive, IsOptional, IsString, IsEnum, IsArray, ArrayMinSize,
   ValidateNested, IsNumber, Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -18,7 +20,7 @@ import { Type } from 'class-transformer';
 
 // ──── DTOs ──────────────────────────────────────────────────
 class ChiDinhItem {
-  @ApiProperty() @IsInt() dichVuXetNghiemId: number;
+  @ApiProperty() @IsInt() @IsPositive() dichVuXetNghiemId: number;
   @ApiPropertyOptional() @IsOptional() @IsString() ghiChuChiDinh?: string;
 }
 
@@ -26,6 +28,7 @@ export class TaoChiDinhDto {
   @ApiProperty() @IsInt() @IsPositive() benhAnKhamId: number;
   @ApiProperty({ type: [ChiDinhItem] })
   @IsArray()
+  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => ChiDinhItem)
   dsChiDinh: ChiDinhItem[];
@@ -77,16 +80,71 @@ export class XetNghiemService {
         if (bs) bacSiId = bs.id;
       }
     }
+    if (!bacSiId) {
+      throw new BadRequestException('Không xác định được bác sĩ chỉ định từ tài khoản hiện tại');
+    }
+
+    if (!dto.dsChiDinh || dto.dsChiDinh.length === 0) {
+      throw new BadRequestException('Danh sách chỉ định cận lâm sàng không được để trống');
+    }
+
+    // 1. Kiểm tra trùng lặp ngay trong danh sách gửi lên
+    const seenIds = new Set<number>();
+    for (const item of dto.dsChiDinh) {
+      if (seenIds.has(item.dichVuXetNghiemId)) {
+        throw new BadRequestException('Danh sách chỉ định có dịch vụ bị chọn trùng nhau');
+      }
+      seenIds.add(item.dichVuXetNghiemId);
+    }
+
+    // 2. Kiểm tra các dịch vụ đã chỉ định trước đó cho phiếu khám này
+    const existingOrders = await this.cdRepo.find({
+      where: {
+        benhAnKhamId: dto.benhAnKhamId,
+        trangThai: Not(TrangThaiChiDinh.HUY),
+      },
+      relations: ['dichVu'],
+    });
+
+    const existingMap = new Map<number, string>();
+    for (const ord of existingOrders) {
+      existingMap.set(ord.dichVuXetNghiemId, ord.dichVu?.tenDichVu || `Mã ${ord.dichVuXetNghiemId}`);
+    }
+
+    for (const item of dto.dsChiDinh) {
+      if (existingMap.has(item.dichVuXetNghiemId)) {
+        const tenDichVu = existingMap.get(item.dichVuXetNghiemId);
+        throw new BadRequestException(
+          `Dịch vụ cận lâm sàng "${tenDichVu}" đã được chỉ định trong đợt khám này. Không được chỉ định trùng dịch vụ!`,
+        );
+      }
+    }
 
     const entities = dto.dsChiDinh.map((item) =>
       this.cdRepo.create({
         benhAnKhamId: dto.benhAnKhamId,
         dichVuXetNghiemId: item.dichVuXetNghiemId,
-        bacSiChiDinhId: bacSiId || 1,
+        bacSiChiDinhId: bacSiId,
         ghiChuChiDinh: item.ghiChuChiDinh,
       }),
     );
     const saved = await this.cdRepo.save(entities);
+
+    // 3. Tự động chuyển trạng thái của lượt tiếp nhận liên quan sang "dang_cls"
+    try {
+      const bak = await this.cdRepo.manager.getRepository(BenhAnKham).findOne({
+        where: { id: dto.benhAnKhamId },
+      });
+      if (bak?.luotTiepNhanId) {
+        await this.cdRepo.manager.getRepository(LuotTiepNhan).update(
+          { id: bak.luotTiepNhanId },
+          { trangThai: TrangThaiTiepNhan.DANG_CLS },
+        );
+      }
+    } catch (err) {
+      console.warn('[taoChiDinh] Không thể tự động cập nhật trạng thái dang_cls cho lượt tiếp nhận:', err);
+    }
+
     return { data: saved, message: `Đã chỉ định ${saved.length} xét nghiệm thành công` };
   }
 
@@ -128,6 +186,20 @@ export class XetNghiemService {
     const cd = await this.cdRepo.findOne({ where: { id } });
     if (!cd) throw new NotFoundException({ code: 'CHI_DINH_KHONG_TON_TAI', message: 'Không tìm thấy chỉ định' });
 
+    const transitions: Record<string, string[]> = {
+      [TrangThaiChiDinh.CHO_LAY_MAU]: [TrangThaiChiDinh.DANG_LAY_MAU, TrangThaiChiDinh.HUY],
+      [TrangThaiChiDinh.DANG_LAY_MAU]: [TrangThaiChiDinh.DANG_XU_LY, TrangThaiChiDinh.HUY],
+      [TrangThaiChiDinh.DANG_XU_LY]: [TrangThaiChiDinh.CO_KET_QUA, TrangThaiChiDinh.HUY],
+      [TrangThaiChiDinh.CO_KET_QUA]: [],
+      [TrangThaiChiDinh.HUY]: [],
+    };
+    if (!transitions[cd.trangThai]?.includes(dto.trangThai)) {
+      throw new BadRequestException({
+        code: 'CHUYEN_TRANG_THAI_CLS_KHONG_HOP_LE',
+        message: `Không thể chuyển chỉ định từ "${cd.trangThai}" sang "${dto.trangThai}".`,
+      });
+    }
+
     let ktvTableId: number | null = null;
     if (nguoiDungId) {
       const nv = await this.cdRepo.manager.getRepository(NhanVien).findOne({ where: { nguoiDungId } });
@@ -161,6 +233,12 @@ export class XetNghiemService {
   async nhapKetQua(chiDinhId: number, dto: NhapKetQuaDto, nguoiDungId: number) {
     const cd = await this.cdRepo.findOne({ where: { id: chiDinhId } });
     if (!cd) throw new NotFoundException({ code: 'CHI_DINH_KHONG_TON_TAI', message: 'Không tìm thấy chỉ định' });
+    if (cd.trangThai === TrangThaiChiDinh.HUY) {
+      throw new BadRequestException('Không thể nhập kết quả cho chỉ định đã hủy');
+    }
+    if (cd.trangThai !== TrangThaiChiDinh.DANG_XU_LY) {
+      throw new BadRequestException('Chỉ được nhập kết quả khi chỉ định đang ở trạng thái xử lý');
+    }
 
     let ktvTableId: number | null = null;
     if (nguoiDungId) {
@@ -190,7 +268,75 @@ export class XetNghiemService {
       thoiGianCoKetQua: new Date(),
     });
 
+    // Kiểm tra nếu tất cả chỉ định của phiếu khám này đã có kết quả -> cập nhật lượt khám sang da_co_kq_cls
+    try {
+      const allOrders = await this.cdRepo.find({
+        where: { benhAnKhamId: cd.benhAnKhamId, trangThai: Not(TrangThaiChiDinh.HUY) },
+      });
+      const allDone = allOrders.every(
+        (o) => o.id === chiDinhId || o.trangThai === TrangThaiChiDinh.CO_KET_QUA,
+      );
+      if (allDone && allOrders.length > 0) {
+        const bak = await this.cdRepo.manager.getRepository(BenhAnKham).findOne({
+          where: { id: cd.benhAnKhamId },
+        });
+        if (bak?.luotTiepNhanId) {
+          await this.cdRepo.manager.getRepository(LuotTiepNhan).update(
+            { id: bak.luotTiepNhanId },
+            { trangThai: TrangThaiTiepNhan.DA_CO_KQ_CLS },
+          );
+        }
+      }
+    } catch (err) {
+      console.warn('[nhapKetQua] Không thể tự động cập nhật trạng thái da_co_kq_cls:', err);
+    }
+
     return { data: saved, message: 'Nhập kết quả xét nghiệm thành công' };
+  }
+
+  // ─── HỦY CHỈ ĐỊNH CẬN LÂM SÀNG ────────────────────────────
+  async huyChiDinh(id: number) {
+    const cd = await this.cdRepo.findOne({ where: { id } });
+    if (!cd) throw new NotFoundException('Không tìm thấy chỉ định');
+    if (cd.trangThai === TrangThaiChiDinh.CO_KET_QUA) {
+      throw new BadRequestException('Chỉ định cận lâm sàng này đã có kết quả xét nghiệm, không thể xóa hoặc hủy trực tiếp');
+    }
+
+    const benhAnKhamId = cd.benhAnKhamId;
+
+    // 1. Xóa kết quả xét nghiệm liên quan nếu có
+    await this.kqRepo.delete({ chiDinhId: id });
+
+    // 2. Xóa bản ghi chỉ định để biến mất hoàn toàn khỏi danh sách
+    await this.cdRepo.delete(id);
+
+    // Đồng bộ lại trạng thái lượt tiếp nhận nếu đã hủy hết hoặc đã hoàn tất các xét nghiệm còn lại
+    try {
+      const remaining = await this.cdRepo.find({
+        where: { benhAnKhamId, trangThai: Not(TrangThaiChiDinh.HUY) },
+      });
+      const bak = await this.cdRepo.manager.getRepository(BenhAnKham).findOne({
+        where: { id: benhAnKhamId },
+      });
+      if (bak?.luotTiepNhanId) {
+        if (remaining.length === 0) {
+          // Hủy hết -> quay về đang khám lâm sàng
+          await this.cdRepo.manager.getRepository(LuotTiepNhan).update(
+            { id: bak.luotTiepNhanId },
+            { trangThai: TrangThaiTiepNhan.DANG_KHAM },
+          );
+        } else if (remaining.every((o) => o.trangThai === TrangThaiChiDinh.CO_KET_QUA)) {
+          await this.cdRepo.manager.getRepository(LuotTiepNhan).update(
+            { id: bak.luotTiepNhanId },
+            { trangThai: TrangThaiTiepNhan.DA_CO_KQ_CLS },
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('[huyChiDinh] Sync queue status error:', e);
+    }
+
+    return { message: 'Đã hủy và xóa chỉ định cận lâm sàng thành công' };
   }
 
   // ─── GỬI KẾT QUẢ CHO BÁC SĨ (đánh dấu) ──────────────────
@@ -205,7 +351,7 @@ export class XetNghiemService {
   // ─── XEM KẾT QUẢ XÉT NGHIỆM CỦA 1 PHIẾU KHÁM ───────────
   async ketQuaTheoBenhAnKham(benhAnKhamId: number) {
     const dsChiDinh = await this.cdRepo.find({
-      where: { benhAnKhamId },
+      where: { benhAnKhamId, trangThai: Not(TrangThaiChiDinh.HUY) },
       relations: ['dichVu'],
       order: { thoiGianChiDinh: 'ASC' },
     });
@@ -221,11 +367,42 @@ export class XetNghiemService {
   }
 
   // ─── THỐNG KÊ XÉT NGHIỆM ──────────────────────────────────
-  async getThongKeXetNghiem(query: { range?: string; tuNgay?: string; denNgay?: string }) {
+  async getThongKeXetNghiem(user: any, query: { range?: string; tuNgay?: string; denNgay?: string }) {
     const { range, tuNgay, denNgay } = query;
     const qb = this.cdRepo.createQueryBuilder('cd')
       .leftJoinAndSelect('cd.dichVu', 'dv')
       .orderBy('cd.thoiGianChiDinh', 'DESC');
+
+    let isKtv = false;
+    let ktvChuyenMon: string | null = null;
+    let tenKtv: string | null = null;
+
+    if (user?.vai_tro === 'ky_thuat_vien' && user?.id) {
+      isKtv = true;
+      const nv = await this.cdRepo.manager.getRepository(NhanVien).findOne({ where: { nguoiDungId: user.id } });
+      if (nv) {
+        tenKtv = nv.hoTen;
+        const ktvRows = await this.cdRepo.manager.query(
+          'SELECT id, chuyen_mon FROM ky_thuat_vien WHERE nhan_vien_id = ? LIMIT 1',
+          [nv.id]
+        );
+        if (ktvRows && ktvRows.length > 0) {
+          const ktv = ktvRows[0];
+          ktvChuyenMon = ktv.chuyen_mon;
+          const cmLower = (ktv.chuyen_mon || '').toLowerCase();
+          const isCdha = cmLower.includes('siêu âm') || cmLower.includes('hình ảnh') || cmLower.includes('x-quang') || cmLower.includes('cdha');
+          const loaiLinhVuc = isCdha ? 'cdha' : 'xet_nghiem';
+
+          // Chỉ lấy các chỉ định: do KTV này trực tiếp thực hiện (cd.kyThuatVienId = ktv.id)
+          // HOẶC chỉ định thuộc đúng chuyên môn của KTV mà chưa ai nhận (cd.kyThuatVienId IS NULL && dv.loai = loaiLinhVuc)
+          // Tuyệt đối không lấy chỉ định của KTV khác!
+          qb.andWhere(
+            '(cd.kyThuatVienId = :ktvId OR (cd.kyThuatVienId IS NULL AND dv.loai = :loaiLinhVuc))',
+            { ktvId: ktv.id, loaiLinhVuc }
+          );
+        }
+      }
+    }
 
     if (range === 'hom_nay') {
       qb.andWhere('DATE(cd.thoiGianChiDinh) = CURDATE()');
@@ -251,6 +428,9 @@ export class XetNghiemService {
 
     return {
       data: {
+        isCaNhan: isKtv,
+        chuyenMon: ktvChuyenMon,
+        tenKtv,
         tongChiDinh,
         coKetQua,
         dangXuLy,
@@ -267,4 +447,3 @@ export class XetNghiemService {
     };
   }
 }
-

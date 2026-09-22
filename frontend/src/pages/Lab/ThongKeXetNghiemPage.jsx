@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuthStore } from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { formatDateTime } from '../../utils/formatDate';
@@ -23,12 +24,13 @@ const TRANG_THAI_LABELS = {
 };
 
 export default function ThongKeXetNghiemPage() {
+  const { user } = useAuthStore();
   const [timeRange, setTimeRange] = useState('hom_nay');
   const [tuNgay, setTuNgay] = useState('');
   const [denNgay, setDenNgay] = useState('');
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['thong-ke-xet-nghiem', timeRange, tuNgay, denNgay],
+    queryKey: ['thong-ke-xet-nghiem', user?.id, timeRange, tuNgay, denNgay],
     queryFn: () => {
       const params = new URLSearchParams();
       if (tuNgay && denNgay) {
@@ -71,9 +73,18 @@ export default function ThongKeXetNghiemPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Thống Kê Báo Cáo Xét Nghiệm & CLS</h1>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Thống Kê Báo Cáo Xét Nghiệm & CLS</h1>
+            {stats?.isCaNhan && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                {stats?.tenKtv || user?.hoTen} • Lĩnh vực: {stats?.chuyenMon || 'Kỹ thuật viên'}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-gray-500 mt-1">
-            Theo dõi tiến độ xử lý cận lâm sàng, thời gian trả kết quả và cơ cấu dịch vụ
+            {stats?.isCaNhan
+              ? `Chỉ thống kê chỉ định và dịch vụ thuộc chuyên môn ${stats?.chuyenMon || ''} của bạn`
+              : 'Theo dõi tiến độ xử lý cận lâm sàng, thời gian trả kết quả và cơ cấu dịch vụ'}
           </p>
         </div>
         <div className="flex items-center gap-2">

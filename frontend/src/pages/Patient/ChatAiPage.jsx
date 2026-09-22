@@ -37,7 +37,7 @@ function FormattedMessage({ text }) {
         if (isBullet) {
           return (
             <div key={lIdx} className="flex items-start gap-2 pl-2">
-              <span className="text-primary-500 font-bold mt-0.5">•</span>
+              <span className="text-blue-500 font-bold mt-0.5">•</span>
               <span className="flex-1">{renderedLine}</span>
             </div>
           );
@@ -152,20 +152,23 @@ export default function ChatAiPage() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto h-[86vh] flex flex-col rounded-2xl bg-white shadow-md border border-gray-200 overflow-hidden">
-      {/* ─── Header ─── */}
-      <div className="flex items-center justify-between border-b px-6 py-3.5 bg-gradient-to-r from-primary-50 via-white to-blue-50/50">
+    <div className="max-w-4xl mx-auto h-[86vh] flex flex-col rounded-xl bg-white border border-gray-200 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3 bg-white">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary-600 to-primary-700 text-white shadow-sm ring-2 ring-primary-100">
-            <HeartPulse className="h-6 w-6" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white">
+            <HeartPulse className="h-5 w-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-gray-900 text-base">
+              <h3 className="font-semibold text-gray-900 text-sm">
                 Bác Sĩ Gia Đình AI 24/7
               </h3>
+              <span className="flex items-center gap-1 text-[11px] font-medium text-green-600">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> Online
+              </span>
             </div>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-xs text-gray-500">
               Tư vấn cá nhân hóa dựa trên kết quả khám, xét nghiệm & đơn thuốc của bạn
             </p>
           </div>
@@ -175,19 +178,19 @@ export default function ChatAiPage() {
           type="button"
           onClick={handleReset}
           title="Làm mới cuộc trò chuyện"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-primary-700 bg-white hover:bg-primary-50 border border-gray-200 rounded-lg transition-colors shadow-2xs"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-blue-700 bg-white hover:bg-blue-50 border border-gray-200 rounded-lg transition-colors"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           Làm mới
         </button>
       </div>
 
-      {/* ─── Clinical Summary Badge Bar ─── */}
+      {/* Clinical Summary Badge Bar */}
       {patientSummary?.hoTen && (
-        <div className="bg-primary-50/70 border-b border-primary-100 px-6 py-2 flex flex-wrap items-center justify-between text-xs text-gray-700 gap-2">
+        <div className="bg-blue-50 border-b border-blue-100 px-5 py-2 flex flex-wrap items-center justify-between text-xs text-gray-700 gap-2">
           <div className="flex items-center gap-4 flex-wrap">
             <span>
-              Bệnh nhân: <strong className="text-primary-800 font-semibold">{patientSummary.hoTen}</strong> {patientSummary.maBenhNhan ? `(${patientSummary.maBenhNhan})` : ''}
+              Bệnh nhân: <strong className="text-blue-700 font-semibold">{patientSummary.hoTen}</strong> {patientSummary.maBenhNhan ? `(${patientSummary.maBenhNhan})` : ''}
             </span>
             <span className="hidden sm:inline text-gray-300">|</span>
             <span>
@@ -196,7 +199,7 @@ export default function ChatAiPage() {
           </div>
           <div className="flex items-center gap-3 text-gray-500">
             {patientSummary.taiKham && (
-              <span className="text-primary-700 font-medium">
+              <span className="text-blue-600 font-medium">
                 Hẹn tái khám: {patientSummary.taiKham}
               </span>
             )}
@@ -204,26 +207,26 @@ export default function ChatAiPage() {
         </div>
       )}
 
-      {/* ─── Messages Feed ─── */}
-      <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-gray-50/40">
+      {/* Messages Feed */}
+      <div className="flex-1 p-5 overflow-y-auto space-y-4 bg-gray-50">
         {messages.map((msg, idx) => (
           <div
             key={idx}
             className={`flex items-start gap-3 ${msg.sender === 'user' ? 'flex-row-reverse' : ''}`}
           >
             <div
-              className={`flex h-8 w-8 items-center justify-center rounded-full shrink-0 text-white text-xs font-bold shadow-2xs ${
-                msg.sender === 'user' ? 'bg-gray-800' : 'bg-primary-600 ring-2 ring-primary-100'
+              className={`flex h-8 w-8 items-center justify-center rounded-full shrink-0 text-white text-xs font-bold ${
+                msg.sender === 'user' ? 'bg-gray-700' : 'bg-blue-600'
               }`}
             >
               {msg.sender === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
             </div>
 
             <div
-              className={`max-w-2xl rounded-2xl px-4 py-3 shadow-xs ${
+              className={`max-w-2xl rounded-2xl px-4 py-3 ${
                 msg.sender === 'user'
-                  ? 'bg-primary-600 text-white rounded-tr-none text-sm leading-relaxed'
-                  : 'bg-white text-gray-800 border border-gray-200/90 rounded-tl-none'
+                  ? 'bg-blue-600 text-white rounded-tr-none text-sm leading-relaxed'
+                  : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none'
               }`}
             >
               {msg.sender === 'user' ? (
@@ -236,18 +239,18 @@ export default function ChatAiPage() {
         ))}
 
         {loading && (
-          <div className="flex items-center gap-2.5 text-xs text-primary-700 font-medium bg-primary-50/80 border border-primary-100 rounded-xl px-4 py-2.5 w-fit">
-            <Bot className="h-4 w-4 animate-spin text-primary-600" />
+          <div className="flex items-center gap-2.5 text-xs text-blue-700 font-medium bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 w-fit">
+            <Bot className="h-4 w-4 animate-spin text-blue-600" />
             <span>Bác sĩ AI đang đọc dữ liệu bệnh án và tổng hợp câu trả lời...</span>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ─── Quick Prompts ─── */}
+      {/* Quick Prompts */}
       <div className="px-4 py-2 bg-white border-t border-gray-100 flex items-center gap-2 overflow-x-auto">
-        <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
-          <Sparkles className="h-3 w-3 text-amber-500" /> Gợi ý:
+        <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+          <Sparkles className="h-3 w-3 text-blue-500" /> Gợi ý:
         </span>
         {quickPrompts.map((p, idx) => {
           const Icon = p.icon;
@@ -257,28 +260,28 @@ export default function ChatAiPage() {
               type="button"
               onClick={() => sendMessageText(p.text)}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs text-gray-700 bg-gray-100 hover:bg-primary-50 hover:text-primary-700 hover:border-primary-200 border border-gray-200 rounded-full shrink-0 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs text-gray-600 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 border border-gray-200 rounded-full shrink-0 transition-colors"
             >
-              <Icon className="h-3 w-3 text-primary-600" />
+              <Icon className="h-3 w-3 text-blue-600" />
               {p.label}
             </button>
           );
         })}
       </div>
 
-      {/* ─── Input Form ─── */}
-      <form onSubmit={handleSend} className="p-3.5 border-t bg-white flex items-center gap-3">
+      {/* Input Form */}
+      <form onSubmit={handleSend} className="p-3 border-t border-gray-200 bg-white flex items-center gap-3">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Hỏi về bệnh án, cách dùng thuốc, kết quả xét nghiệm hay chế độ ăn..."
-          className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-gray-50/50"
+          className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
         />
         <button
           type="submit"
           disabled={!input.trim() || loading}
-          className="flex h-10 px-4 items-center gap-1.5 justify-center rounded-xl bg-primary-600 text-white font-medium text-sm hover:bg-primary-700 active:bg-primary-800 disabled:opacity-50 transition-colors shadow-sm"
+          className="flex h-10 px-4 items-center gap-1.5 justify-center rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
           <span>Gửi</span>
           <Send className="h-4 w-4" />
@@ -287,5 +290,3 @@ export default function ChatAiPage() {
     </div>
   );
 }
-
-

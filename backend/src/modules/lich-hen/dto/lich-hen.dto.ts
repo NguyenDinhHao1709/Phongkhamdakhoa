@@ -1,6 +1,6 @@
 import {
   IsString, IsOptional, IsEnum, IsDateString,
-  IsInt, IsPositive, Min,
+  IsInt, IsPositive, Min, IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 
@@ -41,6 +41,11 @@ export class TaoLichHenDto {
   @IsInt()
   bacSiId?: number;
 
+  @ApiPropertyOptional({ example: 'Nội tổng quát' })
+  @IsOptional()
+  @IsString()
+  chuyenKhoa?: string;
+
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @IsInt()
@@ -66,13 +71,23 @@ export class TaoLichHenDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsBoolean()
+  datChoNguoiKhac?: boolean;
+
+  @ApiPropertyOptional({ example: 'Bố/Mẹ' })
+  @IsOptional()
+  @IsString()
+  moiQuanHe?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   ghiChu?: string;
 }
 
 export class CapNhatTrangThaiLichHenDto {
-  @ApiProperty({ enum: ['cho_xac_nhan', 'da_xac_nhan', 'da_huy', 'hoan_thanh', 'vang_mat'] })
-  @IsEnum(['cho_xac_nhan', 'da_xac_nhan', 'da_huy', 'hoan_thanh', 'vang_mat'])
+  @ApiProperty({ enum: ['cho_xac_nhan', 'da_xac_nhan', 'da_huy', 'hoan_thanh', 'vang_mat', 'cho_duyet_huy'] })
+  @IsEnum(['cho_xac_nhan', 'da_xac_nhan', 'da_huy', 'hoan_thanh', 'vang_mat', 'cho_duyet_huy'])
   trangThai: string;
 
   @ApiPropertyOptional()
@@ -92,6 +107,16 @@ export class TimKiemLichHenDto {
   @IsOptional()
   @IsDateString()
   ngay?: string;
+
+  @ApiPropertyOptional({ example: '2026-09-01' })
+  @IsOptional()
+  @IsDateString()
+  tuNgay?: string;
+
+  @ApiPropertyOptional({ example: '2026-09-30' })
+  @IsOptional()
+  @IsDateString()
+  denNgay?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -135,4 +160,3 @@ export class LaySlotTrongDto {
   @IsDateString()
   ngay: string;
 }
-

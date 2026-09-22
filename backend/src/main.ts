@@ -22,8 +22,24 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // CORS
+  const configuredOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const allowedOrigins = new Set([
+    ...configuredOrigins,
+    'http://localhost:3000',
+    'http://localhost:8081',
+    'http://localhost:19006',
+  ]);
   app.enableCors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    },
     credentials: true,
   });
 
@@ -59,4 +75,3 @@ async function bootstrap() {
 }
 
 bootstrap();
-

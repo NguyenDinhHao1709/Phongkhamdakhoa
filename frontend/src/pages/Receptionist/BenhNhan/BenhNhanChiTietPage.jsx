@@ -153,7 +153,7 @@ export default function BenhNhanChiTietPage({ isCreate = false, isEdit = false }
             <MedButton
               variant="primary"
               leftIcon={<Calendar className="h-4 w-4" />}
-              onClick={() => navigate('/tiep-tan/tiep-nhan')}
+              onClick={() => navigate('/tiep-tan/lich-hen')}
             >
               Tiếp nhận khám ngay
             </MedButton>

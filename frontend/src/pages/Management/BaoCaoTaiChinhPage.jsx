@@ -442,7 +442,7 @@ export default function BaoCaoTaiChinhPage() {
                   <Users className="h-5 w-5" />
                 </div>
               </div>
-              <p className="text-2xl font-black text-blue-700 mt-2">{lamSang?.totalTiepNhan || 1594} lượt</p>
+              <p className="text-2xl font-black text-blue-700 mt-2">{lamSang?.totalTiepNhan ?? 0} lượt</p>
               <p className="text-xs text-gray-500 mt-1">Hôm nay: <strong className="text-gray-800">{lamSang?.tiepNhanHomNay || 14} lượt</strong></p>
             </div>
 
@@ -475,7 +475,7 @@ export default function BaoCaoTaiChinhPage() {
                   <AlertTriangle className="h-5 w-5" />
                 </div>
               </div>
-              <p className="text-2xl font-black text-amber-600 mt-2">{cls?.dangThucHien || 48} ca</p>
+              <p className="text-2xl font-black text-amber-600 mt-2">{cls?.dangThucHien ?? 0} ca</p>
               <p className="text-xs text-gray-500 mt-1">Chờ tiếp nhận mẫu: <strong>{cls?.choTiepNhan || 20} ca</strong></p>
             </div>
           </div>
@@ -596,7 +596,7 @@ export default function BaoCaoTaiChinhPage() {
               <p className="text-2xl font-black text-emerald-600 mt-2">
                 {formatCurrency(duoc?.tongDoanhThuDuoc || 315400000)}
               </p>
-              <p className="text-xs text-gray-500 mt-1">Đã xuất: <strong>{duoc?.soDonThuocDaXuat || 1180} đơn thuốc</strong></p>
+              <p className="text-xs text-gray-500 mt-1">Đã xuất: <strong>{duoc?.soDonThuocDaXuat ?? 0} đơn thuốc</strong></p>
             </div>
 
             <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
@@ -714,8 +714,8 @@ export default function BaoCaoTaiChinhPage() {
                   <Layers className="h-5 w-5" />
                 </div>
               </div>
-              <p className="text-2xl font-black text-blue-700 mt-2">{vanHanh?.tongPhongKham || 11} phòng</p>
-              <p className="text-xs text-gray-500 mt-1">Đang hoạt động: <strong className="text-emerald-700">{vanHanh?.phongDangKham || 9} ({vanHanh?.tyLeLieuDungPhong || '81.8%'})</strong></p>
+              <p className="text-2xl font-black text-blue-700 mt-2">{vanHanh?.tongPhongKham ?? '—'} phòng</p>
+              <p className="text-xs text-gray-500 mt-1">Đang hoạt động: <strong className="text-emerald-700">{vanHanh?.phongDangKham ?? '—'} ({vanHanh?.tyLeLieuDungPhong ?? '—'})</strong></p>
             </div>
 
             <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
@@ -725,8 +725,8 @@ export default function BaoCaoTaiChinhPage() {
                   <Stethoscope className="h-5 w-5" />
                 </div>
               </div>
-              <p className="text-2xl font-black text-teal-700 mt-2">{vanHanh?.phongMo204?.soCaHomNay || 4} ca mổ</p>
-              <p className="text-xs text-gray-500 mt-1">Lũy kế tháng: <strong className="text-gray-800">{vanHanh?.phongMo204?.tongCaThang || 68} ca</strong></p>
+              <p className="text-2xl font-black text-teal-700 mt-2">{vanHanh?.phongMo204?.soCaHomNay ?? '—'} ca mổ</p>
+              <p className="text-xs text-gray-500 mt-1">Lũy kế tháng: <strong className="text-gray-800">{vanHanh?.phongMo204?.tongCaThang ?? '—'} ca</strong></p>
             </div>
 
             <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
@@ -737,9 +737,9 @@ export default function BaoCaoTaiChinhPage() {
                 </div>
               </div>
               <p className="text-2xl font-black text-indigo-700 mt-2">
-                {vanHanh?.giuongHoiTinh205?.dangSuDung || 5} / {vanHanh?.giuongHoiTinh205?.tongGiuong || 8} giường
+                {vanHanh?.giuongHoiTinh205?.dangSuDung ?? '—'} / {vanHanh?.giuongHoiTinh205?.tongGiuong ?? '—'} giường
               </p>
-              <p className="text-xs text-gray-500 mt-1">Tỷ lệ lấp đầy: <strong className="text-indigo-700">{vanHanh?.giuongHoiTinh205?.tyLeLapDay || '62.5%'}</strong></p>
+              <p className="text-xs text-gray-500 mt-1">Tỷ lệ lấp đầy: <strong className="text-indigo-700">{vanHanh?.giuongHoiTinh205?.tyLeLapDay ?? '—'}</strong></p>
             </div>
 
             <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
@@ -749,8 +749,8 @@ export default function BaoCaoTaiChinhPage() {
                   <CheckCircle2 className="h-5 w-5" />
                 </div>
               </div>
-              <p className="text-2xl font-black text-emerald-700 mt-2">{vanHanh?.giuongHoiTinh205?.trongSanSang || 2} giường</p>
-              <p className="text-xs text-gray-500 mt-1">Khử trùng UV: <strong className="text-amber-600">{vanHanh?.giuongHoiTinh205?.dangKhuTrung || 1} giường</strong></p>
+              <p className="text-2xl font-black text-emerald-700 mt-2">{vanHanh?.giuongHoiTinh205?.trongSanSang ?? '—'} giường</p>
+              <p className="text-xs text-gray-500 mt-1">Khử trùng UV: <strong className="text-amber-600">{vanHanh?.giuongHoiTinh205?.dangKhuTrung ?? '—'} giường</strong></p>
             </div>
           </div>
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { queryClient } from '../services/queryClient';
 
 const sessionWrapper = {
   getItem: (name) => {
@@ -24,6 +25,11 @@ const useAuthStore = create(
       isAuthenticated: false,
 
       login: (userData, accessToken, refreshToken) => {
+        try {
+          queryClient.clear();
+        } catch (e) {
+          console.error('Failed to clear query cache on login:', e);
+        }
         set({
           user: userData,
           accessToken,
@@ -33,6 +39,11 @@ const useAuthStore = create(
       },
 
       logout: () => {
+        try {
+          queryClient.clear();
+        } catch (e) {
+          console.error('Failed to clear query cache on logout:', e);
+        }
         set({
           user: null,
           accessToken: null,
@@ -65,5 +76,6 @@ const useAuthStore = create(
   )
 );
 
+export { useAuthStore };
 export default useAuthStore;
 

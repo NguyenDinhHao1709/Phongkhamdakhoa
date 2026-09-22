@@ -4,15 +4,6 @@ Mục tiêu: Định tuyến bệnh nhân làm nhiều chỉ định sang các p
 """
 from typing import List, Dict, Any, Optional
 
-# Thời gian xử lý trung bình mặc định cho từng loại cận lâm sàng (phút/ca)
-THOI_GIAN_TRUNG_BINH_PHUT = {
-    "cdha": 12,       # Siêu âm / X-Quang / CT: ~12 phút/ca
-    "xet_nghiem": 5,   # Lấy máu xét nghiệm: ~5 phút/ca
-    "ecg": 7,          # Điện tâm đồ: ~7 phút/ca
-    "noi_soi": 15,     # Nội soi: ~15 phút/ca
-    "khac": 8,         # Khác
-}
-
 TEN_PHONG_LABELS = {
     "cdha": "Phòng Chẩn đoán Hình ảnh (Siêu âm / X-Quang)",
     "xet_nghiem": "Phòng Xét nghiệm Máu & Sinh hóa",
@@ -28,7 +19,7 @@ class DynamicQueueRouter:
     Sắp xếp các bước khám sao cho tổng thời gian chờ là nhỏ nhất (Min-Wait First).
     """
 
-    def __init__(self, requested_items: List[Dict[str, Any]], queue_states: Dict[str, int]):
+    def __init__(self, requested_items: List[Dict[str, Any]], queue_states: Dict[str, Any]):
         """
         requested_items: List các chỉ định [{ "id": 1, "tenDichVu": "...", "loai": "xet_nghiem" }, ...]
         queue_states: Dict số người đang chờ từng loại { "xet_nghiem": 2, "cdha": 5, ... }
@@ -59,8 +50,13 @@ class DynamicQueueRouter:
         fifo_sequence = list(grouped.keys())
 
         for loai, items in grouped.items():
-            so_nguoi_cho = self.queue_states.get(loai, 0)
-            avg_time = THOI_GIAN_TRUNG_BINH_PHUT.get(loai, 8)
+            state = self.queue_states.get(loai, 0)
+            if isinstance(state, dict):
+                so_nguoi_cho = max(0, int(state.get("count", 0)))
+                avg_time = float(state.get("avg_service_minutes") or 0)
+            else:
+                so_nguoi_cho = max(0, int(state or 0))
+                avg_time = 0
             # Thời gian chờ trước khi đến lượt
             wait_min = so_nguoi_cho * avg_time
             # Thời gian thực hiện các dịch vụ của chính bệnh nhân này
@@ -75,6 +71,7 @@ class DynamicQueueRouter:
                 "thoi_gian_thuc_hien": proc_min,
                 "tong_phut": total_room_min,
                 "danh_sach_dich_vu": [it.get("tenDichVu") for it in items],
+                "co_du_lieu_thoi_gian": avg_time > 0,
             })
 
         # 3. Tính tổng thời gian theo thứ tự FIFO (thứ tự chỉ định ban đầu)
@@ -82,7 +79,10 @@ class DynamicQueueRouter:
 
         # 4. Sắp xếp tối ưu: Ưu tiên phòng có THỜI GIAN CHỜ NGẮN NHẤT trước (Min-Wait First)
         # Giúp bệnh nhân hoàn thành nhanh bước 1 trong khi các phòng đông hơn giải phóng bớt hàng đợi
-        sorted_rooms = sorted(room_estimates, key=lambda x: x["thoi_gian_cho_du_kien"])
+        sorted_rooms = sorted(
+            room_estimates,
+            key=lambda x: (x["thoi_gian_cho_du_kien"] if x["co_du_lieu_thoi_gian"] else float("inf"), x["so_nguoi_cho"]),
+        )
 
         # 5. Tạo lộ trình từng bước
         routing_plan = []
@@ -141,5 +141,8 @@ class DynamicQueueRouter:
             "tong_thoi_gian_min_phut": tong_thoi_gian_min_phut,
             "tong_thoi_gian_fifo_phut": total_fifo_min,
             "so_luong_phong": len(sorted_rooms),
+            "data_quality": {
+                "all_service_times_observed": all(r["co_du_lieu_thoi_gian"] for r in room_estimates),
+                "missing_service_time_types": [r["loai"] for r in room_estimates if not r["co_du_lieu_thoi_gian"]],
+            },
         }
-

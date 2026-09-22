@@ -9,11 +9,13 @@ import { ChiDinhCanLamSang, KetQuaXetNghiem } from '../xet-nghiem/entities/xet-n
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHen } from '../lich-hen/entities/lich-hen.entity';
 import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
-
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
+import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
+import { ThanhToanModule } from '../thanh-toan/thanh-toan.module';
 
 @Module({
   imports: [
+    ThanhToanModule,
     TypeOrmModule.forFeature([
       HoSoBenhAn,
       BenhAnKham,
@@ -25,6 +27,7 @@ import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
       LichHen,
       LuotTiepNhan,
       BenhNhan,
+      HoaDon,
     ]),
   ],
   controllers: [HoSoBenhAnController],

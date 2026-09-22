@@ -31,12 +31,19 @@ export default function DonThuocListPage() {
 
   const filteredList = useMemo(() => {
     return list.filter((item) => {
-      const matchStatus = filterStatus === 'all' || item.trangThai === filterStatus;
+      const matchStatus =
+        filterStatus === 'all' ||
+        (filterStatus === 'cho_duyet'
+          ? item.trangThai !== 'da_cap_phat'
+          : item.trangThai === filterStatus);
       const term = searchTerm.toLowerCase().trim();
       const matchSearch =
         !term ||
         item.maDonThuoc?.toLowerCase().includes(term) ||
-        item.bacSi?.toLowerCase().includes(term);
+        item.bacSi?.toLowerCase().includes(term) ||
+        item.benhNhan?.hoTen?.toLowerCase().includes(term) ||
+        item.benhNhan?.maBenhNhan?.toLowerCase().includes(term) ||
+        item.benhNhan?.soDienThoai?.includes(term);
       return matchStatus && matchSearch;
     });
   }, [list, filterStatus, searchTerm]);
@@ -48,7 +55,7 @@ export default function DonThuocListPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Cấp phát Đơn thuốc</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Duyệt đơn thuốc từ Bác sĩ & Xuất kho cấp phát theo chuẩn FEFO
+            Duyệt đơn thuốc từ Bác sĩ & Xuất kho cấp phát theo chuẩn FEFO (Kiểm tra thanh toán viện phí)
           </p>
         </div>
         <MedButton variant="secondary" onClick={fetchData} leftIcon={<RefreshCw className="h-4 w-4" />}>
@@ -78,7 +85,7 @@ export default function DonThuocListPage() {
             }`}
           >
             <Clock className="h-3.5 w-3.5" />
-            Chờ cấp phát ({list.filter((i) => i.trangThai === 'cho_duyet').length})
+            Chờ cấp phát ({list.filter((i) => i.trangThai !== 'da_cap_phat').length})
           </button>
           <button
             onClick={() => setFilterStatus('da_cap_phat')}
@@ -93,13 +100,13 @@ export default function DonThuocListPage() {
           </button>
         </div>
 
-        <div className="relative w-full sm:w-72">
+        <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Tìm theo Mã đơn, Bác sĩ kê..."
+            placeholder="Tìm theo Mã đơn, Tên bệnh nhân, Mã BN, Bác sĩ..."
             className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
@@ -120,40 +127,65 @@ export default function DonThuocListPage() {
               <thead className="bg-gray-50 text-xs font-semibold text-gray-600 border-b">
                 <tr>
                   <th className="px-6 py-3.5">Mã Đơn thuốc</th>
+                  <th className="px-6 py-3.5">Bệnh nhân</th>
                   <th className="px-6 py-3.5">Bác sĩ kê đơn</th>
-                  <th className="px-6 py-3.5 text-center">Số món thuốc</th>
-                  <th className="px-6 py-3.5">Trạng thái</th>
+                  <th className="px-6 py-3.5 text-center">Số món</th>
+                  <th className="px-6 py-3.5 text-center">Viện phí</th>
+                  <th className="px-6 py-3.5">Trạng thái cấp phát</th>
                   <th className="px-6 py-3.5">Ngày kê</th>
                   <th className="px-6 py-3.5 text-center">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredList.map((dt) => (
-                  <tr key={dt.id} className="hover:bg-gray-50/70 transition-colors">
-                    <td className="px-6 py-4 font-bold text-gray-900">{dt.maDonThuoc}</td>
-                    <td className="px-6 py-4 font-medium text-gray-800">{dt.bacSi}</td>
-                    <td className="px-6 py-4 text-center font-semibold text-primary-600">
-                      {dt.soLuongMon} loại
-                    </td>
-                    <td className="px-6 py-4">
-                      <StatusBadge
-                        status={dt.trangThai === 'da_cap_phat' ? 'hoan_thanh' : 'cho_kham'}
-                      />
-                    </td>
-                    <td className="px-6 py-4 text-xs text-gray-500">
-                      {formatDateTime(dt.ngayKe)}
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <MedButton
-                        size="sm"
-                        variant={dt.trangThai === 'da_cap_phat' ? 'secondary' : 'primary'}
-                        onClick={() => setSelectedDonThuocId(dt.id)}
-                      >
-                        {dt.trangThai === 'da_cap_phat' ? 'Xem chi tiết' : 'Duyệt & Cấp phát'}
-                      </MedButton>
-                    </td>
-                  </tr>
-                ))}
+                {filteredList.map((dt) => {
+                  const isPaid = dt.trangThaiThanhToan === 'da_thanh_toan';
+                  return (
+                    <tr key={dt.id} className="hover:bg-gray-50/70 transition-colors">
+                      <td className="px-6 py-4 font-bold text-gray-900">{dt.maDonThuoc}</td>
+                      <td className="px-6 py-4">
+                        <div className="font-semibold text-gray-900">
+                          {dt.benhNhan?.hoTen || 'Bệnh nhân'}
+                        </div>
+                        <div className="text-xs text-gray-500 font-mono">
+                          Mã: {dt.benhNhan?.maBenhNhan || 'N/A'} {dt.benhNhan?.soDienThoai && `• ${dt.benhNhan.soDienThoai}`}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-gray-800">{dt.bacSi}</td>
+                      <td className="px-6 py-4 text-center font-semibold text-primary-600">
+                        {dt.soLuongMon} loại
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span
+                          className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                            isPaid
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          {isPaid ? <CheckCircle2 className="h-3 w-3 text-emerald-600" /> : <Clock className="h-3 w-3 text-amber-600" />}
+                          {isPaid ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <StatusBadge
+                          status={dt.trangThai === 'da_cap_phat' ? 'da_cap_phat' : 'cho_cap_phat'}
+                        />
+                      </td>
+                      <td className="px-6 py-4 text-xs text-gray-500">
+                        {formatDateTime(dt.ngayKe)}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <MedButton
+                          size="sm"
+                          variant={dt.trangThai === 'da_cap_phat' ? 'secondary' : 'primary'}
+                          onClick={() => setSelectedDonThuocId(dt.id)}
+                        >
+                          {dt.trangThai === 'da_cap_phat' ? 'Xem chi tiết' : 'Duyệt & Cấp phát'}
+                        </MedButton>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

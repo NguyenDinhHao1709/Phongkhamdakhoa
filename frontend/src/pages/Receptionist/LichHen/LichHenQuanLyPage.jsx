@@ -5,6 +5,8 @@ import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { formatDate } from '../../../utils/formatDate';
 
+const CHUYEN_KHOA_LIST = ['Nội tổng quát', 'Ngoại khoa', 'Nhi khoa', 'Tai Mũi Họng', 'Tim mạch', 'Cơ Xương Khớp', 'Răng Hàm Mặt', 'Mắt'];
+
 export default function LichHenQuanLyPage() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,12 +19,21 @@ export default function LichHenQuanLyPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedLichHen, setSelectedLichHen] = useState(null); // Modal Xem Chi Tiết
 
+  // Quản lý bệnh nhân khi Tiếp nhận khám ngay
+  const [patientMode, setPatientMode] = useState('account'); // 'account' | 'manual'
+  const [patientAccounts, setPatientAccounts] = useState([]);
+  const [loadingPatients, setLoadingPatients] = useState(false);
+  const [patientSearch, setPatientSearch] = useState('');
+  const [selectedPatient, setSelectedPatient] = useState(null);
+
   // Form tạo lịch hẹn mới tại quầy
   const [formData, setFormData] = useState({
+    benhNhanId: null,
     hoTen: '',
     soDienThoai: '',
     ngayHen: new Date().toISOString().split('T')[0],
     gioHen: '08:00',
+    chuyenKhoa: '',
     bacSiId: '',
     lyDoKham: '',
   });
@@ -31,6 +42,51 @@ export default function LichHenQuanLyPage() {
     fetchBacSi();
     fetchData();
   }, [filterDate, filterStatus, filterBacSiId]);
+
+  const normalizeText = (text) => {
+    return (text || '')
+      .toString()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'd')
+      .trim();
+  };
+
+  const fetchPatientAccounts = async () => {
+    setLoadingPatients(true);
+    try {
+      const res = await apiGet('/benh-nhan', { limit: 200 });
+      const items = res?.data || [];
+      const withAccounts = items.filter(
+        (p) => p.nguoiDungId != null || p.nguoi_dung_id != null || p.nguoiDung != null
+      );
+      setPatientAccounts(withAccounts);
+    } catch (err) {
+      console.error('Lỗi lấy danh sách bệnh nhân có tài khoản:', err);
+    } finally {
+      setLoadingPatients(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showAddModal) {
+      fetchPatientAccounts();
+    }
+  }, [showAddModal]);
+
+  const filteredPatientAccounts = patientAccounts.filter((p) => {
+    if (!patientSearch.trim()) return true;
+    const s = normalizeText(patientSearch);
+    return (
+      normalizeText(p.hoTen).includes(s) ||
+      normalizeText(p.soDienThoai).includes(s) ||
+      normalizeText(p.maBenhNhan).includes(s) ||
+      normalizeText(p.email).includes(s) ||
+      normalizeText(p.nguoiDung?.tenDangNhap).includes(s)
+    );
+  });
 
   const fetchBacSi = async () => {
     try {
@@ -73,32 +129,60 @@ export default function LichHenQuanLyPage() {
     }
   };
 
+  const handleAutoAssign = async (id) => {
+    try {
+      await apiPost(`/lich-hen/${id}/tu-dong-phan-cong`);
+      alert('Đã tự động tìm và phân công bác sĩ phù hợp.');
+      fetchData();
+    } catch (err) {
+      alert(err?.error?.message || err?.message || 'Chưa tìm được bác sĩ phù hợp cho lịch hẹn');
+    }
+  };
+
   const handleCreateAppointment = async (e) => {
     e.preventDefault();
     try {
-      await apiPost('/lich-hen', {
-        hoTen: formData.hoTen,
-        soDienThoai: formData.soDienThoai,
+      // Xác định chuyên khoa chính xác (nếu đã chọn bác sĩ cụ thể, dùng chuyên khoa của bác sĩ đó để đảm bảo tương thích)
+      let chosenSpecialty = formData.chuyenKhoa;
+      if (formData.bacSiId) {
+        const foundDoctor = bacSiList.find((bs) => bs.id === Number(formData.bacSiId));
+        if (foundDoctor?.chuyenKhoa) {
+          chosenSpecialty = foundDoctor.chuyenKhoa;
+        }
+      }
+
+      // Backend tự động map hồ sơ bệnh nhân và tài khoản thông qua số điện thoại
+      const payload = {
+        hoTen: formData.hoTen.trim(),
+        soDienThoai: formData.soDienThoai.trim(),
         bacSiId: formData.bacSiId ? Number(formData.bacSiId) : null,
-        ngayHen: formData.ngayHen,
-        gioHen: formData.gioHen,
-        lyDoKham: formData.lyDoKham || 'Đăng ký đặt lịch trực tiếp tại quầy tiếp tân',
-      });
-      alert('Đã đăng ký lịch hẹn tại quầy tiếp tân thành công!');
+        chuyenKhoa: chosenSpecialty,
+        ghiChu: formData.lyDoKham,
+      };
+
+      const res = await apiPost('/tiep-nhan/tai-quay', payload);
+      alert(`Đã tiếp nhận bệnh nhân vào hàng đợi thành công!\n${res?.message || ''}`);
       setShowAddModal(false);
+      setSelectedPatient(null);
       setFormData({
+        benhNhanId: null,
         hoTen: '',
         soDienThoai: '',
         ngayHen: new Date().toISOString().split('T')[0],
         gioHen: '08:00',
+        chuyenKhoa: '',
         bacSiId: '',
         lyDoKham: '',
       });
       fetchData();
     } catch (err) {
-      alert(err?.error?.message || err?.message || 'Có lỗi khi đăng ký lịch hẹn');
+      alert(err?.error?.message || err?.message || 'Có lỗi khi tiếp nhận khám ngay');
     }
   };
+
+  const filteredBacSi = formData.chuyenKhoa
+    ? bacSiList.filter((bs) => (bs.chuyenKhoa || '').toLowerCase().includes(formData.chuyenKhoa.toLowerCase()))
+    : bacSiList;
 
   const handleTriggerReminder = async () => {
     setSendingReminder(true);
@@ -128,9 +212,9 @@ export default function LichHenQuanLyPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Quản lý Lịch hẹn Tiếp tân</h1>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Tiếp nhận & quản lý lịch hẹn</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Tra cứu, xem chi tiết, lọc và duyệt danh sách lịch hẹn của bệnh nhân đăng ký khám
+            Lịch hẹn đặt trước được quản lý riêng; bệnh nhân đến khám ngay dùng nút Tiếp nhận khám ngay để vào hàng đợi.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -146,7 +230,7 @@ export default function LichHenQuanLyPage() {
             Làm mới
           </MedButton>
           <MedButton variant="primary" onClick={() => setShowAddModal(true)} leftIcon={<Plus className="h-4 w-4" />}>
-            Đặt lịch tại quầy
+            Tiếp nhận khám ngay
           </MedButton>
         </div>
       </div>
@@ -278,8 +362,8 @@ export default function LichHenQuanLyPage() {
                         </div>
                       ) : (
                         <div>
-                          <p className="text-sm font-bold text-gray-900">Khám tự do</p>
-                          <p className="text-xs text-gray-500 mt-0.5">Bác sĩ trực ca</p>
+                          <p className="text-sm font-bold text-amber-700">Chờ phân công</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Chưa có bác sĩ phụ trách</p>
                         </div>
                       )}
                     </td>
@@ -300,6 +384,15 @@ export default function LichHenQuanLyPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
+
+                        {!lh.bacSiId && lh.trangThai !== 'da_huy' && (
+                          <button
+                            onClick={() => handleAutoAssign(lh.id)}
+                            className="px-2.5 py-1.5 text-xs font-semibold text-primary-700 border border-primary-200 hover:bg-primary-50 rounded-lg transition-colors"
+                          >
+                            Phân công tự động
+                          </button>
+                        )}
 
                         {lh.trangThai !== 'da_xac_nhan' && lh.trangThai !== 'da_huy' && (
                           <button
@@ -395,16 +488,162 @@ export default function LichHenQuanLyPage() {
         </div>
       )}
 
-      {/* Modal Thêm Lịch Hẹn Trực Tiếp Tại Quầy */}
+      {/* Modal tiếp nhận bệnh nhân đến khám ngay */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl space-y-4 animate-scale-in">
+          <div className="w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl space-y-4 animate-scale-in">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h3 className="text-lg font-bold text-gray-900">Đăng ký Lịch hẹn trực tiếp tại Quầy</h3>
-              <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Tiếp nhận bệnh nhân khám ngay</h3>
+                <p className="text-xs text-gray-500">Cấp số thứ tự và phân phòng khám trực tiếp tại quầy</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setSelectedPatient(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 rounded-lg p-1 hover:bg-gray-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Chuyển đổi: Bệnh nhân có tài khoản vs Bệnh nhân mới */}
+            <div className="flex rounded-xl bg-gray-100 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setPatientMode('account');
+                }}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-lg transition-all ${
+                  patientMode === 'account'
+                    ? 'bg-white text-primary-700 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                <UserCheck className="h-4 w-4" />
+                Bệnh nhân đã có tài khoản ({patientAccounts.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPatientMode('manual');
+                  setSelectedPatient(null);
+                  setFormData((prev) => ({ ...prev, benhNhanId: null }));
+                }}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-lg transition-all ${
+                  patientMode === 'manual'
+                    ? 'bg-white text-primary-700 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                <User className="h-4 w-4" />
+                Bệnh nhân mới / Vãng lai
+              </button>
             </div>
 
             <form onSubmit={handleCreateAppointment} className="space-y-4 text-sm">
+              {patientMode === 'account' && (
+                <div className="space-y-2 bg-blue-50/60 p-3.5 rounded-xl border border-blue-100">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-blue-900">
+                      Danh sách bệnh nhân đã đăng ký tài khoản *
+                    </label>
+                    {selectedPatient && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPatient(null);
+                          setFormData((prev) => ({ ...prev, benhNhanId: null, hoTen: '', soDienThoai: '' }));
+                        }}
+                        className="text-xs text-blue-600 hover:underline font-semibold"
+                      >
+                        Chọn bệnh nhân khác
+                      </button>
+                    )}
+                  </div>
+
+                  {!selectedPatient ? (
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <input
+                          type="text"
+                          value={patientSearch}
+                          onChange={(e) => setPatientSearch(e.target.value)}
+                          placeholder="Tìm nhanh theo Họ tên, SĐT, Mã BN..."
+                          className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-primary-500"
+                        />
+                      </div>
+
+                      <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white divide-y divide-gray-100 shadow-inner">
+                        {loadingPatients ? (
+                          <div className="p-4 text-center text-xs text-gray-500">Đang tải danh sách tài khoản...</div>
+                        ) : filteredPatientAccounts.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-gray-500">
+                            Không tìm thấy tài khoản bệnh nhân nào phù hợp. Bạn có thể chuyển sang tab &quot;Bệnh nhân mới / Vãng lai&quot;.
+                          </div>
+                        ) : (
+                          filteredPatientAccounts.map((p) => (
+                            <div
+                              key={p.id}
+                              onClick={() => {
+                                setSelectedPatient(p);
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  benhNhanId: p.id,
+                                  hoTen: p.hoTen,
+                                  soDienThoai: p.soDienThoai || '',
+                                }));
+                              }}
+                              className="p-2.5 hover:bg-blue-50 cursor-pointer flex items-center justify-between text-xs transition-colors"
+                            >
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-gray-900">{p.hoTen}</span>
+                                  <span className="font-mono text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">
+                                    {p.maBenhNhan}
+                                  </span>
+                                </div>
+                                <p className="text-gray-500 mt-0.5">
+                                  SĐT: <span className="font-medium text-gray-700">{p.soDienThoai || 'Chưa cập nhật'}</span>
+                                  {p.nguoiDung?.tenDangNhap && ` · TK: ${p.nguoiDung.tenDangNhap}`}
+                                </p>
+                              </div>
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                <CheckCircle className="h-3 w-3" /> Đã có tài khoản
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-xl p-3 border border-blue-200 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-gray-900">{selectedPatient.hoTen}</span>
+                          <span className="font-mono text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-semibold">
+                            {selectedPatient.maBenhNhan}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                          Đã liên kết tài khoản
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        SĐT: <span className="font-semibold text-gray-800">{selectedPatient.soDienThoai || 'Chưa có'}</span>
+                        {selectedPatient.ngaySinh && ` · Ngày sinh: ${formatDate(selectedPatient.ngaySinh)}`}
+                        {selectedPatient.gioiTinh && ` · Giới tính: ${selectedPatient.gioiTinh === 'nam' ? 'Nam' : 'Nữ'}`}
+                      </p>
+                      <p className="text-[11px] text-blue-700 pt-1 font-medium flex items-center gap-1">
+                        ✓ Thông tin phiếu khám và tiến độ khám sẽ tự động cập nhật ngay trên tài khoản của bệnh nhân này.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block font-semibold text-gray-700 mb-1">Họ và tên bệnh nhân *</label>
                 <input
@@ -429,40 +668,28 @@ export default function LichHenQuanLyPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-gray-700 mb-1">Ngày hẹn *</label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.ngayHen}
-                    onChange={(e) => setFormData({ ...formData, ngayHen: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-gray-700 mb-1">Giờ hẹn *</label>
-                  <select
-                    value={formData.gioHen}
-                    onChange={(e) => setFormData({ ...formData, gioHen: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500"
-                  >
-                    {['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '13:30', '14:00', '14:30', '15:00', '15:30'].map((slot) => (
-                      <option key={slot} value={slot}>{slot}</option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1">Chuyên khoa *</label>
+                <select
+                  required
+                  value={formData.chuyenKhoa}
+                  onChange={(e) => setFormData({ ...formData, chuyenKhoa: e.target.value, bacSiId: '' })}
+                  className="w-full p-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="">-- Chọn chuyên khoa để hệ thống phân công --</option>
+                  {CHUYEN_KHOA_LIST.map((ck) => <option key={ck} value={ck}>{ck}</option>)}
+                </select>
               </div>
 
               <div>
-                <label className="block font-semibold text-gray-700 mb-1">Bác sĩ khám (Tùy chọn)</label>
+                <label className="block font-semibold text-gray-700 mb-1">Bác sĩ phụ trách (Tùy chọn)</label>
                 <select
                   value={formData.bacSiId}
                   onChange={(e) => setFormData({ ...formData, bacSiId: e.target.value })}
                   className="w-full p-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500"
                 >
-                  <option value="">-- Khám với Bác sĩ bất kỳ --</option>
-                  {bacSiList.map((bs) => (
+                  <option value="">-- Hệ thống tự chọn bác sĩ ít tải nhất --</option>
+                  {filteredBacSi.map((bs) => (
                     <option key={bs.id} value={bs.id}>
                       {bs.hoTen} ({bs.chuyenKhoa || 'Đa khoa'})
                     </option>
@@ -471,7 +698,7 @@ export default function LichHenQuanLyPage() {
               </div>
 
               <div>
-                <label className="block font-semibold text-gray-700 mb-1">Lý do khám / Ghi chú</label>
+                <label className="block font-semibold text-gray-700 mb-1">Triệu chứng / Ghi chú</label>
                 <textarea
                   rows={2}
                   value={formData.lyDoKham}
@@ -481,9 +708,20 @@ export default function LichHenQuanLyPage() {
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <MedButton variant="ghost" type="button" onClick={() => setShowAddModal(false)}>Hủy bỏ</MedButton>
-                <MedButton variant="primary" type="submit">Xác nhận đăng ký</MedButton>
+              <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                <MedButton
+                  variant="ghost"
+                  type="button"
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setSelectedPatient(null);
+                  }}
+                >
+                  Hủy bỏ
+                </MedButton>
+                <MedButton variant="primary" type="submit">
+                  Đưa vào hàng đợi & Cấp STT
+                </MedButton>
               </div>
             </form>
           </div>

@@ -54,6 +54,9 @@ export class HoaDon {
   @Column({ name: 'ghi_chu', type: 'text', nullable: true })
   ghiChu: string;
 
+  @Column({ name: 'phien_ban', type: 'int', default: 0 })
+  phienBan: number;
+
   @CreateDateColumn({ name: 'ngay_tao' })
   ngayTao: Date;
 

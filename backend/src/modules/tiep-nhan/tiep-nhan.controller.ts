@@ -5,7 +5,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import {
   TiepNhanService,
-  TaoTiepNhanDto, GhiSinhHieuDto, DieuPhoiPhongDto, CapNhatTrangThaiTiepNhanDto,
+  TaoTiepNhanDto, TiepNhanTaiQuayDto, GhiSinhHieuDto, DieuPhoiPhongDto, CapNhatTrangThaiTiepNhanDto,
 } from './tiep-nhan.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -22,8 +22,15 @@ export class TiepNhanController {
   @Get('hang-doi')
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien')
   @ApiOperation({ summary: 'Hàng đợi bệnh nhân chờ khám hôm nay' })
-  hangDoi(@Query('phongKhamId') phongKhamId?: number) {
-    return this.service.hangDoi(phongKhamId ? +phongKhamId : undefined);
+  hangDoi(@Query('phongKhamId') phongKhamId?: number, @CurrentUser() user?: any) {
+    return this.service.hangDoi(phongKhamId ? +phongKhamId : undefined, user);
+  }
+
+  @Get('phieu-kham-benh-nhan')
+  @Roles('benh_nhan', 'tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Lấy thông tin phiếu khám và hàng đợi thời gian thực của bệnh nhân' })
+  getPhieuKhamBenhNhan(@CurrentUser() user: any) {
+    return this.service.getPhieuKhamBenhNhan(user);
   }
 
   @Post()
@@ -31,6 +38,13 @@ export class TiepNhanController {
   @ApiOperation({ summary: 'Tạo lượt tiếp nhận mới' })
   create(@Body() dto: TaoTiepNhanDto, @CurrentUser() user: any) {
     return this.service.create(dto, user.id);
+  }
+
+  @Post('tai-quay')
+  @Roles('tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Tiếp nhận bệnh nhân đến khám trực tiếp tại quầy' })
+  createTaiQuay(@Body() dto: TiepNhanTaiQuayDto, @CurrentUser() user: any) {
+    return this.service.createTaiQuay(dto, user.id);
   }
 
   @Post(':id/sinh-hieu')
@@ -104,4 +118,3 @@ export class TiepNhanController {
     });
   }
 }
-

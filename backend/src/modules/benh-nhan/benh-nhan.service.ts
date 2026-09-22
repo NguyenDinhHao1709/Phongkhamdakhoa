@@ -18,20 +18,27 @@ export class BenhNhanService {
   async findAll(dto: TimKiemBenhNhanDto) {
     const {
       q, search, tuNgay, denNgay, gioiTinh, doTuoi,
-      coDiUng, chuaHoanThien, moiDangKyHomNay,
+      coDiUng, chuaHoanThien, moiDangKyHomNay, coTaiKhoan,
       page = 1, limit = 20,
     } = dto;
     const skip = (page - 1) * limit;
 
-    const qb = this.repo.createQueryBuilder('bn');
+    const qb = this.repo.createQueryBuilder('bn')
+      .leftJoin('bn.nguoiDung', 'nd')
+      .addSelect(['nd.id', 'nd.tenDangNhap', 'nd.loaiTaiKhoan', 'nd.trangThai']);
 
     // 1. Tìm kiếm nhanh theo từ khóa (Tên, Mã BN, CCCD, SĐT)
     const keyword = (q || search || '').trim();
     if (keyword !== '') {
       qb.andWhere(
-        '(bn.ho_ten LIKE :q OR bn.ma_benh_nhan LIKE :q OR bn.so_cmnd LIKE :q OR bn.so_dien_thoai LIKE :q)',
+        '(bn.ho_ten LIKE :q OR bn.ma_benh_nhan LIKE :q OR bn.so_cmnd LIKE :q OR bn.so_dien_thoai LIKE :q OR nd.ten_dang_nhap LIKE :q)',
         { q: `%${keyword}%` },
       );
+    }
+
+    // Lọc Bệnh nhân đã có tài khoản
+    if (coTaiKhoan === 'true' || coTaiKhoan === '1') {
+      qb.andWhere('bn.nguoi_dung_id IS NOT NULL');
     }
 
     // 2. Lọc Mới đăng ký hôm nay
@@ -77,7 +84,7 @@ export class BenhNhanService {
       qb.andWhere('(bn.ngay_sinh IS NULL OR bn.so_cmnd IS NULL OR bn.so_cmnd = "")');
     }
 
-    qb.orderBy('bn.tao_luc', 'DESC').skip(skip).take(limit);
+    qb.orderBy('bn.taoLuc', 'DESC').skip(skip).take(limit);
 
     const [items, total] = await qb.getManyAndCount();
 

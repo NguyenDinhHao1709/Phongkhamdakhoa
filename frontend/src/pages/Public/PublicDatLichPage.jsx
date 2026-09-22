@@ -1,57 +1,32 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import {
-  Calendar, Stethoscope, ArrowLeft, Building2, Video
-} from 'lucide-react';
 import useAuthStore from '../../store/authStore';
-import PublicDatLichModal from './PublicDatLichModal';
 
 export default function PublicDatLichPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuthStore();
   const initialHinhThuc = searchParams.get('hinhThuc') === 'truc_tuyen' ? 'truc_tuyen' : 'truc_tiep';
+  const bacSiId = searchParams.get('bacSiId');
+  const chuyenKhoa = searchParams.get('chuyenKhoa');
+  const doctorParam = bacSiId ? `&bacSiId=${bacSiId}` : '';
+  const ckParam = chuyenKhoa ? `&chuyenKhoa=${encodeURIComponent(chuyenKhoa)}` : '';
 
-  // Nếu người dùng đã đăng nhập tài khoản bệnh nhân, chuyển hướng thẳng vào cổng bệnh nhân
   useEffect(() => {
+    const target = `/benh-nhan/dat-lich?hinhThuc=${initialHinhThuc}${doctorParam}${ckParam}`;
     if (isAuthenticated && user?.vaiTro === 'benh_nhan') {
-      navigate(`/benh-nhan/dat-lich?hinhThuc=${initialHinhThuc}`, { replace: true });
+      navigate(target, { replace: true });
+    } else {
+      navigate(`/login?redirect=${encodeURIComponent(target)}`, { replace: true });
     }
-  }, [isAuthenticated, user?.vaiTro, initialHinhThuc, navigate]);
+  }, [isAuthenticated, user?.vaiTro, initialHinhThuc, doctorParam, ckParam, navigate]);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600 shadow-sm text-white">
-              <Stethoscope className="h-5 w-5" />
-            </div>
-            <div>
-              <span className="text-lg font-bold text-gray-900 tracking-tight">Phòng Khám Đa Khoa</span>
-              <p className="text-[11px] text-gray-500">Cổng đặt lịch khám công khai</p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-1.5 text-sm font-semibold text-gray-600 hover:text-primary-600 transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" /> Quay lại Trang chủ
-          </button>
-        </div>
-      </header>
-
-      {/* Render the modal inline as full page */}
-      <div className="flex-1 py-8 px-4 sm:px-6 max-w-4xl mx-auto w-full">
-        <PublicDatLichModal
-          isOpen={true}
-          onClose={() => navigate('/')}
-          initialHinhThuc={initialHinhThuc}
-        />
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="text-center space-y-3">
+        <div className="w-10 h-10 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin mx-auto" />
+        <p className="text-sm font-bold text-gray-700">Đang chuyển hướng đến cổng đặt lịch khám...</p>
       </div>
     </div>
   );
 }
-

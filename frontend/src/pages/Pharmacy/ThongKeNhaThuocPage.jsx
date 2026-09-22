@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/authStore';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../design-system/components/Badge/StatusBadge';
@@ -19,6 +20,7 @@ import {
 
 export default function ThongKeNhaThuocPage() {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
 
   // State bộ lọc (Filter states)
   const [timeFilter, setTimeFilter] = useState('7days'); // 'today' | '7days' | 'month' | 'quarter' | 'custom'
@@ -29,7 +31,7 @@ export default function ThongKeNhaThuocPage() {
   const [search, setSearch] = useState('');
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['thong-ke-nha-thuoc', timeFilter, fromDate, toDate, statusFilter, routeFilter],
+    queryKey: ['thong-ke-nha-thuoc', user?.id, timeFilter, fromDate, toDate, statusFilter, routeFilter],
     queryFn: () => {
       const params = new URLSearchParams();
       if (timeFilter) params.append('khoangThoiGian', timeFilter);
@@ -41,9 +43,9 @@ export default function ThongKeNhaThuocPage() {
     },
   });
 
-  // Query Dự báo nhu cầu thuốc Machine Learning
+  // Query dữ liệu nhu cầu thuốc
   const { data: forecastRes, isLoading: loadingForecast } = useQuery({
-    queryKey: ['du-bao-nhu-cau-thuoc'],
+    queryKey: ['du-bao-nhu-cau-thuoc', user?.id],
     queryFn: () => apiGet('/nha-thuoc/du-bao-nhu-cau?horizonDays=14'),
   });
   const forecastData = forecastRes?.data || [];
@@ -412,16 +414,16 @@ export default function ThongKeNhaThuocPage() {
         title={
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-purple-600" />
-            <span>Dự Báo Nhu Cầu Thuốc 14 Ngày Tới (Machine Learning)</span>
+            <span>Dự Báo Nhu Cầu Thuốc 14 Ngày Tới</span>
             <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
-              {forecastEngine === 'python_holt_winters_engine' ? '🐍 Python ML Microservice' : '⚡ NestJS Integrated ML'}
+              Dữ liệu vận hành
             </span>
           </div>
         }
-        subtitle="Thuật toán Holt-Winters kết hợp tốc độ xuất kho và hệ số tăng trưởng lưu lượng bệnh nhân để tính điểm đặt hàng lại (Reorder Point)"
+        subtitle="Tổng hợp tốc độ xuất kho để hỗ trợ theo dõi và đặt hàng lại"
       >
         {loadingForecast ? (
-          <p className="text-xs text-gray-400 py-4 text-center">Đang chạy mô hình dự báo Holt-Winters...</p>
+          <p className="text-xs text-gray-400 py-4 text-center">Đang tổng hợp dữ liệu...</p>
         ) : forecastData.length === 0 ? (
           <p className="text-xs text-gray-400 py-4 text-center">Chưa có đủ dữ liệu lịch sử để dự báo nhu cầu</p>
         ) : (

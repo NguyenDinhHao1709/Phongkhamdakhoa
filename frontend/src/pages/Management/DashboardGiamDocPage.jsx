@@ -29,31 +29,10 @@ export default function DashboardGiamDocPage() {
 
   const stats = data?.data;
   const kpis = stats?.kpis || {};
-  const clsList = stats?.hoatDongCls || [
-    { ten: 'Xét nghiệm máu & Sinh hóa', tong: 520, hoanThanh: 512, tyLe: '98.5%' },
-    { ten: 'Siêu âm 4D & Doppler tim', tong: 525, hoanThanh: 508, tyLe: '96.8%' },
-    { ten: 'Chụp X-quang kỹ thuật số DR', tong: 260, hoanThanh: 252, tyLe: '96.9%' },
-    { ten: 'Điện tâm đồ ECG 12 đạo trình', tong: 185, hoanThanh: 185, tyLe: '100%' },
-  ];
-  const kenhData = stats?.kenhTiepNhan || [
-    { name: 'Kiosk tự động tại sảnh', value: 68, color: '#2563EB' },
-    { name: 'Đặt hẹn Online / App', value: 24, color: '#0D9488' },
-    { name: 'Khám từ xa Telehealth', value: 8, color: '#8B5CF6' },
-  ];
-  const phongMo = stats?.phongMoGiuong?.phongMo204 || {
-    ten: 'Phòng mổ tiểu phẫu P.204',
-    trangThai: 'dang_hoat_dong',
-    soCaHomNay: 4,
-    bacSi: 'BS. CKII Nguyễn Văn A',
-  };
-  const giuongHoiTinh = stats?.phongMoGiuong?.giuong205 || {
-    ten: 'Khu hồi tỉnh P.205 (8 Giường)',
-    tongGiuong: 8,
-    dangDung: 5,
-    trong: 2,
-    khuTrung: 1,
-    tyLeLapDay: '62.5%',
-  };
+  const clsList = stats?.hoatDongCls || [];
+  const kenhData = stats?.kenhTiepNhan || [];
+  const phongMo = stats?.phongMoGiuong?.phongMo204;
+  const giuongHoiTinh = stats?.phongMoGiuong?.giuong205;
 
   return (
     <div className="space-y-6 animate-fade-in pb-12">
@@ -86,7 +65,7 @@ export default function DashboardGiamDocPage() {
             onClick={() => navigate('/ban-giam-doc/du-bao-luong')}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-xl text-xs font-extrabold shadow-sm transition-all"
           >
-            <Sparkles className="h-3.5 w-3.5" /> Dự Báo AI
+            <Sparkles className="h-3.5 w-3.5" /> Dự Báo Lưu Lượng
           </button>
         </div>
       </div>
@@ -122,7 +101,7 @@ export default function DashboardGiamDocPage() {
             {isLoading ? '...' : `${kpis.tiepNhanHomNay || 0} ca`}
           </p>
           <div className="flex items-center justify-between text-[11px] text-gray-500 mt-1.5 pt-1.5 border-t border-gray-100">
-            <span>Chờ TB: {kpis.thoiGianChoTrungBinh || '~12p'}</span>
+            <span>Chờ TB: {kpis.thoiGianChoTrungBinh ?? '—'}</span>
             <span className="font-semibold text-gray-700">Tổng: {kpis.totalTiepNhan || 0}</span>
           </div>
         </div>
@@ -136,11 +115,11 @@ export default function DashboardGiamDocPage() {
             </div>
           </div>
           <p className="text-xl font-black text-purple-700 mt-2">
-            {isLoading ? '...' : `${kpis.soCaCanLamSang || 52} ca`}
+            {isLoading ? '...' : `${kpis.soCaCanLamSang ?? 0} ca`}
           </p>
           <div className="flex items-center justify-between text-[11px] text-gray-500 mt-1.5 pt-1.5 border-t border-gray-100">
-            <span className="text-purple-600 font-bold">XN, SA, X-Quang</span>
-            <span className="font-semibold text-emerald-600">Đạt 98.2%</span>
+            <span className="text-purple-600 font-bold">Theo dữ liệu chỉ định</span>
+            <span className="font-semibold text-emerald-600">{kpis.tyLeHoanThanhCls ?? '—'}</span>
           </div>
         </div>
 
@@ -153,11 +132,11 @@ export default function DashboardGiamDocPage() {
             </div>
           </div>
           <p className="text-xl font-black text-teal-700 mt-2">
-            {isLoading ? '...' : '5 / 8 giường'}
+            {isLoading ? '...' : `${stats?.phongMoGiuong?.giuong205?.dangDung ?? '—'} / ${stats?.phongMoGiuong?.giuong205?.tongGiuong ?? '—'} giường`}
           </p>
           <div className="flex items-center justify-between text-[11px] text-gray-500 mt-1.5 pt-1.5 border-t border-gray-100">
-            <span>P.Mổ 204: Đang chạy</span>
-            <span className="font-semibold text-teal-700">62.5% tải</span>
+            <span>P.Mổ 204: {stats?.phongMoGiuong?.phongMo204?.trangThai ?? '—'}</span>
+            <span className="font-semibold text-teal-700">{stats?.phongMoGiuong?.giuong205?.tyLeLapDay ?? '—'}</span>
           </div>
         </div>
 
@@ -323,93 +302,11 @@ export default function DashboardGiamDocPage() {
                 </div>
               ))}
               <div className="mt-4 p-3 rounded-xl bg-blue-50/70 border border-blue-100 text-xs text-blue-800">
-                <p className="font-bold">⚡ Tối ưu luồng bệnh nhân:</p>
-                <p className="text-[11px] text-blue-700 mt-0.5">Hệ thống áp dụng Kiosk tự động kết hợp phân luồng AI giảm 45% thời gian ùn tắc tại quầy tiếp đón.</p>
+                <p className="font-bold">Phân tích lưu lượng</p>
+                <p className="text-[11px] text-blue-700 mt-0.5">Chỉ hiển thị khi có dữ liệu vận hành tương ứng.</p>
               </div>
             </div>
           </MedCard>
-        </div>
-      </div>
-
-      {/* ─── PHÒNG MỔ 204 & KHU GIƯỜNG HỒI TỈNH 205 (THỜI GIAN THỰC) ───────── */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-gray-100">
-          <div>
-            <h3 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
-              <Bed className="h-5 w-5 text-teal-600" /> Giám Sát Phòng Mổ P.204 & Khu Giường Hồi Tỉnh P.205 (Thời Gian Thực)
-            </h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Cập nhật trực tiếp tình trạng phòng phẫu thuật can thiệp và công suất sử dụng 8 giường bệnh theo dõi sau thủ thuật
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200">
-              <span className="h-2 w-2 rounded-full bg-teal-500 animate-pulse"></span>
-              Công suất: 62.5% (5/8 giường)
-            </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
-          {/* Thông tin phòng mổ 204 */}
-          <div className="md:col-span-1 p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Phòng Phẫu Thuật</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800">
-                  Đang hoạt động
-                </span>
-              </div>
-              <h4 className="text-sm font-extrabold text-gray-900 mt-2">{phongMo.ten}</h4>
-              <p className="text-xs text-gray-600 mt-1">Phụ trách: <strong>{phongMo.bacSi}</strong></p>
-              <p className="text-xs text-gray-600 mt-0.5">Ca hôm nay: <strong className="text-emerald-700 font-bold">{phongMo.soCaHomNay} ca tiểu phẫu</strong></p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-200 text-[11px] text-gray-500 flex items-center gap-1">
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> Đạt chuẩn vô khuẩn BYT ISO 14644
-            </div>
-          </div>
-
-          {/* Sơ đồ 8 giường bệnh Hồi tỉnh 205 */}
-          <div className="md:col-span-3">
-            <p className="text-xs font-bold text-gray-600 mb-2">Trạng thái 8 Giường bệnh Hồi tỉnh P.205:</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              {[
-                { id: 'G01', status: 'occupied', bn: 'Lê Văn An', time: '08:30', note: 'Hồi tỉnh sau mổ u bao hoạt dịch' },
-                { id: 'G02', status: 'occupied', bn: 'Trần Thị Bé', time: '09:15', note: 'Nội soi dạ dày can thiệp' },
-                { id: 'G03', status: 'occupied', bn: 'Hoàng Quốc Cường', time: '09:50', note: 'Chích rạch áp xe' },
-                { id: 'G04', status: 'occupied', bn: 'Phạm Hồng Dung', time: '10:10', note: 'Theo dõi phản ứng truyền dịch' },
-                { id: 'G05', status: 'occupied', bn: 'Nguyễn Tiến Dũng', time: '10:45', note: 'Hồi tỉnh nội soi đại tràng' },
-                { id: 'G06', status: 'available', bn: 'Giường Trống', time: '-', note: 'Sẵn sàng tiếp nhận bệnh nhân' },
-                { id: 'G07', status: 'available', bn: 'Giường Trống', time: '-', note: 'Sẵn sàng tiếp nhận bệnh nhân' },
-                { id: 'G08', status: 'cleaning', bn: 'Khử Trùng UV', time: '11:00', note: 'Đang chiếu đèn khử khuẩn' },
-              ].map((g) => (
-                <div
-                  key={g.id}
-                  className={`p-3 rounded-xl border transition-all text-xs ${
-                    g.status === 'occupied'
-                      ? 'bg-blue-50/70 border-blue-200 text-blue-900'
-                      : g.status === 'available'
-                      ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
-                      : 'bg-amber-50/70 border-amber-200 text-amber-900'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-black text-sm">{g.id}</span>
-                    <span className={`h-2 w-2 rounded-full ${
-                      g.status === 'occupied' ? 'bg-blue-600' : g.status === 'available' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'
-                    }`}></span>
-                  </div>
-                  <p className="font-bold truncate mt-1">{g.bn}</p>
-                  <p className="text-[10px] text-gray-500 truncate">{g.note}</p>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center gap-4 mt-3 text-[11px] text-gray-500">
-              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-blue-600"></span> Đang theo dõi (5)</span>
-              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500"></span> Trống sẵn sàng (2)</span>
-              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500"></span> Khử trùng UV (1)</span>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -478,8 +375,8 @@ export default function DashboardGiamDocPage() {
               <div className="flex items-center gap-2.5">
                 <Sparkles className="h-4.5 w-4.5 text-amber-700" />
                 <div>
-                  <p className="text-xs font-bold text-amber-900">Dự Báo Lưu Lượng AI</p>
-                  <p className="text-[10px] text-amber-700">Mô hình Random Forest & Prophet</p>
+                  <p className="text-xs font-bold text-amber-900">Dự Báo Lưu Lượng</p>
+                  <p className="text-[10px] text-amber-700">Phân tích theo dữ liệu vận hành</p>
                 </div>
               </div>
               <ArrowRight className="h-4 w-4 text-amber-500 group-hover:translate-x-0.5 transition-transform" />

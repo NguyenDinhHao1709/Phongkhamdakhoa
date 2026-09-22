@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Phòng Khám Đa Khoa - Cổng Bệnh Nhân",
+    "slug": "phong-kham-benh-nhan",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-status-bar"
+    ]
+  }
+}

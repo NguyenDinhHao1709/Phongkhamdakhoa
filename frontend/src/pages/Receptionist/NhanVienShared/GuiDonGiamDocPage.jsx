@@ -29,13 +29,13 @@ export default function GuiDonGiamDocPage() {
     mutationFn: (payload) => apiPost('/quan-ly/don-tu', payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['danh-sach-don-tu-nhan-vien'] });
-      setSuccessMsg('Đã gửi đơn trình Giám đốc thành công! Trạng thái đang chờ xét duyệt.');
+      setSuccessMsg('Đã gửi yêu cầu thành công! Trạng thái đang chờ xét duyệt.');
       setShowModal(false);
       setForm({ loaiDon: 'Đơn xin nghỉ phép', tieuDe: '', noiDung: '' });
       setTimeout(() => setSuccessMsg(''), 6000);
     },
     onError: (err) => {
-      alert('Có lỗi xảy ra khi gửi đơn: ' + (err?.response?.data?.message || err.message));
+      alert('Có lỗi xảy ra khi gửi yêu cầu: ' + (err?.response?.data?.message || err.message));
     },
   });
 
@@ -79,9 +79,9 @@ export default function GuiDonGiamDocPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gửi đơn trình Giám đốc</h1>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gửi yêu cầu</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Tạo và theo dõi đơn xin nghỉ phép, đề xuất thiết bị, đổi ca trình Ban Giám Đốc xét duyệt
+            Tạo và theo dõi yêu cầu xin nghỉ phép, đề xuất thiết bị, đổi ca gửi Ban Giám Đốc xét duyệt
           </p>
         </div>
 
@@ -98,7 +98,7 @@ export default function GuiDonGiamDocPage() {
             leftIcon={<Plus className="h-4 w-4" />}
             data-testid="btn-tao-don-moi"
           >
-            Tạo đơn mới
+            Tạo yêu cầu mới
           </MedButton>
         </div>
       </div>
@@ -110,15 +110,15 @@ export default function GuiDonGiamDocPage() {
         </div>
       )}
 
-      {/* Danh sách đơn đã gửi */}
+      {/* Danh sách yêu cầu đã gửi */}
       <div className="space-y-4">
         {isLoading ? (
-          <div className="p-12 text-center text-gray-400">Đang tải danh sách đơn...</div>
+          <div className="p-12 text-center text-gray-400">Đang tải danh sách yêu cầu...</div>
         ) : donList.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center text-gray-500 space-y-2">
             <FileText className="h-12 w-12 text-gray-300 mx-auto" />
-            <p className="font-bold">Bạn chưa có đơn trình nào</p>
-            <p className="text-xs text-gray-400">Nhấn &quot;Tạo đơn mới&quot; để gửi đơn trình lên Ban Giám Đốc</p>
+            <p className="font-bold">Bạn chưa có yêu cầu nào</p>
+            <p className="text-xs text-gray-400">Nhấn &quot;Tạo yêu cầu mới&quot; để gửi yêu cầu lên Ban Giám Đốc</p>
           </div>
         ) : (
           donList.map((item) => {
@@ -166,12 +166,12 @@ export default function GuiDonGiamDocPage() {
         )}
       </div>
 
-      {/* Modal Tạo Đơn */}
+      {/* Modal Tạo Yêu Cầu */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl space-y-4 animate-scale-in">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h3 className="text-lg font-bold text-gray-900">Soạn Đơn Trình Ban Giám Đốc</h3>
+              <h3 className="text-lg font-bold text-gray-900">Gửi yêu cầu mới</h3>
               <button
                 onClick={() => setShowModal(false)}
                 className="text-gray-400 hover:text-gray-600 text-lg font-bold"
@@ -182,7 +182,7 @@ export default function GuiDonGiamDocPage() {
 
             <form onSubmit={handleSubmit} className="space-y-4 text-sm">
               <div>
-                <label className="block font-semibold text-gray-700 mb-1">Loại đơn trình *</label>
+                <label className="block font-semibold text-gray-700 mb-1">Loại yêu cầu *</label>
                 <select
                   value={form.loaiDon}
                   onChange={(e) => setForm({ ...form, loaiDon: e.target.value })}
@@ -197,20 +197,20 @@ export default function GuiDonGiamDocPage() {
               </div>
 
               <div>
-                <label className="block font-semibold text-gray-700 mb-1">Tiêu đề đơn *</label>
+                <label className="block font-semibold text-gray-700 mb-1">Tiêu đề yêu cầu *</label>
                 <input
                   type="text"
                   required
                   value={form.tieuDe}
                   onChange={(e) => setForm({ ...form, tieuDe: e.target.value })}
-                  placeholder="Nhập tiêu đề tóm tắt nội dung trình..."
+                  placeholder="Nhập tiêu đề tóm tắt yêu cầu..."
                   className="w-full p-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500"
                   data-testid="input-tieu-de"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-gray-700 mb-1">Nội dung chi tiết trình Giám đốc *</label>
+                <label className="block font-semibold text-gray-700 mb-1">Nội dung chi tiết yêu cầu *</label>
                 <textarea
                   rows={4}
                   required
@@ -234,7 +234,7 @@ export default function GuiDonGiamDocPage() {
                   disabled={guiDonMutation.isPending}
                   data-testid="btn-submit-don"
                 >
-                  Gửi trình Giám đốc
+                  Gửi yêu cầu
                 </MedButton>
               </div>
             </form>

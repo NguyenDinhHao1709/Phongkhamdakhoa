@@ -53,12 +53,12 @@ function RoleRedirect() {
    ================================================================ */
 function PrivateRoute({ children, allowedRoles }) {
   const { isAuthenticated, user } = useAuthStore();
+  const location = useLocation();
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    const redirectParam = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?redirect=${redirectParam}`} replace />;
   }
-  console.log('PrivateRoute User:', user);
-  console.log('PrivateRoute allowedRoles:', allowedRoles);
 
   if (allowedRoles && user && !allowedRoles.includes(user.vaiTro)) {
     return <Navigate to="/unauthorized" replace />;
@@ -93,10 +93,17 @@ export default function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-        {/* Public Homepage & Kiosk cho Khách vãng lai */}
+        {/* Public Homepage */}
         <Route path="/" element={<HomePage />} />
         <Route path="/dat-lich" element={<PublicDatLichPage />} />
-        <Route path="/kiosk" element={<KioskPage />} />
+        <Route
+          path="/kiosk"
+          element={
+            <PrivateRoute>
+              <KioskPage />
+            </PrivateRoute>
+          }
+        />
 
         {/* Receptionist Portal */}
         <Route

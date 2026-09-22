@@ -610,7 +610,7 @@ QUY TẮC GIAO TIẾP:
     }
 
     // Lấy số người chờ thực tế của từng phòng từ CSDL
-    const queueStates: Record<string, number> = {};
+    const queueStates: Record<string, { count: number; avg_service_minutes: number | null }> = {};
     for (const chiDinh of chiDinhList) {
       const loai = chiDinh.dichVu?.loai || 'xet_nghiem';
       if (!(loai in queueStates)) {
@@ -619,7 +619,19 @@ QUY TẮC GIAO TIẾP:
           .where('dv.loai = :loai', { loai })
           .andWhere('cls.trangThai IN (:...statuses)', { statuses: ['cho_lay_mau', 'dang_lay_mau'] })
           .getCount();
-        queueStates[loai] = count;
+        const duration = await this.clsRepo.createQueryBuilder('cls')
+          .innerJoin('cls.dichVu', 'dv')
+          .select('AVG(TIMESTAMPDIFF(MINUTE, cls.thoiGianLayMau, cls.thoiGianCoKetQua))', 'avg')
+          .where('dv.loai = :loai', { loai })
+          .andWhere('cls.trangThai = :status', { status: 'co_ket_qua' })
+          .andWhere('cls.thoiGianLayMau IS NOT NULL')
+          .andWhere('cls.thoiGianCoKetQua IS NOT NULL')
+          .andWhere('cls.thoiGianCoKetQua >= DATE_SUB(NOW(), INTERVAL 90 DAY)')
+          .getRawOne();
+        queueStates[loai] = {
+          count,
+          avg_service_minutes: duration?.avg ? Number(duration.avg) : null,
+        };
       }
     }
 
@@ -647,27 +659,39 @@ QUY TẮC GIAO TIẾP:
       this.logger.warn(`⚠️ Python Router offline (${pyErr.message}), falling back to NestJS internal router`);
       engineSource = 'nestjs_internal_router';
       // Internal Fallback
-      const sortedTypes = Object.keys(queueStates).sort((a, b) => (queueStates[a] || 0) - (queueStates[b] || 0));
+      const sortedTypes = Object.keys(queueStates).sort((a, b) => (
+        (queueStates[a].avg_service_minutes || Number.POSITIVE_INFINITY) * queueStates[a].count
+        - (queueStates[b].avg_service_minutes || Number.POSITIVE_INFINITY) * queueStates[b].count
+      ));
       pyResult = {
         routing_plan: sortedTypes.map((loai, idx) => ({
           buoc: idx + 1,
           loai,
           ten_phong: loai === 'cdha' ? 'Phòng Chẩn đoán Hình ảnh (Siêu âm / X-Quang)' : loai === 'xet_nghiem' ? 'Phòng Xét nghiệm Máu & Sinh hóa' : 'Phòng Kỹ thuật viên',
-          so_nguoi_cho: queueStates[loai] || 0,
-          thoi_gian_cho_phut: (queueStates[loai] || 0) * (loai === 'cdha' ? 12 : 5),
-          thoi_gian_thuc_hien_phut: 8,
+          so_nguoi_cho: queueStates[loai].count,
+          thoi_gian_cho_phut: queueStates[loai].avg_service_minutes
+            ? Math.round(queueStates[loai].count * queueStates[loai].avg_service_minutes)
+            : null,
+          thoi_gian_thuc_hien_phut: queueStates[loai].avg_service_minutes,
           dich_vu: requestedItems.filter(i => i.loai === loai).map(i => i.tenDichVu),
-          tinh_trang: (queueStates[loai] || 0) <= 2 ? 'vong' : 'dong',
-          badge_color: (queueStates[loai] || 0) <= 2 ? 'emerald' : 'red',
-          khuyen_nghi: idx === 0 ? '⭐ Đến đây TRƯỚC để tối ưu thời gian chờ' : `Bước ${idx + 1}: Di chuyển đến đây sau`,
+          tinh_trang: queueStates[loai].count <= 2 ? 'vong' : 'dong',
+          badge_color: queueStates[loai].count <= 2 ? 'emerald' : 'red',
+          khuyen_nghi: idx === 0 ? 'Đến đây trước theo hàng đợi hiện tại' : `Bước ${idx + 1}: Di chuyển sau bước trước`,
         })),
-        tiet_kiem_phut: 15,
-        tong_thoi_gian_min_phut: sortedTypes.reduce((sum, l) => sum + (queueStates[l] || 0) * 8, 0),
+        tiet_kiem_phut: null,
+        tong_thoi_gian_min_phut: null,
+        data_quality: {
+          all_service_times_observed: sortedTypes.every((loai) => queueStates[loai].avg_service_minutes),
+          missing_service_time_types: sortedTypes.filter((loai) => !queueStates[loai].avg_service_minutes),
+        },
       };
     }
 
     // 2. Gemini AI tạo thông điệp hướng dẫn tự nhiên cho bệnh nhân
-    let thongDiepAI = `Hệ thống đã định tuyến động tối ưu thứ tự làm cận lâm sàng. Ước tính giúp bạn tiết kiệm ~${pyResult?.tiet_kiem_phut || 0} phút chờ đợi!`;
+    const savingMessage = typeof pyResult?.tiet_kiem_phut === 'number'
+      ? `Có thể tiết kiệm khoảng ${pyResult.tiet_kiem_phut} phút theo dữ liệu hàng đợi hiện tại.`
+      : 'Thứ tự được chọn theo dữ liệu hàng đợi hiện tại; chưa đủ dữ liệu thời gian để ước tính mức tiết kiệm.';
+    let thongDiepAI = `Hệ thống đã định tuyến động thứ tự làm cận lâm sàng. ${savingMessage}`;
     if (this.genAI && pyResult?.routing_plan?.length > 0) {
       try {
         const buocDau = pyResult.routing_plan[0];
@@ -680,7 +704,7 @@ Bạn là Trợ Lý Điều Huống Bệnh Nhân tại Phòng Khám Đa Khoa.
 Hãy viết 1 câu hướng dẫn súc tích, ân cần (dưới 40 từ) cho bệnh nhân về lộ trình làm cận lâm sàng tối ưu:
 - Lộ trình: ${cacBuocStr}
 - Phòng nên đi đầu tiên: ${buocDau?.ten_phong} (chỉ có ${buocDau?.so_nguoi_cho} người chờ)
-- Số phút tiết kiệm được: ~${pyResult.tiet_kiem_phut || 10} phút.
+- ${savingMessage}
 
 Lời dặn trực tiếp ngắn gọn (không chào hỏi rườm rà, đi thẳng vào vị trí di chuyển đầu tiên và lý do):`;
 
@@ -701,6 +725,7 @@ Lời dặn trực tiếp ngắn gọn (không chào hỏi rườm rà, đi th�
       routingPlan: pyResult?.routing_plan || [],
       chiDinhList: chiDinhList.map(c => ({ id: c.id, dichVu: c.dichVu?.tenDichVu, loai: c.dichVu?.loai, trangThai: c.trangThai })),
       thongDiep: thongDiepAI,
+      dataQuality: pyResult?.data_quality || null,
       timestamp: new Date().toISOString(),
     };
   }
@@ -727,7 +752,7 @@ Lời dặn trực tiếp ngắn gọn (không chào hỏi rườm rà, đi th�
     const recent7 = rawData.slice(-7);
     const avg7 = recent7.length > 0
       ? Math.round(recent7.reduce((s, d) => s + Number(d.soLuong), 0) / recent7.length)
-      : 20;
+      : null;
 
     const weeklyAvg: Record<number, number[]> = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
     rawData.forEach(d => {
@@ -742,15 +767,19 @@ Lời dặn trực tiếp ngắn gọn (không chào hỏi rườm rà, đi th�
       const dow = ngay.getDay();
       const dowAvg = weeklyAvg[dow].length > 0
         ? Math.round(weeklyAvg[dow].reduce((a, b) => a + b, 0) / weeklyAvg[dow].length)
-        : avg7;
-      const forecast = Math.round(avg7 * 0.7 + dowAvg * 0.3);
-      const mucDo = forecast >= 60 ? 'cao' : forecast >= 35 ? 'trung_binh' : 'thap';
+        : null;
+      const forecast = avg7 !== null && dowAvg !== null
+        ? Math.round(avg7 * 0.7 + dowAvg * 0.3)
+        : null;
+      const mucDo = forecast === null ? 'khong_du_du_lieu' : forecast >= 60 ? 'cao' : forecast >= 35 ? 'trung_binh' : 'thap';
       forecast7Days.push({
         ngay: ngay.toISOString().slice(0, 10),
         thuTrong_tuan: ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][dow],
         du_bao: forecast,
         muc_do: mucDo,
-        goi_y_nhan_su: forecast >= 60
+        goi_y_nhan_su: forecast === null
+          ? 'Chưa đủ dữ liệu thực tế để khuyến nghị nhân sự.'
+          : forecast >= 60
           ? `Ngày đông bệnh nhân (dự báo ~${forecast}), nên tăng cường thêm 1-2 bác sĩ`
           : forecast >= 35
           ? `Lưu lượng trung bình (~${forecast}), nhân sự hiện tại phù hợp`
@@ -772,6 +801,11 @@ Lời dặn trực tiếp ngắn gọn (không chào hỏi rườm rà, đi th�
       forecast7Days,
       heatmapHomNay,
       lichSu60Ngay: rawData.map(d => ({ ngay: d.ngay, soLuong: Number(d.soLuong) })),
+      dataQuality: {
+        observedDays: rawData.length,
+        minimumDaysRequired: 21,
+        sufficientForForecast: rawData.length >= 21,
+      },
     };
   }
 
@@ -797,30 +831,17 @@ Lời dặn trực tiếp ngắn gọn (không chào hỏi rườm rà, đi th�
       mlResult = response.data;
       this.logger.log(`✅ Python ML Forecast OK — MAPE: ${mlResult.mape}%`);
     } catch (pyErr) {
-      this.logger.warn(`⚠️ Python ML Service offline (${pyErr.message}), falling back to Moving Average`);
-      mlSource = 'moving_average_fallback';
-      // Fallback về thuật toán cũ
-      const fallback = await this.getForecastLuongBenhNhan();
-      mlResult = {
-        success: true,
-        model: 'MovingAverage-Fallback',
-        mape: null,
-        do_chinh_xac_pct: 87,
-        forecast: (fallback as any).forecast7Days?.map((d: any) => ({
-          ngay: d.ngay,
-          thu: d.thuTrong_tuan,
-          du_bao: d.du_bao,
-          ci_thap: Math.max(0, d.du_bao - 5),
-          ci_cao: d.du_bao + 5,
-          muc_do: d.muc_do,
-          is_ngay_le: false,
-          ten_ngay_le: null,
-          goi_y_nhan_su: d.goi_y_nhan_su,
-        })) || [],
-        pattern: { trend: { xu_huong: 'on_dinh', mo_ta: 'Dữ liệu từ thuật toán Moving Average' } },
-        heatmap_hom_nay: (fallback as any).heatmapHomNay || [],
-        lich_su_60_ngay: (fallback as any).lichSu60Ngay || [],
-        tong_quan: (fallback as any).tongQuan || {},
+      this.logger.warn(`⚠️ Python ML Service unavailable (${pyErr.message})`);
+      return {
+        data: {
+          source: 'unavailable',
+          model: null,
+          status: 'forecast_unavailable',
+          forecast7Days: [],
+          dataQuality: { source: 'database_history_required' },
+          timestamp: new Date().toISOString(),
+        },
+        message: 'Không thể dự báo khi dịch vụ ML không khả dụng; không sử dụng số liệu thay thế.',
       };
     }
 
@@ -835,7 +856,9 @@ Lời dặn trực tiếp ngắn gọn (không chào hỏi rườm rà, đi th�
         const trendInfo = mlResult.pattern?.trend;
         const weeklyInfo = mlResult.pattern?.weekly;
         const dongNhat = weeklyInfo?.dong_nhat || '?';
-        const mapeInfo = mlResult.mape ? `Mô hình đạt độ chính xác ~${mlResult.do_chinh_xac_pct}% (MAPE: ${mlResult.mape}%)` : 'Sử dụng Moving Average fallback';
+        const mapeInfo = mlResult.mape !== null && mlResult.mape !== undefined
+          ? `MAPE kiểm định theo thời gian: ${mlResult.mape}%`
+          : 'Chưa tính được MAPE do dữ liệu kiểm định chưa đủ';
 
         const prompt = `
 Bạn là chuyên gia phân tích y tế và quản lý bệnh viện tại Việt Nam.
@@ -888,6 +911,7 @@ CHỈ trả về JSON, không có text khác.`;
       data: {
         source: mlSource,
         model: mlResult.model,
+        status: mlResult.success === false ? (mlResult.status || 'insufficient_data') : 'ok',
         mape: mlResult.mape,
         doChinhXacPct: mlResult.do_chinh_xac_pct,
         aiAnalysis,
@@ -899,6 +923,7 @@ CHỈ trả về JSON, không có text khác.`;
           trungBinh7Ngay: mlResult.tong_quan?.trung_binh_7_ngay || 0,
           tongHomNay: mlResult.tong_quan?.tong_hom_nay || 0,
         },
+        dataQuality: mlResult.data_quality || null,
         timestamp: new Date().toISOString(),
       },
       message: `Dự báo hoàn thành (${mlSource === 'python_holtwinters' ? 'Holt-Winters ML' : 'Moving Average Fallback'})`,

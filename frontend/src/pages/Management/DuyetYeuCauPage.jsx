@@ -67,9 +67,13 @@ export default function DuyetYeuCauPage() {
     },
   });
 
-  const handleOpenApprove = (id) => {
-    setTargetDonId(id);
-    setApproveNote('Ban Giám Đốc đã phê duyệt.');
+  const handleOpenApprove = (don) => {
+    setTargetDonId(don.id);
+    if (don.loaiDon === 'Yêu cầu hủy ca khám') {
+      setApproveNote('Ban Giám Đốc đồng ý phê duyệt hủy ca khám. Hệ thống tự động hoàn tiền tạm ứng cho bệnh nhân.');
+    } else {
+      setApproveNote('Ban Giám Đốc đã phê duyệt.');
+    }
     setApproveModalOpen(true);
   };
 
@@ -179,6 +183,18 @@ export default function DuyetYeuCauPage() {
                   <p>{don.noiDung}</p>
                 </div>
 
+                {don.loaiDon === 'Yêu cầu hủy ca khám' && (
+                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-900 flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold">Quy trình Hủy ca khám & Hoàn tiền</p>
+                      <p className="text-[11px] text-rose-700 mt-0.5">
+                        Khi phê duyệt, ca khám sẽ chuyển sang trạng thái <strong>Đã hủy</strong>. Hệ thống sẽ tự động <strong>hoàn trả 100% tiền tạm ứng 40.000đ</strong> và <strong>gửi thông báo trực tiếp đến bệnh nhân</strong>.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {don.ghiChuXuLy && (
                   <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3 text-xs text-blue-900">
                     <p className="font-bold">Phản hồi của Giám Đốc:</p>
@@ -193,14 +209,14 @@ export default function DuyetYeuCauPage() {
                     <button
                       onClick={() => handleOpenReject(don.id)}
                       disabled={duyetMutation.isPending}
-                      className="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
+                      className="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
                     >
                       <X className="h-3.5 w-3.5" /> Từ chối
                     </button>
                     <button
-                      onClick={() => handleOpenApprove(don.id)}
+                      onClick={() => handleOpenApprove(don)}
                       disabled={duyetMutation.isPending}
-                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs"
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-xs cursor-pointer"
                       data-testid={`btn-approve-${don.id}`}
                     >
                       <Check className="h-3.5 w-3.5" /> Phê duyệt

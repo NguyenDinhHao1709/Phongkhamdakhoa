@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, RefreshCw, Stethoscope, AlertTriangle, ShieldAlert, XCircle, CheckCircle2, Video, Building2 } from 'lucide-react';
+import { Calendar, Clock, RefreshCw, Stethoscope, AlertTriangle, ShieldAlert, XCircle, CheckCircle2, Video, Building2, Users, QrCode, Star } from 'lucide-react';
 import { apiGet, apiPatch } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../design-system/components/Badge/StatusBadge';
-import { formatDate, checkTelehealthAccess } from '../../utils/formatDate';
+import { formatDate } from '../../utils/formatDate';
 import TelehealthVideoModal from '../../components/Telehealth/TelehealthVideoModal';
+import AppointmentTicketModal from '../../components/Appointment/AppointmentTicketModal';
+import DanhGiaCaKhamModal from '../../components/Appointment/DanhGiaCaKhamModal';
 
 export default function LichHenBenhNhanPage() {
   const [list, setList] = useState([]);
@@ -12,9 +14,13 @@ export default function LichHenBenhNhanPage() {
   const [cancelingId, setCancelingId] = useState(null);
   const [msg, setMsg] = useState({ type: '', text: '' });
   const [videoCall, setVideoCall] = useState({ open: false, doctorName: '', info: {} });
+  const [ticketModalData, setTicketModalData] = useState({ isOpen: false, appointment: null });
+  const [reviewModalData, setReviewModalData] = useState({ isOpen: false, appointment: null });
 
   useEffect(() => {
     fetchData();
+    const refreshTimer = setInterval(fetchData, 15000);
+    return () => clearInterval(refreshTimer);
   }, []);
 
   const fetchData = async () => {
@@ -34,13 +40,13 @@ export default function LichHenBenhNhanPage() {
     const bookingDateTime = new Date(`${lh.ngayHen}T${lh.gioHen}`);
     const diffHours = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    if (diffHours < 2) {
-      alert(`⚠️ KHÔNG THỂ HỦY LỊCH HẸN TRỰC TUYẾN!\n\nLịch hẹn ${lh.maLichHen} còn dưới 2 tiếng nữa là đến giờ khám (${lh.gioHen} ngày ${lh.ngayHen}). Theo quy định phòng khám, hủy dưới 2 tiếng hoặc không đến khám sẽ không được hoàn lại khoản tiền tạm ứng 1/5 (40.000đ).`);
+    if (diffHours < 24) {
+      alert(`⚠️ KHÔNG THỂ HỦY LỊCH HẸN TRỰC TUYẾN!\n\nLịch hẹn ${lh.maLichHen} còn dưới 24 tiếng (1 ngày) nữa là đến giờ khám (${lh.gioHen} ngày ${lh.ngayHen}).\nTheo quy định phòng khám, chỉ được hủy trước ngày khám ít nhất 1 ngày (24 tiếng). Khi hủy dưới 24 tiếng, hệ thống không thể xử lý hủy trực tuyến và không được hoàn lại tiền tạm ứng 1/5 (40.000đ).`);
       return;
     }
 
     const confirmCancel = window.confirm(
-      `XÁC NHẬN HỦY LỊCH HẸN ${lh.maLichHen}\n\nBạn đang hủy trước giờ khám > 2 tiếng (Hợp lệ).\nSố tiền tạm ứng 40.000đ (1/5 phí khám) sẽ được hoàn trả tự động 100% qua VNPay/MoMo.\n\nBạn có chắc chắn muốn hủy?`
+      `XÁC NHẬN HỦY LỊCH HẸN ${lh.maLichHen}\n\nBạn đang hủy trước ngày khám >= 1 ngày (Hợp lệ).\nSố tiền tạm ứng 40.000đ (1/5 phí khám) sẽ được hoàn trả tự động 100% qua VNPay/MoMo.\n\nBạn có chắc chắn muốn hủy?`
     );
 
     if (!confirmCancel) return;
@@ -85,14 +91,14 @@ export default function LichHenBenhNhanPage() {
         </div>
       )}
 
-      {/* Thông tin chính sách hủy & hoàn cọc 2h */}
+      {/* Thông tin chính sách đặt trước & hủy trước 1 ngày */}
       <div className="rounded-2xl bg-primary-50/70 p-4 border border-primary-200/80 text-xs text-primary-900 leading-relaxed">
         <p className="font-bold text-sm mb-1 flex items-center gap-1.5">
-          <ShieldAlert className="h-4 w-4 text-primary-600" /> Quy định Tạm ứng 1/5 & Ranh giới Hủy 2 tiếng:
+          <ShieldAlert className="h-4 w-4 text-primary-600" /> Quy định Tạm ứng 1/5 & Ranh giới Hủy trước 1 ngày (24 giờ):
         </p>
-        <p>• Mỗi lịch hẹn cần tạm ứng <strong>40.000 đ (1/5 phí khám 200.000đ)</strong> để xác nhận chỗ.</p>
-        <p>• Hủy lịch hợp lệ <strong>trước giờ khám &gt; 2 tiếng</strong>: Được <strong>hoàn trả 100% tạm ứng (40.000đ)</strong> qua VNPay/MoMo.</p>
-        <p>• Hủy lịch <strong>dưới 2 tiếng</strong> hoặc không đến khám (No-show): Khoản tiền tạm ứng 40.000đ sẽ được phòng khám giữ lại theo quy định.</p>
+        <p>• Mỗi lịch hẹn cần tạm ứng <strong>40.000 đ (1/5 phí khám 200.000đ)</strong> để xác nhận giữ chỗ.</p>
+        <p>• Hủy lịch hợp lệ <strong>trước ngày khám ít nhất 1 ngày (trước 24 tiếng)</strong>: Được <strong>hoàn trả 100% tiền tạm ứng (40.000đ)</strong> tự động qua VNPay/MoMo.</p>
+        <p>• Hủy lịch <strong>trong vòng 24 tiếng</strong> hoặc không đến khám (No-show): Khoản tiền tạm ứng 40.000đ sẽ không được hoàn lại theo quy định của phòng khám.</p>
       </div>
 
       <div className="space-y-4">
@@ -110,20 +116,6 @@ export default function LichHenBenhNhanPage() {
             const isCanceled = lh.trangThai === 'da_huy';
             const isCompleted = lh.trangThai === 'hoan_thanh';
 
-            // Kiểm tra xem lịch hẹn đã qua giờ khám hay chưa
-            const isPastAppointment = (() => {
-              try {
-                const timePart = (lh.gioHen || '00:00:00').trim().split('-')[0].trim();
-                const apptDate = new Date(`${lh.ngayHen?.slice(0, 10)}T${timePart.length === 5 ? timePart + ':00' : timePart}`);
-                return !isNaN(apptDate.getTime()) && new Date() > apptDate;
-              } catch {
-                return false;
-              }
-            })();
-
-            // Tự động hủy nếu đã qua giờ khám mà chưa hoàn tất
-            const isAutoCanceled = isCanceled || (isPastAppointment && !isCompleted);
-
             return (
               <div
                 key={lh.id}
@@ -134,23 +126,25 @@ export default function LichHenBenhNhanPage() {
                     <span className="font-bold text-lg text-gray-900">{lh.maLichHen}</span>
                     <StatusBadge
                       status={
-                        isAutoCanceled
+                        isCanceled
                           ? 'da_huy'
                           : isCompleted
                           ? 'hoan_thanh'
+                          : lh.trangThai === 'cho_thanh_toan'
+                          ? 'cho_thanh_toan'
                           : lh.trangThai === 'da_xac_nhan'
-                          ? 'da_xac_nhan'
+                          ? 'hoan_thanh'
                           : 'cho_kham'
-                      }
-                      label={
-                        isAutoCanceled && !isCanceled
-                          ? 'Đã hủy (Quá giờ)'
-                          : undefined
                       }
                     />
                     <span className="text-xs font-semibold text-primary-700 bg-primary-50 px-2.5 py-0.5 rounded-full border border-primary-200">
                       Tạm ứng 1/5: 40.000 đ
                     </span>
+                    {lh.ghiChu?.includes('[ĐẶT_HỘ:') && (
+                      <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5 text-emerald-600" /> Đặt giùm người thân {lh.benhNhan?.hoTen ? `(${lh.benhNhan.hoTen})` : ''}
+                      </span>
+                    )}
                     {lh.hinhThuc === 'truc_tuyen' ? (
                       <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200 flex items-center gap-1">
                         <Video className="h-3.5 w-3.5 text-purple-600" /> Tư vấn Online
@@ -172,7 +166,12 @@ export default function LichHenBenhNhanPage() {
                     </p>
                     <p className="flex items-center gap-2">
                       <Stethoscope className="h-4 w-4 text-gray-400" />
-                      <span>Bác sĩ: {lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ trực phòng khám'}</span>
+                      <span>
+                        Bác sĩ:{' '}
+                        <strong className={lh.bacSi?.nhanVien?.hoTen ? 'text-gray-900' : 'text-amber-700'}>
+                          {lh.bacSi?.nhanVien?.hoTen || 'Đang chờ phân công'}
+                        </strong>
+                      </span>
                     </p>
                     {lh.lyDoKham && (
                       <p className="text-xs text-gray-500 bg-gray-50 p-2.5 rounded-xl mt-1">
@@ -189,83 +188,42 @@ export default function LichHenBenhNhanPage() {
 
                 {/* Nút hành động */}
                 <div className="flex md:flex-col justify-end gap-2 border-t md:border-t-0 pt-3 md:pt-0">
-                  {/* Nếu đã hoàn thành */}
-                  {isCompleted && (
-                    <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700 font-semibold text-center">
-                      ✓ Đã hoàn thành khám
-                    </div>
+                  {!isCanceled && (
+                    <MedButton
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setTicketModalData({ isOpen: true, appointment: lh })}
+                      className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200"
+                      leftIcon={<QrCode className="h-4 w-4 text-blue-600" />}
+                    >
+                      Phiếu Hẹn & QR
+                    </MedButton>
                   )}
 
-                  {/* Nếu đã quá giờ khám -> Tự hủy luôn, KHÔNG HIỆN NÚT HỦY LỊCH NỮA */}
-                  {isAutoCanceled && (
-                    <div className="rounded-xl bg-gray-50 border border-gray-200 px-3.5 py-2 text-xs text-center max-w-[220px] space-y-0.5">
-                      <p className="text-gray-700 font-medium">
-                        {isPastAppointment && !isCanceled ? 'Tự động hủy (Quá giờ khám)' : 'Lịch hẹn đã hủy'}
-                      </p>
-                      <p className="text-[10px] text-gray-400">Không thể thao tác hủy</p>
-                    </div>
-                  )}
-
-                  {/* Chỉ hiển thị hành động khi ca khám còn hiệu lực và chưa tới giờ / đang trong giờ */}
-                  {!isAutoCanceled && !isCompleted && (
+                  {!isCanceled && !isCompleted && (
                     <>
                       {lh.hinhThuc === 'truc_tuyen' ? (
-                        (() => {
-                          const access = checkTelehealthAccess(lh.ngayHen, lh.gioHen);
-                          if (access.canJoin) {
-                            return (
-                              <div className="space-y-1">
-                                <MedButton
-                                  variant="primary"
-                                  size="sm"
-                                  onClick={() =>
-                                    setVideoCall({
-                                      open: true,
-                                      doctorName: lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách',
-                                      info: { ...lh, gioKham: `${lh.gioHen} ngày ${formatDate(lh.ngayHen)}` },
-                                    })
-                                  }
-                                  className="bg-purple-600 hover:bg-purple-700 text-white shadow-md animate-pulse"
-                                  leftIcon={<Video className="h-4 w-4" />}
-                                >
-                                  Vào phòng khám Video
-                                </MedButton>
-                                <p className="text-[11px] text-emerald-600 font-bold text-center flex items-center justify-center gap-1">
-                                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
-                                  Phòng khám đang mở
-                                </p>
-                              </div>
-                            );
+                        <MedButton
+                          variant="primary"
+                          size="sm"
+                          onClick={() =>
+                            setVideoCall({
+                              open: true,
+                              doctorName: lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách',
+                              info: { ...lh, gioKham: `${lh.gioHen} ngày ${formatDate(lh.ngayHen)}` },
+                            })
                           }
-                          if (access.isTooEarly) {
-                            return (
-                              <div className="rounded-xl bg-amber-50/90 border border-amber-200 p-2.5 text-xs text-amber-900 space-y-1 max-w-[240px]">
-                                <div className="flex items-center gap-1.5 font-bold text-amber-900">
-                                  <Clock className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
-                                  <span>Chưa tới giờ mở phòng</span>
-                                </div>
-                                <p className="text-[11px] leading-tight text-amber-700">
-                                  Phòng khám trực tuyến & chat mở trước giờ khám <strong>15 phút</strong> (lúc <strong>{access.openTimeText}</strong>).
-                                </p>
-                                <div className="text-[10px] bg-amber-200/70 text-amber-950 px-2 py-0.5 rounded font-bold inline-block">
-                                  ⏳ Còn {access.minutesUntilOpen > 60 ? `${Math.floor(access.minutesUntilOpen / 60)}h ${access.minutesUntilOpen % 60}p` : `${access.minutesUntilOpen} phút`} nữa
-                                </div>
-                              </div>
-                            );
-                          }
-                          return (
-                            <div className="rounded-xl bg-gray-100 border border-gray-200 px-3 py-1.5 text-xs text-gray-500 text-center">
-                              Đã qua giờ khám trực tuyến ({access.startTimeText})
-                            </div>
-                          );
-                        })()
+                          className="bg-purple-600 hover:bg-purple-700 text-white"
+                          leftIcon={<Video className="h-4 w-4" />}
+                        >
+                          Vào phòng khám Video
+                        </MedButton>
                       ) : (
                         <div className="text-xs text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200 text-center font-medium">
                           📍 Đến khám tại CS1: 123 Đường Y Học
                         </div>
                       )}
 
-                      {/* Nút hủy lịch hẹn: CHỈ HIỆN KHI CHƯA QUA GIỜ HẸN KHÁM */}
                       <MedButton
                         variant="danger"
                         size="sm"
@@ -276,6 +234,18 @@ export default function LichHenBenhNhanPage() {
                         Hủy lịch hẹn
                       </MedButton>
                     </>
+                  )}
+
+                  {isCompleted && (
+                    <MedButton
+                      variant="primary"
+                      size="sm"
+                      onClick={() => setReviewModalData({ isOpen: true, appointment: lh })}
+                      className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-xs border-none"
+                      leftIcon={<Star className="h-4 w-4 fill-white text-white" />}
+                    >
+                      Đánh giá ca khám
+                    </MedButton>
                   )}
                 </div>
               </div>
@@ -291,6 +261,21 @@ export default function LichHenBenhNhanPage() {
         participantName={videoCall.doctorName}
         role="patient"
         appointmentInfo={videoCall.info}
+      />
+
+      {/* Modal Phiếu Hẹn Khám Điện Tử (Có STT, Phòng khám, Giờ, Mã QR) */}
+      <AppointmentTicketModal
+        isOpen={ticketModalData.isOpen}
+        appointment={ticketModalData.appointment}
+        onClose={() => setTicketModalData({ isOpen: false, appointment: null })}
+      />
+
+      {/* Modal Đánh Giá Trải Nghiệm Ca Khám */}
+      <DanhGiaCaKhamModal
+        isOpen={reviewModalData.isOpen}
+        appointment={reviewModalData.appointment}
+        onClose={() => setReviewModalData({ isOpen: false, appointment: null })}
+        onSuccess={fetchData}
       />
     </div>
   );

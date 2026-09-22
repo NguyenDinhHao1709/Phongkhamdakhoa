@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuthStore } from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { formatCurrency } from '../../utils/formatCurrency';
@@ -26,13 +27,14 @@ const PHUONG_THUC_LABELS = {
 const COLORS = ['#2563EB', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
 
 export default function ThongKeThuNganPage() {
+  const { user } = useAuthStore();
   const [timeRange, setTimeRange] = useState('hom_nay');
   const [tuNgay, setTuNgay] = useState('');
   const [denNgay, setDenNgay] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState(null);
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['thong-ke-thu-ngan', timeRange, tuNgay, denNgay],
+    queryKey: ['thong-ke-thu-ngan', user?.id, timeRange, tuNgay, denNgay],
     queryFn: () => {
       const params = new URLSearchParams();
       if (tuNgay && denNgay) {
@@ -82,9 +84,18 @@ export default function ThongKeThuNganPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Báo Cáo Doanh Thu Thu Ngân</h1>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Báo Cáo Doanh Thu Thu Ngân</h1>
+            {stats?.isCaNhan && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                Ca trực cá nhân: {stats?.tenThuNgan || user?.hoTen}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-gray-500 mt-1">
-            Tổng hợp doanh thu ca trực, đối soát tiền mặt & chuyển khoản ngân hàng
+            {stats?.isCaNhan
+              ? `Chỉ hiển thị dữ liệu doanh thu do thu ngân ${stats?.tenThuNgan || user?.hoTen} xử lý`
+              : 'Tổng hợp doanh thu ca trực, đối soát tiền mặt & chuyển khoản ngân hàng'}
           </p>
         </div>
         <div className="flex items-center gap-2">

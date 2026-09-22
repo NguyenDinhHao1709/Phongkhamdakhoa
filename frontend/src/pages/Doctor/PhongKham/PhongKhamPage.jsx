@@ -5,12 +5,12 @@ import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { VitalsCard } from '../../../design-system/components/VitalSign/VitalDisplay';
-import { apiGet, apiPost, apiPatch } from '../../../services/api';
+import { apiGet, apiPost, apiPatch, apiDelete } from '../../../services/api';
 import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
 import {
   Stethoscope, AlertTriangle, FileText, ClipboardList, FlaskConical,
-  CheckCircle2, ChevronRight, Activity, Plus, X, HeartPulse, Pill, Calendar, Clock, Search, Sparkles, Printer
+  CheckCircle2, ChevronRight, Activity, Plus, X, HeartPulse, Pill, Calendar, Clock, Search, Sparkles, Printer, Trash2
 } from 'lucide-react';
 import InPhieuKhamModal from '../../../components/Print/InPhieuKhamModal';
 import InDonThuocModal from '../../../components/Print/InDonThuocModal';
@@ -33,6 +33,8 @@ export default function PhongKhamPage() {
   const [selectedLuot, setSelectedLuot] = useState(null);
   const items = data?.data || [];
   const dangKham = items.filter((i) => i.trangThai === 'dang_kham');
+  const daCoKq = items.filter((i) => i.trangThai === 'da_co_kq_cls');
+  const dangCls = items.filter((i) => i.trangThai === 'dang_cls');
   const choKham = items.filter((i) => i.trangThai === 'cho_kham');
 
   // Nếu chuyển sang từ Thông báo xét nghiệm (có chiDinhId)
@@ -65,7 +67,7 @@ export default function PhongKhamPage() {
 
   const currentLuot = selectedLuot
     ? items.find((i) => i.id === selectedLuot.id) || selectedLuot
-    : (dangKham[0] || choKham[0] || null);
+    : (dangKham[0] || daCoKq[0] || choKham[0] || dangCls[0] || null);
 
   return (
     <div className="flex gap-6 h-[calc(100vh-7rem)] animate-fade-in overflow-x-auto pb-2">
@@ -75,26 +77,76 @@ export default function PhongKhamPage() {
           <ClipboardList className="h-5 w-5 text-primary-600" /> Hàng đợi phòng khám
         </h2>
 
-        <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
           {isLoading && <p className="text-center text-sm text-gray-400 py-8">Đang tải danh sách...</p>}
 
-          {dangKham.map((luot) => (
-            <PatientCard
-              key={luot.id}
-              luot={luot}
-              isSelected={currentLuot?.id === luot.id}
-              onSelect={() => setSelectedLuot(luot)}
-            />
-          ))}
+          {/* 1. Đang khám */}
+          {dangKham.length > 0 && (
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider px-1">
+                Đang khám ({dangKham.length})
+              </span>
+              {dangKham.map((luot) => (
+                <PatientCard
+                  key={luot.id}
+                  luot={luot}
+                  isSelected={currentLuot?.id === luot.id}
+                  onSelect={() => setSelectedLuot(luot)}
+                />
+              ))}
+            </div>
+          )}
 
-          {choKham.map((luot) => (
-            <PatientCard
-              key={luot.id}
-              luot={luot}
-              isSelected={currentLuot?.id === luot.id}
-              onSelect={() => setSelectedLuot(luot)}
-            />
-          ))}
+          {/* 2. Đã có kết quả CLS (Cần vào lại để bác sĩ kết luận) */}
+          {daCoKq.length > 0 && (
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider px-1 flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3 text-blue-600" /> Đã có KQ CLS ({daCoKq.length})
+              </span>
+              {daCoKq.map((luot) => (
+                <PatientCard
+                  key={luot.id}
+                  luot={luot}
+                  isSelected={currentLuot?.id === luot.id}
+                  onSelect={() => setSelectedLuot(luot)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* 3. Đang làm xét nghiệm / cận lâm sàng */}
+          {dangCls.length > 0 && (
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider px-1 flex items-center gap-1">
+                <FlaskConical className="h-3 w-3 text-purple-600" /> Đang làm CLS ({dangCls.length})
+              </span>
+              {dangCls.map((luot) => (
+                <PatientCard
+                  key={luot.id}
+                  luot={luot}
+                  isSelected={currentLuot?.id === luot.id}
+                  onSelect={() => setSelectedLuot(luot)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* 4. Chờ khám */}
+          {choKham.length > 0 && (
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider px-1">
+                Chờ khám ban đầu ({choKham.length})
+              </span>
+              {choKham.map((luot) => (
+                <PatientCard
+                  key={luot.id}
+                  luot={luot}
+                  isSelected={currentLuot?.id === luot.id}
+                  onSelect={() => setSelectedLuot(luot)}
+                />
+              ))}
+            </div>
+          )}
 
           {items.length === 0 && !isLoading && (
             <p className="text-center text-sm text-gray-400 py-8">Hôm nay không có bệnh nhân nào trong hàng đợi</p>
@@ -854,6 +906,19 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
     queryFn: () => apiGet('/xet-nghiem/dich-vu'),
   });
 
+  // Lấy các chỉ định đã có trong phiếu khám này để ngăn trùng lặp
+  const { data: existingData } = useQuery({
+    queryKey: ['xn-benh-an', benhAnKhamId],
+    queryFn: () => apiGet(`/xet-nghiem/benh-an-kham/${benhAnKhamId}`),
+    enabled: !!benhAnKhamId,
+  });
+
+  const existingOrders = existingData?.data || [];
+  const existingServiceIds = existingOrders
+    .filter((item) => item.chiDinh?.trangThai !== 'huy')
+    .map((item) => item.chiDinh?.dichVuXetNghiemId || item.chiDinh?.dichVu?.id)
+    .filter(Boolean);
+
   const listDichVu = (data?.data && data.data.length > 0) ? data.data : [
     { id: 1, maDichVu: 'XN001', tenDichVu: 'Công thức máu toàn phần (CBC)', gia: 120000, loai: 'xet_nghiem' },
     { id: 2, maDichVu: 'XN002', tenDichVu: 'Sinh hóa máu (Đường huyết, Men gan, Ure, Creatinine)', gia: 250000, loai: 'xet_nghiem' },
@@ -863,6 +928,7 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
   ];
 
   const handleToggle = (id) => {
+    if (existingServiceIds.includes(id)) return;
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
     );
@@ -870,13 +936,14 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (selectedIds.length === 0) {
-      alert('Vui lòng chọn ít nhất 1 dịch vụ cận lâm sàng');
+    const validIds = selectedIds.filter((id) => !existingServiceIds.includes(id));
+    if (validIds.length === 0) {
+      alert('Vui lòng chọn ít nhất 1 dịch vụ cận lâm sàng mới (chưa từng được chỉ định trong lần khám này)');
       return;
     }
     setLoading(true);
     try {
-      const dsChiDinh = selectedIds.map((id) => ({
+      const dsChiDinh = validIds.map((id) => ({
         dichVuXetNghiemId: id,
         ghiChuChiDinh: ghiChu,
       }));
@@ -888,13 +955,18 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
 
       // Tự động đổi trạng thái bệnh nhân trên hàng đợi sang "Đang làm Cận lâm sàng" (dang_cls)
       if (luotId) {
-        await apiPatch(`/tiep-nhan/${luotId}/trang-thai`, { trangThai: 'dang_cls' });
+        try {
+          await apiPatch(`/tiep-nhan/${luotId}/trang-thai`, { trangThai: 'dang_cls' });
+        } catch (patchErr) {
+          console.warn('Không thể chuyển trạng thái dang_cls của lượt tiếp nhận:', patchErr);
+        }
       }
 
+      alert('Đã tạo chỉ định Cận lâm sàng & Xét nghiệm thành công!');
       onSuccess();
     } catch (err) {
       console.error(err);
-      alert('Lỗi tạo chỉ định cận lâm sàng. Vui lòng thử lại.');
+      alert(err?.error?.message || err?.message || 'Lỗi tạo chỉ định cận lâm sàng. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -925,26 +997,53 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-2">Chọn dịch vụ cận lâm sàng (CSDL):</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-xs font-semibold text-gray-700">Chọn dịch vụ cận lâm sàng (CSDL):</label>
+              {existingServiceIds.length > 0 && (
+                <span className="text-[11px] text-amber-700 font-medium">
+                  Đã có {existingServiceIds.length} dịch vụ được chỉ định trước đó
+                </span>
+              )}
+            </div>
             <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-xl divide-y divide-gray-100 p-1">
               {isLoading && <p className="text-center text-xs text-gray-400 py-4">Đang nạp danh mục CSDL...</p>}
-              {listDichVu.map((dv) => (
-                <label key={dv.id} className="flex items-center justify-between p-2.5 hover:bg-gray-50 rounded-lg cursor-pointer">
-                  <div className="flex items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(dv.id)}
-                      onChange={() => handleToggle(dv.id)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
-                    />
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{dv.tenDichVu}</p>
-                      <p className="text-xs text-gray-500">Mã: {dv.maDichVu || dv.id}</p>
+              {listDichVu.map((dv) => {
+                const isAlreadyOrdered = existingServiceIds.includes(dv.id);
+                return (
+                  <label
+                    key={dv.id}
+                    className={`flex items-center justify-between p-2.5 rounded-lg transition-colors ${
+                      isAlreadyOrdered
+                        ? 'bg-gray-100/70 opacity-60 cursor-not-allowed'
+                        : 'hover:bg-gray-50 cursor-pointer'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        disabled={isAlreadyOrdered}
+                        checked={isAlreadyOrdered || selectedIds.includes(dv.id)}
+                        onChange={() => handleToggle(dv.id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-gray-900">{dv.tenDichVu}</p>
+                          {isAlreadyOrdered && (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded">
+                              ✓ Đã chỉ định
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">Mã: {dv.maDichVu || dv.id}</p>
+                      </div>
                     </div>
-                  </div>
-                  <span className="text-xs font-bold text-gray-700">{(dv.giaDichVu || dv.donGia || 0).toLocaleString()} đ</span>
-                </label>
-              ))}
+                    <span className="text-xs font-bold text-gray-700">
+                      {Number(dv.gia || dv.giaDichVu || dv.donGia || 0).toLocaleString('vi-VN')} đ
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
@@ -1358,13 +1457,28 @@ function DynamicQueuePanel({ benhAnKhamId }) {
 
 /* ──── TAB XÉT NGHIỆM (XEM KẾT QUẢ TỪ CSDL & TẠO CHỈ ĐỊNH) ──── */
 function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
+  const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['xn-benh-an', benhAnKhamId],
     queryFn: () => apiGet(`/xet-nghiem/benh-an-kham/${benhAnKhamId}`),
     enabled: !!benhAnKhamId,
     refetchInterval: 3000,
   });
-  const items = data?.data || [];
+  const items = (data?.data || []).filter((it) => it.chiDinh?.trangThai !== 'huy');
+
+  const handleHuy = async (id) => {
+    if (!window.confirm('Bạn có chắc chắn muốn hủy chỉ định cận lâm sàng này?')) return;
+    try {
+      await apiDelete(`/xet-nghiem/chi-dinh/${id}`);
+      qc.invalidateQueries(['xn-benh-an', benhAnKhamId]);
+      qc.invalidateQueries(['tiep-nhan', 'hang-doi']);
+      qc.invalidateQueries(['tiep-nhan']);
+      qc.invalidateQueries(['tiep-nhan-detail']);
+      qc.invalidateQueries(['dynamic-routing']);
+    } catch (err) {
+      alert(err?.message || 'Lỗi hủy chỉ định');
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -1404,7 +1518,19 @@ function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
                     </span>
                     <span className="font-bold text-sm text-gray-900">{chiDinh.dichVu?.tenDichVu}</span>
                   </div>
-                  <StatusBadge status={chiDinh.trangThai} size="sm" />
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={chiDinh.trangThai} size="sm" />
+                    {chiDinh.trangThai === 'cho_lay_mau' && (
+                      <button
+                        type="button"
+                        onClick={() => handleHuy(chiDinh.id)}
+                        className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded transition-colors flex items-center gap-1 font-medium border border-red-200"
+                        title="Hủy chỉ định cận lâm sàng này"
+                      >
+                        <Trash2 className="h-3 w-3" /> Hủy
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {chiDinh.ghiChuChiDinh && (

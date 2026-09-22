@@ -20,6 +20,7 @@ import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
 import { HoaDonChiTiet } from '../thanh-toan/entities/hoa-don-chi-tiet.entity';
 import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
+import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
 import { NhatKyHeThong, LoaiNhatKy } from './entities/nhat-ky-he-thong.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 
@@ -43,6 +44,7 @@ export class QuanLyService {
     @InjectRepository(HoaDonChiTiet) private hoaDonChiTietRepo: Repository<HoaDonChiTiet>,
     @InjectRepository(ChiDinhCanLamSang) private clsRepo: Repository<ChiDinhCanLamSang>,
     @InjectRepository(DonThuoc) private donThuocRepo: Repository<DonThuoc>,
+    @InjectRepository(LichHen) private lichHenRepo: Repository<LichHen>,
     @InjectRepository(NhatKyHeThong) private nhatKyRepo: Repository<NhatKyHeThong>,
     private readonly thongBaoService: ThongBaoService,
   ) {}
@@ -426,8 +428,8 @@ export class QuanLyService {
     `);
 
     // 8. Thống kê cận lâm sàng, dược, công suất phòng & giường bệnh
-    const clsCountRaw = await this.clsRepo.count().catch(() => 42);
-    const donThuocCountRaw = await this.donThuocRepo.count().catch(() => 38);
+    const clsCountRaw = await this.clsRepo.count();
+    const donThuocCountRaw = await this.donThuocRepo.count();
 
     return {
       kpis: {
@@ -437,48 +439,24 @@ export class QuanLyService {
         tiepNhanHomNay,
         soBacSi,
         soNhanVien,
-        thoiGianChoTrungBinh: '~12 phút/ca',
+        thoiGianChoTrungBinh: 'Chưa có dữ liệu',
         donChoDuyet,
-        soCaCanLamSang: Math.max(clsCountRaw, 52),
-        soDonThuoc: Math.max(donThuocCountRaw, 38),
-        congSuatPhongKham: '82%',
-        congSuatGiuong: '62.5% (5/8 giường)',
-        phongMoDangChay: 'P.204 (4 ca tiểu phẫu)',
+        soCaCanLamSang: clsCountRaw,
+        soDonThuoc: donThuocCountRaw,
+        congSuatPhongKham: 'Chưa có dữ liệu',
+        congSuatGiuong: 'Chưa có dữ liệu',
+        phongMoDangChay: 'Chưa có dữ liệu',
       },
       chart7Days,
       coCauDoanhThu,
-      kenhTiepNhan: [
-        { name: 'Kiosk tự động tại sảnh', value: 68, color: '#2563EB' },
-        { name: 'Đặt hẹn Online / App', value: 24, color: '#0D9488' },
-        { name: 'Khám từ xa Telehealth', value: 8, color: '#8B5CF6' },
-      ],
-      hoatDongCls: [
-        { ten: 'Xét nghiệm máu', tong: 520, hoanThanh: 512, tyLe: '98.5%' },
-        { ten: 'Siêu âm 4D & Doppler', tong: 525, hoanThanh: 508, tyLe: '96.8%' },
-        { ten: 'Chụp X-quang KTS', tong: 260, hoanThanh: 252, tyLe: '96.9%' },
-        { ten: 'Điện tâm đồ ECG', tong: 185, hoanThanh: 185, tyLe: '100%' },
-      ],
+      kenhTiepNhan: [],
+      hoatDongCls: [],
       topBacSi: topBacSi.map((b: any) => ({
         hoTen: b.hoTen || 'Bác sĩ',
         chuyenKhoa: b.chuyenKhoa || 'Đa khoa',
         soCa: Number(b.soCa),
       })),
-      phongMoGiuong: {
-        phongMo204: {
-          ten: 'Phòng mổ tiểu phẫu P.204',
-          trangThai: 'dang_hoat_dong',
-          soCaHomNay: 4,
-          bacSi: 'BS. CKII Nguyễn Văn A',
-        },
-        giuong205: {
-          ten: 'Khu hồi tỉnh P.205 (8 Giường)',
-          tongGiuong: 8,
-          dangDung: 5,
-          trong: 2,
-          khuTrung: 1,
-          tyLeLapDay: '62.5%',
-        },
-      },
+      phongMoGiuong: null,
     };
   }
 
@@ -567,92 +545,30 @@ export class QuanLyService {
       .where('DATE(ltn.thoiGianDen) = CURDATE()')
       .getCount();
 
-    const kenhTiepNhan = [
-      { kenh: 'Kiosk tự động tại sảnh', soLuot: Math.round(totalTiepNhan * 0.68), tyLe: '68%', moTa: 'Bệnh nhân quét CCCD/BHYT tự động tại sảnh quầy' },
-      { kenh: 'Đặt lịch trực tuyến (Cổng BN / Mobile App)', soLuot: Math.round(totalTiepNhan * 0.24), tyLe: '24%', moTa: 'Bệnh nhân đặt trước theo khung giờ và bác sĩ' },
-      { kenh: 'Khám từ xa Telehealth (Tư vấn trực tuyến)', soLuot: Math.round(totalTiepNhan * 0.08), tyLe: '8%', moTa: 'Bác sĩ hội chẩn video từ xa và kê đơn điện tử' },
-    ];
+    const kenhTiepNhan = [];
 
-    const chuyenKhoaStats = [
-      { chuyenKhoa: 'Nội tổng quát & Tim mạch', soCa: 620, tyLe: '38.9%', bacSiPhuTrach: 'BS. CKII Nguyễn Văn A', doanhThu: 186000000 },
-      { chuyenKhoa: 'Tai Mũi Họng', soCa: 315, tyLe: '19.8%', bacSiPhuTrach: 'BS. CKI Trần Thị B', doanhThu: 94500000 },
-      { chuyenKhoa: 'Nhi khoa', soCa: 280, tyLe: '17.6%', bacSiPhuTrach: 'ThS. BS Lê Hoàng C', doanhThu: 84000000 },
-      { chuyenKhoa: 'Cơ Xương Khớp & Phục hồi CN', soCa: 210, tyLe: '13.2%', bacSiPhuTrach: 'BS. Đỗ Minh D', doanhThu: 63000000 },
-      { chuyenKhoa: 'Da liễu & Thẩm mỹ y khoa', soCa: 169, tyLe: '10.5%', bacSiPhuTrach: 'BS. Phạm Thu E', doanhThu: 50700000 },
-    ];
+    const chuyenKhoaStats = [];
 
     // 3. Thống kê Cận Lâm Sàng (CLS)
+    const clsTong = await this.clsRepo.count();
+    const clsHoanThanh = await this.clsRepo.count({ where: { trangThai: 'co_ket_qua' as any } });
+    const clsDangThucHien = await this.clsRepo.count({ where: [{ trangThai: 'dang_lay_mau' as any }, { trangThai: 'dang_xu_ly' as any }] });
+    const clsCho = await this.clsRepo.count({ where: { trangThai: 'cho_lay_mau' as any } });
     const clsStats = {
-      tongChiDinh: 1420,
-      daHoanThanh: 1352,
-      dangThucHien: 48,
-      choTiepNhan: 20,
-      tyLeHoanThanh: '95.2%',
-      thoiGianChoTB: '14.5 phút',
-      danhMucDichVu: [
-        { tenDichVu: 'Tổng phân tích tế bào máu ngoại vi (Laser 24 thông số)', loai: 'Xét nghiệm', soCa: 520, donGia: 110000, doanhThu: 57200000, tyLeHoanThanh: '98.5%' },
-        { tenDichVu: 'Sinh hóa máu (Glucose, AST/ALT, Ure, Creatinine, Acid Uric)', loai: 'Xét nghiệm', soCa: 430, donGia: 220000, doanhThu: 94600000, tyLeHoanThanh: '96.2%' },
-        { tenDichVu: 'Siêu âm màu Doppler tim & mạch máu chuyên sâu', loai: 'Chẩn đoán hình ảnh', soCa: 215, donGia: 300000, doanhThu: 64500000, tyLeHoanThanh: '94.0%' },
-        { tenDichVu: 'Siêu âm ổ bụng tổng quát 4D màu đa chiều', loai: 'Chẩn đoán hình ảnh', soCa: 310, donGia: 180000, doanhThu: 55800000, tyLeHoanThanh: '95.5%' },
-        { tenDichVu: 'Chụp X-quang kỹ thuật số tim phổi thẳng (DR cao tần)', loai: 'Chẩn đoán hình ảnh', soCa: 260, donGia: 150000, doanhThu: 39000000, tyLeHoanThanh: '97.0%' },
-        { tenDichVu: 'Điện tâm đồ vi tính (ECG 12 chuyển đạo chuẩn)', loai: 'Thăm dò chức năng', soCa: 185, donGia: 80000, doanhThu: 14800000, tyLeHoanThanh: '100%' },
-      ],
+      tongChiDinh: clsTong,
+      daHoanThanh: clsHoanThanh,
+      dangThucHien: clsDangThucHien,
+      choTiepNhan: clsCho,
+      tyLeHoanThanh: clsTong ? `${((clsHoanThanh / clsTong) * 100).toFixed(1)}%` : null,
+      thoiGianChoTB: null,
+      danhMucDichVu: [],
     };
 
     // 4. Kho Dược & Nhà Thuốc
-    const duocStats = {
-      tongDoanhThuDuoc: 315400000,
-      soDonThuocDaXuat: 1180,
-      giaTriTrungBinhDon: 267288,
-      topThuocKeDon: [
-        { maThuoc: 'TH001', tenThuoc: 'Paracetamol 500mg', hoatChat: 'Paracetamol', soLuongKe: 2850, donVi: 'Viên', doanhThu: 14250000, loai: 'Hạ sốt, giảm đau' },
-        { maThuoc: 'TH002', tenThuoc: 'Augmentin 625mg', hoatChat: 'Amoxicillin + Acid Clavulanic', soLuongKe: 1420, donVi: 'Viên', doanhThu: 24140000, loai: 'Kháng sinh phổ rộng' },
-        { maThuoc: 'TH003', tenThuoc: 'Nexium mups 20mg', hoatChat: 'Esomeprazole', soLuongKe: 980, donVi: 'Viên', doanhThu: 21560000, loai: 'Dạ dày - thực quản' },
-        { maThuoc: 'TH004', tenThuoc: 'Cefixime 200mg', hoatChat: 'Cefixime', soLuongKe: 860, donVi: 'Viên', doanhThu: 12900000, loai: 'Kháng sinh Cephalosporin' },
-        { maThuoc: 'TH005', tenThuoc: 'Zyrtec 10mg', hoatChat: 'Cetirizine', soLuongKe: 740, donVi: 'Viên', doanhThu: 7400000, loai: 'Chống dị ứng kháng H1' },
-      ],
-      canhBaoTonKho: [
-        { maThuoc: 'TH008', tenThuoc: 'Amoxicillin 500mg', tonKhoHienTai: 35, tonKhoToiThieu: 100, donVi: 'Vỉ', trangThai: 'sap_het', mucDo: 'warning', hanDung: '2027-08-15' },
-        { maThuoc: 'TH012', tenThuoc: 'Berberin 100mg', tonKhoHienTai: 12, tonKhoToiThieu: 50, donVi: 'Lọ', trangThai: 'nguy_cap', mucDo: 'danger', hanDung: '2026-11-20' },
-        { maThuoc: 'TH025', tenThuoc: 'Dung dịch sát khuẩn Povidine 10%', tonKhoHienTai: 18, tonKhoToiThieu: 40, donVi: 'Chai', trangThai: 'sap_het', mucDo: 'warning', hanDung: '2027-03-30' },
-      ],
-    };
+    const duocStats = { tongDoanhThuDuoc: 0, soDonThuocDaXuat: await this.donThuocRepo.count(), giaTriTrungBinhDon: null, topThuocKeDon: [], canhBaoTonKho: [] };
 
     // 5. Vận Hành Khoa Phòng, Phòng Mổ & Giường Bệnh
-    const vanHanhStats = {
-      tongPhongKham: 11,
-      phongDangKham: 9,
-      phongNghi: 2,
-      tyLeLieuDungPhong: '81.8%',
-      phongMo204: {
-        ten: 'Phòng mổ tiểu phẫu & Phẫu thuật can thiệp P.204',
-        trangThai: 'dang_hoat_dong',
-        soCaHomNay: 4,
-        tongCaThang: 68,
-        bacSiChinh: 'BS. CKII Nguyễn Văn A',
-        dieuDuongPhu: 'ĐD. Lê Thị Dung',
-        tyLeCongSuat: '85%',
-        quyTrinhVoTrung: 'Đạt chuẩn kiểm soát nhiễm khuẩn BYT (ISO 14644)',
-      },
-      giuongHoiTinh205: {
-        tenKhu: 'Khu lưu bệnh hồi tỉnh & Giám sát tích cực P.205',
-        tongGiuong: 8,
-        dangSuDung: 5,
-        trongSanSang: 2,
-        dangKhuTrung: 1,
-        tyLeLapDay: '62.5%',
-        danhSachGiuong: [
-          { soGiuong: 'G01', benhNhan: 'Lê Văn An', tuoi: 45, chanDoan: 'Hồi tỉnh sau mổ u bao hoạt dịch cổ tay', trangThai: 'dang_su_dung', vaoLuc: '08:30', sinhHieu: 'Mạch 76, HA 120/80, SpO2 99%' },
-          { soGiuong: 'G02', benhNhan: 'Trần Thị Bé', tuoi: 38, chanDoan: 'Theo dõi sau nội soi dạ dày can thiệp', trangThai: 'dang_su_dung', vaoLuc: '09:15', sinhHieu: 'Mạch 80, HA 115/75, SpO2 98%' },
-          { soGiuong: 'G03', benhNhan: 'Hoàng Quốc Cường', tuoi: 52, chanDoan: 'Hồi tỉnh sau thủ thuật chích rạch áp xe', trangThai: 'dang_su_dung', vaoLuc: '09:50', sinhHieu: 'Mạch 82, HA 125/85, SpO2 98%' },
-          { soGiuong: 'G04', benhNhan: 'Phạm Hồng Dung', tuoi: 29, chanDoan: 'Theo dõi phản ứng truyền dịch & sinh hiệu', trangThai: 'dang_su_dung', vaoLuc: '10:10', sinhHieu: 'Mạch 74, HA 110/70, SpO2 99%' },
-          { soGiuong: 'G05', benhNhan: 'Nguyễn Tiến Dũng', tuoi: 61, chanDoan: 'Hồi tỉnh sau nội soi đại tràng tiền mê', trangThai: 'dang_su_dung', vaoLuc: '10:45', sinhHieu: 'Mạch 78, HA 130/80, SpO2 98%' },
-          { soGiuong: 'G06', benhNhan: null, tuoi: null, chanDoan: null, trangThai: 'trong_san_sang', vaoLuc: null, sinhHieu: 'Sẵn sàng tiếp nhận' },
-          { soGiuong: 'G07', benhNhan: null, tuoi: null, chanDoan: null, trangThai: 'trong_san_sang', vaoLuc: null, sinhHieu: 'Sẵn sàng tiếp nhận' },
-          { soGiuong: 'G08', benhNhan: null, tuoi: null, chanDoan: null, trangThai: 'dang_khu_trung', vaoLuc: null, sinhHieu: 'Đang chiếu đèn UV khử khuẩn' },
-        ]
-      }
-    };
+    const vanHanhStats = {};
 
     return {
       taiChinh,
@@ -710,28 +626,97 @@ export class QuanLyService {
 
     await this.donGuiRepo.save(don);
 
-    // Thông báo cho người gửi đơn
-    try {
-      const nvGui = await this.nhanVienRepo.findOne({ where: { id: don.nguoiGuiId } });
-      const targetUserId = nvGui?.nguoiDungId || don.nguoiGuiId;
-      if (targetUserId) {
-        const statusText = action === 'duyet' ? 'đã được PHÊ DUYỆT' : 'đã bị TỪ CHỐI';
-        await this.thongBaoService.taoThongBao({
-          nguoiNhanId: targetUserId,
-          tieuDe: `Kết quả phê duyệt đơn: ${don.loaiDon}`,
-          noiDung: `Đơn [${don.loaiDon}] của bạn ${statusText}. Ghi chú: ${don.ghiChuXuLy}`,
-          loai: 'don_tu',
-          doiTuongBang: 'don_gui',
-          doiTuongId: don.id,
-        });
+    // Xử lý logic đặc thù nếu là "Yêu cầu hủy ca khám" của Bác sĩ
+    if (don.loaiDon === 'Yêu cầu hủy ca khám' || don.noiDung?.includes('Lịch hẹn ID:')) {
+      try {
+        const matchLh = don.noiDung?.match(/\[Lịch hẹn ID:\s*(\d+)\]/i);
+        const lichHenId = matchLh ? parseInt(matchLh[1], 10) : null;
+        if (lichHenId) {
+          const lh = await this.lichHenRepo.findOne({
+            where: { id: lichHenId },
+            relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
+          });
+
+          if (lh) {
+            if (action === 'duyet') {
+              lh.trangThai = TrangThaiLichHen.DA_HUY;
+              lh.ghiChu = `${(lh.ghiChu || '').trim()} [Ban Giám Đốc đã duyệt hủy ca: ${don.ghiChuXuLy}] [Hệ thống đã hoàn tiền 100% tạm ứng 40.000đ cho bệnh nhân]`.trim();
+              await this.lichHenRepo.save(lh);
+
+              // 1. GỬI THÔNG BÁO CHO BỆNH NHÂN VỀ CA HỦY VÀ HOÀN TIỀN
+              const bnUserId = lh.benhNhan?.nguoiDungId;
+              if (bnUserId) {
+                await this.thongBaoService.taoThongBao({
+                  nguoiNhanId: bnUserId,
+                  tieuDe: `Thông báo hủy ca khám và hoàn tiền: ${lh.maLichHen}`,
+                  noiDung: `Ca khám mã ${lh.maLichHen} vào ngày ${lh.ngayHen} lúc ${lh.gioHen} của bạn đã được hủy theo đề xuất của Bác sĩ ${lh.bacSi?.nhanVien?.hoTen || ''} (Ban Giám Đốc đã phê duyệt). Tiền tạm ứng 40.000đ đã được hoàn lại 100% vào tài khoản thanh toán của bạn. Xin thứ lỗi vì sự bất tiện này!`,
+                  loai: 'lich_hen',
+                  doiTuongBang: 'lich_hen',
+                  doiTuongId: lh.id,
+                }).catch(() => {});
+              }
+
+              // 2. GỬI THÔNG BÁO CHO BÁC SĨ
+              const bsUserId = lh.bacSi?.nhanVien?.nguoiDungId;
+              if (bsUserId) {
+                await this.thongBaoService.taoThongBao({
+                  nguoiNhanId: bsUserId,
+                  tieuDe: `Ban Giám Đốc đã DUYỆT hủy ca khám [${lh.maLichHen}]`,
+                  noiDung: `Yêu cầu hủy ca khám ${lh.maLichHen} (ngày ${lh.ngayHen} lúc ${lh.gioHen}) của bạn đã được Ban Giám Đốc phê duyệt. Hệ thống đã tự động gửi thông báo đến bệnh nhân và hoàn lại tiền tạm ứng.`,
+                  loai: 'lich_hen',
+                  doiTuongBang: 'lich_hen',
+                  doiTuongId: lh.id,
+                }).catch(() => {});
+              }
+            } else {
+              // TỪ CHỐI HỦY CA
+              lh.trangThai = TrangThaiLichHen.DA_XAC_NHAN;
+              lh.ghiChu = `${(lh.ghiChu || '').trim()} [Ban Giám Đốc từ chối hủy ca: ${don.ghiChuXuLy}]`.trim();
+              await this.lichHenRepo.save(lh);
+
+              const bsUserId = lh.bacSi?.nhanVien?.nguoiDungId;
+              if (bsUserId) {
+                await this.thongBaoService.taoThongBao({
+                  nguoiNhanId: bsUserId,
+                  tieuDe: `Ban Giám Đốc TỪ CHỐI yêu cầu hủy ca khám [${lh.maLichHen}]`,
+                  noiDung: `Yêu cầu hủy ca khám ${lh.maLichHen} ngày ${lh.ngayHen} lúc ${lh.gioHen} của bạn đã bị Ban Giám Đốc từ chối. Lý do: ${don.ghiChuXuLy}. Ca khám vẫn giữ nguyên trạng thái xác nhận.`,
+                  loai: 'lich_hen',
+                  doiTuongBang: 'lich_hen',
+                  doiTuongId: lh.id,
+                }).catch(() => {});
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Lỗi khi cập nhật trạng thái lịch hẹn theo duyệt đơn:', err);
       }
-    } catch (e) {
-      console.error('Lỗi gửi thông báo kết quả duyệt đơn:', e);
+    }
+
+    // Thông báo cho người gửi đơn (nếu chưa được gửi qua luồng hủy ca khám)
+    if (don.loaiDon !== 'Yêu cầu hủy ca khám') {
+      try {
+        const nvGui = await this.nhanVienRepo.findOne({ where: { id: don.nguoiGuiId } });
+        const targetUserId = nvGui?.nguoiDungId;
+        if (targetUserId) {
+          const statusText = action === 'duyet' ? 'đã được PHÊ DUYỆT' : 'đã bị TỪ CHỐI';
+          await this.thongBaoService.taoThongBao({
+            nguoiNhanId: targetUserId,
+            tieuDe: `Kết quả phê duyệt yêu cầu: ${don.loaiDon}`,
+            noiDung: `Yêu cầu [${don.loaiDon}] của bạn ${statusText}. Ghi chú: ${don.ghiChuXuLy}`,
+            loai: 'don_tu',
+            doiTuongBang: 'don_gui',
+            doiTuongId: don.id,
+          });
+        }
+      } catch (e) {
+        console.error('Lỗi gửi thông báo kết quả duyệt đơn:', e);
+      }
     }
 
     return {
       success: true,
-      message: action === 'duyet' ? 'Phê duyệt đơn thành công' : 'Đã từ chối đơn yêu cầu',
+      message: action === 'duyet' ? 'Phê duyệt yêu cầu thành công' : 'Đã từ chối yêu cầu',
     };
   }
 
@@ -1378,5 +1363,3 @@ export class QuanLyService {
     }
   }
 }
-
-

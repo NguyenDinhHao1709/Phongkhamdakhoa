@@ -86,6 +86,10 @@ def forecast_patient_volume(req: ForecastRequest):
     Trả về: forecast values, confidence interval, MAPE, pattern analysis.
     """
     try:
+        if req.horizon < 1 or req.horizon > 30:
+            raise HTTPException(status_code=400, detail="horizon phải trong khoảng 1 đến 30 ngày")
+        if req.history_days < 21 or req.history_days > 730:
+            raise HTTPException(status_code=400, detail="history_days phải trong khoảng 21 đến 730 ngày")
         # 1. Load dữ liệu lịch sử từ MySQL
         df = loader.load_daily_counts(days=req.history_days)
 
@@ -93,6 +97,22 @@ def forecast_patient_volume(req: ForecastRequest):
         forecaster = HoltWintersForecaster(df)
         forecast_results = forecaster.forecast(horizon=req.horizon)
         mape = forecaster.mape()
+        if not forecast_results:
+            return {
+                "success": False,
+                "status": "insufficient_data",
+                "message": f"Chưa đủ dữ liệu lượt tiếp nhận thực tế liên tục tối thiểu {forecaster.MIN_HISTORY_DAYS} ngày để dự báo.",
+                "model": None,
+                "mape": None,
+                "do_chinh_xac_pct": None,
+                "forecast": [],
+                "data_quality": {
+                    "observed_days": int(len(df)),
+                    "required_days": forecaster.MIN_HISTORY_DAYS,
+                    "history_days_requested": req.history_days,
+                },
+                "timestamp": datetime.now().isoformat(),
+            }
 
         # 3. Phân tích pattern
         analyzer = PatternAnalyzer(df)
@@ -138,9 +158,16 @@ def forecast_patient_volume(req: ForecastRequest):
                 "tong_hom_nay": int(df_hourly["so_luong"].sum()) if not df_hourly.empty else 0,
                 "tong_lich_su": int(stats.get("tong_luot", 0)) if stats else 0,
             },
+            "data_quality": {
+                "observed_days": int(len(df)),
+                "history_days_requested": req.history_days,
+                "minimum_days_required": forecaster.MIN_HISTORY_DAYS,
+            },
             "timestamp": datetime.now().isoformat(),
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail={"error": str(e), "type": type(e).__name__})
 
@@ -169,7 +196,7 @@ class MedicineForecastItem(BaseModel):
     tenThuoc: str
     tonKhoTong: int
     donViTinh: str = "viên"
-    tieuThuTrungBinhNgay: Optional[float] = 10.0
+    tieuThuTrungBinhNgay: Optional[float] = None
 
 
 class MedicineForecastRequest(BaseModel):
@@ -185,28 +212,30 @@ def forecast_medicine(req: MedicineForecastRequest):
     """
     try:
         # Lấy hệ số tăng trưởng bệnh nhân từ Holt-Winters (nếu có dữ liệu)
-        patient_growth_rate = 1.05  # Mặc định +5% biên độ an toàn
+        patient_growth_rate = None
         try:
             df = loader.load_daily_counts(days=30)
             if len(df) >= 7:
                 avg_recent = df["so_luong"].tail(7).mean()
                 avg_prev = df["so_luong"].head(7).mean()
                 if avg_prev > 0:
-                    patient_growth_rate = max(0.8, min(1.5, float(avg_recent / avg_prev)))
+                    patient_growth_rate = float(avg_recent / avg_prev)
         except Exception:
             pass
 
         results = []
         for item in req.items or []:
-            velocity = item.tieuThuTrungBinhNgay or 10.0
-            projected_demand_7d = round(velocity * 7 * patient_growth_rate)
-            projected_demand_14d = round(velocity * req.horizon_days * patient_growth_rate)
+            if item.tieuThuTrungBinhNgay is None or item.tieuThuTrungBinhNgay <= 0:
+                continue
+            velocity = item.tieuThuTrungBinhNgay
+            projected_demand_7d = round(velocity * 7)
+            projected_demand_14d = round(velocity * req.horizon_days)
 
             # Số ngày còn lại trước khi hết kho
             days_left = round(item.tonKhoTong / velocity, 1) if velocity > 0 else 999
             
             # Ngưỡng an toàn (Safety Stock = 5 ngày tiêu thụ)
-            safety_stock = round(velocity * 5 * patient_growth_rate)
+            safety_stock = round(velocity * 5)
             reorder_needed = item.tonKhoTong <= safety_stock or days_left <= 7
             suggested_reorder_qty = max(0, projected_demand_14d + safety_stock - item.tonKhoTong)
 
@@ -237,7 +266,7 @@ def forecast_medicine(req: MedicineForecastRequest):
         return {
             "success": True,
             "engine": "holt_winters_drug_demand_estimator",
-            "heSoTangTruongBenhNhan": round(patient_growth_rate, 2),
+            "heSoTangTruongBenhNhan": round(patient_growth_rate, 2) if patient_growth_rate is not None else None,
             "soLuongThuocDuBao": len(results),
             "data": results,
             "timestamp": datetime.now().isoformat(),
@@ -250,5 +279,3 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PYTHON_PORT", 5001))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
-
-

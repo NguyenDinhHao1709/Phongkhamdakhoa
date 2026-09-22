@@ -85,6 +85,56 @@ export default function CapPhatThuocModal({ donThuocId, onClose, onSuccess }) {
             </div>
           )}
 
+          {/* Thông tin Bệnh nhân & Trạng thái viện phí */}
+          {donThuoc?.benhNhan && (
+            <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div>
+                <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Thông tin Bệnh nhân:</div>
+                <div className="text-base font-bold text-gray-900 mt-0.5">
+                  {donThuoc.benhNhan.hoTen}
+                  <span className="font-mono font-normal text-xs text-gray-500 ml-2">({donThuoc.benhNhan.maBenhNhan})</span>
+                </div>
+                {donThuoc.benhNhan.soDienThoai && (
+                  <div className="text-gray-500 mt-0.5">Số điện thoại: <span className="font-medium text-gray-700">{donThuoc.benhNhan.soDienThoai}</span></div>
+                )}
+              </div>
+
+              {/* Trạng thái viện phí */}
+              <div className="sm:text-right">
+                <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Trạng thái viện phí:</div>
+                <div className="mt-1">
+                  {donThuoc.trangThaiThanhToan === 'da_thanh_toan' ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-300">
+                      <CheckCircle className="h-3.5 w-3.5 text-emerald-600" /> ĐÃ THANH TOÁN VIỆN PHÍ
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 font-bold border border-amber-300 animate-pulse">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600" /> CHƯA THANH TOÁN
+                    </span>
+                  )}
+                </div>
+                {donThuoc.hoaDon && (
+                  <div className="text-[11px] text-gray-500 mt-1">
+                    Mã HĐ: <span className="font-mono font-semibold text-gray-700">{donThuoc.hoaDon.maHoaDon}</span> • Thực thu: <span className="font-bold text-primary-600">{formatCurrency(donThuoc.hoaDon.thucThu)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Cảnh báo chưa thanh toán */}
+          {donThuoc?.trangThaiThanhToan !== 'da_thanh_toan' && donThuoc?.trangThai !== 'da_cap_phat' && (
+            <div className="flex items-start gap-2.5 rounded-xl bg-amber-50 p-4 text-xs text-amber-900 border border-amber-300">
+              <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block text-sm font-bold text-amber-950 mb-0.5">
+                  Bệnh nhân chưa thanh toán viện phí tại Quầy thu ngân!
+                </strong>
+                Theo quy trình an toàn của phòng khám, người bệnh cần hoàn tất thanh toán hóa đơn viện phí tại Quầy thu ngân trước khi nhận thuốc. Vui lòng nhắc bệnh nhân đóng tiền trước khi bấm cấp phát.
+              </div>
+            </div>
+          )}
+
           {checkInsufficient && (
             <div className="flex items-center gap-2 rounded-lg bg-warning-light p-3 text-xs font-medium text-warning-main border border-warning-main/30">
               <AlertTriangle className="h-4 w-4 flex-shrink-0" />
@@ -151,15 +201,22 @@ export default function CapPhatThuocModal({ donThuocId, onClose, onSuccess }) {
             Đóng
           </MedButton>
           {donThuoc?.trangThai !== 'da_cap_phat' && (
-            <MedButton
-              variant="primary"
-              loading={submitting}
-              disabled={checkInsufficient}
-              onClick={handleDispense}
-              leftIcon={<PackageCheck className="h-4 w-4" />}
-            >
-              Xác nhận Xuất kho & Cấp phát
-            </MedButton>
+            <div className="flex items-center gap-3">
+              {donThuoc?.trangThaiThanhToan !== 'da_thanh_toan' && (
+                <span className="text-xs text-amber-700 font-medium hidden sm:inline">
+                  (Cần hoàn tất thanh toán trước khi cấp phát)
+                </span>
+              )}
+              <MedButton
+                variant="primary"
+                loading={submitting}
+                disabled={checkInsufficient || donThuoc?.trangThaiThanhToan !== 'da_thanh_toan'}
+                onClick={handleDispense}
+                leftIcon={<PackageCheck className="h-4 w-4" />}
+              >
+                Xác nhận Xuất kho & Cấp phát
+              </MedButton>
+            </div>
           )}
         </div>
       </div>

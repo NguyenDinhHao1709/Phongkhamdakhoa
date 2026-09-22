@@ -15,6 +15,7 @@ import { ThanhToanModule } from './modules/thanh-toan/thanh-toan.module';
 import { NhaThuocModule } from './modules/nha-thuoc/nha-thuoc.module';
 import { AiModule } from './modules/ai/ai.module';
 import { ThongBaoModule } from './modules/thong-bao/thong-bao.module';
+import { DanhGiaModule } from './modules/danh-gia/danh-gia.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { ThongBaoModule } from './modules/thong-bao/thong-bao.module';
     NhaThuocModule,     // Sprint 4
     AiModule,           // Sprint 5 (Public AI)
     ThongBaoModule,     // Realtime & In-app Notifications
+    DanhGiaModule,      // Đánh giá chất lượng ca khám & CSAT
   ],
 })
 export class AppModule {}

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not } from 'typeorm';
 import { HoaDon } from './entities/hoa-don.entity';
 import { HoaDonChiTiet } from './entities/hoa-don-chi-tiet.entity';
 import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
@@ -8,8 +8,9 @@ import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 
 import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
-import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
+import { ChiDinhCanLamSang, TrangThaiChiDinh } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
+import { LichHenService } from '../lich-hen/lich-hen.service';
 
 @Injectable()
 export class ThanhToanService {
@@ -28,6 +29,7 @@ export class ThanhToanService {
     private readonly clsRepo: Repository<ChiDinhCanLamSang>,
     @InjectRepository(DonThuoc)
     private readonly donThuocRepo: Repository<DonThuoc>,
+    private readonly lichHenService: LichHenService,
   ) {}
 
   /**
@@ -167,7 +169,7 @@ export class ThanhToanService {
     if (bak) {
       // 2.1 Lấy danh sách Chỉ định Cận lâm sàng (Xét nghiệm / CĐHA)
       const clsList = await this.clsRepo.find({
-        where: { benhAnKhamId: bak.id },
+        where: { benhAnKhamId: bak.id, trangThai: Not(TrangThaiChiDinh.HUY) },
         relations: ['dichVu'],
       });
 
@@ -292,6 +294,7 @@ export class ThanhToanService {
     }
 
     const updated = await this.hoaDonRepo.save(hd);
+    await this.xacNhanLichHenSauThanhToan(hd.luotTiepNhanId);
 
     // Cập nhật trạng thái lượt tiếp nhận sang hoàn thành
     if (hd.luotTiepNhanId) {
@@ -306,15 +309,35 @@ export class ThanhToanService {
     };
   }
 
+  private async xacNhanLichHenSauThanhToan(luotTiepNhanId?: number) {
+    if (!luotTiepNhanId) return;
+    const luot = await this.tiepNhanRepo.findOne({ where: { id: luotTiepNhanId } });
+    if (luot?.lichHenId) {
+      await this.lichHenService.xacNhanSauThanhToan(luot.lichHenId);
+    }
+  }
+
   /**
-   * UC 56: Báo cáo Thống kê Doanh thu Thu ngân
+   * UC 56: Báo cáo Thống kê Doanh thu Thu ngân (Chỉ thống kê ca trực/giao dịch của thu ngân đó)
    */
-  async getThongKeThuNgan(query: { range?: string; tuNgay?: string; denNgay?: string }) {
+  async getThongKeThuNgan(user: any, query: { range?: string; tuNgay?: string; denNgay?: string }) {
     const qb = this.hoaDonRepo.createQueryBuilder('hd')
       .leftJoinAndSelect('hd.benhNhan', 'bn')
       .leftJoinAndSelect('hd.thuNgan', 'tn')
       .leftJoinAndSelect('hd.chiTiet', 'ct')
       .orderBy('hd.ngayThanhToan', 'DESC');
+
+    let isThuNgan = false;
+    let nvThuNgan: NhanVien | null = null;
+    if (user?.vai_tro === 'thu_ngan') {
+      isThuNgan = true;
+      if (user?.id) {
+        nvThuNgan = await this.nhanVienRepo.findOne({ where: { nguoiDungId: user.id } });
+        if (nvThuNgan) {
+          qb.andWhere('hd.thuNganId = :myThuNganId', { myThuNganId: nvThuNgan.id });
+        }
+      }
+    }
 
     const now = new Date();
 
@@ -356,13 +379,17 @@ export class ThanhToanService {
     });
 
     // Biểu đồ theo giờ hôm nay
-    const rawHourly = await this.hoaDonRepo.createQueryBuilder('hd')
+    const rawHourlyQb = this.hoaDonRepo.createQueryBuilder('hd')
       .select('HOUR(hd.ngayThanhToan)', 'gio')
       .addSelect('SUM(hd.thucThu)', 'tien')
       .where('hd.trangThai = :st', { st: 'da_thanh_toan' })
-      .andWhere('DATE(hd.ngayThanhToan) = CURDATE()')
-      .groupBy('HOUR(hd.ngayThanhToan)')
-      .getRawMany();
+      .andWhere('DATE(hd.ngayThanhToan) = CURDATE()');
+
+    if (isThuNgan && nvThuNgan) {
+      rawHourlyQb.andWhere('hd.thuNganId = :myThuNganId', { myThuNganId: nvThuNgan.id });
+    }
+
+    const rawHourly = await rawHourlyQb.groupBy('HOUR(hd.ngayThanhToan)').getRawMany();
 
     const chartTheoGio = Array.from({ length: 10 }, (_, i) => {
       const gio = i + 8; // 8:00 - 17:00
@@ -374,25 +401,24 @@ export class ThanhToanService {
     });
 
     return {
-      success: true,
-      data: {
-        tongThucThu,
-        tongTienGiam,
-        soHoaDonDaThu: daThanhToan.length,
-        soHoaDonChoThu: choThanhToanCount,
-        byPhuongThuc,
-        chartTheoGio,
-        giaoDichGanNhat: daThanhToan.slice(0, 10).map(h => ({
-          id: h.id,
-          maHoaDon: h.maHoaDon,
-          benhNhanTen: h.benhNhan?.hoTen,
-          benhNhanSdt: h.benhNhan?.soDienThoai,
-          thucThu: Number(h.thucThu),
-          phuongThuc: h.phuongThucThanhToan,
-          ngayThanhToan: h.ngayThanhToan,
-          thuNganTen: h.thuNgan?.hoTen,
-        })),
-      },
+      isCaNhan: isThuNgan,
+      tenThuNgan: nvThuNgan?.hoTen || null,
+      tongThucThu,
+      tongTienGiam,
+      soHoaDonDaThu: daThanhToan.length,
+      soHoaDonChoThu: choThanhToanCount,
+      byPhuongThuc,
+      chartTheoGio,
+      giaoDichGanNhat: daThanhToan.slice(0, 10).map(h => ({
+        id: h.id,
+        maHoaDon: h.maHoaDon,
+        benhNhanTen: h.benhNhan?.hoTen,
+        benhNhanSdt: h.benhNhan?.soDienThoai,
+        thucThu: Number(h.thucThu),
+        phuongThuc: h.phuongThucThanhToan,
+        ngayThanhToan: h.ngayThanhToan,
+        thuNganTen: h.thuNgan?.hoTen,
+      })),
     };
   }
 
@@ -475,12 +501,13 @@ export class ThanhToanService {
     const maHoaDon = txnRef.split('_')[0];
 
     if (responseCode === '00') {
-      const hd = await this.hoaDonRepo.findOne({ where: { maHoaDon } });
+      const hd = await this.hoaDonRepo.findOne({ where: { maHoaDon }, relations: ['luotTiepNhan'] });
       if (hd) {
         hd.trangThai = 'da_thanh_toan';
         hd.phuongThucThanhToan = 'chuyen_khoan';
         hd.ngayThanhToan = new Date();
         await this.hoaDonRepo.save(hd);
+        await this.xacNhanLichHenSauThanhToan(hd.luotTiepNhanId);
       }
       return { success: true, message: 'Giao dịch VNPay thành công', RspCode: '00' };
     }

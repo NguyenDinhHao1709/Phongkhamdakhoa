@@ -10,8 +10,8 @@ import { apiGet, apiPost } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 
 const SLOTS = [
-  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00',
-  '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30',
+  '08:00', '09:00', '10:00', '11:00',
+  '13:30', '14:30', '15:30', '16:30',
 ];
 
 const CHUYEN_KHOA_LIST = [
@@ -40,10 +40,14 @@ export default function PublicDatLichModal({
   const [bookingSuccess, setBookingSuccess] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Ràng buộc ngày: Tối đa 30 ngày từ hôm nay
-  const today = new Date().toISOString().split('T')[0];
-  const maxDateObj = new Date();
-  maxDateObj.setDate(maxDateObj.getDate() + 30);
+  // Ràng buộc ngày: Đặt trước từ 2 đến 7 ngày tính từ hôm nay
+  const today = new Date();
+  const minDateObj = new Date(today);
+  minDateObj.setDate(minDateObj.getDate() + 2);
+  const minDate = minDateObj.toISOString().split('T')[0];
+
+  const maxDateObj = new Date(today);
+  maxDateObj.setDate(maxDateObj.getDate() + 7);
   const maxDate = maxDateObj.toISOString().split('T')[0];
 
   const { register, handleSubmit, reset, watch, setValue } = useForm({
@@ -55,7 +59,7 @@ export default function PublicDatLichModal({
       gioiTinh: 'nam',
       chuyenKhoa: initialDoctor?.chuyenKhoa || '',
       bacSiId: initialDoctor?.id ? String(initialDoctor.id) : '',
-      ngayHen: today,
+      ngayHen: minDate,
       lyDoKham: '',
     },
   });
@@ -88,13 +92,12 @@ export default function PublicDatLichModal({
     setSubmitting(true);
     setErrorMsg('');
 
-    // Kiểm tra giờ hẹn tối thiểu trước 4 tiếng
-    const now = new Date();
-    const bookingDateTime = new Date(`${data.ngayHen}T${selectedSlot}:00`);
-    const diffHours = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-    if (diffHours < 4) {
-      setErrorMsg('Theo quy định, bạn phải đặt lịch hẹn trước giờ khám tối thiểu 4 tiếng.');
+    // Kiểm tra ngày hẹn từ 2 đến 7 ngày
+    const targetDate = new Date(data.ngayHen + 'T00:00:00');
+    const minD = new Date(minDate + 'T00:00:00');
+    const maxD = new Date(maxDate + 'T23:59:59');
+    if (targetDate < minD || targetDate > maxD) {
+      setErrorMsg('Theo quy định phòng khám, lịch hẹn chỉ có thể đặt trước từ 2 đến 7 ngày.');
       setSubmitting(false);
       return;
     }
@@ -107,10 +110,11 @@ export default function PublicDatLichModal({
         ngaySinh: data.ngaySinh || undefined,
         gioiTinh: data.gioiTinh || undefined,
         bacSiId: data.bacSiId ? Number(data.bacSiId) : undefined,
+        chuyenKhoa: data.chuyenKhoa,
         ngayHen: data.ngayHen,
         gioHen: selectedSlot,
         hinhThuc: hinhThuc,
-        lyDoKham: (data.chuyenKhoa ? `[Chuyên khoa: ${data.chuyenKhoa}] ` : '') + (data.lyDoKham || ''),
+        lyDoKham: data.lyDoKham || '',
       };
 
       const res = await apiPost('/lich-hen/dat-lich-khach', payload);
@@ -401,7 +405,8 @@ export default function PublicDatLichModal({
                     <HeartPulse className="h-3.5 w-3.5 text-primary-600" /> 3. Chuyên khoa khám *
                   </label>
                   <select
-                    {...register('chuyenKhoa')}
+                    {...register('chuyenKhoa', { required: true })}
+                    required
                     onChange={(e) => {
                       setValue('chuyenKhoa', e.target.value);
                       setValue('bacSiId', '');
@@ -436,11 +441,11 @@ export default function PublicDatLichModal({
               {/* ─── CHỌN NGÀY VÀ GIỜ HẸN ─── */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1">
-                  <Calendar className="h-3.5 w-3.5 text-primary-600" /> 5. Chọn Ngày khám * (Đặt trước tối đa 30 ngày)
+                  <Calendar className="h-3.5 w-3.5 text-primary-600" /> 5. Chọn Ngày khám * (Đặt trước từ 2 đến 7 ngày)
                 </label>
                 <input
                   type="date"
-                  min={today}
+                  min={minDate}
                   max={maxDate}
                   {...register('ngayHen', { required: true })}
                   className="w-full rounded-xl border border-gray-300 p-2.5 text-sm bg-white focus:ring-2 focus:ring-primary-500 font-medium"
@@ -451,7 +456,7 @@ export default function PublicDatLichModal({
                 <label className="block text-xs font-semibold text-gray-700 mb-1.5 flex items-center gap-1">
                   <Clock className="h-3.5 w-3.5 text-primary-600" /> 6. Khung giờ khám * (Tối thiểu trước 4 tiếng)
                 </label>
-                <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {SLOTS.map((slot) => {
                     const isToday = selectedNgayHen === today;
                     const slotTime = new Date(`${today}T${slot}:00`);
@@ -534,4 +539,3 @@ export default function PublicDatLichModal({
     </div>
   );
 }
-

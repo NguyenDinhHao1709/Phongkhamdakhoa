@@ -135,6 +135,11 @@ export class TimKiemBenhNhanDto {
   @IsString()
   moiDangKyHomNay?: string;
 
+  @ApiPropertyOptional({ description: 'Lọc bệnh nhân đã có tài khoản hệ thống' })
+  @IsOptional()
+  @IsString()
+  coTaiKhoan?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Transform(({ value }) => (value ? Number(value) : 1))

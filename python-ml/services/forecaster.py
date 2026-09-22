@@ -114,7 +114,7 @@ class HoltWintersForecaster:
         self._fill_missing_dates()
 
     def _fill_missing_dates(self):
-        """Điền các ngày bị thiếu (VD: chủ nhật đóng cửa) bằng giá trị tối thiểu."""
+        """Bổ sung ngày không có lượt tiếp nhận bằng 0, không nội suy dữ liệu giả."""
         if self.df.empty:
             return
         full_idx = pd.date_range(
@@ -123,12 +123,7 @@ class HoltWintersForecaster:
             freq="D"
         )
         self.df = self.df.reindex(full_idx)
-        # Ngày thiếu điền 0 hoặc mean của ngày cùng thứ trong tuần
-        for i, idx in enumerate(self.df.index):
-            if pd.isna(self.df.loc[idx, "so_luong"]):
-                dow = idx.dayofweek
-                same_dow = self.df[self.df.index.dayofweek == dow]["so_luong"].dropna()
-                self.df.loc[idx, "so_luong"] = same_dow.mean() if len(same_dow) > 0 else 0
+        self.df["so_luong"] = self.df["so_luong"].fillna(0)
 
     def can_forecast(self) -> bool:
         valid = self.df["so_luong"].dropna()
@@ -139,7 +134,7 @@ class HoltWintersForecaster:
         series = self.df["so_luong"].dropna()
 
         if not self.can_forecast():
-            return self._simple_fallback(horizon)
+            return []
 
         try:
             model = ExponentialSmoothing(
@@ -183,37 +178,8 @@ class HoltWintersForecaster:
             return results
 
         except Exception as e:
-            print(f"[HoltWinters Error] {e}, falling back to simple average")
-            return self._simple_fallback(horizon)
-
-    def _simple_fallback(self, horizon: int) -> List[Dict[str, Any]]:
-        """Fallback: weighted moving average khi không đủ dữ liệu."""
-        series = self.df["so_luong"].dropna()
-        avg = int(series.tail(7).mean()) if len(series) >= 7 else int(series.mean()) if len(series) > 0 else 20
-        weekly_avg: Dict[int, float] = {}
-        for dow in range(7):
-            subset = series[series.index.dayofweek == dow]
-            weekly_avg[dow] = subset.mean() if len(subset) > 0 else avg
-
-        results = []
-        start_date = (self.df.index.max() if not self.df.empty else datetime.today()) + timedelta(days=1)
-        for i in range(horizon):
-            ngay = start_date + timedelta(days=i)
-            dow = ngay.weekday()
-            val = max(0, round(avg * 0.7 + weekly_avg.get(dow, avg) * 0.3))
-            muc_do = "cao" if val >= 60 else ("trung_binh" if val >= 30 else "thap")
-            results.append({
-                "ngay": ngay.strftime("%Y-%m-%d"),
-                "thu": ["T2", "T3", "T4", "T5", "T6", "T7", "CN"][dow],
-                "du_bao": val,
-                "ci_thap": max(0, val - 5),
-                "ci_cao": val + 5,
-                "muc_do": muc_do,
-                "is_ngay_le": False,
-                "ten_ngay_le": None,
-                "goi_y_nhan_su": self._suggest_staffing(val, muc_do, False),
-            })
-        return results
+            print(f"[HoltWinters Error] {e}")
+            return []
 
     def _suggest_staffing(self, val: int, muc_do: str, is_holiday: bool) -> str:
         if is_holiday:
@@ -312,4 +278,3 @@ class PatternAnalyzer:
             }
         except Exception:
             return None
-
