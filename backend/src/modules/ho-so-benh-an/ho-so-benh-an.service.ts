@@ -606,15 +606,22 @@ export class HoSoBenhAnService {
     });
     const saved = await this.benhAnRepo.save(bak);
 
-    // 1. Cập nhật lượt tiếp nhận sang trạng thái hoàn thành
+    // 1. Cập nhật lượt tiếp nhận và lịch hẹn sang trạng thái hoàn thành
     if (bak.luotTiepNhanId) {
       try {
         await this.tiepNhanRepo.update(
           { id: bak.luotTiepNhanId },
           { trangThai: TrangThaiTiepNhan.HOAN_THANH }
         );
+        const ltn = await this.tiepNhanRepo.findOne({ where: { id: bak.luotTiepNhanId } });
+        if (ltn?.lichHenId) {
+          await this.lichHenRepo.update(
+            { id: ltn.lichHenId },
+            { trangThai: TrangThaiLichHen.HOAN_THANH }
+          );
+        }
       } catch (e) {
-        console.warn('[ketThucKham] Cập nhật trạng thái lượt tiếp nhận:', e?.message);
+        console.warn('[ketThucKham] Cập nhật trạng thái lượt tiếp nhận/lịch hẹn:', e?.message);
       }
 
       // 2. Tự động tính toán và tạo/cập nhật hóa đơn viện phí trọn gói (Khám + Cận lâm sàng + Đơn thuốc + BHYT)

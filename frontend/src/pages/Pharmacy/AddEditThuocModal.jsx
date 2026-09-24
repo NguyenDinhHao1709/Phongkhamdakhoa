@@ -41,8 +41,8 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
         giaBan: thuoc.giaBan || 0,
         tonKhoTong: thuoc.tonKhoTong || 0,
         maLo: thuoc.maLo || '',
-        ngaySanXuat: thuoc.ngaySanXuat || '',
-        ngayHetHan: thuoc.ngayHetHan || '',
+        ngaySanXuat: thuoc.ngaySanXuat ? String(thuoc.ngaySanXuat).slice(0, 10) : '',
+        ngayHetHan: thuoc.ngayHetHan ? String(thuoc.ngayHetHan).slice(0, 10) : '',
         nhaCungCap: thuoc.nhaCungCap || '',
         moTa: thuoc.moTa || '',
       });

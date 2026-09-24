@@ -21,6 +21,13 @@ const ALL_SLOTS = [
   '13:30', '14:30', '15:30', '16:30',
 ];
 
+function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 @Injectable()
 export class LichHenService implements OnModuleInit {
   private mailer: nodemailer.Transporter;
@@ -66,13 +73,11 @@ export class LichHenService implements OnModuleInit {
   // ─── TỰ ĐỘNG HỦY LỊCH HẸN ĐÃ QUA GIỜ KHÁM (NO-SHOW / HẾT HẠN) ───
   async tuDongHuyLichQuaGio() {
     try {
-      const now = new Date();
-      const todayStr = now.toISOString().slice(0, 10);
-      // Cho phép đồng bộ vào hàng đợi đúng giờ hẹn trước khi đánh dấu no-show.
-      now.setMinutes(now.getMinutes() - 30);
-      const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+      const threshold = new Date(Date.now() - 30 * 60 * 1000);
+      const thresholdDateStr = getLocalDateString(threshold);
+      const thresholdTimeStr = `${String(threshold.getHours()).padStart(2, '0')}:${String(threshold.getMinutes()).padStart(2, '0')}:${String(threshold.getSeconds()).padStart(2, '0')}`;
 
-      // Cập nhật tất cả các lịch hẹn có ngày hẹn < hôm nay hoặc ngày hẹn = hôm nay và giờ hẹn <= hiện tại
+      // Cập nhật tất cả các lịch hẹn có (ngày < thresholdDate) hoặc (ngày = thresholdDate và giờ <= thresholdTime)
       // mà chưa hoàn thành và chưa hủy -> chuyển sang trạng thái DA_HUY
       const result = await this.repo.createQueryBuilder()
         .update(LichHen)
@@ -83,9 +88,9 @@ export class LichHenService implements OnModuleInit {
         .where('trang_thai NOT IN (:...doneStates)', {
           doneStates: [TrangThaiLichHen.HOAN_THANH, TrangThaiLichHen.DA_HUY],
         })
-        .andWhere('(ngay_hen < :todayStr OR (ngay_hen = :todayStr AND gio_hen <= :currentTimeStr))', {
-          todayStr,
-          currentTimeStr,
+        .andWhere('(ngay_hen < :thresholdDateStr OR (ngay_hen = :thresholdDateStr AND gio_hen <= :thresholdTimeStr))', {
+          thresholdDateStr,
+          thresholdTimeStr,
         })
         .execute();
 
@@ -218,7 +223,7 @@ export class LichHenService implements OnModuleInit {
 
   // ─── DANH SÁCH BÁC SĨ TRỰC VÀ CA KHÁM TRỐNG ──────────────────
   async layBacSiVaCaTrong(chuyenKhoa?: string, ngay?: string) {
-    const ngayKham = ngay || new Date().toISOString().slice(0, 10);
+    const ngayKham = ngay || getLocalDateString();
 
     // 1. Lấy danh sách bác sĩ
     const allDoctors = await this.bacSiRepo.find({ relations: ['nhanVien'] });
@@ -901,10 +906,10 @@ export class LichHenService implements OnModuleInit {
 
   // ─── NHẮC LỊCH KHÁM TỰ ĐỘNG QUA EMAIL TRƯỚC 24H ─────────────
   async guiNhacLichTuDong() {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const tomorrowStr = getLocalDateString(tomorrow);
 
     // Lấy các lịch hẹn ngày mai hoặc hôm nay chưa được nhắc
     const qb = this.repo.createQueryBuilder('lh')

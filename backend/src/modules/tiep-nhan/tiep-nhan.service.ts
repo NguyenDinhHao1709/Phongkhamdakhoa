@@ -63,6 +63,8 @@ export class CapNhatTrangThaiTiepNhanDto {
   trangThai: string;
 }
 
+import { DanhGiaCaKham } from '../danh-gia/entities/danh-gia.entity';
+
 @Injectable()
 export class TiepNhanService implements OnModuleInit {
   constructor(
@@ -72,6 +74,7 @@ export class TiepNhanService implements OnModuleInit {
     @InjectRepository(BacSi) private bacSiRepo: Repository<BacSi>,
     @InjectRepository(BenhNhan) private benhNhanRepo: Repository<BenhNhan>,
     @InjectRepository(LichLamViec) private lichLamViecRepo: Repository<LichLamViec>,
+    @InjectRepository(DanhGiaCaKham) private danhGiaRepo: Repository<DanhGiaCaKham>,
   ) {}
 
   onModuleInit() {
@@ -796,6 +799,55 @@ export class TiepNhanService implements OnModuleInit {
 
     const nguoiLonCount = Math.max(0, tongLuot - treEmCount - caoTuoiCount);
 
+    // 7. Thống kê đánh giá của bệnh nhân về tiếp đón & quy trình khám
+    let danhGiaList: any[] = [];
+    let diemTrungBinhTiepDon = 5.0;
+    let diemTrungBinhChung = 5.0;
+    let tongSoDanhGia = 0;
+
+    try {
+      const dgQb = this.danhGiaRepo.createQueryBuilder('dg')
+        .leftJoinAndSelect('dg.benhNhan', 'bn')
+        .leftJoinAndSelect('dg.bacSi', 'bs')
+        .leftJoinAndSelect('bs.nhanVien', 'bsNv')
+        .orderBy('dg.taoLuc', 'DESC');
+
+      if (tuNgay) dgQb.andWhere('dg.taoLuc >= :tuNgay', { tuNgay });
+      if (denNgay) dgQb.andWhere('dg.taoLuc <= :denNgay', { denNgay });
+
+      const allDg = await dgQb.getMany();
+      tongSoDanhGia = allDg.length;
+
+      if (tongSoDanhGia > 0) {
+        const sumTiepDon = allDg.reduce((acc, cur) => acc + Number(cur.diemTiepDon || 5), 0);
+        const sumTB = allDg.reduce((acc, cur) => acc + Number(cur.diemTrungBinh || 5), 0);
+        diemTrungBinhTiepDon = Number((sumTiepDon / tongSoDanhGia).toFixed(1));
+        diemTrungBinhChung = Number((sumTB / tongSoDanhGia).toFixed(1));
+      }
+
+      danhGiaList = allDg.map((dg) => ({
+        id: dg.id,
+        diemTiepDon: Number(dg.diemTiepDon || 5),
+        diemBacSi: Number(dg.diemBacSi || 5),
+        diemTrungBinh: Number(dg.diemTrungBinh || 5),
+        tieuChiHaiLong: dg.tieuChiHaiLong || [],
+        nhanXet: dg.nhanXet || '',
+        anDanh: Boolean(dg.anDanh),
+        phanHoiGiamDoc: dg.phanHoiGiamDoc || '',
+        taoLuc: dg.taoLuc,
+        benhNhan: dg.anDanh
+          ? { hoTen: 'Bệnh nhân ẩn danh', maBenhNhan: '***' }
+          : {
+              hoTen: dg.benhNhan?.hoTen || 'Bệnh nhân',
+              maBenhNhan: dg.benhNhan?.maBenhNhan || '',
+              soDienThoai: dg.benhNhan?.soDienThoai || '',
+            },
+        bacSi: dg.bacSi?.nhanVien?.hoTen || 'Bác sĩ',
+      }));
+    } catch (e) {
+      console.warn('[BaoCaoTiepTan] Lỗi khi lấy dữ liệu đánh giá:', e.message);
+    }
+
     return {
       message: 'Lấy dữ liệu thống kê dashboard tiếp nhận thành công',
       data: {
@@ -813,6 +865,12 @@ export class TiepNhanService implements OnModuleInit {
           treEm: treEmCount,
           nguoiLon: nguoiLonCount,
           caoTuoi: caoTuoiCount,
+        },
+        danhGia: {
+          tongSoDanhGia,
+          diemTrungBinhTiepDon,
+          diemTrungBinhChung,
+          danhSach: danhGiaList,
         },
       },
     };

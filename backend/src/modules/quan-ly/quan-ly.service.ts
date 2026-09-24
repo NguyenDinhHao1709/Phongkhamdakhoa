@@ -587,13 +587,40 @@ export class QuanLyService {
   // ============================================================
   // UC 22: DUYỆT YÊU CẦU CỦA NHÂN VIÊN (BAN GIÁM ĐỐC)
   // ============================================================
-  async getDanhSachDonTu(filter?: { trangThai?: string }) {
+  async getDanhSachDonTu(filter?: {
+    trangThai?: string;
+    vaiTro?: string;
+    tuNgay?: string;
+    denNgay?: string;
+    loaiDon?: string;
+  }) {
     const qb = this.donGuiRepo.createQueryBuilder('dg')
       .leftJoinAndSelect('dg.nguoiGui', 'nv')
+      .leftJoinAndSelect('nv.nguoiDung', 'nd')
+      .leftJoinAndSelect('nd.vaiTro', 'vt')
       .orderBy('dg.ngayGui', 'DESC');
 
     if (filter?.trangThai && filter.trangThai !== 'all') {
       qb.andWhere('dg.trangThai = :st', { st: filter.trangThai });
+    }
+
+    if (filter?.loaiDon && filter.loaiDon !== 'all') {
+      qb.andWhere('dg.loaiDon = :ld', { ld: filter.loaiDon });
+    }
+
+    if (filter?.tuNgay) {
+      qb.andWhere('dg.ngayGui >= :tuNgay', { tuNgay: `${filter.tuNgay} 00:00:00` });
+    }
+
+    if (filter?.denNgay) {
+      qb.andWhere('dg.ngayGui <= :denNgay', { denNgay: `${filter.denNgay} 23:59:59` });
+    }
+
+    if (filter?.vaiTro && filter.vaiTro !== 'all') {
+      qb.andWhere('(vt.maVaiTro = :vt OR nv.chucVu LIKE :vtLike OR vt.tenVaiTro LIKE :vtLike)', {
+        vt: filter.vaiTro,
+        vtLike: `%${filter.vaiTro}%`,
+      });
     }
 
     const list = await qb.getMany();
@@ -609,7 +636,9 @@ export class QuanLyService {
       nguoiGui: {
         id: d.nguoiGui?.id,
         hoTen: d.nguoiGui?.hoTen,
-        chucVu: d.nguoiGui?.chucVu,
+        chucVu: d.nguoiGui?.chucVu || d.nguoiGui?.nguoiDung?.vaiTro?.tenVaiTro || 'Nhân viên',
+        maVaiTro: d.nguoiGui?.nguoiDung?.vaiTro?.maVaiTro,
+        tenVaiTro: d.nguoiGui?.nguoiDung?.vaiTro?.tenVaiTro,
         soDienThoai: d.nguoiGui?.soDienThoai,
         email: d.nguoiGui?.email,
       },
@@ -849,9 +878,11 @@ export class QuanLyService {
       caLamViecList: allCa,
       nhanVienList: nhanVienYTe.map(n => ({
         id: n.id,
+        nguoiDungId: n.nguoiDungId,
         hoTen: n.hoTen,
         chucVu: n.chucVu,
         vaiTro: n.nguoiDung?.vaiTro?.tenVaiTro,
+        maVaiTro: n.nguoiDung?.vaiTro?.maVaiTro,
       })),
       lichPhanCa: lichList.map(l => ({
         id: l.id,

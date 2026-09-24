@@ -7,6 +7,7 @@ import {
   DichVuXetNghiem, ChiDinhCanLamSang, KetQuaXetNghiem,
   TrangThaiChiDinh,
 } from './entities/xet-nghiem.entity';
+import { DanhGiaCaKham } from '../danh-gia/entities/danh-gia.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
@@ -49,8 +50,12 @@ export class NhapKetQuaDto {
 
 export class TimKiemChiDinhDto {
   @ApiPropertyOptional() @IsOptional() @IsString() trangThai?: string;
-  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) page?: number = 1;
-  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) limit?: number = 20;
+  @ApiPropertyOptional() @IsOptional() @IsString() search?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() tuNgay?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() denNgay?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() loaiDichVu?: string;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Type(() => Number) page?: number = 1;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Type(() => Number) limit?: number = 50;
 }
 
 // ──── SERVICE ──────────────────────────────────────────────
@@ -150,7 +155,7 @@ export class XetNghiemService {
 
   // ─── DANH SÁCH CHỈ ĐỊNH (cho KTV) ──────────────────────────
   async danhSachChiDinh(dto: TimKiemChiDinhDto) {
-    const { trangThai, page = 1, limit = 20 } = dto;
+    const { trangThai, page = 1, limit = 50, search, tuNgay, denNgay, loaiDichVu } = dto;
     const qb = this.cdRepo.createQueryBuilder('cd')
       .leftJoinAndSelect('cd.dichVu', 'dv')
       .leftJoinAndSelect('cd.benhAnKham', 'bak')
@@ -159,8 +164,30 @@ export class XetNghiemService {
       .orderBy('cd.thoiGianChiDinh', 'DESC')
       .skip((page - 1) * limit).take(limit);
 
-    if (trangThai) qb.andWhere('cd.trangThai = :trangThai', { trangThai });
-    else qb.andWhere('cd.trangThai != :huy', { huy: 'huy' });
+    if (trangThai && trangThai !== 'all') {
+      qb.andWhere('cd.trangThai = :trangThai', { trangThai });
+    } else {
+      qb.andWhere('cd.trangThai != :huy', { huy: 'huy' });
+    }
+
+    if (loaiDichVu && loaiDichVu !== 'all') {
+      qb.andWhere('dv.loai = :loaiDichVu', { loaiDichVu });
+    }
+
+    if (tuNgay) {
+      qb.andWhere('cd.thoiGianChiDinh >= :tuNgay', { tuNgay: `${tuNgay} 00:00:00` });
+    }
+
+    if (denNgay) {
+      qb.andWhere('cd.thoiGianChiDinh <= :denNgay', { denNgay: `${denNgay} 23:59:59` });
+    }
+
+    if (search) {
+      qb.andWhere(
+        '(bn.hoTen LIKE :kw OR bn.soDienThoai LIKE :kw OR bn.maBenhNhan LIKE :kw OR dv.tenDichVu LIKE :kw OR CAST(cd.id AS CHAR) LIKE :kw)',
+        { kw: `%${search}%` },
+      );
+    }
 
     const [items, total] = await qb.getManyAndCount();
     return {
@@ -367,39 +394,42 @@ export class XetNghiemService {
   }
 
   // ─── THỐNG KÊ XÉT NGHIỆM ──────────────────────────────────
-  async getThongKeXetNghiem(user: any, query: { range?: string; tuNgay?: string; denNgay?: string }) {
-    const { range, tuNgay, denNgay } = query;
+  async getThongKeXetNghiem(user: any, query: { range?: string; tuNgay?: string; denNgay?: string; scope?: string }) {
+    const { range, tuNgay, denNgay, scope = 'all' } = query;
     const qb = this.cdRepo.createQueryBuilder('cd')
       .leftJoinAndSelect('cd.dichVu', 'dv')
+      .leftJoinAndSelect('cd.benhAnKham', 'bak')
+      .leftJoinAndSelect('bak.hoSoBenhAn', 'hs')
+      .leftJoinAndSelect('hs.benhNhan', 'bn')
       .orderBy('cd.thoiGianChiDinh', 'DESC');
 
     let isKtv = false;
     let ktvChuyenMon: string | null = null;
     let tenKtv: string | null = null;
 
-    if (user?.vai_tro === 'ky_thuat_vien' && user?.id) {
-      isKtv = true;
+    if (user?.id) {
       const nv = await this.cdRepo.manager.getRepository(NhanVien).findOne({ where: { nguoiDungId: user.id } });
       if (nv) {
         tenKtv = nv.hoTen;
         const ktvRows = await this.cdRepo.manager.query(
           'SELECT id, chuyen_mon FROM ky_thuat_vien WHERE nhan_vien_id = ? LIMIT 1',
-          [nv.id]
+          [nv.id],
         );
         if (ktvRows && ktvRows.length > 0) {
+          isKtv = true;
           const ktv = ktvRows[0];
           ktvChuyenMon = ktv.chuyen_mon;
-          const cmLower = (ktv.chuyen_mon || '').toLowerCase();
-          const isCdha = cmLower.includes('siêu âm') || cmLower.includes('hình ảnh') || cmLower.includes('x-quang') || cmLower.includes('cdha');
-          const loaiLinhVuc = isCdha ? 'cdha' : 'xet_nghiem';
 
-          // Chỉ lấy các chỉ định: do KTV này trực tiếp thực hiện (cd.kyThuatVienId = ktv.id)
-          // HOẶC chỉ định thuộc đúng chuyên môn của KTV mà chưa ai nhận (cd.kyThuatVienId IS NULL && dv.loai = loaiLinhVuc)
-          // Tuyệt đối không lấy chỉ định của KTV khác!
-          qb.andWhere(
-            '(cd.kyThuatVienId = :ktvId OR (cd.kyThuatVienId IS NULL AND dv.loai = :loaiLinhVuc))',
-            { ktvId: ktv.id, loaiLinhVuc }
-          );
+          // Nếu chọn lọc theo phạm vi cá nhân
+          if (scope === 'ca_nhan') {
+            const cmLower = (ktv.chuyen_mon || '').toLowerCase();
+            const isCdha = cmLower.includes('siêu âm') || cmLower.includes('hình ảnh') || cmLower.includes('x-quang') || cmLower.includes('cdha');
+            const loaiLinhVuc = isCdha ? 'cdha' : 'xet_nghiem';
+            qb.andWhere(
+              '(cd.kyThuatVienId = :ktvId OR (cd.kyThuatVienId IS NULL AND dv.loai = :loaiLinhVuc))',
+              { ktvId: ktv.id, loaiLinhVuc },
+            );
+          }
         }
       }
     }
@@ -412,19 +442,151 @@ export class XetNghiemService {
       qb.andWhere('MONTH(cd.thoiGianChiDinh) = MONTH(CURDATE()) AND YEAR(cd.thoiGianChiDinh) = YEAR(CURDATE())');
     } else if (tuNgay && denNgay) {
       qb.andWhere('DATE(cd.thoiGianChiDinh) BETWEEN :tuNgay AND :denNgay', { tuNgay, denNgay });
+    } else if (tuNgay) {
+      qb.andWhere('DATE(cd.thoiGianChiDinh) >= :tuNgay', { tuNgay });
+    } else if (denNgay) {
+      qb.andWhere('DATE(cd.thoiGianChiDinh) <= :denNgay', { denNgay });
     }
 
     const items = await qb.getMany();
     const tongChiDinh = items.length;
+    const choLayMau = items.filter(i => i.trangThai === TrangThaiChiDinh.CHO_LAY_MAU || i.trangThai === TrangThaiChiDinh.DANG_LAY_MAU).length;
+    const dangXuLy = items.filter(i => i.trangThai === TrangThaiChiDinh.DANG_XU_LY).length;
     const coKetQua = items.filter(i => i.trangThai === TrangThaiChiDinh.CO_KET_QUA).length;
-    const dangXuLy = items.filter(i => i.trangThai === TrangThaiChiDinh.DANG_XU_LY || i.trangThai === TrangThaiChiDinh.CHO_LAY_MAU).length;
+    const daHuy = items.filter(i => i.trangThai === TrangThaiChiDinh.HUY).length;
+    const tyLeHoanThanhVal = tongChiDinh > 0 ? Math.round((coKetQua / tongChiDinh) * 100) : 0;
 
-    // Phân bố theo loại dịch vụ
-    const phanBoLoai: Record<string, number> = {};
-    items.forEach(i => {
-      const loai = i.dichVu?.loai || 'khac';
-      phanBoLoai[loai] = (phanBoLoai[loai] || 0) + 1;
+    // Top 5 dịch vụ được chỉ định nhiều nhất
+    const dichVuMap = new Map<string, { ten: string; loai: string; count: number }>();
+    items.forEach((item) => {
+      const name = item.dichVu?.tenDichVu || 'Dịch vụ khác';
+      const loai = item.dichVu?.loai || 'xet_nghiem';
+      const curr = dichVuMap.get(name) || { ten: name, loai, count: 0 };
+      curr.count += 1;
+      dichVuMap.set(name, curr);
     });
+
+    const topDichVu = Array.from(dichVuMap.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Phân loại cơ cấu dịch vụ (Xét nghiệm máu vs Chẩn đoán hình ảnh)
+    let countXN = 0;
+    let countCDHA = 0;
+    items.forEach((item) => {
+      if (item.dichVu?.loai === 'cdha') countCDHA += 1;
+      else countXN += 1;
+    });
+
+    const coCauLoai = [
+      { name: 'Xét nghiệm máu & Sinh hóa', value: countXN, count: countXN },
+      { name: 'Chẩn đoán hình ảnh (CĐHA)', value: countCDHA, count: countCDHA },
+    ].filter((c) => c.value > 0);
+
+    // Thống kê theo dòng thời gian (theo từng ngày)
+    const timelineMap = new Map<string, { ngay: string; tong: number; hoanThanh: number; dangXuLy: number }>();
+    items.forEach((item) => {
+      if (item.thoiGianChiDinh) {
+        const dStr = String(item.thoiGianChiDinh).substring(0, 10);
+        const dayFormatted = dStr.split('-').reverse().slice(0, 2).join('/'); // dd/mm
+
+        const curr = timelineMap.get(dayFormatted) || { ngay: dayFormatted, tong: 0, hoanThanh: 0, dangXuLy: 0 };
+        curr.tong += 1;
+        if (item.trangThai === TrangThaiChiDinh.CO_KET_QUA) curr.hoanThanh += 1;
+        if (item.trangThai === TrangThaiChiDinh.DANG_XU_LY || item.trangThai === TrangThaiChiDinh.CHO_LAY_MAU || item.trangThai === TrangThaiChiDinh.DANG_LAY_MAU) {
+          curr.dangXuLy += 1;
+        }
+        timelineMap.set(dayFormatted, curr);
+      }
+    });
+
+    const timelineData = Array.from(timelineMap.values()).reverse().slice(-7);
+
+    // Danh sách chỉ định mới nhất
+    const danhSachMoiNhat = items.slice(0, 15).map((c) => ({
+      id: c.id,
+      tenDichVu: c.dichVu?.tenDichVu || 'Dịch vụ cận lâm sàng',
+      loai: c.dichVu?.loai,
+      trangThai: c.trangThai,
+      thoiGianChiDinh: c.thoiGianChiDinh,
+      thoiGianLayMau: c.thoiGianLayMau,
+      thoiGianCoKetQua: c.thoiGianCoKetQua,
+      benhNhan: {
+        hoTen: c.benhAnKham?.hoSoBenhAn?.benhNhan?.hoTen || 'Bệnh nhân',
+        maBenhNhan: c.benhAnKham?.hoSoBenhAn?.benhNhan?.maBenhNhan || '',
+        soDienThoai: c.benhAnKham?.hoSoBenhAn?.benhNhan?.soDienThoai || '',
+      },
+    }));
+
+    // ── THỐNG KÊ ĐÁNH GIÁ & MỨC ĐỘ HÀI LÒNG CỦA BỆNH NHÂN (CSAT CLS) ──
+    const dgQb = this.cdRepo.manager.getRepository(DanhGiaCaKham).createQueryBuilder('dg')
+      .leftJoinAndSelect('dg.benhNhan', 'bn')
+      .orderBy('dg.taoLuc', 'DESC');
+
+    if (range === 'hom_nay') {
+      dgQb.andWhere('DATE(dg.taoLuc) = CURDATE()');
+    } else if (range === '7days' || range === 'tuan_nay') {
+      dgQb.andWhere('dg.taoLuc >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
+    } else if (range === 'thang_nay') {
+      dgQb.andWhere('MONTH(dg.taoLuc) = MONTH(CURDATE()) AND YEAR(dg.taoLuc) = YEAR(CURDATE())');
+    } else if (tuNgay && denNgay) {
+      dgQb.andWhere('DATE(dg.taoLuc) BETWEEN :tuNgay AND :denNgay', { tuNgay, denNgay });
+    } else if (tuNgay) {
+      dgQb.andWhere('DATE(dg.taoLuc) >= :tuNgay', { tuNgay });
+    } else if (denNgay) {
+      dgQb.andWhere('DATE(dg.taoLuc) <= :denNgay', { denNgay });
+    }
+
+    const allDanhGia = await dgQb.getMany();
+    // Lọc các bản ghi có điểm CLS hoặc dùng toàn bộ đánh giá ca khám
+    const danhGiaClsList = allDanhGia.filter((d) => d.diemCls != null && Number(d.diemCls) > 0);
+    const effectiveList = danhGiaClsList.length > 0 ? danhGiaClsList : allDanhGia;
+
+    const tongDanhGia = effectiveList.length;
+    let diemClsTB = 5.0;
+    let tyLeHaiLong = '100%';
+    const phanBoSao = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    const tieuChiCounts: Record<string, number> = {};
+
+    if (tongDanhGia > 0) {
+      let sumScore = 0;
+      let countHaiLong = 0;
+      effectiveList.forEach((d) => {
+        const score = d.diemCls ? Number(d.diemCls) : Math.round(Number(d.diemTrungBinh) || 5);
+        sumScore += score;
+        if (score >= 4) countHaiLong++;
+        if (score >= 1 && score <= 5) {
+          phanBoSao[score as 1 | 2 | 3 | 4 | 5] = (phanBoSao[score as 1 | 2 | 3 | 4 | 5] || 0) + 1;
+        }
+        if (Array.isArray(d.tieuChiHaiLong)) {
+          d.tieuChiHaiLong.forEach((tc) => {
+            if (typeof tc === 'string' && tc.trim()) {
+              tieuChiCounts[tc.trim()] = (tieuChiCounts[tc.trim()] || 0) + 1;
+            }
+          });
+        }
+      });
+      diemClsTB = Math.round((sumScore / tongDanhGia) * 10) / 10;
+      tyLeHaiLong = `${Math.round((countHaiLong / tongDanhGia) * 100)}%`;
+    }
+
+    const topTieuChi = Object.entries(tieuChiCounts)
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+
+    const danhSachNhanXet = effectiveList.slice(0, 15).map((d) => ({
+      id: d.id,
+      diemCls: d.diemCls || Math.round(Number(d.diemTrungBinh) || 5),
+      diemTrungBinh: Number(d.diemTrungBinh) || 5,
+      tieuChiHaiLong: d.tieuChiHaiLong || [],
+      nhanXet: d.nhanXet,
+      anDanh: d.anDanh,
+      phanHoiGiamDoc: d.phanHoiGiamDoc,
+      taoLuc: d.taoLuc,
+      tenBenhNhan: d.anDanh ? 'Bệnh nhân (Ẩn danh)' : d.benhNhan?.hoTen || 'Bệnh nhân',
+      maBenhNhan: d.anDanh ? '***' : d.benhNhan?.maBenhNhan || '',
+    }));
 
     return {
       data: {
@@ -432,16 +594,27 @@ export class XetNghiemService {
         chuyenMon: ktvChuyenMon,
         tenKtv,
         tongChiDinh,
-        coKetQua,
+        choLayMau,
         dangXuLy,
-        hoanThanh: coKetQua,
-        tyLeHoanThanh: tongChiDinh > 0 ? Math.round((coKetQua / tongChiDinh) * 100) : 0,
-        phanBoLoai: Object.entries(phanBoLoai).map(([loai, count]) => ({
-          loai: loai === 'xet_nghiem' ? 'Xét nghiệm máu' : loai === 'cdha' ? 'Chẩn đoán hình ảnh' : 'Khác',
-          count,
-          pct: tongChiDinh > 0 ? Math.round((count / tongChiDinh) * 100) : 0,
-        })),
+        coKetQua,
+        daHoanThanh: coKetQua,
+        daHuy,
+        tyLeHoanThanh: `${tyLeHoanThanhVal}%`,
+        tyLeHoanThanhVal,
+        topDichVu,
+        coCauLoai: coCauLoai.length > 0 ? coCauLoai : [{ name: 'Chưa có chỉ định', value: 1, count: 0 }],
+        timelineData,
+        danhSachMoiNhat,
         dsChiDinh: items.slice(0, 50),
+        // Thông tin Đánh giá Bệnh nhân
+        danhGia: {
+          tongDanhGia,
+          diemClsTB,
+          tyLeHaiLong,
+          phanBoSao,
+          topTieuChi,
+          danhSachNhanXet,
+        },
       },
       message: 'OK',
     };

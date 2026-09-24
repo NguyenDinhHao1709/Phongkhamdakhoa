@@ -10,7 +10,7 @@ import {
   Users, Pill, FlaskConical, BarChart3, TrendingUp, CheckCircle2,
   Clock, Sparkles, BrainCircuit, HeartHandshake, Star, Calendar,
   Printer, FileSpreadsheet, RotateCcw, Filter, AlertCircle, Eye, ArrowUpRight,
-  Search, Stethoscope, Baby, UserCheck, ShieldAlert
+  Search, Stethoscope, Baby, UserCheck, ShieldAlert, MessageSquare, ShieldCheck
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
@@ -43,6 +43,30 @@ export default function ThongKeBacSiPage() {
     staleTime: 0,
     enabled: !!user?.id,
   });
+
+  // Fetch dữ liệu đánh giá & CSAT thực tế từ bệnh nhân
+  const { data: danhGiaData, isLoading: isLoadingReviews } = useQuery({
+    queryKey: ['thong-ke-danh-gia-bac-si', user?.id, timeRange, fromDate, toDate],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (timeRange) params.append('range', timeRange);
+      if (fromDate) params.append('tuNgay', fromDate);
+      if (toDate) params.append('denNgay', toDate);
+      return apiGet(`/danh-gia/bac-si?${params.toString()}`);
+    },
+    staleTime: 0,
+    enabled: !!user?.id,
+  });
+
+  const rawReviews = danhGiaData?.data?.data || danhGiaData?.data || danhGiaData || {};
+  const reviews = {
+    tongDanhGia: rawReviews.tongDanhGia || 0,
+    diemBacSiTB: rawReviews.diemBacSiTB || 5.0,
+    diemTrungBinhChung: rawReviews.diemTrungBinhChung || 5.0,
+    tyLeHaiLong: rawReviews.tyLeHaiLong || '100%',
+    phanBoSao: rawReviews.phanBoSao || { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+    danhSachNhanXet: Array.isArray(rawReviews.danhSachNhanXet) ? rawReviews.danhSachNhanXet : [],
+  };
 
   const stats = data?.data || {
     thongTinBacSi: {
@@ -531,16 +555,22 @@ export default function ThongKeBacSiPage() {
             </div>
           </MedCard>
 
-          {/* Điểm hài lòng CSAT */}
+          {/* Điểm hài lòng CSAT thực tế từ bệnh nhân */}
           <MedCard className="bg-gradient-to-br from-amber-50/70 to-white border-amber-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">Điểm Hài Lòng (CSAT)</p>
-                <h3 className="text-3xl font-extrabold text-amber-900 mt-1">{stats.diemHaiLongCSAT}</h3>
-                <p className="text-xs text-amber-700 mt-1 font-medium">Đánh giá trung bình từ bệnh nhân</p>
+                <h3 className="text-3xl font-extrabold text-amber-900 mt-1">
+                  {reviews.tongDanhGia > 0 ? `${reviews.diemBacSiTB} / 5.0 ⭐` : `${stats.diemHaiLongCSAT || '5.0 / 5.0 ⭐'}`}
+                </h3>
+                <p className="text-xs text-amber-700 mt-1 font-medium">
+                  {reviews.tongDanhGia > 0
+                    ? `${reviews.tongDanhGia} lượt đánh giá thực tế (Tỷ lệ hài lòng: ${reviews.tyLeHaiLong})`
+                    : 'Đánh giá trung bình từ bệnh nhân'}
+                </p>
               </div>
               <div className="p-3.5 bg-amber-100 rounded-2xl text-amber-600 shadow-2xs">
-                <Star className="h-7 w-7" />
+                <Star className="h-7 w-7 fill-amber-400 text-amber-500" />
               </div>
             </div>
           </MedCard>
@@ -631,7 +661,182 @@ export default function ThongKeBacSiPage() {
         </MedCard>
       </div>
 
-      {/* 6. SỔ THEO DÕI CHI TIẾT CÁC CA KHÁM LÂM SÀNG (ENCOUNTER LOG) */}
+      {/* 6. ĐÁNH GIÁ & Ý KIẾN ĐÓNG GÓP TỪ BỆNH NHÂN (CSAT & PATIENT REVIEWS) */}
+      <MedCard
+        title={
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2">
+              <Star className="h-5 w-5 text-amber-500 fill-amber-400" />
+              <span>Đánh Giá Trải Nghiệm Khám Bệnh & Phản Hồi Từ Người Bệnh ({reviews.tongDanhGia} lượt)</span>
+            </div>
+            <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
+              Điểm Bác Sĩ TB: {reviews.diemBacSiTB || 5.0} / 5.0 ⭐
+            </span>
+          </div>
+        }
+        subtitle="Ý kiến ghi nhận thực tế từ bệnh nhân sau khi hoàn tất ca khám, giúp nâng cao chất lượng chuyên môn và thái độ phục vụ"
+      >
+        <div className="space-y-6 pt-2">
+          {/* Hàng tổng quan điểm số & phân bố sao */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-slate-50 p-4.5 rounded-2xl border border-slate-200/80">
+            {/* Cột 1: Điểm số to */}
+            <div className="md:col-span-4 flex flex-col items-center justify-center text-center p-3 bg-white rounded-xl border border-slate-200/60 shadow-2xs">
+              <span className="text-4xl font-black text-amber-600">
+                {reviews.tongDanhGia > 0 ? reviews.diemBacSiTB : '5.0'}
+              </span>
+              <div className="flex items-center gap-1 my-1.5">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <Star
+                    key={s}
+                    className={`h-5 w-5 ${
+                      s <= Math.round(reviews.diemBacSiTB || 5)
+                        ? 'text-amber-400 fill-amber-400'
+                        : 'text-gray-300'
+                    }`}
+                  />
+                ))}
+              </div>
+              <p className="text-xs font-bold text-gray-700">
+                {reviews.tongDanhGia} lượt đánh giá ca khám
+              </p>
+              <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full mt-1 border border-emerald-200">
+                Tỷ lệ hài lòng: {reviews.tyLeHaiLong || '100%'}
+              </span>
+            </div>
+
+            {/* Cột 2: Phân bố số sao 5 -> 1 */}
+            <div className="md:col-span-5 space-y-1.5 justify-center flex flex-col px-2">
+              {[5, 4, 3, 2, 1].map((star) => {
+                const count = reviews.phanBoSao?.[star] || 0;
+                const pct = reviews.tongDanhGia > 0 ? Math.round((count / reviews.tongDanhGia) * 100) : (star === 5 ? 100 : 0);
+                return (
+                  <div key={star} className="flex items-center gap-2 text-xs">
+                    <span className="w-12 font-bold text-gray-700 flex items-center gap-1">
+                      {star} <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
+                    </span>
+                    <div className="flex-1 bg-gray-200 h-2.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-amber-400 h-2.5 rounded-full transition-all duration-500"
+                        style={{ width: `${pct}%` }}
+                      ></div>
+                    </div>
+                    <span className="w-14 text-right text-[11px] font-semibold text-gray-500">
+                      {count} ({pct}%)
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Cột 3: Chỉ số chi tiết */}
+            <div className="md:col-span-3 flex flex-col justify-center space-y-2 p-3 bg-white rounded-xl border border-slate-200/60 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">CSAT chung buổi khám:</span>
+                <strong className="text-primary-700">{reviews.diemTrungBinhChung || 5.0} / 5.0</strong>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">Mức độ đánh giá tốt:</span>
+                <strong className="text-emerald-600">{reviews.tyLeHaiLong || '100%'}</strong>
+              </div>
+              <p className="text-[11px] text-gray-400 italic pt-1 border-t border-gray-100">
+                Dữ liệu được cập nhật tự động khi bệnh nhân hoàn tất ca khám.
+              </p>
+            </div>
+          </div>
+
+          {/* Danh sách các ý kiến / nhận xét thực tế */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+              <MessageSquare className="h-4 w-4 text-primary-600" />
+              Chi Tiết Lời Nhắn & Đóng Góp Ý Kiến Từ Người Bệnh
+            </h4>
+
+            {reviews.danhSachNhanXet?.length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200 text-gray-500">
+                <Star className="h-8 w-8 text-gray-300 mx-auto mb-1.5" />
+                <p className="text-xs font-semibold">Chưa có ý kiến nhận xét nào từ bệnh nhân trong kỳ này.</p>
+                <p className="text-[11px] text-gray-400">Các đánh giá mới của bệnh nhân sẽ tự động hiển thị tại đây.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {(reviews.danhSachNhanXet || []).map((nx) => (
+                  <div
+                    key={nx.id}
+                    className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-amber-300 hover:shadow-xs transition-all space-y-2.5 flex flex-col justify-between"
+                  >
+                    <div className="space-y-2">
+                      {/* Header đánh giá: Tên BN & Sao */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <span className="font-bold text-gray-900 text-xs block">
+                            {nx.tenBenhNhan || 'Bệnh nhân'}
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            {nx.ngayHen ? `Ngày khám: ${nx.ngayHen}` : new Date(nx.taoLuc).toLocaleDateString('vi-VN')}
+                          </span>
+                        </div>
+
+                        {/* Điểm sao Bác sĩ */}
+                        <div className="flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+                          <span className="text-xs font-extrabold text-amber-700">{nx.diemBacSi}</span>
+                          <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-400" />
+                        </div>
+                      </div>
+
+                      {/* Các điểm thành phần nếu có */}
+                      <div className="flex flex-wrap gap-2 text-[10px] text-gray-500">
+                        <span className="bg-slate-100 px-2 py-0.5 rounded">
+                          Tiếp đón: <strong className="text-gray-700">{nx.diemTiepDon || 5}/5 ⭐</strong>
+                        </span>
+                        {nx.diemCls && (
+                          <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
+                            CLS: <strong>{nx.diemCls}/5 ⭐</strong>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Tags tiêu chí hài lòng */}
+                      {nx.tieuChiHaiLong?.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {nx.tieuChiHaiLong.map((t, idx) => (
+                            <span
+                              key={idx}
+                              className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100"
+                            >
+                              ✓ {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Lời nhận xét */}
+                      {nx.nhanXet ? (
+                        <div className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-100 text-xs text-gray-800 leading-relaxed italic">
+                          &ldquo;{nx.nhanXet}&rdquo;
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-gray-400 italic">Bệnh nhân không để lại lời nhắn thêm.</p>
+                      )}
+                    </div>
+
+                    {/* Phản hồi từ Ban Giám Đốc nếu có */}
+                    {nx.phanHoiGiamDoc && (
+                      <div className="p-2.5 bg-amber-50/80 rounded-xl border border-amber-200 text-[11px] text-amber-900 space-y-0.5">
+                        <div className="font-bold flex items-center gap-1 text-amber-800">
+                          <ShieldCheck className="h-3.5 w-3.5 text-amber-600" /> Ý kiến từ Ban Giám Đốc:
+                        </div>
+                        <p className="italic text-amber-950">&ldquo;{nx.phanHoiGiamDoc}&rdquo;</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </MedCard>
+
+      {/* 7. SỔ THEO DÕI CHI TIẾT CÁC CA KHÁM LÂM SÀNG (ENCOUNTER LOG) */}
       <MedCard
         title={
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">

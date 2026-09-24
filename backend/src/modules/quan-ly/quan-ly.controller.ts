@@ -147,8 +147,21 @@ export class QuanLyController {
   @Get('don-tu')
   @Roles('ban_giam_doc')
   @ApiOperation({ summary: 'Danh sách đơn từ / yêu cầu của nhân viên cấp dưới' })
-  getDanhSachDonTu(@Query('trangThai') trangThai?: string) {
-    return this.quanLyService.getDanhSachDonTu({ trangThai });
+  getDanhSachDonTu(
+    @Query('trangThai') trangThai?: string,
+    @Query('vaiTro') vaiTro?: string,
+    @Query('chucVu') chucVu?: string,
+    @Query('tuNgay') tuNgay?: string,
+    @Query('denNgay') denNgay?: string,
+    @Query('loaiDon') loaiDon?: string,
+  ) {
+    return this.quanLyService.getDanhSachDonTu({
+      trangThai,
+      vaiTro: vaiTro || chucVu,
+      tuNgay,
+      denNgay,
+      loaiDon,
+    });
   }
 
   @Patch('don-tu/:id/duyet')

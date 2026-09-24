@@ -7,10 +7,20 @@ import { LichHen } from '../lich-hen/entities/lich-hen.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
+import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
+import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([DanhGiaCaKham, LichHen, BenhNhan, BacSi, NhanVien]),
+    TypeOrmModule.forFeature([
+      DanhGiaCaKham,
+      LichHen,
+      BenhNhan,
+      BacSi,
+      NhanVien,
+      LuotTiepNhan,
+      BenhAnKham,
+    ]),
   ],
   controllers: [DanhGiaController],
   providers: [DanhGiaService],

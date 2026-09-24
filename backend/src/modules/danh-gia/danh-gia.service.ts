@@ -5,10 +5,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DanhGiaCaKham } from './entities/danh-gia.entity';
 import { TaoDanhGiaDto, PhanHoiGiamDocDto } from './dto/danh-gia.dto';
-import { LichHen } from '../lich-hen/entities/lich-hen.entity';
+import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
+import { LuotTiepNhan, TrangThaiTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
+import { BenhAnKham, TrangThaiBenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 
 @Injectable()
 export class DanhGiaService {
@@ -23,6 +25,10 @@ export class DanhGiaService {
     private readonly bacSiRepo: Repository<BacSi>,
     @InjectRepository(NhanVien)
     private readonly nhanVienRepo: Repository<NhanVien>,
+    @InjectRepository(LuotTiepNhan)
+    private readonly luotTiepNhanRepo: Repository<LuotTiepNhan>,
+    @InjectRepository(BenhAnKham)
+    private readonly benhAnRepo: Repository<BenhAnKham>,
   ) {}
 
   /**
@@ -39,68 +45,113 @@ export class DanhGiaService {
     }
 
     let bacSiId: number | null = null;
-    let targetLichHenId: number | null = dto.lichHenId || null;
+    let targetLichHenId: number | null = null;
+    let targetLuotTiepNhanId: number | null = dto.luotTiepNhanId || null;
 
+    let lichHen: LichHen | null = null;
+    let luotTN: LuotTiepNhan | null = null;
+    let bak: BenhAnKham | null = null;
+
+    // 1. Tìm thông tin từ lịch hẹn nếu có
     if (dto.lichHenId) {
-      const lichHen = await this.lichHenRepo.findOne({
+      lichHen = await this.lichHenRepo.findOne({
         where: { id: dto.lichHenId },
         relations: ['bacSi', 'bacSi.nhanVien'],
       });
+      if (lichHen) {
+        if (lichHen.benhNhanId !== benhNhan.id) {
+          throw new ForbiddenException('Bạn chỉ có thể đánh giá ca khám của chính mình');
+        }
+        targetLichHenId = lichHen.id;
+        bacSiId = lichHen.bacSiId;
 
-      if (!lichHen) {
-        throw new NotFoundException('Không tìm thấy lịch hẹn cần đánh giá');
-      }
-
-      if (lichHen.benhNhanId !== benhNhan.id) {
-        throw new ForbiddenException('Bạn chỉ có thể đánh giá ca khám của chính mình');
-      }
-
-      if (lichHen.trangThai !== 'hoan_thanh') {
-        throw new BadRequestException('Chỉ có thể đánh giá ca khám sau khi đã hoàn tất (trạng thái hoàn thành)');
-      }
-
-      const existing = await this.danhGiaRepo.findOne({ where: { lichHenId: dto.lichHenId } });
-      if (existing) {
-        throw new BadRequestException('Ca khám này đã được gửi đánh giá trước đó');
-      }
-
-      bacSiId = lichHen.bacSiId;
-      targetLichHenId = lichHen.id;
-    } else if (dto.luotTiepNhanId) {
-      // Fallback: tìm lichHen từ LuotTiepNhan
-      const luotTN = await this.lichHenRepo.manager
-        .getRepository('LuotTiepNhan')
-        .findOne({ where: { id: dto.luotTiepNhanId } }) as any;
-
-      if (!luotTN) {
-        throw new NotFoundException('Không tìm thấy lượt tiếp nhận cần đánh giá');
-      }
-
-      if (luotTN.benhNhanId !== benhNhan.id) {
-        throw new ForbiddenException('Bạn chỉ có thể đánh giá ca khám của chính mình');
-      }
-
-      if (luotTN.lichHenId) {
-        const lichHen = await this.lichHenRepo.findOne({
-          where: { id: luotTN.lichHenId },
-          relations: ['bacSi', 'bacSi.nhanVien'],
-        });
-
-        if (lichHen) {
-          if (lichHen.trangThai !== 'hoan_thanh') {
-            throw new BadRequestException('Chỉ có thể đánh giá ca khám sau khi đã hoàn tất');
-          }
-          const existing = await this.danhGiaRepo.findOne({ where: { lichHenId: lichHen.id } });
-          if (existing) {
-            throw new BadRequestException('Ca khám này đã được gửi đánh giá trước đó');
-          }
-          bacSiId = lichHen.bacSiId;
-          targetLichHenId = lichHen.id;
+        // Tìm lượt tiếp nhận và bệnh án liên quan
+        luotTN = await this.luotTiepNhanRepo.findOne({ where: { lichHenId: lichHen.id } });
+        if (luotTN) {
+          targetLuotTiepNhanId = luotTN.id;
+          if (!bacSiId && luotTN.bacSiId) bacSiId = luotTN.bacSiId;
+          bak = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: luotTN.id } });
         }
       }
+    }
 
-      if (!bacSiId && luotTN.bacSiId) {
-        bacSiId = luotTN.bacSiId;
+    // 2. Tìm thông tin từ lượt tiếp nhận nếu chưa tìm thấy hoặc cần bổ sung
+    if (!luotTN && dto.luotTiepNhanId) {
+      luotTN = await this.luotTiepNhanRepo.findOne({
+        where: { id: dto.luotTiepNhanId },
+        relations: ['bacSi', 'bacSi.nhanVien'],
+      });
+      if (luotTN) {
+        if (luotTN.benhNhanId !== benhNhan.id) {
+          throw new ForbiddenException('Bạn chỉ có thể đánh giá ca khám của chính mình');
+        }
+        targetLuotTiepNhanId = luotTN.id;
+        if (!bacSiId && luotTN.bacSiId) bacSiId = luotTN.bacSiId;
+
+        if (!lichHen && luotTN.lichHenId) {
+          lichHen = await this.lichHenRepo.findOne({
+            where: { id: luotTN.lichHenId },
+            relations: ['bacSi', 'bacSi.nhanVien'],
+          });
+          if (lichHen) {
+            targetLichHenId = lichHen.id;
+            if (!bacSiId) bacSiId = lichHen.bacSiId;
+          }
+        }
+
+        if (!bak) {
+          bak = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: luotTN.id } });
+        }
+      }
+    }
+
+    if (!lichHen && !luotTN) {
+      throw new NotFoundException('Không tìm thấy thông tin ca khám cần đánh giá');
+    }
+
+    if (bak && !bacSiId) {
+      bacSiId = bak.bacSiId;
+    }
+
+    // 3. Kiểm tra xem ca khám đã hoàn tất hay chưa
+    // Ca khám hoàn thành khi:
+    // - Lịch hẹn ở trạng thái hoan_thanh
+    // - HOẶC Lượt tiếp nhận ở trạng thái hoan_thanh
+    // - HOẶC Phiếu khám (bệnh án) ở trạng thái da_hoan_thanh
+    const isCompleted =
+      lichHen?.trangThai === 'hoan_thanh' ||
+      luotTN?.trangThai === 'hoan_thanh' ||
+      bak?.trangThai === TrangThaiBenhAnKham.DA_HOAN_THANH;
+
+    if (!isCompleted) {
+      throw new BadRequestException('Chỉ có thể đánh giá ca khám sau khi đã hoàn tất (trạng thái hoàn thành)');
+    }
+
+    // Tự động đồng bộ trạng thái hoan_thanh nếu ca khám đã hoàn tất
+    if (lichHen && lichHen.trangThai !== 'hoan_thanh') {
+      try {
+        await this.lichHenRepo.update({ id: lichHen.id }, { trangThai: TrangThaiLichHen.HOAN_THANH });
+      } catch (e) {
+        console.warn('Lỗi đồng bộ trạng thái lịch hẹn:', e?.message);
+      }
+    }
+    if (luotTN && luotTN.trangThai !== 'hoan_thanh') {
+      try {
+        await this.luotTiepNhanRepo.update({ id: luotTN.id }, { trangThai: TrangThaiTiepNhan.HOAN_THANH });
+      } catch (e) {
+        console.warn('Lỗi đồng bộ trạng thái lượt tiếp nhận:', e?.message);
+      }
+    }
+
+    // 4. Kiểm tra xem đã đánh giá trước đó chưa
+    const checkConditions: any[] = [];
+    if (targetLichHenId) checkConditions.push({ lichHenId: targetLichHenId });
+    if (targetLuotTiepNhanId) checkConditions.push({ luotTiepNhanId: targetLuotTiepNhanId });
+
+    if (checkConditions.length > 0) {
+      const existing = await this.danhGiaRepo.findOne({ where: checkConditions });
+      if (existing) {
+        throw new BadRequestException('Ca khám này đã được gửi đánh giá trước đó');
       }
     }
 
@@ -139,11 +190,11 @@ export class DanhGiaService {
   }
 
   /**
-   * Lấy thông tin đánh giá theo lịch hẹn
+   * Lấy thông tin đánh giá theo lịch hẹn hoặc lượt tiếp nhận
    */
-  async layDanhGiaTheoLichHen(lichHenId: number, userId?: number) {
+  async layDanhGiaTheoLichHen(id: number, userId?: number) {
     const dg = await this.danhGiaRepo.findOne({
-      where: { lichHenId },
+      where: [{ lichHenId: id }, { luotTiepNhanId: id }],
       relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
     });
 
@@ -176,12 +227,12 @@ export class DanhGiaService {
   async thongKeDanhGiaBacSi(user: any, query: { range?: string; tuNgay?: string; denNgay?: string }) {
     const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: user.id } });
     if (!nv) {
-      return { data: { tongDanhGia: 0, diemTB: 5.0, danhSach: [] } };
+      return { message: 'OK', data: { tongDanhGia: 0, diemBacSiTB: 5.0, diemTrungBinhChung: 5.0, tyLeHaiLong: '100%', phanBoSao: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }, danhSachNhanXet: [] } };
     }
 
     const bs = await this.bacSiRepo.findOne({ where: { nhanVienId: nv.id } });
     if (!bs) {
-      return { data: { tongDanhGia: 0, diemTB: 5.0, danhSach: [] } };
+      return { message: 'OK', data: { tongDanhGia: 0, diemBacSiTB: 5.0, diemTrungBinhChung: 5.0, tyLeHaiLong: '100%', phanBoSao: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }, danhSachNhanXet: [] } };
     }
 
     const qb = this.danhGiaRepo.createQueryBuilder('dg')
@@ -195,6 +246,7 @@ export class DanhGiaService {
 
     if (tongDanhGia === 0) {
       return {
+        message: 'OK',
         data: {
           tongDanhGia: 0,
           diemBacSiTB: 5.0,
@@ -237,6 +289,7 @@ export class DanhGiaService {
     }));
 
     return {
+      message: 'OK',
       data: {
         tongDanhGia,
         diemBacSiTB,
@@ -264,6 +317,7 @@ export class DanhGiaService {
 
     if (tongDanhGia === 0) {
       return {
+        message: 'OK',
         data: {
           tongDanhGia: 0,
           diemCSATToanVien: 5.0,
@@ -358,6 +412,7 @@ export class DanhGiaService {
     }));
 
     return {
+      message: 'OK',
       data: {
         tongDanhGia,
         diemCSATToanVien,

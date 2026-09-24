@@ -24,7 +24,7 @@ export class DanhGiaController {
   }
 
   @Get('lich-hen/:id')
-  @Roles('benh_nhan', 'bac_si', 'ban_giam_doc', 'quan_tri_vien')
+  @Roles('benh_nhan', 'bac_si', 'ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'tiep_tan', 'dieu_duong', 'thu_ngan')
   @ApiOperation({ summary: 'Xem đánh giá của một ca khám' })
   layDanhGiaTheoLichHen(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.danhGiaService.layDanhGiaTheoLichHen(id, user.id);

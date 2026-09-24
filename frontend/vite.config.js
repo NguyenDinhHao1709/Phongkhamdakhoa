@@ -37,13 +37,15 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: true,
+    chunkSizeWarningLimit: 750,
     rollupOptions: {
       output: {
         manualChunks: {
           vendor: ["react", "react-dom", "react-router-dom"],
           query: ["@tanstack/react-query"],
           charts: ["recharts"],
-          ui: ["@headlessui/react", "lucide-react"],
+          icons: ["lucide-react"],
+          ui: ["@headlessui/react"],
         },
       },
     },

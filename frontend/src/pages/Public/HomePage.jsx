@@ -15,6 +15,19 @@ import PublicDatLichModal from './PublicDatLichModal';
 import AiTriageChatbot from './AiTriageChatbot';
 import MedButton from '../../design-system/components/Button/MedButton';
 
+const ROLE_HOME = {
+  tiep_tan: '/tiep-tan',
+  bac_si: '/bac-si',
+  ky_thuat_vien: '/ky-thuat-vien',
+  nhan_vien_nha_thuoc: '/nha-thuoc',
+  nha_thuoc: '/nha-thuoc',
+  thu_ngan: '/thu-ngan',
+  quan_tri_vien: '/quan-tri',
+  quan_tri_vien_cap_cao: '/quan-tri',
+  ban_giam_doc: '/ban-giam-doc',
+  benh_nhan: '/benh-nhan',
+};
+
 const SPECIALTIES_DATA = [
   {
     id: 'noi-tong-quat',

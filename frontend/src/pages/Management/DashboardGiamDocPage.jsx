@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { apiGet } from '../../services/api';
+import { apiGet, apiPatch } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { formatCurrency } from '../../utils/formatCurrency';
 import {
   TrendingUp, Users, Calendar, AlertCircle, Clock, CheckCircle2,
   DollarSign, Stethoscope, FileText, ArrowRight, RefreshCw, BarChart3,
-  PieChart as PieChartIcon, ShieldCheck, Sparkles, Activity,
-  FlaskConical, Pill, Bed, Sparkle, Layers, ChevronRight, Check
+  ShieldCheck, Sparkles, Sparkle,
+  FlaskConical, Bed, Star, MessageSquare, AlertTriangle, Send, X
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, Tooltip, XAxis, YAxis,
@@ -26,6 +26,58 @@ export default function DashboardGiamDocPage() {
     queryFn: () => apiGet(`/quan-ly/dashboard-stats?range=${timeRange}`),
     refetchInterval: 30000, // Cập nhật tự động mỗi 30s
   });
+
+  // Query đánh giá CSAT toàn viện & BXH bác sĩ dành cho Giám Đốc
+  const { data: csatData, isLoading: isLoadingCsat, refetch: refetchCsat } = useQuery({
+    queryKey: ['giam-doc-csat', timeRange],
+    queryFn: () => apiGet(`/danh-gia/giam-doc?range=${timeRange}`),
+    refetchInterval: 30000,
+  });
+
+  const rawCsat = csatData?.data?.data || csatData?.data || csatData || {};
+  const csat = {
+    tongDanhGia: rawCsat.tongDanhGia || 0,
+    diemCSATToanVien: rawCsat.diemCSATToanVien || 5.0,
+    diemBacSiTB: rawCsat.diemBacSiTB || 5.0,
+    diemClsTB: rawCsat.diemClsTB || 5.0,
+    diemTiepDonTB: rawCsat.diemTiepDonTB || 5.0,
+    tyLeHaiLong: rawCsat.tyLeHaiLong || '100%',
+    bxhBacSi: Array.isArray(rawCsat.bxhBacSi) ? rawCsat.bxhBacSi : [],
+    canhBaoDanhGiaThap: Array.isArray(rawCsat.canhBaoDanhGiaThap) ? rawCsat.canhBaoDanhGiaThap : [],
+    danhSachMoiNhat: Array.isArray(rawCsat.danhSachMoiNhat) ? rawCsat.danhSachMoiNhat : [],
+  };
+
+  // State Modal Giám Đốc phản hồi đánh giá
+  const [replyModal, setReplyModal] = useState({
+    isOpen: false,
+    item: null,
+    text: '',
+    saving: false,
+  });
+
+  const handleOpenReply = (item) => {
+    setReplyModal({
+      isOpen: true,
+      item,
+      text: item.phanHoiGiamDoc || '',
+      saving: false,
+    });
+  };
+
+  const handleSaveReply = async () => {
+    if (!replyModal.item?.id || !replyModal.text.trim()) return;
+    setReplyModal((prev) => ({ ...prev, saving: true }));
+    try {
+      await apiPatch(`/danh-gia/${replyModal.item.id}/phan-hoi`, {
+        phanHoiGiamDoc: replyModal.text.trim(),
+      });
+      refetchCsat();
+      setReplyModal({ isOpen: false, item: null, text: '', saving: false });
+    } catch (e) {
+      alert(e?.message || 'Có lỗi xảy ra khi lưu phản hồi.');
+      setReplyModal((prev) => ({ ...prev, saving: false }));
+    }
+  };
 
   const stats = data?.data;
   const kpis = stats?.kpis || {};
@@ -310,6 +362,227 @@ export default function DashboardGiamDocPage() {
         </div>
       </div>
 
+      {/* ─── CHỈ SỐ CSAT & ĐÁNH GIÁ CHẤT LƯỢNG TOÀN VIỆN (PATIENT SATISFACTION) ─── */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
+              <Star className="h-5 w-5 text-amber-500 fill-amber-400" />
+              Chất Lượng Phục Vụ & Chỉ Số Hài Lòng Toàn Viện (CSAT)
+            </h2>
+            <p className="text-xs text-gray-500">
+              Tổng hợp đánh giá đa chiều từ người bệnh sau khi khám: Bác sĩ điều trị, Cận lâm sàng & Khâu tiếp đón
+            </p>
+          </div>
+          <span className="text-xs font-bold text-amber-800 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200">
+            {csat.tongDanhGia} lượt đánh giá ghi nhận
+          </span>
+        </div>
+
+        {/* 4 Cards CSAT Dimensions */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl p-4.5 text-white shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-amber-100">CSAT Toàn Viện</span>
+              <div className="h-8 w-8 rounded-xl bg-white/20 flex items-center justify-center">
+                <Star className="h-4.5 w-4.5 fill-white text-white" />
+              </div>
+            </div>
+            <div className="my-2">
+              <h3 className="text-3xl font-black">{csat.diemCSATToanVien || 5.0} <span className="text-lg font-normal">/ 5.0</span></h3>
+              <p className="text-[11px] text-amber-100 font-semibold mt-0.5">Tỷ lệ hài lòng chung: {csat.tyLeHaiLong || '100%'}</p>
+            </div>
+            <div className="text-[10px] text-amber-100/90 pt-1.5 border-t border-white/20 flex justify-between">
+              <span>Độ tin cậy: Cao</span>
+              <span>{csat.tongDanhGia} phản hồi</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-4.5 border border-slate-200 shadow-xs flex flex-col justify-between hover:border-blue-300 transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Khám Lâm Sàng Bác Sĩ</span>
+              <div className="h-8 w-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <Stethoscope className="h-4.5 w-4.5" />
+              </div>
+            </div>
+            <div className="my-2">
+              <h3 className="text-2xl font-black text-blue-700">{csat.diemBacSiTB || 5.0} <span className="text-sm font-normal text-gray-400">/ 5.0 ⭐</span></h3>
+              <p className="text-[11px] text-gray-500">Chuyên môn & Thái độ thăm khám</p>
+            </div>
+            <div className="text-[10px] text-emerald-600 font-bold pt-1.5 border-t border-gray-100">
+              ✓ Đạt chuẩn cam kết chất lượng điều trị
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-4.5 border border-slate-200 shadow-xs flex flex-col justify-between hover:border-purple-300 transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Cận Lâm Sàng & Xét Nghiệm</span>
+              <div className="h-8 w-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                <FlaskConical className="h-4.5 w-4.5" />
+              </div>
+            </div>
+            <div className="my-2">
+              <h3 className="text-2xl font-black text-purple-700">{csat.diemClsTB || 5.0} <span className="text-sm font-normal text-gray-400">/ 5.0 ⭐</span></h3>
+              <p className="text-[11px] text-gray-500">Thao tác kỹ thuật & Trả kết quả</p>
+            </div>
+            <div className="text-[10px] text-purple-600 font-bold pt-1.5 border-t border-gray-100">
+              ✓ Thao tác nhẹ nhàng, chuẩn mực
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-4.5 border border-slate-200 shadow-xs flex flex-col justify-between hover:border-emerald-300 transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Tiếp Đón & Cơ Sở Vật Chất</span>
+              <div className="h-8 w-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <Users className="h-4.5 w-4.5" />
+              </div>
+            </div>
+            <div className="my-2">
+              <h3 className="text-2xl font-black text-emerald-700">{csat.diemTiepDonTB || 5.0} <span className="text-sm font-normal text-gray-400">/ 5.0 ⭐</span></h3>
+              <p className="text-[11px] text-gray-500">Chỉ dẫn, tiện nghi & phòng chờ</p>
+            </div>
+            <div className="text-[10px] text-emerald-600 font-bold pt-1.5 border-t border-gray-100">
+              ✓ Tiếp đón chu đáo, thủ tục nhanh
+            </div>
+          </div>
+        </div>
+
+        {/* Bảng Xếp Hạng Bác Sĩ & Danh Sách Nhận Xét */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Cột trái: Bảng Xếp Hạng Bác Sĩ theo điểm CSAT (5 cols) */}
+          <div className="lg:col-span-5">
+            <MedCard
+              title="⭐ Bảng Xếp Hạng Hài Lòng Bác Sĩ"
+              subtitle="Xếp hạng theo điểm số đánh giá thực tế của bệnh nhân"
+            >
+              <div className="divide-y divide-gray-100">
+                {isLoadingCsat ? (
+                  <div className="py-6 text-center text-xs text-gray-400">Đang nạp dữ liệu xếp hạng...</div>
+                ) : (csat.bxhBacSi || []).length === 0 ? (
+                  <div className="py-6 text-center text-xs text-gray-500">Chưa có đủ lượt đánh giá xếp hạng</div>
+                ) : (
+                  (csat.bxhBacSi || []).map((bs, idx) => (
+                    <div key={bs.bacSiId || idx} className="py-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className={`h-7 w-7 rounded-lg flex items-center justify-center font-bold text-xs ${
+                          idx === 0 ? 'bg-amber-100 text-amber-800' : idx === 1 ? 'bg-slate-100 text-slate-700' : 'bg-blue-50 text-blue-700'
+                        }`}>
+                          #{idx + 1}
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900 text-xs">{bs.tenBacSi}</p>
+                          <p className="text-[10px] text-gray-500">{bs.chuyenKhoa} • {bs.soLuotDanhGia} đánh giá</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 font-bold text-amber-700 text-xs">
+                          <span>{bs.diemTB}</span>
+                          <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                        </div>
+                        <span className="text-[10px] font-semibold text-emerald-600 block">
+                          Hài lòng: {bs.tyLeHaiLong}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </MedCard>
+          </div>
+
+          {/* Cột phải: Danh sách Ý kiến & Nhận xét mới nhất kèm phản hồi của Giám Đốc (7 cols) */}
+          <div className="lg:col-span-7">
+            <MedCard
+              title={
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4.5 w-4.5 text-primary-600" />
+                    <span>Ý Kiến Bệnh Nhân & Chỉ Đạo Từ Ban Giám Đốc</span>
+                  </div>
+                  <span className="text-[11px] text-gray-400 font-normal">
+                    Giám Đốc có thể phản hồi trực tiếp
+                  </span>
+                </div>
+              }
+              subtitle="Lắng nghe tiếng nói người bệnh để cải tiến quy trình khám chữa bệnh"
+            >
+              <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                {isLoadingCsat ? (
+                  <div className="py-8 text-center text-xs text-gray-400">Đang tải nhận xét...</div>
+                ) : (csat.danhSachMoiNhat || []).length === 0 ? (
+                  <div className="py-8 text-center text-xs text-gray-500">Chưa có nhận xét nào từ người bệnh</div>
+                ) : (
+                  (csat.danhSachMoiNhat || []).map((item) => (
+                    <div
+                      key={item.id}
+                      className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/80 hover:border-primary-300 transition-all space-y-2 text-xs"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <strong className="text-gray-900 block font-bold">{item.tenBenhNhan}</strong>
+                          <span className="text-[10px] text-gray-500">
+                            Khám Bác sĩ: <strong className="text-gray-700">{item.tenBacSi}</strong> ({item.chuyenKhoa}) • {new Date(item.taoLuc).toLocaleDateString('vi-VN')}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-bold text-amber-800 text-xs">
+                          <span>{item.diemBacSi}</span>
+                          <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                        </div>
+                      </div>
+
+                      {/* Tags tiêu chí */}
+                      {item.tieuChiHaiLong?.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {item.tieuChiHaiLong.map((t, i) => (
+                            <span key={i} className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-medium">
+                              ✓ {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Lời nhận xét */}
+                      {item.nhanXet && (
+                        <p className="text-gray-800 italic bg-white p-2 rounded-lg border border-gray-100 text-xs leading-relaxed">
+                          &ldquo;{item.nhanXet}&rdquo;
+                        </p>
+                      )}
+
+                      {/* Phản hồi của Giám Đốc hoặc nút phản hồi */}
+                      {item.phanHoiGiamDoc ? (
+                        <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-start justify-between gap-2">
+                          <div>
+                            <span className="font-bold flex items-center gap-1 text-amber-800">
+                              <ShieldCheck className="h-3.5 w-3.5 text-amber-600" /> Phản hồi của Ban Giám Đốc:
+                            </span>
+                            <p className="italic text-amber-950 mt-0.5">&ldquo;{item.phanHoiGiamDoc}&rdquo;</p>
+                          </div>
+                          <button
+                            onClick={() => handleOpenReply(item)}
+                            className="text-[10px] text-primary-700 font-bold hover:underline shrink-0"
+                          >
+                            Sửa
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end pt-1">
+                          <button
+                            onClick={() => handleOpenReply(item)}
+                            className="text-[11px] font-bold text-primary-700 hover:text-primary-800 flex items-center gap-1 bg-primary-50 hover:bg-primary-100 px-2.5 py-1 rounded-lg border border-primary-200 transition-colors cursor-pointer"
+                          >
+                            <ShieldCheck className="h-3.5 w-3.5 text-primary-600" /> Phản hồi từ Ban Giám Đốc
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </MedCard>
+          </div>
+        </div>
+      </div>
+
       {/* ─── BOTTOM ROW: TOP BÁC SĨ & ĐIỀU HÀNH NHANH ──────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Top Bác sĩ khám nhiều nhất */}
@@ -412,6 +685,81 @@ export default function DashboardGiamDocPage() {
           </div>
         </div>
       </div>
+
+      {/* ─── MODAL BAN GIÁM ĐỐC PHẢN HỒI ĐÁNH GIÁ ──────────────── */}
+      {replyModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden animate-scale-up">
+            <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 p-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-amber-200" />
+                <h3 className="font-extrabold text-base">Phản Hồi Từ Ban Giám Đốc</h3>
+              </div>
+              <button
+                onClick={() => setReplyModal({ isOpen: false, item: null, text: '', saving: false })}
+                className="p-1 rounded-lg hover:bg-white/20 text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="p-3 bg-amber-50/80 rounded-2xl border border-amber-200 space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-gray-900">{replyModal.item?.tenBenhNhan}</span>
+                  <div className="flex items-center gap-1 font-bold text-amber-700 bg-white px-2 py-0.5 rounded-lg border border-amber-200">
+                    <span>{replyModal.item?.diemBacSi}</span>
+                    <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                  </div>
+                </div>
+                <p className="text-[11px] text-gray-500">
+                  Bác sĩ: {replyModal.item?.tenBacSi} ({replyModal.item?.chuyenKhoa})
+                </p>
+                {replyModal.item?.nhanXet && (
+                  <p className="text-gray-800 italic pt-1 border-t border-amber-200/60 mt-1">
+                    &ldquo;{replyModal.item.nhanXet}&rdquo;
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-bold text-gray-800 block">
+                  Nội dung phản hồi / Chỉ đạo của Ban Giám Đốc:
+                </label>
+                <textarea
+                  rows={4}
+                  value={replyModal.text}
+                  onChange={(e) => setReplyModal((prev) => ({ ...prev, text: e.target.value }))}
+                  placeholder="Ví dụ: Cảm ơn quý bệnh nhân đã tin tưởng và đánh giá cao bác sĩ. Ban Giám Đốc sẽ tiếp tục duy trì và nâng cao chất lượng dịch vụ..."
+                  className="w-full p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all text-xs"
+                ></textarea>
+                <p className="text-[11px] text-gray-400">
+                  * Ý kiến phản hồi sẽ được hiển thị công khai tới Bệnh nhân và Bác sĩ phụ trách ca khám.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReplyModal({ isOpen: false, item: null, text: '', saving: false })}
+                  className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-100 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={replyModal.saving || !replyModal.text.trim()}
+                  onClick={handleSaveReply}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  {replyModal.saving ? 'Đang lưu...' : 'Gửi Phản Hồi'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

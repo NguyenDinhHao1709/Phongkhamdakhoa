@@ -30,29 +30,51 @@ export class NhaThuocService {
   ) {}
 
   /**
-   * Lấy danh sách danh mục thuốc & tồn kho
+   * Lấy danh sách danh mục thuốc & tồn kho (kèm thông tin Lô & Hạn sử dụng)
    */
   async getDanhSachThuoc(search?: string) {
-    const qb = this.thuocRepo.createQueryBuilder('t');
+    const qb = this.thuocRepo.createQueryBuilder('t')
+      .leftJoinAndSelect('t.loThuocList', 'lo');
 
     if (search) {
       const keyword = `%${search.trim()}%`;
-      qb.where('t.tenThuoc LIKE :keyword OR t.maThuoc LIKE :keyword OR t.tenHoatChat LIKE :keyword', { keyword });
+      qb.where('t.tenThuoc LIKE :keyword OR t.maThuoc LIKE :keyword OR t.tenHoatChat LIKE :keyword OR lo.maLo LIKE :keyword', { keyword });
     }
 
-    const list = await qb.orderBy('t.tenThuoc', 'ASC').getMany();
+    const list = await qb.orderBy('t.tenThuoc', 'ASC').addOrderBy('lo.ngayHetHan', 'ASC').getMany();
 
     return {
       message: 'Lấy danh sách thuốc thành công',
-      data: list.map((item) => ({
-        ...item,
-        giaBan: Number(item.giaBan),
-      })),
+      data: list.map((item) => {
+        // Tìm lô còn hạn và còn tồn kho, hoặc lấy lô đầu tiên
+        const activeLo =
+          item.loThuocList && item.loThuocList.length > 0
+            ? item.loThuocList.find((l) => Number(l.soLuongTon) > 0) || item.loThuocList[0]
+            : null;
+
+        return {
+          id: item.id,
+          maThuoc: item.maThuoc,
+          tenThuoc: item.tenThuoc,
+          tenHoatChat: item.tenHoatChat,
+          donViTinh: item.donViTinh,
+          hamLuong: item.hamLuong,
+          duongDung: item.duongDung,
+          giaBan: Number(item.giaBan),
+          tonKhoTong: Number(item.tonKhoTong),
+          moTa: item.moTa,
+          trangThai: item.trangThai,
+          maLo: activeLo?.maLo || null,
+          ngaySanXuat: activeLo?.ngaySanXuat ? String(activeLo.ngaySanXuat).substring(0, 10) : null,
+          ngayHetHan: activeLo?.ngayHetHan ? String(activeLo.ngayHetHan).substring(0, 10) : null,
+          nhaCungCap: activeLo?.nhaCungCap || null,
+        };
+      }),
     };
   }
 
   /**
-   * Thêm thuốc mới
+   * Thêm thuốc mới (kèm khởi tạo Lô & Hạn sử dụng)
    */
   async taoThuoc(data: any) {
     const count = await this.thuocRepo.count();
@@ -62,6 +84,8 @@ export class NhaThuocService {
       maThuoc = `TH_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     }
 
+    const tonKho = Number(data.tonKhoTong || 0);
+
     const newThuoc = this.thuocRepo.create({
       maThuoc,
       tenThuoc: data.tenThuoc,
@@ -70,17 +94,36 @@ export class NhaThuocService {
       hamLuong: data.hamLuong || null,
       duongDung: data.duongDung || 'Uống',
       giaBan: Number(data.giaBan || 0),
-      tonKhoTong: Number(data.tonKhoTong || 0),
+      tonKhoTong: tonKho,
       moTa: data.moTa || null,
-      trangThai: Number(data.tonKhoTong || 0) > 0 ? 'con_hang' : 'het_hang',
+      trangThai: tonKho > 0 ? 'con_hang' : 'het_hang',
     });
 
     const saved = await this.thuocRepo.save(newThuoc);
+
+    // Khởi tạo lô thuốc tương ứng
+    const maLo = data.maLo?.trim() || `L_${saved.maThuoc}_${new Date().getFullYear()}`;
+    const ngaySanXuat = data.ngaySanXuat ? new Date(data.ngaySanXuat) : new Date();
+    const ngayHetHan = data.ngayHetHan ? new Date(data.ngayHetHan) : new Date(Date.now() + 365 * 24 * 3600 * 1000 * 2);
+
+    const newLo = this.loThuocRepo.create({
+      thuocId: saved.id,
+      maLo,
+      ngaySanXuat,
+      ngayHetHan,
+      soLuongNhap: tonKho > 0 ? tonKho : 100,
+      soLuongTon: tonKho,
+      giaNhap: Math.round(Number(data.giaBan || 0) * 0.7),
+      nhaCungCap: data.nhaCungCap || 'Dược Hậu Giang (DHG Pharma)',
+      trangThai: tonKho > 0 ? 'con_hang' : 'het_hang',
+    });
+    await this.loThuocRepo.save(newLo);
+
     return { message: 'Thêm thuốc mới thành công', data: saved };
   }
 
   /**
-   * Cập nhật thông tin thuốc
+   * Cập nhật thông tin thuốc & Lô hạn dùng
    */
   async capNhatThuoc(id: number, data: any) {
     const thuoc = await this.thuocRepo.findOne({ where: { id } });
@@ -100,6 +143,39 @@ export class NhaThuocService {
       trangThai: tonKhoTong > 0 ? 'con_hang' : 'het_hang',
     });
 
+    // Cập nhật hoặc tạo lô thuốc
+    let lo = await this.loThuocRepo.findOne({
+      where: { thuocId: id },
+      order: { ngayHetHan: 'ASC' },
+    });
+
+    const ngaySanXuat = data.ngaySanXuat ? new Date(data.ngaySanXuat) : undefined;
+    const ngayHetHan = data.ngayHetHan ? new Date(data.ngayHetHan) : undefined;
+    const maLo = data.maLo?.trim();
+    const nhaCungCap = data.nhaCungCap?.trim();
+
+    if (lo) {
+      if (maLo) lo.maLo = maLo;
+      if (ngaySanXuat) lo.ngaySanXuat = ngaySanXuat;
+      if (ngayHetHan) lo.ngayHetHan = ngayHetHan;
+      if (nhaCungCap) lo.nhaCungCap = nhaCungCap;
+      if (data.tonKhoTong !== undefined) lo.soLuongTon = Number(data.tonKhoTong);
+      await this.loThuocRepo.save(lo);
+    } else {
+      const newLo = this.loThuocRepo.create({
+        thuocId: id,
+        maLo: maLo || `L_${thuoc.maThuoc}_${new Date().getFullYear()}`,
+        ngaySanXuat: ngaySanXuat || new Date(),
+        ngayHetHan: ngayHetHan || new Date(Date.now() + 365 * 24 * 3600 * 1000 * 2),
+        soLuongNhap: tonKhoTong > 0 ? tonKhoTong : 100,
+        soLuongTon: tonKhoTong,
+        giaNhap: Math.round(Number(data.giaBan || thuoc.giaBan) * 0.7),
+        nhaCungCap: nhaCungCap || 'Dược Hậu Giang (DHG Pharma)',
+        trangThai: tonKhoTong > 0 ? 'con_hang' : 'het_hang',
+      });
+      await this.loThuocRepo.save(newLo);
+    }
+
     return { message: 'Cập nhật thông tin thuốc thành công' };
   }
 
@@ -110,6 +186,8 @@ export class NhaThuocService {
     const thuoc = await this.thuocRepo.findOne({ where: { id } });
     if (!thuoc) throw new NotFoundException('Không tìm thấy thuốc');
 
+    // Xóa các lô liên quan trước
+    await this.loThuocRepo.delete({ thuocId: id });
     await this.thuocRepo.delete(id);
     return { message: 'Xóa thuốc thành công' };
   }
@@ -568,8 +646,110 @@ export class NhaThuocService {
     const sapHetHanCount = await this.loThuocRepo.createQueryBuilder('lo')
       .where('lo.soLuongTon > 0')
       .andWhere('lo.ngayHetHan >= CURRENT_DATE()')
-      .andWhere('lo.ngayHetHan <= DATE_ADD(CURRENT_DATE(), INTERVAL 30 DAY)')
+      .andWhere('lo.ngayHetHan <= DATE_ADD(CURRENT_DATE(), INTERVAL 60 DAY)')
       .getCount();
+
+    // 4. Tính toán Lưu lượng Xuất / Nhập kho theo từng ngày
+    // Xác định khoảng ngày lọc
+    let startDate: Date;
+    const endDate = filter.denNgay ? new Date(filter.denNgay) : new Date();
+    endDate.setHours(23, 59, 59, 999);
+
+    if (filter.tuNgay) {
+      startDate = new Date(filter.tuNgay);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (filter.khoangThoiGian === 'today') {
+      startDate = new Date();
+      startDate.setHours(0, 0, 0, 0);
+    } else if (filter.khoangThoiGian === 'month') {
+      startDate = new Date();
+      startDate.setDate(1);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (filter.khoangThoiGian === 'quarter') {
+      startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - 3);
+      startDate.setHours(0, 0, 0, 0);
+    } else {
+      // Mặc định 7-14 ngày gần nhất
+      startDate = new Date();
+      startDate.setDate(startDate.getDate() - 14);
+      startDate.setHours(0, 0, 0, 0);
+    }
+
+    // Truy vấn tổng đơn xuất theo ngày từ don_thuoc
+    const xuatRows = await this.donThuocRepo
+      .createQueryBuilder('dt')
+      .select('DATE(dt.ngayKe)', 'ngay')
+      .addSelect('COUNT(*)', 'soDonXuat')
+      .where('dt.ngayKe >= :startDate AND dt.ngayKe <= :endDate', {
+        startDate,
+        endDate,
+      })
+      .groupBy('DATE(dt.ngayKe)')
+      .orderBy('DATE(dt.ngayKe)', 'ASC')
+      .getRawMany();
+
+    // Truy vấn tổng lô nhập kho theo ngày từ lo_thuoc
+    const nhapRows = await this.loThuocRepo
+      .createQueryBuilder('lo')
+      .select('DATE(lo.taoLuc)', 'ngay')
+      .addSelect('COUNT(*)', 'soNhapKho')
+      .where('lo.taoLuc >= :startDate AND lo.taoLuc <= :endDate', {
+        startDate,
+        endDate,
+      })
+      .groupBy('DATE(lo.taoLuc)')
+      .orderBy('DATE(lo.taoLuc)', 'ASC')
+      .getRawMany();
+
+    // Tạo map hợp nhất các ngày
+    const mapGiaoDich = new Map<string, { ngay: string; soDonXuat: number; soNhapKho: number }>();
+
+    // Khởi tạo các mốc ngày trong khoảng thời gian để biểu đồ liền mạch
+    const curDate = new Date(startDate);
+    while (curDate <= endDate) {
+      const dStr = curDate.toISOString().slice(0, 10);
+      const displayStr = `${curDate.getDate().toString().padStart(2, '0')}/${(curDate.getMonth() + 1).toString().padStart(2, '0')}`;
+      mapGiaoDich.set(dStr, {
+        ngay: displayStr,
+        soDonXuat: 0,
+        soNhapKho: 0,
+      });
+      curDate.setDate(curDate.getDate() + 1);
+    }
+
+    xuatRows.forEach((r) => {
+      const dStr = new Date(r.ngay).toISOString().slice(0, 10);
+      if (mapGiaoDich.has(dStr)) {
+        mapGiaoDich.get(dStr)!.soDonXuat = Number(r.soDonXuat);
+      } else {
+        const dObj = new Date(r.ngay);
+        mapGiaoDich.set(dStr, {
+          ngay: `${dObj.getDate().toString().padStart(2, '0')}/${(dObj.getMonth() + 1).toString().padStart(2, '0')}`,
+          soDonXuat: Number(r.soDonXuat),
+          soNhapKho: 0,
+        });
+      }
+    });
+
+    nhapRows.forEach((r) => {
+      const dStr = new Date(r.ngay).toISOString().slice(0, 10);
+      if (mapGiaoDich.has(dStr)) {
+        mapGiaoDich.get(dStr)!.soNhapKho = Number(r.soNhapKho);
+      } else {
+        const dObj = new Date(r.ngay);
+        mapGiaoDich.set(dStr, {
+          ngay: `${dObj.getDate().toString().padStart(2, '0')}/${(dObj.getMonth() + 1).toString().padStart(2, '0')}`,
+          soDonXuat: 0,
+          soNhapKho: Number(r.soNhapKho),
+        });
+      }
+    });
+
+    // Chuyển sang mảng sắp xếp theo ngày
+    const luuLuongGiaoDich = Array.from(mapGiaoDich.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([_, val]) => val);
 
     return {
       message: 'Lấy thống kê nhà thuốc thành công',
@@ -580,7 +760,7 @@ export class NhaThuocService {
         donXuatTrongNgay,
         tongGiaTriKho,
         top10Thuoc,
-        luuLuongGiaoDich: [],
+        luuLuongGiaoDich,
         canhBaoRuiRo,
         listThuoc,
       },

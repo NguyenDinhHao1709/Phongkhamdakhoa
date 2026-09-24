@@ -139,6 +139,7 @@ export class AuthService {
     await this.nguoiDungRepo.update(nguoiDung.id, { lanDangNhapCuoi: new Date() });
 
     let benhNhanId = null;
+    let nhanVienId = null;
     let hoTen = nguoiDung.tenDangNhap;
 
     if (nguoiDung.vaiTro?.maVaiTro === 'benh_nhan' || nguoiDung.loaiTaiKhoan === LoaiTaiKhoan.BENH_NHAN) {
@@ -152,7 +153,10 @@ export class AuthService {
       }
     } else {
       const nv = await this.dataSource.getRepository(NhanVien).findOne({ where: { nguoiDungId: nguoiDung.id } });
-      if (nv && nv.hoTen) hoTen = nv.hoTen;
+      if (nv) {
+        nhanVienId = nv.id;
+        if (nv.hoTen) hoTen = nv.hoTen;
+      }
     }
 
     const tokens = await this.taoTokens(nguoiDung);
@@ -167,6 +171,7 @@ export class AuthService {
           tenVaiTro: nguoiDung.vaiTro?.tenVaiTro,
           loaiTaiKhoan: nguoiDung.loaiTaiKhoan,
           benhNhanId,
+          nhanVienId,
         },
         ...tokens,
       },
@@ -448,6 +453,8 @@ export class AuthService {
     }
 
     let benhNhanId = null;
+    let nhanVienId = null;
+    let chucVu = null;
     let hoTen = nguoiDung.tenDangNhap;
 
     if (nguoiDung.vaiTro?.maVaiTro === 'benh_nhan' || nguoiDung.loaiTaiKhoan === LoaiTaiKhoan.BENH_NHAN) {
@@ -461,7 +468,11 @@ export class AuthService {
       }
     } else {
       const nv = await this.dataSource.getRepository(NhanVien).findOne({ where: { nguoiDungId: nguoiDung.id } });
-      if (nv && nv.hoTen) hoTen = nv.hoTen;
+      if (nv) {
+        nhanVienId = nv.id;
+        chucVu = nv.chucVu;
+        if (nv.hoTen) hoTen = nv.hoTen;
+      }
     }
 
     return {
@@ -472,6 +483,8 @@ export class AuthService {
       tenVaiTro: nguoiDung.vaiTro?.tenVaiTro,
       loaiTaiKhoan: nguoiDung.loaiTaiKhoan,
       benhNhanId,
+      nhanVienId,
+      chucVu,
     };
   }
 
