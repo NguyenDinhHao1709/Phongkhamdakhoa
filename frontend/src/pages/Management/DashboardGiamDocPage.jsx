@@ -7,8 +7,8 @@ import { formatCurrency } from '../../utils/formatCurrency';
 import {
   TrendingUp, Users, Calendar, AlertCircle, Clock, CheckCircle2,
   DollarSign, Stethoscope, FileText, ArrowRight, RefreshCw, BarChart3,
-  ShieldCheck, Sparkles, Sparkle,
-  FlaskConical, Bed, Star, MessageSquare, AlertTriangle, Send, X
+  ShieldCheck, Sparkles, FlaskConical, Pill, Star, MessageSquare,
+  AlertTriangle, Send, X, Filter, CalendarDays, Activity, Check
 } from 'lucide-react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, Tooltip, XAxis, YAxis,
@@ -17,20 +17,46 @@ import {
 
 const COLORS = ['#2563EB', '#0D9488', '#F59E0B', '#8B5CF6', '#EC4899', '#6B7280'];
 
+const toDateInputString = (d) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function DashboardGiamDocPage() {
   const navigate = useNavigate();
-  const [timeRange, setTimeRange] = useState('hom_nay');
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['giam-doc-dashboard', timeRange],
-    queryFn: () => apiGet(`/quan-ly/dashboard-stats?range=${timeRange}`),
+  // State bộ lọc thời gian
+  const [timeRange, setTimeRange] = useState('7_ngay');
+  const [fromDate, setFromDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return toDateInputString(d);
+  });
+  const [toDate, setToDate] = useState(() => toDateInputString(new Date()));
+
+  // Xây dựng query string gửi lên backend
+  const buildQueryString = () => {
+    if (timeRange === 'tuy_chon' && fromDate && toDate) {
+      return `tuNgay=${fromDate}&denNgay=${toDate}`;
+    }
+    return `range=${timeRange}`;
+  };
+
+  const queryString = buildQueryString();
+
+  // Query dữ liệu thống kê Dashboard
+  const { data, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['giam-doc-dashboard', queryString],
+    queryFn: () => apiGet(`/quan-ly/dashboard-stats?${queryString}`),
     refetchInterval: 30000, // Cập nhật tự động mỗi 30s
   });
 
   // Query đánh giá CSAT toàn viện & BXH bác sĩ dành cho Giám Đốc
   const { data: csatData, isLoading: isLoadingCsat, refetch: refetchCsat } = useQuery({
-    queryKey: ['giam-doc-csat', timeRange],
-    queryFn: () => apiGet(`/danh-gia/giam-doc?range=${timeRange}`),
+    queryKey: ['giam-doc-csat', queryString],
+    queryFn: () => apiGet(`/danh-gia/giam-doc?${queryString}`),
     refetchInterval: 30000,
   });
 
@@ -79,147 +105,294 @@ export default function DashboardGiamDocPage() {
     }
   };
 
+  const handlePresetSelect = (preset) => {
+    setTimeRange(preset);
+    const now = new Date();
+    if (preset === 'hom_nay') {
+      const today = toDateInputString(now);
+      setFromDate(today);
+      setToDate(today);
+    } else if (preset === '7_ngay') {
+      const d7 = new Date();
+      d7.setDate(d7.getDate() - 6);
+      setFromDate(toDateInputString(d7));
+      setToDate(toDateInputString(now));
+    } else if (preset === 'thang_nay') {
+      const dMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setFromDate(toDateInputString(dMonth));
+      setToDate(toDateInputString(now));
+    } else if (preset === 'quy_nay') {
+      const currentQuarter = Math.floor(now.getMonth() / 3);
+      const dQuarter = new Date(now.getFullYear(), currentQuarter * 3, 1);
+      setFromDate(toDateInputString(dQuarter));
+      setToDate(toDateInputString(now));
+    }
+  };
+
   const stats = data?.data;
   const kpis = stats?.kpis || {};
   const clsList = stats?.hoatDongCls || [];
   const kenhData = stats?.kenhTiepNhan || [];
-  const phongMo = stats?.phongMoGiuong?.phongMo204;
-  const giuongHoiTinh = stats?.phongMoGiuong?.giuong205;
+
+  const getRangeLabel = () => {
+    switch (timeRange) {
+      case 'hom_nay': return 'Hôm nay';
+      case '7_ngay': return '7 ngày gần nhất';
+      case 'thang_nay': return 'Tháng này';
+      case 'quy_nay': return 'Quý này';
+      case 'tat_ca': return 'Toàn thời gian';
+      case 'tuy_chon': return `Từ ${fromDate} đến ${toDate}`;
+      default: return 'Giai đoạn chọn';
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in pb-12">
       {/* ─── HEADER ĐIỀU HÀNH BAN GIÁM ĐỐC ─────────────────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 rounded-2xl p-6 text-white shadow-md border border-slate-800">
-        <div>
-          <div className="flex items-center gap-2 text-amber-300 text-xs font-bold uppercase tracking-wider mb-1">
-            <ShieldCheck className="h-4 w-4" /> Ban Giám Đốc • Điều Hành Trung Tâm Toàn Diện
+      <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 rounded-3xl p-6 md:p-8 text-white shadow-xl border border-slate-800">
+        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 rounded-full bg-blue-500/10 blur-3xl pointer-events-none"></div>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-300/20 text-amber-300 text-xs font-bold uppercase tracking-wider">
+              <ShieldCheck className="h-4 w-4" /> Ban Giám Đốc • Trung Tâm Điều Hành Toàn Viện
+            </div>
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
+              Executive Hospital Dashboard
+            </h1>
+            <p className="text-blue-200/90 text-xs sm:text-sm max-w-2xl leading-relaxed">
+              Theo dõi toàn diện lưu lượng khám chữa bệnh, chỉ định cận lâm sàng, hoạt động dược phẩm & dòng tiền viện phí theo thời gian thực
+            </p>
           </div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-white">Executive Hospital Dashboard</h1>
-          <p className="text-blue-200 text-xs sm:text-sm mt-1 max-w-2xl">
-            Theo dõi thời gian thực lưu lượng khám chữa bệnh, chỉ định cận lâm sàng, hoạt động dược, công suất phòng mổ/giường bệnh & dòng tiền viện phí
-          </p>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={() => { refetch(); refetchCsat(); }}
+              disabled={isFetching}
+              className="flex items-center gap-2 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs font-bold backdrop-blur-md transition-all border border-white/15 shadow-sm"
+              title="Cập nhật dữ liệu mới nhất từ CSDL"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin text-amber-300' : ''}`} />
+              <span>{isFetching ? 'Đang nạp...' : 'Làm mới'}</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/ban-giam-doc/tai-chinh')}
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-900/20 transition-all"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span>Báo Cáo Toàn Diện</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/ban-giam-doc/du-bao-luong')}
+              className="flex items-center gap-2 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 rounded-xl text-xs font-extrabold shadow-md shadow-amber-950/20 transition-all"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Dự Báo Lưu Lượng</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── THANH BỘ LỌC THỜI GIAN NHANH (QUICK TIME FILTERS) ───────────────── */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-2 text-xs font-bold text-gray-700">
+          <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+            <Filter className="h-4 w-4" />
+          </div>
+          <span>Kỳ thống kê điều hành:</span>
+          <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[11px] font-extrabold">
+            {getRangeLabel()}
+          </span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={() => refetch()}
-            className="flex items-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold backdrop-blur-sm transition-colors border border-white/10"
-          >
-            <RefreshCw className="h-3.5 w-3.5" /> Làm mới
-          </button>
-          <button
-            onClick={() => navigate('/ban-giam-doc/tai-chinh')}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
-          >
-            <FileText className="h-3.5 w-3.5" /> Báo Cáo Toàn Diện BV
-          </button>
-          <button
-            onClick={() => navigate('/ban-giam-doc/du-bao-luong')}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-xl text-xs font-extrabold shadow-sm transition-all"
-          >
-            <Sparkles className="h-3.5 w-3.5" /> Dự Báo Lưu Lượng
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Các nút bấm Preset */}
+          <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+            <button
+              onClick={() => handlePresetSelect('hom_nay')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                timeRange === 'hom_nay'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Hôm nay
+            </button>
+            <button
+              onClick={() => handlePresetSelect('7_ngay')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                timeRange === '7_ngay'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              7 ngày qua
+            </button>
+            <button
+              onClick={() => handlePresetSelect('thang_nay')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                timeRange === 'thang_nay'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Tháng này
+            </button>
+            <button
+              onClick={() => handlePresetSelect('quy_nay')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                timeRange === 'quy_nay'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Quý này
+            </button>
+            <button
+              onClick={() => handlePresetSelect('tat_ca')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                timeRange === 'tat_ca'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Tất cả
+            </button>
+            <button
+              onClick={() => setTimeRange('tuy_chon')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                timeRange === 'tuy_chon'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Tùy chọn
+            </button>
+          </div>
+
+          {/* Ô nhập ngày tùy chọn */}
+          {timeRange === 'tuy_chon' && (
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1 text-xs">
+              <CalendarDays className="h-3.5 w-3.5 text-gray-500" />
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="bg-transparent text-gray-800 font-medium focus:outline-none"
+              />
+              <span className="text-gray-400 font-bold">-</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="bg-transparent text-gray-800 font-medium focus:outline-none"
+              />
+            </div>
+          )}
         </div>
       </div>
 
       {/* ─── 5 TOP EXECUTIVE KPI CARDS ─────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* Doanh thu hôm nay */}
-        <div className="bg-white rounded-2xl p-4.5 border border-slate-200 shadow-xs hover:border-blue-300 transition-all">
+        {/* 1. Doanh thu viện phí */}
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-xs hover:border-emerald-300 hover:shadow-md transition-all group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Doanh Thu Viện Phí</span>
-            <div className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <DollarSign className="h-4.5 w-4.5" />
+            <span className="text-xs font-extrabold text-gray-500 uppercase tracking-wider">Doanh Thu Viện Phí</span>
+            <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <DollarSign className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-xl font-black text-emerald-700 mt-2">
-            {isLoading ? '...' : formatCurrency(kpis.doanhThuHomNay || 0)}
+          <p className="text-2xl font-black text-emerald-700 mt-3 tracking-tight">
+            {isLoading ? '...' : formatCurrency(kpis.doanhThuTrongKy || kpis.tongDoanhThu || 0)}
           </p>
-          <div className="flex items-center justify-between text-[11px] text-gray-500 mt-1.5 pt-1.5 border-t border-gray-100">
-            <span>Hôm nay</span>
+          <div className="flex items-center justify-between text-[11px] text-gray-500 mt-2 pt-2 border-t border-gray-100">
+            <span>Hôm nay: <strong className="text-emerald-800">{formatCurrency(kpis.doanhThuHomNay || 0)}</strong></span>
             <span className="font-semibold text-gray-700">Lũy kế: {formatCurrency(kpis.tongDoanhThu || 0)}</span>
           </div>
         </div>
 
-        {/* Lượt tiếp nhận */}
-        <div className="bg-white rounded-2xl p-4.5 border border-slate-200 shadow-xs hover:border-blue-300 transition-all">
+        {/* 2. Lượt tiếp nhận */}
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-xs hover:border-blue-300 hover:shadow-md transition-all group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Lượt Tiếp Nhận</span>
-            <div className="h-9 w-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-              <Users className="h-4.5 w-4.5" />
+            <span className="text-xs font-extrabold text-gray-500 uppercase tracking-wider">Lượt Tiếp Nhận</span>
+            <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Users className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-xl font-black text-blue-700 mt-2">
-            {isLoading ? '...' : `${kpis.tiepNhanHomNay || 0} ca`}
+          <p className="text-2xl font-black text-blue-700 mt-3 tracking-tight">
+            {isLoading ? '...' : `${kpis.tiepNhanTrongKy ?? kpis.totalTiepNhan ?? 0} ca`}
           </p>
-          <div className="flex items-center justify-between text-[11px] text-gray-500 mt-1.5 pt-1.5 border-t border-gray-100">
-            <span>Chờ TB: {kpis.thoiGianChoTrungBinh ?? '—'}</span>
-            <span className="font-semibold text-gray-700">Tổng: {kpis.totalTiepNhan || 0}</span>
+          <div className="flex items-center justify-between text-[11px] text-gray-500 mt-2 pt-2 border-t border-gray-100">
+            <span>Hôm nay: <strong className="text-blue-800">{kpis.tiepNhanHomNay || 0} ca</strong></span>
+            <span className="font-semibold text-gray-700">Tổng tích lũy: {kpis.totalTiepNhan || 0}</span>
           </div>
         </div>
 
-        {/* Chỉ định Cận lâm sàng */}
-        <div className="bg-white rounded-2xl p-4.5 border border-slate-200 shadow-xs hover:border-blue-300 transition-all">
+        {/* 3. Chỉ định Cận lâm sàng */}
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-xs hover:border-purple-300 hover:shadow-md transition-all group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Chỉ Định CLS</span>
-            <div className="h-9 w-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-              <FlaskConical className="h-4.5 w-4.5" />
+            <span className="text-xs font-extrabold text-gray-500 uppercase tracking-wider">Chỉ Định CLS</span>
+            <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <FlaskConical className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-xl font-black text-purple-700 mt-2">
+          <p className="text-2xl font-black text-purple-700 mt-3 tracking-tight">
             {isLoading ? '...' : `${kpis.soCaCanLamSang ?? 0} ca`}
           </p>
-          <div className="flex items-center justify-between text-[11px] text-gray-500 mt-1.5 pt-1.5 border-t border-gray-100">
-            <span className="text-purple-600 font-bold">Theo dữ liệu chỉ định</span>
-            <span className="font-semibold text-emerald-600">{kpis.tyLeHoanThanhCls ?? '—'}</span>
+          <div className="flex items-center justify-between text-[11px] text-gray-500 mt-2 pt-2 border-t border-gray-100">
+            <span className="text-purple-700 font-bold">Hoàn thành: {kpis.soCaHoanThanhCls ?? 0}</span>
+            <span className="font-extrabold text-emerald-600">Đạt {kpis.tyLeHoanThanhCls ?? '100%'}</span>
           </div>
         </div>
 
-        {/* Công suất Giường & Phòng Mổ */}
-        <div className="bg-white rounded-2xl p-4.5 border border-slate-200 shadow-xs hover:border-blue-300 transition-all">
+        {/* 4. Kê Đơn Thuốc & Hoạt Động Dược */}
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-xs hover:border-teal-300 hover:shadow-md transition-all group">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">P.Mổ & Giường P.205</span>
-            <div className="h-9 w-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
-              <Bed className="h-4.5 w-4.5" />
+            <span className="text-xs font-extrabold text-gray-500 uppercase tracking-wider">Đơn Thuốc & Dược</span>
+            <div className="h-10 w-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Pill className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-xl font-black text-teal-700 mt-2">
-            {isLoading ? '...' : `${stats?.phongMoGiuong?.giuong205?.dangDung ?? '—'} / ${stats?.phongMoGiuong?.giuong205?.tongGiuong ?? '—'} giường`}
+          <p className="text-2xl font-black text-teal-700 mt-3 tracking-tight">
+            {isLoading ? '...' : `${kpis.soDonThuoc ?? 0} đơn`}
           </p>
-          <div className="flex items-center justify-between text-[11px] text-gray-500 mt-1.5 pt-1.5 border-t border-gray-100">
-            <span>P.Mổ 204: {stats?.phongMoGiuong?.phongMo204?.trangThai ?? '—'}</span>
-            <span className="font-semibold text-teal-700">{stats?.phongMoGiuong?.giuong205?.tyLeLapDay ?? '—'}</span>
+          <div className="flex items-center justify-between text-[11px] text-gray-500 mt-2 pt-2 border-t border-gray-100">
+            <span>Bác sĩ: <strong className="text-gray-800">{kpis.soBacSi || 0}</strong></span>
+            <span className="font-semibold text-teal-700">Nhân sự: {kpis.soNhanVien || 0}</span>
           </div>
         </div>
 
-        {/* Đơn yêu cầu chờ duyệt */}
+        {/* 5. Đơn yêu cầu chờ duyệt */}
         <div
           onClick={() => navigate('/ban-giam-doc/phe-duyet-don')}
-          className="bg-white rounded-2xl p-4.5 border border-amber-200 shadow-xs hover:border-amber-400 cursor-pointer transition-all group"
+          className="bg-white rounded-2xl p-5 border border-amber-200/90 shadow-xs hover:border-amber-400 hover:shadow-md cursor-pointer transition-all group"
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">Yêu Cầu Chờ Duyệt</span>
-            <div className="h-9 w-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <FileText className="h-4.5 w-4.5" />
+            <span className="text-xs font-extrabold text-amber-700 uppercase tracking-wider">Yêu Cầu Chờ Duyệt</span>
+            <div className="h-10 w-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <FileText className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-xl font-black text-amber-600 mt-2">
+          <p className="text-2xl font-black text-amber-600 mt-3 tracking-tight">
             {isLoading ? '...' : `${kpis.donChoDuyet || 0} đơn`}
           </p>
-          <div className="flex items-center justify-between text-[11px] text-primary-600 font-bold mt-1.5 pt-1.5 border-t border-amber-100">
+          <div className="flex items-center justify-between text-[11px] text-primary-600 font-bold mt-2 pt-2 border-t border-amber-100">
             <span>Đơn từ nhân viên</span>
-            <span className="flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">Xử lý ngay <ArrowRight className="h-3 w-3" /></span>
+            <span className="flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+              Xử lý ngay <ArrowRight className="h-3 w-3" />
+            </span>
           </div>
         </div>
       </div>
 
-      {/* ─── CHARTS ROW: XU HƯỚNG & CƠ CẤU DOANH THU & KÊNH TIẾP NHẬN ─────────── */}
+      {/* ─── CHARTS ROW: XU HƯỚNG & CƠ CẤU DOANH THU ─────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Biểu đồ 7 ngày qua: Lượt khám & Doanh thu */}
+        {/* Biểu đồ xu hướng lượt khám & doanh thu */}
         <div className="lg:col-span-2">
           <MedCard
-            title="📊 Xu Hướng Khám Chữa Bệnh & Doanh Thu (7 Ngày Gần Nhất)"
-            subtitle="Số lượt bệnh nhân tiếp nhận và tổng doanh thu thu được theo ngày"
+            title={`📊 Xu Hướng Khám Chữa Bệnh & Doanh Thu (${getRangeLabel()})`}
+            subtitle="Số lượt bệnh nhân tiếp nhận và tổng doanh thu thu được theo ngày trong kỳ"
             action={
               <button
                 onClick={() => navigate('/ban-giam-doc/tai-chinh')}
@@ -232,6 +405,8 @@ export default function DashboardGiamDocPage() {
             <div className="h-72 w-full pt-2">
               {isLoading ? (
                 <div className="h-full flex items-center justify-center text-sm text-gray-400">Đang tải biểu đồ...</div>
+              ) : (stats?.chart7Days || []).length === 0 ? (
+                <div className="h-full flex items-center justify-center text-sm text-gray-400">Không có dữ liệu trong kỳ này</div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={stats?.chart7Days || []} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -240,8 +415,8 @@ export default function DashboardGiamDocPage() {
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip
                       formatter={(val, name) => [
-                        name === 'soLuotKham' ? `${val} ca khám` : formatCurrency(val),
-                        name === 'soLuotKham' ? 'Số lượt khám' : 'Doanh thu',
+                        name === 'Số ca khám' ? `${val} ca khám` : formatCurrency(val),
+                        name,
                       ]}
                     />
                     <Legend wrapperStyle={{ fontSize: 12, paddingTop: 10 }} />
@@ -262,6 +437,8 @@ export default function DashboardGiamDocPage() {
             <div className="h-72 w-full flex flex-col items-center justify-center pt-2">
               {isLoading ? (
                 <div className="text-sm text-gray-400">Đang tải...</div>
+              ) : (stats?.coCauDoanhThu || []).length === 0 ? (
+                <div className="text-sm text-gray-400">Chưa có giao dịch thanh toán trong kỳ</div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -303,28 +480,32 @@ export default function DashboardGiamDocPage() {
             subtitle="Theo dõi số lượng chỉ định và tỷ lệ trả kết quả đúng hạn cho bệnh nhân"
           >
             <div className="space-y-3.5 pt-2">
-              {clsList.map((item, idx) => (
-                <div key={idx} className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
-                      {idx + 1}
+              {clsList.length === 0 ? (
+                <div className="py-8 text-center text-xs text-gray-400">Chưa có chỉ định cận lâm sàng trong kỳ này</div>
+              ) : (
+                clsList.map((item, idx) => (
+                  <div key={idx} className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
+                        {idx + 1}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-900">{item.ten}</p>
+                        <p className="text-xs text-gray-500">Đã trả kết quả: <strong className="text-emerald-700">{item.hoanThanh}</strong> / {item.tong} ca chỉ định</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-bold text-gray-900">{item.ten}</p>
-                      <p className="text-xs text-gray-500">Đã trả kết quả: <strong className="text-emerald-700">{item.hoanThanh}</strong> / {item.tong} ca chỉ định</p>
+                    <div className="flex items-center gap-3 self-end sm:self-center">
+                      <div className="w-28 bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className="bg-emerald-600 h-2.5 rounded-full transition-all duration-500"
+                          style={{ width: item.tyLe }}
+                        ></div>
+                      </div>
+                      <span className="text-xs font-bold text-emerald-700 min-w-[50px] text-right">{item.tyLe}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 self-end sm:self-center">
-                    <div className="w-28 bg-gray-200 rounded-full h-2.5 overflow-hidden">
-                      <div
-                        className="bg-emerald-600 h-2.5 rounded-full"
-                        style={{ width: item.tyLe }}
-                      ></div>
-                    </div>
-                    <span className="text-xs font-bold text-emerald-700 min-w-[50px] text-right">{item.tyLe}</span>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </MedCard>
         </div>
@@ -333,7 +514,7 @@ export default function DashboardGiamDocPage() {
         <div>
           <MedCard
             title="📱 Phân Bổ Kênh Tiếp Nhận"
-            subtitle="Hình thức đăng ký khám bệnh"
+            subtitle="Tỷ trọng bệnh nhân hẹn trước qua App/Web vs Trực tiếp tại quầy"
           >
             <div className="space-y-4 pt-3">
               {kenhData.map((k, idx) => (
@@ -343,19 +524,23 @@ export default function DashboardGiamDocPage() {
                       <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: k.color || COLORS[idx] }}></span>
                       {k.name}
                     </span>
-                    <span className="font-extrabold text-gray-900">{k.value}%</span>
+                    <span className="font-extrabold text-gray-900">
+                      {k.value}% <span className="font-normal text-gray-400">({k.soCa ?? 0} ca)</span>
+                    </span>
                   </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                  <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                     <div
-                      className="h-2 rounded-full"
+                      className="h-2.5 rounded-full transition-all duration-500"
                       style={{ width: `${k.value}%`, backgroundColor: k.color || COLORS[idx] }}
                     ></div>
                   </div>
                 </div>
               ))}
               <div className="mt-4 p-3 rounded-xl bg-blue-50/70 border border-blue-100 text-xs text-blue-800">
-                <p className="font-bold">Phân tích lưu lượng</p>
-                <p className="text-[11px] text-blue-700 mt-0.5">Chỉ hiển thị khi có dữ liệu vận hành tương ứng.</p>
+                <p className="font-bold">Nhận định luồng phục vụ</p>
+                <p className="text-[11px] text-blue-700 mt-0.5">
+                  Khuyến khích bệnh nhân đặt lịch trực tuyến giúp giảm thời gian chờ đợi và tối ưu năng suất phòng khám.
+                </p>
               </div>
             </div>
           </MedCard>
@@ -426,7 +611,7 @@ export default function DashboardGiamDocPage() {
               <p className="text-[11px] text-gray-500">Thao tác kỹ thuật & Trả kết quả</p>
             </div>
             <div className="text-[10px] text-purple-600 font-bold pt-1.5 border-t border-gray-100">
-              ✓ Thao tác nhẹ nhàng, chuẩn mực
+              ✓ Thao tác chuẩn mực, chính xác
             </div>
           </div>
 
@@ -500,7 +685,7 @@ export default function DashboardGiamDocPage() {
                     <span>Ý Kiến Bệnh Nhân & Chỉ Đạo Từ Ban Giám Đốc</span>
                   </div>
                   <span className="text-[11px] text-gray-400 font-normal">
-                    Giám Đốc có thể phản hồi trực tiếp
+                    Giám Đốc phản hồi trực tiếp
                   </span>
                 </div>
               }
@@ -550,7 +735,7 @@ export default function DashboardGiamDocPage() {
 
                       {/* Phản hồi của Giám Đốc hoặc nút phản hồi */}
                       {item.phanHoiGiamDoc ? (
-                        <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-start justify-between gap-2">
+                        <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-start justify-between gap-2">
                           <div>
                             <span className="font-bold flex items-center gap-1 text-amber-800">
                               <ShieldCheck className="h-3.5 w-3.5 text-amber-600" /> Phản hồi của Ban Giám Đốc:
@@ -588,14 +773,14 @@ export default function DashboardGiamDocPage() {
         {/* Top Bác sĩ khám nhiều nhất */}
         <div className="lg:col-span-2">
           <MedCard
-            title="🏆 Đội Ngũ Bác Sĩ Hoạt Động Hiệu Suất Cao"
-            subtitle="Xếp hạng theo số ca bệnh án đã hoàn thành khám và chỉ định"
+            title={`🏆 Đội Ngũ Bác Sĩ Hoạt Động Hiệu Suất Cao (${getRangeLabel()})`}
+            subtitle="Xếp hạng theo số ca bệnh án đã hoàn thành khám và điều trị"
           >
             <div className="divide-y divide-gray-100">
               {isLoading ? (
                 <div className="p-4 text-center text-sm text-gray-400">Đang tải...</div>
               ) : (stats?.topBacSi || []).length === 0 ? (
-                <div className="p-6 text-center text-sm text-gray-500">Chưa có dữ liệu khám của bác sĩ</div>
+                <div className="p-6 text-center text-sm text-gray-500">Chưa có dữ liệu khám của bác sĩ trong kỳ</div>
               ) : (
                 (stats?.topBacSi || []).map((bs, index) => (
                   <div key={index} className="flex items-center justify-between py-3">

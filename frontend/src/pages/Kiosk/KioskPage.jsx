@@ -13,8 +13,9 @@ export default function KioskPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Form Đặt trước
+  // Form Đặt trước & danh sách lịch hẹn tìm thấy
   const [searchPhoneOrCode, setSearchPhoneOrCode] = useState('');
+  const [foundAppointments, setFoundAppointments] = useState([]);
 
   // Form Đăng ký mới
   const [formData, setFormData] = useState({
@@ -28,6 +29,25 @@ export default function KioskPage() {
   // Dữ liệu vé sau khi lấy STT thành công
   const [ticketData, setTicketData] = useState(null);
   const [countdown, setCountdown] = useState(20);
+
+  // Live rooms
+  const [liveRooms, setLiveRooms] = useState([]);
+
+  useEffect(() => {
+    fetchLiveRooms();
+    const interval = setInterval(fetchLiveRooms, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchLiveRooms = async () => {
+    try {
+      const res = await apiGet('/kiosk/phong-kham-live');
+      const list = res?.data?.data || res?.data || [];
+      if (Array.isArray(list)) setLiveRooms(list);
+    } catch (e) {
+      console.warn('Lỗi lấy phòng khám live:', e);
+    }
+  };
 
   // Tự động đếm lùi quay về trang chủ Kiosk sau khi in vé
   useEffect(() => {
@@ -51,15 +71,17 @@ export default function KioskPage() {
   const handleResetHome = () => {
     setMode('home');
     setSearchPhoneOrCode('');
+    setFoundAppointments([]);
     setFormData({ hoTen: '', soDienThoai: '', namSinh: '1990', gioiTinh: 'nam', trieuChung: '' });
     setErrorMsg('');
     setTicketData(null);
   };
 
-  // 1. Xác nhận lịch hẹn đã đặt trước
+  // 1. Tra cứu & Xác nhận lịch hẹn đã đặt trước
   const handleCheckInLichHen = async (e) => {
-    e.preventDefault();
-    if (!searchPhoneOrCode.trim()) {
+    e?.preventDefault();
+    const term = searchPhoneOrCode.trim();
+    if (!term) {
       setErrorMsg('Vui lòng nhập Số điện thoại hoặc Mã lịch hẹn.');
       return;
     }
@@ -67,51 +89,45 @@ export default function KioskPage() {
     setLoading(true);
 
     try {
-      const generatedTicketNumber = `A${Math.floor(1500 + Math.random() * 200)}`;
-      const nowTime = new Date().toLocaleTimeString('vi-VN');
+      const res = await apiGet(`/kiosk/tra-cuu?search=${encodeURIComponent(term)}`);
+      const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.data) ? res.data.data : []);
 
-      let tenBn = 'Nguyễn Đình Hảo';
-      let sdt = searchPhoneOrCode.trim();
-
-      try {
-        const res = await apiGet(`/lich-hen?search=${encodeURIComponent(sdt)}`);
-        const list = Array.isArray(res?.data) ? res.data : (res?.data?.items || []);
-        if (list.length > 0 && list[0]?.benhNhan?.hoTen) {
-          tenBn = list[0].benhNhan.hoTen;
-        }
-      } catch (err) {
-        console.warn('Tra cuu lich hen:', err);
+      if (!list || list.length === 0) {
+        setErrorMsg('Không tìm thấy lịch hẹn phù hợp với thông tin đã nhập. Quý khách vui lòng kiểm tra lại số điện thoại hoặc chọn "Đăng ký khám mới".');
+        setFoundAppointments([]);
+        return;
       }
 
-      const newTicket = {
-        maSoThuTu: generatedTicketNumber,
-        hoTen: tenBn,
-        soDienThoai: sdt,
-        tenPhong: 'Phòng 101 - Khám Nội Tổng Quát',
-        viTri: 'Tầng 1 - Khu Tiếp Nhận A',
-        bacSi: 'BS. CKI Trần Văn Nam',
-        gioDangKy: nowTime,
-        loai: 'Đã đặt hẹn trước (Trực tuyến)',
-        chuyenKhoa: 'Nội Tổng Quát',
-      };
-
-      setTicketData(newTicket);
-      try {
-        localStorage.setItem('kiosk_last_ticket', JSON.stringify({
-          soThuTu: newTicket.maSoThuTu,
-          hoTen: newTicket.hoTen,
-          gioIn: newTicket.gioDangKy,
-          phongKham: newTicket.tenPhong,
-          bacSi: newTicket.bacSi,
-        }));
-      } catch (e) {
-        console.warn(e);
+      if (list.length === 1) {
+        // Tự động check-in ngay nếu chỉ có 1 lịch hẹn
+        await executeCheckIn(list[0].id);
+      } else {
+        // Nếu có nhiều lịch hẹn (ví dụ cùng số điện thoại) -> hiển thị để người dùng chọn
+        setFoundAppointments(list);
       }
-
-      setMode('ve_stt');
     } catch (err) {
       console.error('Lỗi check-in Kiosk:', err);
-      setErrorMsg('Không tìm thấy thông tin lịch hẹn. Vui lòng thử lại.');
+      setErrorMsg(err?.error?.message || err?.message || 'Không tìm thấy thông tin lịch hẹn. Vui lòng thử lại.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const executeCheckIn = async (lichHenId) => {
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      const res = await apiPost('/kiosk/check-in', { lichHenId });
+      const ticket = res?.data?.ticket || res?.ticket;
+      if (ticket) {
+        setTicketData(ticket);
+        setMode('ve_stt');
+      } else {
+        setErrorMsg('Không nhận được dữ liệu phiếu từ hệ thống.');
+      }
+    } catch (err) {
+      console.error('Lỗi executeCheckIn:', err);
+      setErrorMsg(err?.error?.message || err?.message || 'Không thể xác nhận check-in. Vui lòng liên hệ nhân viên tiếp đón.');
     } finally {
       setLoading(false);
     }
@@ -128,62 +144,24 @@ export default function KioskPage() {
     setLoading(true);
 
     try {
-      let phongChonId = 1;
-      let tenPhongChon = 'Phòng 101 - Khám Nội Tổng Quát';
-      let viTriChon = 'Tầng 1 - Khu A';
-      let chuyenKhoaGoiY = 'Nội Tổng Quát';
-      const tc = (formData.trieuChung || '').toLowerCase();
-
-      if (tc.includes('ngực') || tc.includes('tim') || tc.includes('huyết áp') || tc.includes('khó thở')) {
-        phongChonId = 2;
-        tenPhongChon = 'Phòng 102 - Khám Tim Mạch & Huyết Áp';
-        viTriChon = 'Tầng 1 - Khu A';
-        chuyenKhoaGoiY = 'Chuyên Khoa Tim Mạch';
-      } else if (tc.includes('bé') || tc.includes('trẻ') || tc.includes('sốt') || tc.includes('ho') || tc.includes('nhi')) {
-        phongChonId = 3;
-        tenPhongChon = 'Phòng 103 - Khám Nhi Khoa & TMH';
-        viTriChon = 'Tầng 1 - Khu B';
-        chuyenKhoaGoiY = 'Chuyên Khoa Nhi';
-      } else if (tc.includes('mắt') || tc.includes('thị lực') || tc.includes('đau mắt')) {
-        phongChonId = 4;
-        tenPhongChon = 'Phòng 104 - Chuyên Khoa Mắt';
-        viTriChon = 'Tầng 1 - Khu B';
-        chuyenKhoaGoiY = 'Chuyên Khoa Mắt';
-      }
-
-      const generatedTicketNumber = `A${Math.floor(1500 + Math.random() * 200)}`;
-      const nowTime = new Date().toLocaleTimeString('vi-VN');
-
-      const newTicket = {
-        maSoThuTu: generatedTicketNumber,
+      const res = await apiPost('/kiosk/dang-ky-moi', {
         hoTen: formData.hoTen.trim(),
         soDienThoai: formData.soDienThoai.trim(),
-        tenPhong: tenPhongChon,
-        viTri: viTriChon,
-        chuyenKhoa: chuyenKhoaGoiY,
+        namSinh: formData.namSinh,
+        gioiTinh: formData.gioiTinh,
         trieuChung: formData.trieuChung,
-        gioDangKy: nowTime,
-        loai: 'Tiếp nhận trực tiếp tại quầy',
-        bacSi: 'Bác sĩ trực chuyên khoa',
-      };
+      });
 
-      setTicketData(newTicket);
-      try {
-        localStorage.setItem('kiosk_last_ticket', JSON.stringify({
-          soThuTu: newTicket.maSoThuTu,
-          hoTen: newTicket.hoTen,
-          gioIn: newTicket.gioDangKy,
-          phongKham: newTicket.tenPhong,
-          bacSi: 'BS. CKI Trần Văn Nam',
-        }));
-      } catch (e) {
-        console.warn(e);
+      const ticket = res?.data?.ticket || res?.ticket;
+      if (ticket) {
+        setTicketData(ticket);
+        setMode('ve_stt');
+      } else {
+        setErrorMsg('Không nhận được thông tin phiếu từ hệ thống.');
       }
-
-      setMode('ve_stt');
     } catch (err) {
       console.error('Lỗi đăng ký Kiosk:', err);
-      setErrorMsg('Hệ thống bận. Vui lòng liên hệ nhân viên tiếp đón tại quầy.');
+      setErrorMsg(err?.error?.message || err?.message || 'Hệ thống bận. Vui lòng liên hệ nhân viên tiếp đón tại quầy.');
     } finally {
       setLoading(false);
     }
@@ -260,7 +238,7 @@ export default function KioskPage() {
                   <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white flex items-center justify-center transition-colors mb-6 shadow-sm">
                     <CalendarCheck className="w-8 h-8" />
                   </div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md">
+                  <span className="text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200">
                     Tiếp đón ưu tiên
                   </span>
                   <h3 className="text-2xl font-bold text-slate-900 mt-2 group-hover:text-blue-700 transition-colors">
@@ -285,7 +263,7 @@ export default function KioskPage() {
                   <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white flex items-center justify-center transition-colors mb-6 shadow-sm">
                     <UserPlus className="w-8 h-8" />
                   </div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
                     Khám trực tiếp trong ngày
                   </span>
                   <h3 className="text-2xl font-bold text-slate-900 mt-2 group-hover:text-emerald-700 transition-colors">
@@ -301,6 +279,42 @@ export default function KioskPage() {
                 </div>
               </button>
             </div>
+
+            {/* LIVE PHÒNG KHÁM TICKER */}
+            {liveRooms.length > 0 && (
+              <div className="max-w-4xl mx-auto pt-6 border-t border-slate-200">
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                      Tình trạng các phòng khám trực tiếp hôm nay
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-400">Tự động cập nhật mỗi 15s</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {liveRooms.map((room) => (
+                    <div key={room.id} className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                          <span className="font-semibold text-slate-800 truncate">{room.tenPhong}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 line-clamp-1">{room.chuyenKhoa || room.viTri}</p>
+                      </div>
+                      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                        <span className="text-slate-500">Đang chờ:</span>
+                        <span className={`font-bold font-mono px-2 py-0.5 rounded-md ${room.dangCho > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+                          {room.dangCho} bệnh nhân
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -315,7 +329,7 @@ export default function KioskPage() {
                 Xác Nhận Lịch Hẹn Đã Đặt
               </h3>
               <p className="text-sm text-slate-500">
-                Vui lòng nhập Số điện thoại đã dùng để đặt lịch khám
+                Vui lòng nhập Số điện thoại hoặc Mã lịch hẹn đã đăng ký
               </p>
             </div>
 
@@ -326,39 +340,88 @@ export default function KioskPage() {
               </div>
             )}
 
-            <form onSubmit={handleCheckInLichHen} className="space-y-5">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">
-                  Số điện thoại đăng ký
-                </label>
-                <input
-                  type="tel"
-                  autoFocus
-                  required
-                  value={searchPhoneOrCode}
-                  onChange={(e) => setSearchPhoneOrCode(e.target.value)}
-                  placeholder="Ví dụ: 0354162165"
-                  className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-600 focus:outline-none text-xl font-bold font-mono tracking-wider"
-                />
-              </div>
+            {/* Nếu tìm thấy nhiều lịch hẹn -> chọn */}
+            {foundAppointments.length > 1 ? (
+              <div className="space-y-4">
+                <p className="text-sm font-semibold text-slate-700">
+                  Tìm thấy {foundAppointments.length} lịch hẹn hôm nay. Vui lòng chọn lịch để nhận số:
+                </p>
+                <div className="space-y-3">
+                  {foundAppointments.map((app) => (
+                    <div
+                      key={app.id}
+                      className="p-4 rounded-2xl border-2 border-slate-200 hover:border-blue-500 bg-slate-50/50 hover:bg-blue-50/30 transition-all flex items-center justify-between"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                            {app.maLichHen}
+                          </span>
+                          <span className="text-xs font-bold text-slate-700">
+                            {app.gioKham} - {new Date(app.ngayKham).toLocaleDateString('vi-VN')}
+                          </span>
+                        </div>
+                        <p className="text-sm font-bold text-slate-900">
+                          {app.benhNhan?.hoTen || 'Bệnh nhân'}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Bác sĩ: {app.bacSi?.hoTen || 'Bác sĩ trực'} • {app.chuyenKhoa?.tenKhoa || 'Đa khoa'}
+                        </p>
+                      </div>
 
-              <div className="flex gap-4 pt-2">
+                      <button
+                        onClick={() => executeCheckIn(app.id)}
+                        disabled={loading}
+                        className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors shadow-sm"
+                      >
+                        {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'In Số ➔'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
                 <button
-                  type="button"
-                  onClick={handleResetHome}
-                  className="flex-1 py-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-base transition-colors"
+                  onClick={() => setFoundAppointments([])}
+                  className="w-full py-2.5 text-xs text-slate-500 hover:text-slate-700 font-semibold"
                 >
-                  Quay lại
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-base shadow-sm transition-colors flex items-center justify-center gap-2"
-                >
-                  {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : 'Xác Nhận & Lấy Số ➔'}
+                  Nhập số điện thoại khác
                 </button>
               </div>
-            </form>
+            ) : (
+              <form onSubmit={handleCheckInLichHen} className="space-y-5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">
+                    Số điện thoại hoặc Mã lịch hẹn
+                  </label>
+                  <input
+                    type="tel"
+                    autoFocus
+                    required
+                    value={searchPhoneOrCode}
+                    onChange={(e) => setSearchPhoneOrCode(e.target.value)}
+                    placeholder="Ví dụ: 0354162165 hoặc LH2026..."
+                    className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-blue-600 focus:outline-none text-xl font-bold font-mono tracking-wider"
+                  />
+                </div>
+
+                <div className="flex gap-4 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleResetHome}
+                    className="flex-1 py-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-base transition-colors"
+                  >
+                    Quay lại
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-base shadow-sm transition-colors flex items-center justify-center gap-2"
+                  >
+                    {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : 'Xác Nhận & Lấy Số ➔'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         )}
 
@@ -479,7 +542,7 @@ export default function KioskPage() {
 
         {/* VIEW 4: PHIẾU KHÁM BỆNH ĐIỆN TỬ CHUẨN Y TẾ */}
         {mode === 've_stt' && ticketData && (
-          <div className="max-w-md w-full mx-auto bg-white text-slate-900 rounded-3xl p-8 shadow-xl border border-slate-200 space-y-6 text-center animate-fadeIn">
+          <div className="max-w-md w-full mx-auto bg-white text-slate-900 rounded-3xl p-8 shadow-xl border border-slate-200 space-y-6 text-center animate-fadeIn print:border-none print:shadow-none print:p-0">
             {/* Header phiếu */}
             <div className="border-b border-dashed border-slate-300 pb-4 space-y-1">
               <span className="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-wider">
@@ -489,7 +552,7 @@ export default function KioskPage() {
                 PHIẾU KHÁM BỆNH
               </h3>
               <p className="text-xs text-slate-500">
-                Phòng Khám Đa Khoa • Quầy Tiếp Đón Kiosk 01
+                Phòng Khám Đa Khoa • Kiosk Tiếp Đón Tự Động
               </p>
             </div>
 
@@ -501,7 +564,11 @@ export default function KioskPage() {
               <p className="text-6xl font-black text-blue-700 font-mono tracking-wider my-2">
                 {ticketData.maSoThuTu}
               </p>
-              <p className="text-xs text-slate-600 font-medium">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold">
+                <Clock className="w-3.5 h-3.5" />
+                Phía trước có: <span className="font-bold font-mono">{ticketData.soNguoiDangDoi ?? 0}</span> người đang đợi
+              </div>
+              <p className="text-[11px] text-slate-500 pt-1">
                 Thời gian cấp số: {ticketData.gioDangKy}
               </p>
             </div>
@@ -524,10 +591,22 @@ export default function KioskPage() {
                 <span className="text-slate-500">Vị trí phòng:</span>
                 <span className="font-semibold text-slate-800">{ticketData.viTri || 'Tầng 1'}</span>
               </div>
+              {ticketData.bacSi && (
+                <div className="flex justify-between border-b border-slate-200 pb-1.5">
+                  <span className="text-slate-500">Bác sĩ phụ trách:</span>
+                  <span className="font-medium text-slate-800">{ticketData.bacSi}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-500">Hình thức:</span>
                 <span className="font-medium text-slate-700">{ticketData.loai}</span>
               </div>
+            </div>
+
+            {/* Mã vạch / QR Code tra cứu */}
+            <div className="p-3 bg-slate-100 rounded-xl border border-slate-200 flex flex-col items-center justify-center">
+              <QrCode className="w-12 h-12 text-slate-700" />
+              <p className="text-[10px] text-slate-500 font-mono mt-1">Mã tra cứu: {ticketData.maTiepNhan || ticketData.maSoThuTu}</p>
             </div>
 
             {/* Hướng dẫn bệnh nhân */}
@@ -536,7 +615,7 @@ export default function KioskPage() {
             </div>
 
             {/* Nút hành động */}
-            <div className="space-y-2.5 pt-1">
+            <div className="space-y-2.5 pt-1 print:hidden">
               <button
                 onClick={() => navigate('/benh-nhan/so-thu-tu')}
                 className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-colors uppercase tracking-wider"

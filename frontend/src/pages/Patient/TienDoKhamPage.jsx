@@ -21,6 +21,7 @@ import {
   CreditCard,
   FileText,
   Star,
+  Video,
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { apiGet } from '../../services/api';
@@ -59,6 +60,7 @@ export default function TienDoKhamPage() {
   });
 
   const [progressSteps, setProgressSteps] = useState(null);
+  const [activeOnlineAppt, setActiveOnlineAppt] = useState(null);
 
   const fetchQueueData = async () => {
     setLoading(true);
@@ -96,6 +98,17 @@ export default function TienDoKhamPage() {
       } else {
         setIsAllCompleted(false);
         setHasActiveTicket(false);
+      }
+
+      // Kiểm tra xem bệnh nhân có ca khám trực tuyến Telehealth hôm nay không
+      try {
+        const apptRes = await apiGet('/lich-hen/cua-toi');
+        const onlineAppt = apptRes?.data?.find(
+          (a) => a.hinhThuc === 'truc_tuyen' && a.trangThai !== 'da_huy' && a.trangThai !== 'hoan_thanh'
+        );
+        setActiveOnlineAppt(onlineAppt || null);
+      } catch (e) {
+        setActiveOnlineAppt(null);
       }
     } catch (err) {
       console.warn('Lấy dữ liệu hàng đợi từ server:', err?.message);
@@ -299,27 +312,57 @@ export default function TienDoKhamPage() {
           </div>
         </div>
       ) : !hasActiveTicket && !loading ? (
-        /* TRƯỜNG HỢP 2: KHÔNG CÓ LƯỢT KHÁM HÔM NAY */
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 sm:p-12 text-center max-w-2xl mx-auto space-y-5 my-8">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-            <Ticket className="h-8 w-8" />
+        activeOnlineAppt ? (
+          /* TRƯỜNG HỢP 2A: ĐANG CÓ LỊCH KHÁM ONLINE TELEHEALTH */
+          <div className="bg-gradient-to-br from-purple-900/90 to-indigo-950 text-white rounded-2xl border border-purple-500/30 shadow-xl p-8 sm:p-10 text-center max-w-2xl mx-auto space-y-5 my-8 animate-fade-in">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-purple-500/20 text-purple-300 ring-4 ring-purple-500/30">
+              <Video className="h-8 w-8 text-purple-300" />
+            </div>
+            <div className="space-y-2">
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-500/30 text-purple-200 border border-purple-400/30">
+                TƯ VẤN KHÁM TRỰC TUYẾN TELEHEALTH
+              </span>
+              <h2 className="text-xl font-bold text-white">Bạn đang có lịch khám Online hôm nay</h2>
+              <p className="text-sm text-purple-200 max-w-md mx-auto">
+                Bác sĩ: <strong>{activeOnlineAppt.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách'}</strong> • Giờ hẹn: <strong>{activeOnlineAppt.gioHen}</strong>
+              </p>
+              <p className="text-xs text-purple-300/80">
+                Ca khám của bạn diễn ra qua cuộc gọi Video trực tuyến, không cần bốc số thứ tự hay chờ tại sảnh phòng khám cơ sở.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col sm:flex-row justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate('/benh-nhan/lich-hen')}
+                className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition cursor-pointer"
+              >
+                <Video className="h-4 w-4" /> Vào phòng khám Video Telehealth
+              </button>
+            </div>
           </div>
-          <div className="space-y-1">
-            <h2 className="text-xl font-bold text-gray-900">Hôm nay bạn chưa có lượt khám nào</h2>
-            <p className="text-sm text-gray-500">
-              Quý khách có thể lấy số thứ tự trực tiếp tại Kiosk lễ tân phòng khám hoặc đặt lịch khám trực tuyến.
-            </p>
+        ) : (
+          /* TRƯỜNG HỢP 2B: KHÔNG CÓ LƯỢT KHÁM HÔM NAY */
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 sm:p-12 text-center max-w-2xl mx-auto space-y-5 my-8">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+              <Ticket className="h-8 w-8" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-xl font-bold text-gray-900">Hôm nay bạn chưa có lượt khám nào tại cơ sở</h2>
+              <p className="text-sm text-gray-500">
+                Quý khách có thể lấy số thứ tự trực tiếp tại Kiosk lễ tân phòng khám hoặc đặt lịch khám trực tuyến.
+              </p>
+            </div>
+            <div className="pt-2 flex justify-center">
+              <button
+                type="button"
+                onClick={() => navigate('/benh-nhan/dat-lich')}
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm flex items-center gap-2 shadow-sm transition cursor-pointer"
+              >
+                <Calendar className="h-4 w-4" /> Đặt lịch khám ngay
+              </button>
+            </div>
           </div>
-          <div className="pt-2 flex justify-center">
-            <button
-              type="button"
-              onClick={() => navigate('/benh-nhan/dat-lich')}
-              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm flex items-center gap-2 shadow-sm transition cursor-pointer"
-            >
-              <Calendar className="h-4 w-4" /> Đặt lịch khám ngay
-            </button>
-          </div>
-        </div>
+        )
       ) : (
         /* TRƯỜNG HỢP 3: ĐANG CÓ LƯỢT KHÁM DIỄN RA */
         <>
@@ -368,12 +411,12 @@ export default function TienDoKhamPage() {
       ) : null}
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 pb-0">
+      <div className="flex items-center gap-1 border-b border-gray-200 pb-0 overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveTab('ticket')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px shrink-0 whitespace-nowrap ${
             activeTab === 'ticket'
-              ? 'border-blue-600 text-blue-700'
+              ? 'border-blue-600 text-blue-700 font-bold'
               : 'border-transparent text-gray-500 hover:text-gray-900'
           }`}
         >
@@ -383,9 +426,9 @@ export default function TienDoKhamPage() {
 
         <button
           onClick={() => setActiveTab('dynamic-routing')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px shrink-0 whitespace-nowrap ${
             activeTab === 'dynamic-routing'
-              ? 'border-blue-600 text-blue-700'
+              ? 'border-blue-600 text-blue-700 font-bold'
               : 'border-transparent text-gray-500 hover:text-gray-900'
           }`}
         >

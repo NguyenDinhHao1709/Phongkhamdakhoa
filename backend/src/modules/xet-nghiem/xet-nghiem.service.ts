@@ -7,11 +7,13 @@ import {
   DichVuXetNghiem, ChiDinhCanLamSang, KetQuaXetNghiem,
   TrangThaiChiDinh,
 } from './entities/xet-nghiem.entity';
+import { LichSuHieuChinhKetQua } from './entities/lich-su-hieu-chinh-ket-qua.entity';
 import { DanhGiaCaKham } from '../danh-gia/entities/danh-gia.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { LuotTiepNhan, TrangThaiTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
+import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import {
   IsInt, IsPositive, IsOptional, IsString, IsEnum, IsArray, ArrayMinSize,
   ValidateNested, IsNumber, Min,
@@ -45,7 +47,15 @@ export class NhapKetQuaDto {
   @ApiPropertyOptional() @IsOptional() @IsString() giaTri?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() donVi?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() nhanXet?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() fileDinhKem?: string;
+  @ApiPropertyOptional({ description: 'JSON các chỉ số/kết quả thành phần theo cấu hình dịch vụ' })
+  @IsOptional() @IsString() ketQuaChiTiet?: string;
+  @ApiPropertyOptional({ description: 'URL cũ hoặc JSON mảng các file kết quả' })
+  @IsOptional() @IsString() fileDinhKem?: string;
+}
+
+export class HieuChinhKetQuaDto {
+  @ApiProperty() @IsString() lyDo: string;
+  @ApiProperty() @IsOptional() @IsString() nhanXet?: string;
 }
 
 export class TimKiemChiDinhDto {
@@ -65,6 +75,8 @@ export class XetNghiemService {
     @InjectRepository(DichVuXetNghiem)    private dvRepo: Repository<DichVuXetNghiem>,
     @InjectRepository(ChiDinhCanLamSang)  private cdRepo: Repository<ChiDinhCanLamSang>,
     @InjectRepository(KetQuaXetNghiem)    private kqRepo: Repository<KetQuaXetNghiem>,
+    @InjectRepository(LichSuHieuChinhKetQua) private hieuChinhRepo: Repository<LichSuHieuChinhKetQua>,
+    private readonly thongBaoService: ThongBaoService,
   ) {}
 
   // ─── DANH MỤC DỊCH VỤ ─────────────────────────────────────
@@ -373,6 +385,53 @@ export class XetNghiemService {
     kq.daGuiBacSi = true;
     await this.kqRepo.save(kq);
     return { data: kq, message: 'Đã gửi kết quả cho bác sĩ' };
+  }
+
+  async hieuChinhNhanXet(chiDinhId: number, dto: HieuChinhKetQuaDto, nguoiDungId: number) {
+    const lyDo = dto.lyDo?.trim();
+    if (!lyDo) {
+      throw new BadRequestException({ code: 'THIEU_LY_DO_HIEU_CHINH', message: 'Bắt buộc nhập lý do hiệu chỉnh kết quả' });
+    }
+    const kq = await this.kqRepo.findOne({ where: { chiDinhId } });
+    if (!kq) throw new NotFoundException({ code: 'CHUA_CO_KET_QUA', message: 'Chưa có kết quả để hiệu chỉnh' });
+    if (!kq.daGuiBacSi) {
+      throw new BadRequestException({ code: 'KET_QUA_CHUA_GUI', message: 'Kết quả chưa gửi bác sĩ, hãy dùng chức năng Lưu kết quả' });
+    }
+    if (dto.nhanXet === undefined) {
+      throw new BadRequestException({ code: 'THIEU_NHAN_XET_MOI', message: 'Chưa nhập nhận xét mới' });
+    }
+
+    const phienBan = await this.hieuChinhRepo.count({ where: { ketQuaId: kq.id } }) + 1;
+    await this.hieuChinhRepo.save(this.hieuChinhRepo.create({
+      ketQuaId: kq.id,
+      chiDinhId,
+      phienBan,
+      nhanXetCu: kq.nhanXet || null,
+      nhanXetMoi: dto.nhanXet.trim() || null,
+      lyDo,
+      nguoiHieuChinhId: nguoiDungId || null,
+    }));
+    kq.nhanXet = dto.nhanXet.trim();
+    await this.kqRepo.save(kq);
+    const cd = await this.cdRepo.findOne({ where: { id: chiDinhId } });
+    if (cd) {
+      const bacSi = await this.cdRepo.manager.getRepository(BacSi).findOne({
+        where: { id: cd.bacSiChiDinhId },
+        relations: ['nhanVien'],
+      });
+      const nguoiNhanId = bacSi?.nhanVien?.nguoiDungId;
+      if (nguoiNhanId) {
+        await this.thongBaoService.taoThongBao({
+          nguoiNhanId,
+          tieuDe: 'Kết quả cận lâm sàng đã được hiệu chỉnh',
+          noiDung: `Nhận xét của chỉ định #${chiDinhId} đã được hiệu chỉnh phiên bản ${phienBan}. Lý do: ${lyDo}`,
+          loai: 'ket_qua_xet_nghiem_hieu_chinh',
+          doiTuongBang: 'chi_dinh_can_lam_sang',
+          doiTuongId: chiDinhId,
+        });
+      }
+    }
+    return { data: kq, message: `Đã hiệu chỉnh nhận xét và lưu phiên bản ${phienBan}` };
   }
 
   // ─── XEM KẾT QUẢ XÉT NGHIỆM CỦA 1 PHIẾU KHÁM ───────────

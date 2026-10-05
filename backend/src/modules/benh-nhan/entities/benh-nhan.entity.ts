@@ -3,6 +3,7 @@ import {
   ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn,
 } from 'typeorm';
 import { NguoiDung } from '../../auth/entities/nguoi-dung.entity';
+import { Aes256Transformer } from '../../../common/transformers/aes-256.transformer';
 
 @Entity('benh_nhan')
 export class BenhNhan {
@@ -29,7 +30,13 @@ export class BenhNhan {
   })
   gioiTinh: string;
 
-  @Column({ name: 'so_cmnd', length: 20, nullable: true, unique: true })
+  @Column({
+    name: 'so_cmnd',
+    length: 255,
+    nullable: true,
+    unique: true,
+    transformer: new Aes256Transformer({ deterministic: true }),
+  })
   soCmnd: string;
 
   @Column({ name: 'so_dien_thoai', length: 15, nullable: true })
@@ -38,7 +45,12 @@ export class BenhNhan {
   @Column({ length: 100, nullable: true })
   email: string;
 
-  @Column({ name: 'dia_chi', type: 'text', nullable: true })
+  @Column({
+    name: 'dia_chi',
+    type: 'text',
+    nullable: true,
+    transformer: new Aes256Transformer(),
+  })
   diaChi: string;
 
   @Column({
@@ -49,10 +61,20 @@ export class BenhNhan {
   })
   nhomMau: string;
 
-  @Column({ name: 'di_ung', type: 'text', nullable: true })
+  @Column({
+    name: 'di_ung',
+    type: 'text',
+    nullable: true,
+    transformer: new Aes256Transformer(),
+  })
   diUng: string;
 
-  @Column({ name: 'tien_su_benh', type: 'text', nullable: true })
+  @Column({
+    name: 'tien_su_benh',
+    type: 'text',
+    nullable: true,
+    transformer: new Aes256Transformer(),
+  })
   tienSuBenh: string;
 
   @Column({ name: 'nghe_nghiep', length: 100, nullable: true })

@@ -6,10 +6,13 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagg
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { basename, join } from 'path';
+import { existsSync, unlinkSync } from 'fs';
 import {
   XetNghiemService,
   TaoChiDinhDto, CapNhatTrangThaiChiDinhDto,
   NhapKetQuaDto, TimKiemChiDinhDto,
+  HieuChinhKetQuaDto,
 } from './xet-nghiem.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -44,6 +47,7 @@ export class XetNghiemController {
     if (!file) {
       throw new BadRequestException('Vui lòng chọn file ảnh hoặc tài liệu kết quả');
     }
+
     const fileUrl = `/uploads/${file.filename}`;
     return {
       message: 'Upload file kết quả thành công',
@@ -55,6 +59,20 @@ export class XetNghiemController {
         url: fileUrl,
       },
     };
+  }
+
+  @Delete('upload/:filename')
+  @Roles('ky_thuat_vien', 'bac_si', 'quan_tri_vien')
+  @ApiOperation({ summary: 'Xóa file kết quả xét nghiệm đã tải lên' })
+  xoaFileKQXN(@Param('filename') filename: string) {
+    const safeFilename = basename(filename);
+    if (!safeFilename || safeFilename !== filename || !safeFilename.startsWith('kqxn-')) {
+      throw new BadRequestException('Tên file kết quả không hợp lệ');
+    }
+
+    const filePath = join(process.cwd(), 'uploads', safeFilename);
+    if (existsSync(filePath)) unlinkSync(filePath);
+    return { message: 'Đã xóa file kết quả' };
   }
 
   // ─── DANH MỤC DỊCH VỤ ─────────────────────────────────────
@@ -130,6 +148,17 @@ export class XetNghiemController {
     return this.service.guiKetQuaChoBacSi(id);
   }
 
+  @Patch('chi-dinh/:id/hieu-chinh')
+  @Roles('ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Hiệu chỉnh nhận xét sau khi đã gửi kết quả cho bác sĩ' })
+  hieuChinhNhanXet(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: HieuChinhKetQuaDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.service.hieuChinhNhanXet(id, dto, user.id);
+  }
+
   // ─── XEM TOÀN BỘ KQ CỦA 1 PHIẾU KHÁM ─────────────────────
   @Get('benh-an-kham/:benhAnKhamId')
   @Roles('bac_si', 'ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
@@ -151,4 +180,3 @@ export class XetNghiemController {
     return this.service.getThongKeXetNghiem(user, { range, tuNgay, denNgay });
   }
 }
-

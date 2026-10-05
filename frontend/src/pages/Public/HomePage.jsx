@@ -5,7 +5,8 @@ import {
   Search, ArrowRight, Activity, PhoneCall, CheckCircle2,
   FileText, Clock, MapPin, Award, BookOpen, UserCheck, X,
   Video, Building2, Ticket, ChevronRight, Check, Pill,
-  Layers, FlaskConical, Sparkles, MessageCircle, Bot, Zap
+  Layers, FlaskConical, Sparkles, MessageCircle, Bot, Zap,
+  Menu
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { apiGet } from '../../services/api';
@@ -347,6 +348,7 @@ export default function HomePage() {
   // Medical Guidance Modal (Chatbot)
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
   const [showChatBubble, setShowChatBubble] = useState(true);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Article Modal State
   const [selectedArticle, setSelectedArticle] = useState(null);
@@ -401,12 +403,11 @@ export default function HomePage() {
     }
   };
 
-  const handleKioskClick = () => {
-    if (isAuthenticated) {
-      navigate('/kiosk');
+  const handleTrackingClick = () => {
+    if (isAuthenticated && user?.vaiTro === 'benh_nhan') {
+      navigate('/benh-nhan/so-thu-tu');
     } else {
-      // Yêu cầu bắt buộc đăng nhập trước khi dùng Kiosk & lấy số thứ tự
-      navigate(`/login?redirect=${encodeURIComponent('/kiosk')}`);
+      navigate(`/login?redirect=${encodeURIComponent('/benh-nhan/so-thu-tu')}`);
     }
   };
 
@@ -416,15 +417,15 @@ export default function HomePage() {
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
           {/* Logo & Identity */}
-          <div className="flex items-center gap-3.5 cursor-pointer flex-shrink-0" onClick={() => navigate('/')}>
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600 text-white shadow-xs">
-              <Stethoscope className="h-6 w-6" />
+          <div className="flex items-center gap-2.5 sm:gap-3.5 cursor-pointer flex-shrink-0" onClick={() => navigate('/')}>
+            <div className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-xl bg-primary-600 text-white shadow-xs">
+              <Stethoscope className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
             <div className="flex flex-col">
-              <span className="text-lg font-black text-gray-900 tracking-tight leading-none whitespace-nowrap">
+              <span className="text-base sm:text-lg font-black text-gray-900 tracking-tight leading-none whitespace-nowrap">
                 PHÒNG KHÁM ĐA KHOA
               </span>
-              <span className="text-[11px] font-bold text-primary-700 tracking-wider uppercase mt-1 whitespace-nowrap">
+              <span className="hidden sm:block text-[11px] font-bold text-primary-700 tracking-wider uppercase mt-1 whitespace-nowrap">
                 TRUNG TÂM Y KHOA CHẤT LƯỢNG CAO
               </span>
             </div>
@@ -439,23 +440,23 @@ export default function HomePage() {
           </nav>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 sm:gap-2.5">
             {isAuthenticated ? (
               <button
                 onClick={() => {
                   const targetHome = ROLE_HOME[user?.vaiTro] || '/';
                   navigate(targetHome);
                 }}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold transition-all shadow-xs"
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold transition-all shadow-xs"
               >
-                <User className="h-4 w-4" />
-                <span>{user?.vaiTro === 'benh_nhan' ? 'Cổng Bệnh Nhân' : 'Hệ Thống Làm Việc'} ({user?.hoTen || user?.tenDangNhap})</span>
+                <User className="h-4 w-4 shrink-0" />
+                <span className="truncate max-w-[120px] sm:max-w-none">{user?.vaiTro === 'benh_nhan' ? 'Cổng Bệnh Nhân' : 'Hệ Thống'} ({user?.hoTen || user?.tenDangNhap})</span>
               </button>
             ) : (
               <>
                 <button
                   onClick={() => navigate('/login')}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-bold text-gray-700 hover:bg-slate-50 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-gray-700 hover:bg-slate-50 transition-colors"
                 >
                   <LogIn className="h-4 w-4 text-gray-500" /> Đăng nhập
                 </button>
@@ -467,8 +468,61 @@ export default function HomePage() {
                 </button>
               </>
             )}
+
+            {/* Hamburger Button on Mobile / Tablet (< lg) */}
+            <button
+              onClick={() => setMobileNavOpen(!mobileNavOpen)}
+              className="lg:hidden p-2 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors ml-0.5"
+              title="Menu điều hướng"
+            >
+              {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile / Tablet Nav Dropdown (< lg) */}
+        {mobileNavOpen && (
+          <div className="lg:hidden border-t border-slate-200 bg-white px-4 py-3 shadow-xl space-y-1 animate-fade-in">
+            <a
+              href="#hero"
+              onClick={() => setMobileNavOpen(false)}
+              className="block px-3 py-2.5 rounded-xl text-sm font-bold text-primary-700 hover:bg-primary-50 transition-colors"
+            >
+              Trang chủ
+            </a>
+            <a
+              href="#dich-vu"
+              onClick={() => setMobileNavOpen(false)}
+              className="block px-3 py-2.5 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Dịch vụ y tế
+            </a>
+            <a
+              href="#chuyen-khoa"
+              onClick={() => setMobileNavOpen(false)}
+              className="block px-3 py-2.5 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Chuyên khoa
+            </a>
+            <a
+              href="#bac-si"
+              onClick={() => setMobileNavOpen(false)}
+              className="block px-3 py-2.5 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Đội ngũ Bác sĩ
+            </a>
+            {!isAuthenticated && (
+              <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
+                <button
+                  onClick={() => { setMobileNavOpen(false); handleBookingClick('truc_tiep'); }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary-600 text-white text-xs font-bold shadow-xs hover:bg-primary-700 transition-colors"
+                >
+                  <Calendar className="h-4 w-4" /> Đặt lịch khám ngay
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
       {/* ─── HERO SECTION: Y TẾ ĐÍCH THỰC & UY TÍN ───────────────────── */}
@@ -511,7 +565,7 @@ export default function HomePage() {
               </form>
 
               {/* Action Buttons */}
-              <div className="flex flex-wrap sm:flex-nowrap items-center justify-center lg:justify-start gap-2.5 pt-1">
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2.5 pt-1">
                 <button
                   onClick={() => handleBookingClick('truc_tiep')}
                   className="flex items-center gap-2 px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs sm:text-sm shadow-sm transition-all whitespace-nowrap flex-shrink-0"
@@ -525,10 +579,10 @@ export default function HomePage() {
                   <Video className="h-4 w-4 sm:h-4.5 sm:w-4.5 text-primary-600" /> Khám Từ Xa Telehealth
                 </button>
                 <button
-                  onClick={handleKioskClick}
+                  onClick={handleTrackingClick}
                   className="flex items-center gap-2 px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs sm:text-sm transition-all whitespace-nowrap flex-shrink-0"
                 >
-                  <Ticket className="h-4 w-4 sm:h-4.5 sm:w-4.5 text-primary-600" /> Lấy STT Tự Động
+                  <Ticket className="h-4 w-4 sm:h-4.5 sm:w-4.5 text-primary-600" /> Tra Cứu Lịch & STT
                 </button>
               </div>
             </div>
@@ -593,11 +647,11 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-4 overflow-x-auto sm:overflow-visible pb-3 sm:pb-0 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory no-scrollbar">
             {/* Card 1: Đặt lịch trực tiếp */}
             <div
               onClick={() => handleBookingClick('truc_tiep')}
-              className="p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-primary-400 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+              className="w-[80vw] max-w-[300px] sm:w-auto sm:max-w-none shrink-0 snap-start p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-primary-400 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
             >
               <div>
                 <div className="h-12 w-12 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
@@ -616,24 +670,24 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Card 2: Lấy số thứ tự Kiosk */}
+            {/* Card 2: Tra cứu lịch hẹn & Tiến độ STT */}
             <div
-              onClick={handleKioskClick}
-              className="p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-primary-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+              onClick={handleTrackingClick}
+              className="w-[80vw] max-w-[300px] sm:w-auto sm:max-w-none shrink-0 snap-start p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-primary-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
             >
               <div>
                 <div className="h-12 w-12 rounded-xl bg-blue-50 text-primary-700 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
                   <Ticket className="h-6 w-6" />
                 </div>
                 <h3 className="text-base font-extrabold text-gray-900 mt-4 group-hover:text-primary-700 transition-colors">
-                  Kiosk Lấy Số Thứ Tự & Phân Luồng
+                  Tra Cứu Lịch Hẹn & Tiến Độ STT
                 </h3>
                 <p className="text-xs text-gray-600 mt-1.5 leading-relaxed">
-                  Tiếp đón tự động tại sảnh quầy. Quét thẻ CCCD/BHYT, hệ thống phân luồng chuyên khoa và cấp số thứ tự điện tử ngay lập tức.
+                  Theo dõi trực tuyến số thứ tự đang gọi khám tại các phòng khám chuyên khoa, tra cứu phiếu hẹn và thời gian chờ dự kiến.
                 </p>
               </div>
               <div className="mt-4 pt-3 border-t border-slate-200 flex items-center justify-between text-xs font-bold text-primary-700">
-                <span>Lấy số thứ tự</span>
+                <span>Xem tiến độ khám</span>
                 <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
@@ -641,7 +695,7 @@ export default function HomePage() {
             {/* Card 3: Khám từ xa Telehealth */}
             <div
               onClick={() => handleBookingClick('truc_tuyen')}
-              className="p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-primary-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+              className="w-[80vw] max-w-[300px] sm:w-auto sm:max-w-none shrink-0 snap-start p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-primary-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
             >
               <div>
                 <div className="h-12 w-12 rounded-xl bg-blue-50 text-primary-700 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
@@ -666,7 +720,7 @@ export default function HomePage() {
                 if (isAuthenticated) navigate('/benh-nhan/ho-so-y-te');
                 else navigate('/login');
               }}
-              className="p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-primary-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+              className="w-[80vw] max-w-[300px] sm:w-auto sm:max-w-none shrink-0 snap-start p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-primary-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
             >
               <div>
                 <div className="h-12 w-12 rounded-xl bg-blue-50 text-primary-700 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
@@ -699,12 +753,12 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-4 overflow-x-auto sm:overflow-visible pb-3 sm:pb-0 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory no-scrollbar">
             {SPECIALTIES_DATA.map((ck) => (
               <div
                 key={ck.id}
                 onClick={() => setSelectedSpecialty(ck)}
-                className="rounded-2xl bg-white p-5 shadow-2xs border border-slate-200 hover:border-primary-400 hover:shadow-md transition-all cursor-pointer space-y-2 flex flex-col justify-between group"
+                className="w-[76vw] max-w-[280px] sm:w-auto sm:max-w-none shrink-0 snap-start rounded-2xl bg-white p-5 shadow-2xs border border-slate-200 hover:border-primary-400 hover:shadow-md transition-all cursor-pointer space-y-2 flex flex-col justify-between group"
               >
                 <div>
                   <div className="flex items-center justify-between">
@@ -795,10 +849,10 @@ export default function HomePage() {
                 </div>
 
                 {/* Danh sách Bác sĩ của khoa đã chọn */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 overflow-x-auto sm:overflow-visible pb-3 sm:pb-0 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x snap-mandatory no-scrollbar">
                   {filteredDoctors.length > 0 ? (
                     filteredDoctors.map((bs) => (
-                      <div key={bs.id} className="rounded-2xl bg-slate-50 p-6 border border-slate-200 flex flex-col justify-between space-y-4 shadow-2xs hover:shadow-sm hover:border-slate-300 transition-all">
+                      <div key={bs.id} className="w-[82vw] max-w-[320px] sm:w-auto sm:max-w-none shrink-0 snap-start rounded-2xl bg-slate-50 p-5 sm:p-6 border border-slate-200 flex flex-col justify-between space-y-4 shadow-2xs hover:shadow-sm hover:border-slate-300 transition-all">
                         <div className="space-y-3">
                           <div className="flex items-center gap-3">
                             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-100 text-primary-800 font-black text-sm flex-shrink-0 overflow-hidden">

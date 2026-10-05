@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus,
   Search,
@@ -19,11 +20,12 @@ import {
   TrendingDown,
   AlertTriangle,
 } from 'lucide-react';
-import { apiGet, apiDel } from '../../services/api';
+import { apiGet, apiPatch } from '../../services/api';
 import { formatCurrency } from '../../utils/formatCurrency';
 import AddEditThuocModal from './AddEditThuocModal';
 
 export default function KhoThuocPage() {
+  const navigate = useNavigate();
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -55,10 +57,10 @@ export default function KhoThuocPage() {
   };
 
   const handleDelete = async (id, tenThuoc) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa thuốc "${tenThuoc}" khỏi danh mục kho?`)) return;
+    if (!window.confirm(`Thuốc "${tenThuoc}" sẽ được chuyển sang trạng thái Ngừng kinh doanh và giữ nguyên lịch sử kho. Tiếp tục?`)) return;
     try {
-      const res = await apiDel(`/nha-thuoc/thuoc/${id}`);
-      alert(res?.message || 'Xóa thuốc thành công!');
+      const res = await apiPatch(`/nha-thuoc/thuoc/${id}/ngung-kinh-doanh`);
+      alert(res?.message || 'Đã ngừng kinh doanh thuốc!');
       fetchData();
     } catch (err) {
       alert(err?.error?.message || err?.message || 'Không thể xóa thuốc này do đã phát sinh giao dịch.');
@@ -192,6 +194,14 @@ export default function KhoThuocPage() {
           >
             <RefreshCw className={`h-3.5 w-3.5 text-gray-500 ${isRefreshing ? 'animate-spin text-primary-600' : ''}`} />
             <span>Tải lại</span>
+          </button>
+
+          <button
+            onClick={() => navigate('/nha-thuoc/thong-ke?tab=forecast')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
+          >
+            <Sparkles className="h-4 w-4 text-purple-600" />
+            <span>Dự Báo Nhu Cầu (AI)</span>
           </button>
 
           <button
@@ -577,14 +587,15 @@ export default function KhoThuocPage() {
                               setIsModalOpen(true);
                             }}
                             className="p-1.5 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
-                            title="Chỉnh sửa thông tin & hạn dùng"
+                            title="Chỉnh sửa thông tin danh mục thuốc"
                           >
                             <Edit className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={() => handleDelete(t.id, t.tenThuoc)}
                             className="p-1.5 rounded-lg text-gray-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                            title="Xóa thuốc khỏi kho"
+                            title={isStopped ? 'Thuốc đã ngừng kinh doanh' : 'Ngừng kinh doanh, giữ nguyên lịch sử kho'}
+                            disabled={isStopped}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -599,7 +610,7 @@ export default function KhoThuocPage() {
         )}
       </div>
 
-      {/* 5. Modal Thêm / Chỉnh sửa Thuốc */}
+      {/* 5. Modal Thêm / Chỉnh sửa danh mục thuốc */}
       {isModalOpen && (
         <AddEditThuocModal
           thuoc={editingThuoc}
@@ -607,7 +618,7 @@ export default function KhoThuocPage() {
           onSuccess={fetchData}
         />
       )}
+
     </div>
   );
 }
-

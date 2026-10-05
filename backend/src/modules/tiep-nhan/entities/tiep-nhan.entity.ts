@@ -12,6 +12,7 @@ export enum TrangThaiTiepNhan {
   DANG_KHAM    = 'dang_kham',
   DANG_CLS     = 'dang_cls',
   DA_CO_KQ_CLS = 'da_co_kq_cls',
+  CHO_THANH_TOAN = 'cho_thanh_toan',
   HOAN_THANH   = 'hoan_thanh',
   DA_HUY       = 'da_huy',
 }
@@ -90,6 +91,18 @@ export class LuotTiepNhan {
 
   @Column({ name: 'bac_si_id', nullable: true })
   bacSiId: number;
+
+  @Column({ name: 'chuyen_khoa', length: 100, nullable: true })
+  chuyenKhoa: string;
+
+  @Column({ name: 'loai_luot', length: 30, default: 'luot_chinh' })
+  loaiLuot: string;
+
+  @Column({ name: 'ly_do_tao_luot', length: 255, nullable: true })
+  lyDoTaoLuot: string;
+
+  @Column({ name: 'luot_goc_id', nullable: true })
+  luotGocId: number;
 
   @Column({ name: 'thoi_gian_den', type: 'datetime' })
   thoiGianDen: Date;

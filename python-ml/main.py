@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 
 from services.forecaster import DataLoader, HoltWintersForecaster, PatternAnalyzer
 from services.queue_router import DynamicQueueRouter
+from services.face_verifier import verify_face, check_duplicate_face
 
 load_dotenv()
 
@@ -44,6 +45,51 @@ def health():
         "service": "PhongKham ML Forecasting & Dynamic Queue",
         "timestamp": datetime.now().isoformat(),
     }
+
+
+# ─── Endpoint: Face Verification + Liveness Detection ─────────────────
+class FaceVerifyRequest(BaseModel):
+    frame_base64: str               # Frame chụp hiện tại (base64)
+    ref_image_path: str             # Đường dẫn ảnh mẫu nhân viên trên server
+    frames_b64: Optional[List[str]] = None  # Danh sách frame cho liveness (10-20 frames)
+
+
+@app.post("/verify-face")
+def verify_face_endpoint(req: FaceVerifyRequest):
+    """
+    Xác thực khuôn mặt nhân viên:
+    1. Liveness detection: phân tích EAR chớp mắt qua nhiều frame
+    2. Face matching: cosine similarity ArcFace embedding vs ảnh mẫu
+    """
+    try:
+        result = verify_face(
+            frame_b64=req.frame_base64,
+            ref_image_path=req.ref_image_path,
+            frames_b64=req.frames_b64,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CheckDuplicateFaceRequest(BaseModel):
+    target_image_path: str
+    candidates: Optional[List[Dict[str, Any]]] = []
+
+
+@app.post("/check-duplicate-face")
+def check_duplicate_face_endpoint(req: CheckDuplicateFaceRequest):
+    """
+    Kiểm tra tính hợp lệ và chống trùng lặp ảnh khuôn mặt nhân viên
+    """
+    try:
+        return check_duplicate_face(
+            target_image_path=req.target_image_path,
+            candidate_list=req.candidates or [],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 # ─── Endpoint: Dynamic Queue Routing Optimization ─────────────────────

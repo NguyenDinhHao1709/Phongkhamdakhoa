@@ -536,6 +536,7 @@ export default function DonThuocListPage() {
                 {filteredList.map((dt) => {
                   const isPaid = dt.trangThaiThanhToan === 'da_thanh_toan';
                   const isDispensed = dt.trangThai === 'da_cap_phat';
+                  const isOutsidePurchase = dt.luaChonMua === 'mua_ngoai';
                   const patientName = dt.benhNhan?.hoTen || 'Bệnh nhân';
                   const firstLetter = patientName.charAt(0).toUpperCase();
 
@@ -602,6 +603,9 @@ export default function DonThuocListPage() {
                           )}
                           <span>{isPaid ? 'Đã thanh toán' : 'Chưa thanh toán'}</span>
                         </span>
+                        <div className="mt-1 text-[10px] font-semibold text-gray-500">
+                          {isOutsidePurchase ? 'Bệnh nhân mua ngoài' : dt.luaChonMua === 'mua_tai_benh_vien' ? 'Mua tại bệnh viện' : 'Chưa chọn nơi mua'}
+                        </div>
                       </td>
 
                       {/* 6. Trạng thái cấp phát */}
@@ -620,6 +624,11 @@ export default function DonThuocListPage() {
                           />
                           <span>{isDispensed ? 'Đã cấp phát' : 'Chờ cấp phát'}</span>
                         </span>
+                        {dt.maPhieuNhanThuoc && (
+                          <div className="mt-1 text-[10px] font-semibold text-emerald-700">
+                            Phiếu nhận: {dt.maPhieuNhanThuoc}
+                          </div>
+                        )}
                       </td>
 
                       {/* 7. Ngày kê đơn */}
@@ -634,6 +643,8 @@ export default function DonThuocListPage() {
                           className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs active:scale-95 cursor-pointer ${
                             isDispensed
                               ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200'
+                              : isOutsidePurchase
+                              ? 'bg-gray-100 text-gray-500 border border-gray-200'
                               : isPaid
                               ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
                               : 'bg-primary-600 hover:bg-primary-700 text-white shadow-primary-600/20'
@@ -643,6 +654,11 @@ export default function DonThuocListPage() {
                             <>
                               <Eye className="h-3.5 w-3.5" />
                               <span>Chi tiết</span>
+                            </>
+                          ) : isOutsidePurchase ? (
+                            <>
+                              <Eye className="h-3.5 w-3.5" />
+                              <span>Mua ngoài</span>
                             </>
                           ) : (
                             <>
@@ -672,5 +688,3 @@ export default function DonThuocListPage() {
     </div>
   );
 }
-
-

@@ -11,6 +11,7 @@ import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHenModule } from '../lich-hen/lich-hen.module';
+import { YeuCauNhapKho } from '../nha-thuoc/entities/yeu-cau-nhap-kho.entity';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { LichHenModule } from '../lich-hen/lich-hen.module';
       BenhAnKham,
       ChiDinhCanLamSang,
       DonThuoc,
+      YeuCauNhapKho,
     ]),
   ],
   controllers: [ThanhToanController],

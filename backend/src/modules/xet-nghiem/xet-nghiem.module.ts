@@ -3,12 +3,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { XetNghiemController } from './xet-nghiem.controller';
 import { XetNghiemService } from './xet-nghiem.service';
 import { DichVuXetNghiem, ChiDinhCanLamSang, KetQuaXetNghiem } from './entities/xet-nghiem.entity';
+import { LichSuHieuChinhKetQua } from './entities/lich-su-hieu-chinh-ket-qua.entity';
 import { DanhGiaCaKham } from '../danh-gia/entities/danh-gia.entity';
 import { ThongBaoModule } from '../thong-bao/thong-bao.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([DichVuXetNghiem, ChiDinhCanLamSang, KetQuaXetNghiem, DanhGiaCaKham]),
+    TypeOrmModule.forFeature([DichVuXetNghiem, ChiDinhCanLamSang, KetQuaXetNghiem, LichSuHieuChinhKetQua, DanhGiaCaKham]),
     ThongBaoModule,
   ],
   controllers: [XetNghiemController],
@@ -16,4 +17,3 @@ import { ThongBaoModule } from '../thong-bao/thong-bao.module';
   exports: [XetNghiemService, TypeOrmModule],
 })
 export class XetNghiemModule {}
-

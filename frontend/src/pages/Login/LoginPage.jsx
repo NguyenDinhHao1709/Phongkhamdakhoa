@@ -144,12 +144,12 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       {/* Header */}
-      <header className="flex h-16 items-center justify-between border-b bg-white px-6 lg:px-12">
-        <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600 shadow-sm group-hover:bg-primary-700 transition-colors">
+      <header className="flex h-16 items-center justify-between border-b bg-white px-4 sm:px-6 lg:px-12">
+        <div className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group" onClick={() => navigate('/')}>
+          <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-primary-600 shadow-sm group-hover:bg-primary-700 transition-colors">
             <Stethoscope className="h-5 w-5 text-white" />
           </div>
-          <span className="text-lg font-bold text-gray-900 tracking-tight group-hover:text-primary-600 transition-colors">
+          <span className="text-base sm:text-lg font-bold text-gray-900 tracking-tight group-hover:text-primary-600 transition-colors">
             Phòng Khám Đa Khoa
           </span>
         </div>
@@ -165,32 +165,20 @@ export default function LoginPage() {
       </header>
 
       {/* Body */}
-      <main className="flex flex-grow flex-col items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm border border-gray-100">
-          <div className="mb-8 text-center">
-            <h2 className="text-2xl font-bold text-gray-900">Đăng nhập</h2>
-            <p className="mt-2 text-sm text-gray-500">Nhập thông tin để truy cập hệ thống</p>
+      <main className="flex flex-grow flex-col items-center justify-center px-3 sm:px-4 py-8 sm:py-12">
+        <div className="w-full max-w-md rounded-2xl bg-white p-5 sm:p-8 shadow-sm border border-gray-100">
+          <div className="mb-6 sm:mb-8 text-center">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Đăng nhập</h2>
+            <p className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-gray-500">Nhập thông tin để truy cập hệ thống</p>
           </div>
 
           {redirectUrl && (
-            <div className={`mb-6 rounded-xl p-3.5 text-xs flex items-start gap-2.5 border ${
-              redirectUrl.includes('kiosk')
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                : 'bg-blue-50 border-blue-200 text-blue-900'
-            }`}>
-              {redirectUrl.includes('kiosk') ? (
-                <Ticket className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-              ) : (
-                <CalendarCheck className="h-5 w-5 text-primary-600 flex-shrink-0 mt-0.5" />
-              )}
+            <div className="mb-6 rounded-xl p-3.5 text-xs flex items-start gap-2.5 border bg-blue-50 border-blue-200 text-blue-900">
+              <CalendarCheck className="h-5 w-5 text-primary-600 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="font-extrabold">
-                  {redirectUrl.includes('kiosk') ? 'Yêu cầu đăng nhập Kiosk Tự Động' : 'Yêu cầu đăng nhập tài khoản'}
-                </p>
+                <p className="font-extrabold">Yêu cầu đăng nhập tài khoản</p>
                 <p className="mt-0.5">
-                  {redirectUrl.includes('kiosk')
-                    ? 'Quý khách vui lòng đăng nhập tài khoản bệnh nhân để sử dụng Kiosk tự động, quét thẻ và nhận số thứ tự điện tử.'
-                    : 'Quý khách vui lòng đăng nhập tài khoản bệnh nhân để tiến hành đặt lịch khám và nhận mã số thứ tự.'}
+                  Quý khách vui lòng đăng nhập tài khoản bệnh nhân để tiến hành đặt lịch khám, xem phiếu hẹn và theo dõi tiến độ khám.
                 </p>
               </div>
             </div>

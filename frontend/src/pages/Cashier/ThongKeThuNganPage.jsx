@@ -32,6 +32,7 @@ export default function ThongKeThuNganPage() {
   const [tuNgay, setTuNgay] = useState('');
   const [denNgay, setDenNgay] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [documentFilter, setDocumentFilter] = useState('tat_ca');
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['thong-ke-thu-ngan', user?.id, timeRange, tuNgay, denNgay],
@@ -49,6 +50,10 @@ export default function ThongKeThuNganPage() {
 
   const stats = data?.data;
   const byPhuongThuc = stats?.byPhuongThuc || {};
+  const chungTu = stats?.danhSachChungTu || [];
+  const filteredChungTu = chungTu.filter((item) => (
+    documentFilter === 'tat_ca' || item.loai === documentFilter
+  ));
 
   const pieData = Object.entries(byPhuongThuc).map(([k, v]) => ({
     name: PHUONG_THUC_LABELS[k] || k,
@@ -56,17 +61,17 @@ export default function ThongKeThuNganPage() {
   }));
 
   const handleExportCSV = () => {
-    const list = stats?.giaoDichGanNhat || [];
+    const list = filteredChungTu;
     if (list.length === 0) return;
-    const headers = ['Mã HĐ', 'Bệnh nhân', 'Số điện thoại', 'Thực thu', 'Phương thức', 'Ngày thanh toán', 'Thu ngân'];
+    const headers = ['Loại chứng từ', 'Số chứng từ', 'Đối tượng', 'Diễn giải', 'Số tiền', 'Phương thức', 'Ngày lập'];
     const rows = list.map(h => [
-      h.maHoaDon,
-      `"${h.benhNhanTen || ''}"`,
-      h.benhNhanSdt || '',
-      h.thucThu,
+      h.loai === 'phieu_thu' ? 'Phiếu thu' : 'Phiếu chi',
+      h.soChungTu,
+      `"${h.doiTuong || ''}"`,
+      `"${h.dienGiai || ''}"`,
+      h.soTien,
       PHUONG_THUC_LABELS[h.phuongThuc] || h.phuongThuc,
-      h.ngayThanhToan ? new Date(h.ngayThanhToan).toLocaleString('vi-VN') : '',
-      `"${h.thuNganTen || ''}"`,
+      h.ngayLap ? new Date(h.ngayLap).toLocaleString('vi-VN') : '',
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
@@ -85,7 +90,7 @@ export default function ThongKeThuNganPage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Báo Cáo Doanh Thu Thu Ngân</h1>
+            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Báo Cáo Thống Kê Thu Ngân</h1>
             {stats?.isCaNhan && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
                 Ca trực cá nhân: {stats?.tenThuNgan || user?.hoTen}
@@ -112,6 +117,49 @@ export default function ThongKeThuNganPage() {
             <Download className="h-4 w-4" /> Xuất Báo Cáo CSV
           </button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        {[
+          ['Phiếu thu', stats?.soPhieuThu || 0, stats?.tongPhieuThu || 0, 'text-emerald-700', 'bg-emerald-50'],
+          ['Phiếu chi', stats?.soPhieuChi || 0, stats?.tongPhieuChi || 0, 'text-rose-700', 'bg-rose-50'],
+          ['Chờ chi', stats?.soPhieuChoChi || 0, null, 'text-amber-700', 'bg-amber-50'],
+          ['Số dư dòng tiền', null, stats?.soDuDongTien || 0, 'text-blue-700', 'bg-blue-50'],
+        ].map(([label, count, amount, color, bg]) => (
+          <div key={label} className="rounded-2xl border border-gray-200 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</span>
+              <span className={`rounded-lg px-2 py-1 text-xs font-bold ${bg} ${color}`}>{count !== null ? count : 'ERP'}</span>
+            </div>
+
+            {amount !== null && <p className={`mt-2 text-xl font-black ${color}`}>{formatCurrency(amount)}</p>}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-gray-200 bg-white p-3">
+        <span className="mr-2 text-xs font-bold text-gray-500">Loại chứng từ:</span>
+        {[
+          ['tat_ca', 'Tất cả'],
+          ['phieu_thu', 'Phiếu thu'],
+          ['phieu_chi', 'Phiếu chi'],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setDocumentFilter(value)}
+            className={`rounded-xl px-4 py-2 text-xs font-bold transition-colors ${
+              documentFilter === value
+                ? 'bg-primary-600 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+        <span className="ml-auto text-xs text-gray-500">
+          {filteredChungTu.length} chứng từ trong kỳ
+        </span>
       </div>
 
       {/* Quick Time Filter */}
@@ -313,6 +361,40 @@ export default function ThongKeThuNganPage() {
         </div>
       </MedCard>
 
+      <MedCard title="📒 Sổ chứng từ kế toán" subtitle="Tập hợp toàn bộ phiếu thu viện phí và phiếu chi mua thuốc trong kỳ">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left">
+            <thead className="bg-gray-50 text-gray-600 font-bold uppercase border-b">
+              <tr>
+                <th className="px-4 py-3">Loại</th>
+                <th className="px-4 py-3">Số chứng từ</th>
+                <th className="px-4 py-3">Đối tượng</th>
+                <th className="px-4 py-3">Diễn giải</th>
+                <th className="px-4 py-3 text-right">Số tiền</th>
+                <th className="px-4 py-3">Ngày lập</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filteredChungTu.map((item) => (
+                <tr key={`${item.loai}-${item.soChungTu}`} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <span className={`rounded-full px-2 py-1 font-bold ${item.loai === 'phieu_thu' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                      {item.loai === 'phieu_thu' ? 'Phiếu thu' : 'Phiếu chi'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 font-mono font-bold text-primary-700">{item.soChungTu}</td>
+                  <td className="px-4 py-3 font-medium">{item.doiTuong}</td>
+                  <td className="px-4 py-3 text-gray-600">{item.dienGiai}</td>
+                  <td className={`px-4 py-3 text-right font-bold ${item.loai === 'phieu_thu' ? 'text-emerald-700' : 'text-rose-700'}`}>{formatCurrency(item.soTien)}</td>
+                  <td className="px-4 py-3 text-gray-500">{formatDateTime(item.ngayLap)}</td>
+                </tr>
+              ))}
+              {filteredChungTu.length === 0 && <tr><td colSpan="6" className="px-4 py-8 text-center text-gray-500">Chưa có chứng từ phù hợp trong kỳ.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </MedCard>
+
       {/* In hóa đơn modal */}
       {selectedInvoice && (
         <InHoaDonModal hoaDon={selectedInvoice} onClose={() => setSelectedInvoice(null)} />
@@ -320,4 +402,3 @@ export default function ThongKeThuNganPage() {
     </div>
   );
 }
-

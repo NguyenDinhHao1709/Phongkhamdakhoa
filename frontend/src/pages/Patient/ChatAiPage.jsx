@@ -9,7 +9,7 @@ function FormattedMessage({ text }) {
   const lines = text.split('\n');
 
   return (
-    <div className="space-y-1.5 leading-relaxed text-[13.5px]">
+    <div className="space-y-1.5 leading-relaxed text-xs sm:text-[13.5px]">
       {lines.map((line, lIdx) => {
         const trimmed = line.trim();
         if (!trimmed) return <div key={lIdx} className="h-1.5" />;
@@ -68,7 +68,7 @@ export default function ChatAiPage() {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const messagesEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
 
   // Tải tóm tắt hồ sơ y tế bệnh nhân
   useEffect(() => {
@@ -86,9 +86,11 @@ export default function ChatAiPage() {
     return () => { isMounted = false; };
   }, []);
 
-  // Cuộn xuống tin nhắn mới nhất
+  // Cuộn nội bộ trong khung chat xuống tin nhắn mới nhất, không cuộn cửa sổ trang
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
   }, [messages, loading]);
 
   const sendMessageText = async (textToSend) => {
@@ -152,24 +154,24 @@ export default function ChatAiPage() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto h-[86vh] flex flex-col rounded-xl bg-white border border-gray-200 overflow-hidden">
+    <div className="max-w-4xl mx-auto h-[calc(100vh-140px)] sm:h-[86vh] flex flex-col rounded-xl sm:rounded-2xl bg-white border border-gray-200 overflow-hidden shadow-2xs">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3 bg-white">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white">
-            <HeartPulse className="h-5 w-5" />
+      <div className="flex items-center justify-between border-b border-gray-200 px-3.5 py-2.5 sm:px-5 sm:py-3 bg-white">
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-lg bg-blue-600 text-white shrink-0">
+            <HeartPulse className="h-4 w-4 sm:h-5 sm:w-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-gray-900 text-sm">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h3 className="font-semibold text-gray-900 text-xs sm:text-sm">
                 Bác Sĩ Gia Đình AI 24/7
               </h3>
-              <span className="flex items-center gap-1 text-[11px] font-medium text-green-600">
+              <span className="flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-green-600">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> Online
               </span>
             </div>
-            <p className="text-xs text-gray-500">
-              Tư vấn cá nhân hóa dựa trên kết quả khám, xét nghiệm & đơn thuốc của bạn
+            <p className="text-[11px] sm:text-xs text-gray-500 line-clamp-1">
+              Tư vấn cá nhân hóa dựa trên kết quả khám & đơn thuốc của bạn
             </p>
           </div>
         </div>
@@ -178,10 +180,10 @@ export default function ChatAiPage() {
           type="button"
           onClick={handleReset}
           title="Làm mới cuộc trò chuyện"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-blue-700 bg-white hover:bg-blue-50 border border-gray-200 rounded-lg transition-colors"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-blue-700 bg-white hover:bg-blue-50 border border-gray-200 rounded-lg transition-colors shrink-0"
         >
           <RefreshCw className="h-3.5 w-3.5" />
-          Làm mới
+          <span className="hidden sm:inline">Làm mới</span>
         </button>
       </div>
 
@@ -208,25 +210,25 @@ export default function ChatAiPage() {
       )}
 
       {/* Messages Feed */}
-      <div className="flex-1 p-5 overflow-y-auto space-y-4 bg-gray-50">
+      <div ref={chatContainerRef} className="flex-1 p-3.5 sm:p-5 overflow-y-auto space-y-3.5 bg-gray-50">
         {messages.map((msg, idx) => (
           <div
             key={idx}
-            className={`flex items-start gap-3 ${msg.sender === 'user' ? 'flex-row-reverse' : ''}`}
+            className={`flex items-start gap-2.5 sm:gap-3 ${msg.sender === 'user' ? 'flex-row-reverse' : ''}`}
           >
             <div
-              className={`flex h-8 w-8 items-center justify-center rounded-full shrink-0 text-white text-xs font-bold ${
+              className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full shrink-0 text-white text-xs font-bold ${
                 msg.sender === 'user' ? 'bg-gray-700' : 'bg-blue-600'
               }`}
             >
-              {msg.sender === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+              {msg.sender === 'user' ? <User className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <Bot className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
             </div>
 
             <div
-              className={`max-w-2xl rounded-2xl px-4 py-3 ${
+              className={`max-w-[85%] sm:max-w-2xl rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 ${
                 msg.sender === 'user'
-                  ? 'bg-blue-600 text-white rounded-tr-none text-sm leading-relaxed'
-                  : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none'
+                  ? 'bg-blue-600 text-white rounded-tr-none text-xs sm:text-sm leading-relaxed'
+                  : 'bg-white text-gray-800 border border-gray-200 rounded-tl-none shadow-2xs'
               }`}
             >
               {msg.sender === 'user' ? (
@@ -239,17 +241,16 @@ export default function ChatAiPage() {
         ))}
 
         {loading && (
-          <div className="flex items-center gap-2.5 text-xs text-blue-700 font-medium bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 w-fit">
-            <Bot className="h-4 w-4 animate-spin text-blue-600" />
-            <span>Bác sĩ AI đang đọc dữ liệu bệnh án và tổng hợp câu trả lời...</span>
+          <div className="flex items-center gap-2 text-xs text-blue-700 font-medium bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 w-fit">
+            <Bot className="h-3.5 w-3.5 animate-spin text-blue-600" />
+            <span>Bác sĩ AI đang đọc dữ liệu bệnh án và trả lời...</span>
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Quick Prompts */}
-      <div className="px-4 py-2 bg-white border-t border-gray-100 flex items-center gap-2 overflow-x-auto">
-        <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+      <div className="px-3 sm:px-4 py-2 bg-white border-t border-gray-100 flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
+        <span className="text-[10px] sm:text-[11px] font-medium text-gray-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
           <Sparkles className="h-3 w-3 text-blue-500" /> Gợi ý:
         </span>
         {quickPrompts.map((p, idx) => {
@@ -260,7 +261,7 @@ export default function ChatAiPage() {
               type="button"
               onClick={() => sendMessageText(p.text)}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs text-gray-600 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 border border-gray-200 rounded-full shrink-0 transition-colors"
+              className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 text-[11px] sm:text-xs text-gray-600 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 border border-gray-200 rounded-full shrink-0 transition-colors"
             >
               <Icon className="h-3 w-3 text-blue-600" />
               {p.label}
@@ -270,21 +271,21 @@ export default function ChatAiPage() {
       </div>
 
       {/* Input Form */}
-      <form onSubmit={handleSend} className="p-3 border-t border-gray-200 bg-white flex items-center gap-3">
+      <form onSubmit={handleSend} className="p-2.5 sm:p-3 border-t border-gray-200 bg-white flex items-center gap-2 sm:gap-3">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Hỏi về bệnh án, cách dùng thuốc, kết quả xét nghiệm hay chế độ ăn..."
-          className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+          placeholder="Hỏi về bệnh án, đơn thuốc, chế độ ăn..."
+          className="flex-1 rounded-xl border border-gray-300 px-3.5 py-2 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
         />
         <button
           type="submit"
           disabled={!input.trim() || loading}
-          className="flex h-10 px-4 items-center gap-1.5 justify-center rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className="flex h-9 sm:h-10 px-3.5 sm:px-4 items-center gap-1.5 justify-center rounded-xl bg-blue-600 text-white font-medium text-xs sm:text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors shrink-0"
         >
           <span>Gửi</span>
-          <Send className="h-4 w-4" />
+          <Send className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
         </button>
       </form>
     </div>

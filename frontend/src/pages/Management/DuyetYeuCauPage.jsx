@@ -45,6 +45,7 @@ const ROLE_PRESETS = [
 
 const LOAI_DON_PRESETS = [
   { value: 'all', label: 'Tất cả loại đơn' },
+  { value: 'Yêu cầu mua thuốc', label: 'Yêu cầu mua thuốc' },
   { value: 'Yêu cầu hủy ca khám', label: 'Yêu cầu hủy ca khám' },
   { value: 'Đề xuất vật tư y tế', label: 'Đề xuất vật tư y tế' },
   { value: 'Xin nghỉ phép', label: 'Xin nghỉ phép' },
@@ -89,6 +90,11 @@ export default function DuyetYeuCauPage() {
     queryFn: () => apiGet('/quan-ly/don-tu?trangThai=all'),
   });
 
+  const { data: purchaseData } = useQuery({
+    queryKey: ['giam-doc-phe-duyet-mua-thuoc'],
+    queryFn: () => apiGet('/nha-thuoc/mua-hang?trangThai=all'),
+  });
+
   const rawList = Array.isArray(data?.data)
     ? data.data
     : Array.isArray(data?.data?.data)
@@ -96,6 +102,21 @@ export default function DuyetYeuCauPage() {
     : Array.isArray(data)
     ? data
     : [];
+  const purchaseRequests = Array.isArray(purchaseData?.data) ? purchaseData.data : [];
+  const allApprovalRequests = useMemo(() => [
+    ...rawList,
+    ...purchaseRequests.map((request) => ({
+      id: `mua-thuoc-${request.id}`,
+      purchaseRequestId: request.id,
+      isPurchaseRequest: true,
+      loaiDon: 'Yêu cầu mua thuốc',
+      nguoiGui: { hoTen: 'Nhân viên nhà thuốc', chucVu: 'Nhà thuốc', tenVaiTro: 'Nhà thuốc' },
+      ngayGui: request.taoLuc,
+      trangThai: request.trangThai === 'cho_duyet' ? 'cho_xu_ly' : request.trangThai === 'tu_choi' ? 'tu_choi' : 'da_xu_ly',
+      noiDung: request.ghiChu || 'Đề nghị mua thuốc bổ sung cho kho dược.',
+      purchaseRequest: request,
+    })),
+  ], [rawList, purchaseRequests]);
 
   // Tự động mở đơn khi click từ Thông báo
   useEffect(() => {
@@ -105,13 +126,13 @@ export default function DuyetYeuCauPage() {
   }, [donIdParam]);
 
   useEffect(() => {
-    if (donIdParam && rawList.length > 0) {
-      const found = rawList.find((d) => d.id === Number(donIdParam));
+    if (donIdParam && allApprovalRequests.length > 0) {
+      const found = allApprovalRequests.find((d) => d.id === Number(donIdParam));
       if (found) {
         setSelectedDon(found);
       }
     }
-  }, [donIdParam, rawList]);
+  }, [donIdParam, allApprovalRequests]);
 
   // Mutation Phê duyệt / Từ chối
   const duyetMutation = useMutation({
@@ -138,6 +159,15 @@ export default function DuyetYeuCauPage() {
       setApproveNote('Ban Giám Đốc đã phê duyệt.');
     }
     setApproveModalOpen(true);
+  };
+
+  const decideApprovalRequest = async (don, duyet) => {
+    if (!don.isPurchaseRequest) return;
+    await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${don.purchaseRequestId}/duyet`, {
+      duyet,
+      lyDo: duyet ? undefined : 'Không được phê duyệt theo quyết định của Ban Giám đốc',
+    });
+    queryClient.invalidateQueries({ queryKey: ['giam-doc-phe-duyet-mua-thuoc'] });
   };
 
   const handleConfirmApprove = () => {
@@ -220,7 +250,7 @@ export default function DuyetYeuCauPage() {
 
   // Lọc đa tiêu chí
   const filteredDonList = useMemo(() => {
-    let result = rawList;
+    let result = allApprovalRequests;
 
     // 1. Lọc trạng thái
     if (filterStatus && filterStatus !== 'all') {
@@ -262,11 +292,11 @@ export default function DuyetYeuCauPage() {
     }
 
     return result;
-  }, [rawList, filterStatus, filterRole, filterLoaiDon, filterDateFrom, filterDateTo, debouncedKeyword]);
+  }, [allApprovalRequests, filterStatus, filterRole, filterLoaiDon, filterDateFrom, filterDateTo, debouncedKeyword]);
 
   // Thống kê nhanh theo các tiêu chí khác (vai trò, ngày, keyword) đang active
   const stats = useMemo(() => {
-    let base = rawList;
+    let base = allApprovalRequests;
     if (filterRole && filterRole !== 'all') {
       base = base.filter((d) => matchesRole(d, filterRole));
     }
@@ -292,7 +322,7 @@ export default function DuyetYeuCauPage() {
     const tuChoi = base.filter((d) => d.trangThai === 'tu_choi').length;
     const total = base.length;
     return { choXuLy, daXuLy, tuChoi, total };
-  }, [rawList, filterRole, filterLoaiDon, filterDateFrom, filterDateTo, debouncedKeyword]);
+  }, [allApprovalRequests, filterRole, filterLoaiDon, filterDateFrom, filterDateTo, debouncedKeyword]);
 
   // Phân trang
   const totalPages = Math.ceil(filteredDonList.length / ITEMS_PER_PAGE) || 1;
@@ -394,7 +424,7 @@ export default function DuyetYeuCauPage() {
             </span>
           </div>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Xem xét và phê duyệt đơn xin nghỉ phép, đề xuất vật tư, đổi ca hoặc hủy ca khám từ nhân sự phòng khám.
+            Xem xét toàn bộ yêu cầu nhân sự và yêu cầu mua thuốc của nhà thuốc tại một nơi.
           </p>
         </div>
 
@@ -641,7 +671,7 @@ export default function DuyetYeuCauPage() {
           </div>
 
           <div className="text-gray-500">
-            Hiển thị <strong className="text-gray-900">{filteredDonList.length}</strong> / {rawList.length} đơn yêu cầu
+            Hiển thị <strong className="text-gray-900">{filteredDonList.length}</strong> / {allApprovalRequests.length} đơn yêu cầu
           </div>
         </div>
       </div>
@@ -746,6 +776,17 @@ export default function DuyetYeuCauPage() {
                   </p>
                   <p className="whitespace-pre-line text-gray-700">{don.noiDung}</p>
                 </div>
+                {don.isPurchaseRequest && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {don.purchaseRequest?.chiTiet?.map((detail) => (
+                      <div key={detail.id} className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 text-xs text-gray-700">
+                        <b>{detail.tenThuoc || `Thuốc #${detail.thuocId}`}</b>
+                        <span className="ml-2">Số lượng: <b>{detail.soLuongDat}</b></span>
+                        <span className="ml-2">Giá dự kiến: <b>{Number(detail.donGiaBao || 0).toLocaleString('vi-VN')} đ</b></span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Cảnh báo quy trình nếu là đơn Hủy ca khám */}
                 {don.loaiDon === 'Yêu cầu hủy ca khám' && (
@@ -782,7 +823,9 @@ export default function DuyetYeuCauPage() {
                 {don.trangThai === 'cho_xu_ly' && (
                   <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
                     <button
-                      onClick={() => handleOpenReject(don.id)}
+                      onClick={() => don.isPurchaseRequest
+                        ? decideApprovalRequest(don, false)
+                        : handleOpenReject(don.id)}
                       disabled={duyetMutation.isPending}
                       className="inline-flex items-center gap-1.5 px-3.5 py-1.5 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
                     >
@@ -791,7 +834,9 @@ export default function DuyetYeuCauPage() {
                     </button>
 
                     <button
-                      onClick={() => handleOpenApprove(don)}
+                      onClick={() => don.isPurchaseRequest
+                        ? decideApprovalRequest(don, true)
+                        : handleOpenApprove(don)}
                       disabled={duyetMutation.isPending}
                       className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs shadow-emerald-600/20 active:scale-95 cursor-pointer"
                       data-testid={`btn-approve-${don.id}`}

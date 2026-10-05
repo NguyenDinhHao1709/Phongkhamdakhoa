@@ -10,6 +10,9 @@ import { NhaThuocController } from './nha-thuoc.controller';
 import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
+import { NhaCungCap } from './entities/nha-cung-cap.entity';
+import { YeuCauNhapKho } from './entities/yeu-cau-nhap-kho.entity';
+import { YeuCauNhapKhoChiTiet } from './entities/yeu-cau-nhap-kho-chi-tiet.entity';
 
 @Module({
   imports: [
@@ -21,6 +24,9 @@ import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
       BenhAnKham,
       HoaDon,
       BenhNhan,
+      NhaCungCap,
+      YeuCauNhapKho,
+      YeuCauNhapKhoChiTiet,
     ]),
   ],
   controllers: [NhaThuocController],
@@ -28,4 +34,3 @@ import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
   exports: [NhaThuocService],
 })
 export class NhaThuocModule {}
-

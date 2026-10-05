@@ -16,6 +16,8 @@ import { NhaThuocModule } from './modules/nha-thuoc/nha-thuoc.module';
 import { AiModule } from './modules/ai/ai.module';
 import { ThongBaoModule } from './modules/thong-bao/thong-bao.module';
 import { DanhGiaModule } from './modules/danh-gia/danh-gia.module';
+import { KioskModule } from './modules/kiosk/kiosk.module';
+import { ChamCongModule } from './modules/cham-cong/cham-cong.module';
 
 @Module({
   imports: [
@@ -65,6 +67,8 @@ import { DanhGiaModule } from './modules/danh-gia/danh-gia.module';
     AiModule,           // Sprint 5 (Public AI)
     ThongBaoModule,     // Realtime & In-app Notifications
     DanhGiaModule,      // Đánh giá chất lượng ca khám & CSAT
+    KioskModule,        // Kiosk Tiếp nhận tự động
+    ChamCongModule,     // Chấm công khuôn mặt
   ],
 })
 export class AppModule {}

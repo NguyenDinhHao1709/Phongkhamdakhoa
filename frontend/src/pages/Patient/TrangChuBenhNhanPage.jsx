@@ -49,36 +49,36 @@ export default function TrangChuBenhNhanPage() {
     <div className="space-y-6 pb-12">
 
       {/* ── THÔNG TIN BỆNH NHÂN ── */}
-      <div className="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-white p-5 sm:p-6">
-        <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-blue-100/60" />
-        <div className="flex items-start justify-between gap-4">
+      <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-white p-3.5 sm:p-6 shadow-2xs">
+        <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-blue-100/50" />
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">Cổng thông tin bệnh nhân</p>
-            <p className="mt-3 text-sm text-gray-500">Xin chào,</p>
-            <h1 className="text-2xl font-bold text-gray-900">{displayName}</h1>
+            <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-blue-600">Cổng thông tin bệnh nhân</p>
+            <p className="mt-1 text-xs text-gray-500">Xin chào,</p>
+            <h1 className="text-lg sm:text-2xl font-black text-gray-900 leading-tight">{displayName}</h1>
           </div>
-          <div className="relative text-right">
-            <p className="text-xs text-gray-400">Mã bệnh nhân</p>
-            <p className="mt-1 text-sm font-bold text-blue-600 font-mono">{maBN}</p>
+          <div className="relative text-right bg-white/80 border border-blue-100 px-2.5 py-1.5 rounded-xl shadow-2xs shrink-0">
+            <p className="text-[10px] text-gray-400">Mã bệnh nhân</p>
+            <p className="text-xs sm:text-sm font-bold text-blue-600 font-mono">{maBN}</p>
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-1 gap-3 border-t border-blue-100 pt-5 sm:grid-cols-3 text-sm">
-          <div>
-            <p className="text-xs text-gray-400 mb-0.5">Thẻ BHYT</p>
-            <p className="font-semibold text-gray-800 font-mono text-xs">{soBHYT}</p>
-            <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
-              <ShieldCheck className="h-3 w-3" />
+        <div className="mt-3.5 grid grid-cols-3 gap-2 border-t border-blue-100/80 pt-3 text-xs">
+          <div className="min-w-0">
+            <p className="text-[10px] sm:text-xs text-gray-400 mb-0.5">Thẻ BHYT</p>
+            <p className="font-bold text-gray-800 font-mono text-[11px] sm:text-xs truncate">{soBHYT}</p>
+            <span className="mt-1 inline-flex items-center gap-0.5 text-[9px] sm:text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.2 rounded-full">
+              <ShieldCheck className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
               Đúng tuyến
             </span>
           </div>
           <div>
-            <p className="text-xs text-gray-400 mb-0.5">Nhóm máu</p>
-            <p className="font-semibold text-gray-900 text-base">{nhomMau}</p>
+            <p className="text-[10px] sm:text-xs text-gray-400 mb-0.5">Nhóm máu</p>
+            <p className="font-extrabold text-gray-900 text-sm sm:text-base">{nhomMau}</p>
           </div>
-          <div>
-            <p className="text-xs text-gray-400 mb-0.5">Dị ứng</p>
-            <p className="text-xs text-gray-600">{benhNhan?.diUng || 'Không có'}</p>
+          <div className="min-w-0">
+            <p className="text-[10px] sm:text-xs text-gray-400 mb-0.5">Dị ứng</p>
+            <p className="text-[11px] sm:text-xs text-gray-600 truncate">{benhNhan?.diUng || 'Không có'}</p>
           </div>
         </div>
       </div>
@@ -134,7 +134,7 @@ export default function TrangChuBenhNhanPage() {
           <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">Dịch vụ chính</p>
           <h2 className="mt-1 text-lg font-bold text-gray-900">Bạn cần hỗ trợ gì hôm nay?</h2>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-3 overflow-x-auto sm:overflow-visible pb-2 sm:pb-0 -mx-3 px-3 sm:mx-0 sm:px-0 snap-x snap-mandatory no-scrollbar">
         {[
           { label: 'Đặt lịch khám', desc: 'Tại viện & Telehealth', icon: Calendar, path: '/benh-nhan/dat-lich' },
           { label: 'Tiến độ & STT', desc: 'Số thứ tự điện tử', icon: Ticket, path: '/benh-nhan/so-thu-tu' },
@@ -144,13 +144,15 @@ export default function TrangChuBenhNhanPage() {
           <button
             key={path}
             onClick={() => navigate(path)}
-            className="group bg-white rounded-xl border border-gray-200 p-4 text-left shadow-sm hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md transition-all"
+            className="w-[68vw] max-w-[240px] sm:w-auto sm:max-w-none shrink-0 snap-start group bg-white rounded-xl border border-gray-200 p-4 text-left shadow-sm hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md transition-all flex flex-col justify-between"
           >
-            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-              <Icon className="h-5 w-5" />
+            <div>
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                <Icon className="h-5 w-5" />
+              </div>
+              <p className="font-semibold text-gray-900 text-sm whitespace-nowrap">{label}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
             </div>
-            <p className="font-semibold text-gray-900 text-sm">{label}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
           </button>
         ))}
         </div>
@@ -226,20 +228,20 @@ export default function TrangChuBenhNhanPage() {
           </button>
         </div>
 
-        <div className="space-y-2">
+        <div className="flex sm:block gap-3 overflow-x-auto sm:overflow-visible pb-2 sm:pb-0 -mx-1 px-1 sm:mx-0 sm:px-0 snap-x snap-mandatory no-scrollbar sm:space-y-2">
           {(doctors.length > 0 ? doctors : [
             { id: 1, hoTen: 'BS.CKII Nguyễn Văn A', chuyenKhoa: 'Nội tổng quát & Tim mạch', bangCap: 'Chuyên khoa II — 20 năm kinh nghiệm' },
             { id: 2, hoTen: 'BS.CKI Trần Thị B', chuyenKhoa: 'Tai Mũi Họng', bangCap: 'Chuyên khoa I — 12 năm kinh nghiệm' },
             { id: 3, hoTen: 'ThS.BS Lê Hoàng C', chuyenKhoa: 'Nhi khoa', bangCap: 'Thạc sĩ Y học — 8 năm kinh nghiệm' },
           ]).map((bs, idx) => (
-            <div key={idx} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50">
+            <div key={idx} className="w-[78vw] max-w-[300px] sm:w-auto sm:max-w-none shrink-0 snap-start flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
               <div className="h-9 w-9 rounded-lg bg-blue-50 text-blue-600 text-xs font-semibold flex items-center justify-center flex-shrink-0">
                 BS
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-gray-900 text-sm truncate">{bs.hoTen}</p>
-                <p className="text-xs text-blue-600 font-medium">{bs.chuyenKhoa}</p>
-                <p className="text-xs text-gray-500">{bs.bangCap}</p>
+                <p className="text-xs text-blue-600 font-medium truncate">{bs.chuyenKhoa}</p>
+                <p className="text-xs text-gray-500 truncate">{bs.bangCap}</p>
               </div>
               <button
                 onClick={() => navigate(`/benh-nhan/dat-lich?bacSiId=${bs.id || 1}`)}

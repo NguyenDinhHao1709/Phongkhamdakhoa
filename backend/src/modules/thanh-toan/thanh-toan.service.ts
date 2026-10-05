@@ -11,6 +11,7 @@ import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { ChiDinhCanLamSang, TrangThaiChiDinh } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHenService } from '../lich-hen/lich-hen.service';
+import { YeuCauNhapKho } from '../nha-thuoc/entities/yeu-cau-nhap-kho.entity';
 
 @Injectable()
 export class ThanhToanService {
@@ -29,6 +30,8 @@ export class ThanhToanService {
     private readonly clsRepo: Repository<ChiDinhCanLamSang>,
     @InjectRepository(DonThuoc)
     private readonly donThuocRepo: Repository<DonThuoc>,
+    @InjectRepository(YeuCauNhapKho)
+    private readonly yeuCauNhapKhoRepo: Repository<YeuCauNhapKho>,
     private readonly lichHenService: LichHenService,
   ) {}
 
@@ -96,6 +99,16 @@ export class ThanhToanService {
       throw new NotFoundException('Không tìm thấy hóa đơn');
     }
 
+    const bak = hd.luotTiepNhanId
+      ? await this.benhAnRepo.findOne({ where: { luotTiepNhanId: hd.luotTiepNhanId } })
+      : null;
+    const donThuoc = bak
+      ? await this.donThuocRepo.find({
+          where: { benhAnKhamId: bak.id },
+          relations: ['chiTiet', 'chiTiet.thuoc'],
+        })
+      : [];
+
     return {
       message: 'Lấy chi tiết hóa đơn thành công',
       data: {
@@ -107,6 +120,16 @@ export class ThanhToanService {
           ...ct,
           donGia: Number(ct.donGia),
           thanhTien: Number(ct.thanhTien),
+        })),
+        donThuoc: donThuoc.map((dt) => ({
+          id: dt.id,
+          maDonThuoc: dt.maDonThuoc,
+          luaChonMua: dt.luaChonMua,
+          trangThai: dt.trangThai,
+          tongTien: (dt.chiTiet || []).reduce(
+            (sum, ct) => sum + Number(ct.thuoc?.giaBan || 0) * Number(ct.soLuong || 0),
+            0,
+          ),
         })),
       },
     };
@@ -191,6 +214,7 @@ export class ThanhToanService {
       });
 
       donThuocList.forEach((dt) => {
+        if (dt.luaChonMua !== 'mua_tai_benh_vien') return;
         if (dt.chiTiet && dt.chiTiet.length > 0) {
           dt.chiTiet.forEach((ct) => {
             const donGia = Number(ct.thuoc?.giaBan || 10000);
@@ -245,6 +269,35 @@ export class ThanhToanService {
       message: 'Tạo hóa đơn tổng hợp viện phí thành công',
       data: fullHd,
     };
+  }
+
+  async capNhatLuaChonThuocHoaDon(
+    hoaDonId: number,
+    luaChonMua: 'mua_tai_benh_vien' | 'mua_ngoai',
+  ) {
+    if (!['mua_tai_benh_vien', 'mua_ngoai'].includes(luaChonMua)) {
+      throw new BadRequestException('Lựa chọn mua thuốc không hợp lệ');
+    }
+    const hd = await this.hoaDonRepo.findOne({ where: { id: hoaDonId } });
+    if (!hd) throw new NotFoundException('Không tìm thấy hóa đơn');
+    if (hd.trangThai === 'da_thanh_toan') {
+      throw new BadRequestException('Không thể thay đổi thuốc sau khi hóa đơn đã thanh toán');
+    }
+
+    const bak = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: hd.luotTiepNhanId } });
+    if (!bak) throw new BadRequestException('Hóa đơn chưa có hồ sơ khám để xác định đơn thuốc');
+    const donThuocList = await this.donThuocRepo.find({ where: { benhAnKhamId: bak.id } });
+    if (!donThuocList.length) throw new BadRequestException('Lượt khám không có đơn thuốc');
+
+    for (const dt of donThuocList) {
+      if (dt.trangThai === 'da_cap_phat') {
+        throw new BadRequestException('Đơn thuốc đã được cấp, không thể thay đổi lựa chọn');
+      }
+      dt.luaChonMua = luaChonMua;
+      dt.trangThai = luaChonMua === 'mua_ngoai' ? 'mua_ngoai' : 'cho_duyet';
+    }
+    await this.donThuocRepo.save(donThuocList);
+    return this.taoHoacCapNhatTuLuotKham(hd.luotTiepNhanId);
   }
 
   /**
@@ -400,6 +453,47 @@ export class ThanhToanService {
       };
     });
 
+    const chiQuery = this.yeuCauNhapKhoRepo.createQueryBuilder('yc')
+      .where('yc.trang_thai_chi_tra = :daChi', { daChi: 'da_chi' })
+      .orderBy('yc.ngay_chi_tra', 'DESC');
+    if (query.tuNgay && query.denNgay) {
+      chiQuery.andWhere('yc.ngay_chi_tra >= :chiTu AND yc.ngay_chi_tra <= :chiDen', {
+        chiTu: `${query.tuNgay} 00:00:00`,
+        chiDen: `${query.denNgay} 23:59:59`,
+      });
+    } else {
+      const start = query.range === 'thang_nay'
+        ? new Date(now.getFullYear(), now.getMonth(), 1)
+        : query.range === 'tuan_nay'
+          ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() + 1)
+          : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      chiQuery.andWhere('yc.ngay_chi_tra >= :chiStart', { chiStart: start });
+    }
+    const phieuChi = await chiQuery.getMany();
+    const tongPhieuChi = phieuChi.reduce((sum, item) => sum + Number(item.soTienChiTra || 0), 0);
+    const phieuThu = daThanhToan.map((h) => ({
+      loai: 'phieu_thu',
+      soChungTu: h.maHoaDon,
+      doiTuong: h.benhNhan?.hoTen || 'Bệnh nhân',
+      dienGiai: 'Thu viện phí khám chữa bệnh',
+      soTien: Number(h.thucThu),
+      phuongThuc: h.phuongThucThanhToan || 'tien_mat',
+      ngayLap: h.ngayThanhToan,
+      nguoiLap: h.thuNgan?.hoTen || null,
+      hoaDonId: h.id,
+    }));
+    const danhSachPhieuChi = phieuChi.map((item) => ({
+      loai: 'phieu_chi',
+      soChungTu: item.soChungTuChi || item.maYeuCau,
+      doiTuong: 'Nhà cung cấp thuốc',
+      dienGiai: `Chi tiền mua thuốc theo ${item.maYeuCau}`,
+      soTien: Number(item.soTienChiTra || 0),
+      phuongThuc: item.phuongThucChi || 'chuyen_khoan',
+      ngayLap: item.ngayChiTra,
+      nguoiLap: item.nguoiChiTraId,
+      yeuCauId: item.id,
+    }));
+
     return {
       isCaNhan: isThuNgan,
       tenThuNgan: nvThuNgan?.hoTen || null,
@@ -419,6 +513,14 @@ export class ThanhToanService {
         ngayThanhToan: h.ngayThanhToan,
         thuNganTen: h.thuNgan?.hoTen,
       })),
+      tongPhieuThu: tongThucThu,
+      tongPhieuChi,
+      soPhieuThu: daThanhToan.length,
+      soPhieuChi: danhSachPhieuChi.length,
+      soDuDongTien: tongThucThu - tongPhieuChi,
+      soPhieuChoChi: await this.yeuCauNhapKhoRepo.count({ where: { trangThaiChiTra: 'cho_chi' } }),
+      danhSachChungTu: [...phieuThu, ...danhSachPhieuChi]
+        .sort((a, b) => new Date(b.ngayLap || 0).getTime() - new Date(a.ngayLap || 0).getTime()),
     };
   }
 

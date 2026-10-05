@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { Thuoc } from './entities/thuoc.entity';
 import { LoThuoc } from './entities/lo-thuoc.entity';
 import { DonThuoc } from './entities/don-thuoc.entity';
@@ -8,6 +8,9 @@ import { DonThuocChiTiet } from './entities/don-thuoc-chi-tiet.entity';
 import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
+import { NhaCungCap } from './entities/nha-cung-cap.entity';
+import { YeuCauNhapKho } from './entities/yeu-cau-nhap-kho.entity';
+import { YeuCauNhapKhoChiTiet } from './entities/yeu-cau-nhap-kho-chi-tiet.entity';
 
 @Injectable()
 export class NhaThuocService {
@@ -26,8 +29,316 @@ export class NhaThuocService {
     private readonly hoaDonRepo: Repository<HoaDon>,
     @InjectRepository(BenhNhan)
     private readonly benhNhanRepo: Repository<BenhNhan>,
+    @InjectRepository(NhaCungCap)
+    private readonly nhaCungCapRepo: Repository<NhaCungCap>,
+    @InjectRepository(YeuCauNhapKho)
+    private readonly yeuCauNhapRepo: Repository<YeuCauNhapKho>,
+    @InjectRepository(YeuCauNhapKhoChiTiet)
+    private readonly yeuCauNhapChiTietRepo: Repository<YeuCauNhapKhoChiTiet>,
     private readonly dataSource: DataSource,
   ) {}
+
+  async getMuaHang(trangThai?: string, trangThaiChiTra?: string) {
+    const yeuCauQb = this.yeuCauNhapRepo.createQueryBuilder('yc')
+      .leftJoinAndSelect(YeuCauNhapKhoChiTiet, 'ct', 'ct.yeu_cau_id = yc.id')
+      .leftJoinAndSelect(Thuoc, 't', 't.id = ct.thuoc_id')
+      .leftJoinAndSelect(NhaCungCap, 'ncc', 'ncc.id = ct.nha_cung_cap_id')
+      .orderBy('yc.tao_luc', 'DESC');
+    if (trangThai && trangThai !== 'all') yeuCauQb.where('yc.trang_thai = :trangThai', { trangThai });
+    if (trangThaiChiTra && trangThaiChiTra !== 'all') {
+      yeuCauQb.andWhere('yc.trang_thai_chi_tra = :trangThaiChiTra', { trangThaiChiTra });
+    }
+    const rows = await yeuCauQb.getRawMany();
+    const grouped = new Map<number, any>();
+    rows.forEach((row) => {
+      const id = Number(row.yc_id);
+      if (!grouped.has(id)) {
+        grouped.set(id, {
+          id,
+          maYeuCau: row.yc_ma_yeu_cau,
+          nguoiLapId: row.yc_nguoi_lap_id,
+          trangThai: row.yc_trang_thai,
+          tongDuToan: Number(row.yc_tong_du_toan || 0),
+          tongThucTe: Number(row.yc_tong_thuc_te || 0),
+          trangThaiChiTra: row.yc_trang_thai_chi_tra,
+          soTienChiTra: Number(row.yc_so_tien_chi_tra || 0),
+          phuongThucChi: row.yc_phuong_thuc_chi,
+          soChungTuChi: row.yc_so_chung_tu_chi,
+          ghiChuChi: row.yc_ghi_chu_chi,
+          ghiChu: row.yc_ghi_chu,
+          taoLuc: row.yc_tao_luc,
+          chiTiet: [],
+        });
+      }
+      if (row.ct_id) {
+        grouped.get(id).chiTiet.push({
+          id: Number(row.ct_id),
+          thuocId: row.ct_thuoc_id,
+          tenThuoc: row.t_ten_thuoc,
+          nhaCungCapId: row.ct_nha_cung_cap_id,
+          tenNhaCungCap: row.ncc_ten_nha_cung_cap,
+          soLuongDat: Number(row.ct_so_luong_dat || 0),
+          soLuongGiao: Number(row.ct_so_luong_giao || 0),
+          soLuongDatChatLuong: Number(row.ct_so_luong_dat_chat_luong || 0),
+          soLuongHong: Number(row.ct_so_luong_hong || 0),
+          soLuongThieu: Number(row.ct_so_luong_thieu || 0),
+          donGiaBao: Number(row.ct_don_gia_bao || 0),
+          donGiaChon: Number(row.ct_don_gia_chon || 0),
+          baoGiaSoSanh: row.ct_bao_gia_so_sanh || [],
+          maLo: row.ct_ma_lo,
+          ngayHetHan: row.ct_ngay_het_han,
+          ghiChu: row.ct_ghi_chu,
+        });
+      }
+    });
+    return { message: 'Lấy quy trình mua thuốc thành công', data: Array.from(grouped.values()) };
+  }
+
+  async taoNhaCungCap(data: any) {
+    if (!data.tenNhaCungCap?.trim()) throw new BadRequestException('Tên nhà cung cấp là bắt buộc');
+    const count = await this.nhaCungCapRepo.count();
+    const ncc = this.nhaCungCapRepo.create({
+      maNhaCungCap: data.maNhaCungCap?.trim() || `NCC${String(count + 1).padStart(4, '0')}`,
+      tenNhaCungCap: data.tenNhaCungCap.trim(),
+      maSoThue: data.maSoThue || null,
+      nguoiLienHe: data.nguoiLienHe || null,
+      soDienThoai: data.soDienThoai || null,
+      email: data.email || null,
+      diaChi: data.diaChi || null,
+      dieuKhoanThanhToan: data.dieuKhoanThanhToan || null,
+    });
+    return { message: 'Thêm nhà cung cấp thành công', data: await this.nhaCungCapRepo.save(ncc) };
+  }
+
+  async capNhatNhaCungCap(id: number, data: any) {
+    const ncc = await this.nhaCungCapRepo.findOne({ where: { id } });
+    if (!ncc) throw new NotFoundException('Không tìm thấy nhà cung cấp');
+    if (!data.tenNhaCungCap?.trim()) throw new BadRequestException('Tên nhà cung cấp là bắt buộc');
+    Object.assign(ncc, {
+      tenNhaCungCap: data.tenNhaCungCap.trim(),
+      maSoThue: data.maSoThue || null,
+      nguoiLienHe: data.nguoiLienHe || null,
+      soDienThoai: data.soDienThoai || null,
+      email: data.email || null,
+      diaChi: data.diaChi || null,
+      dieuKhoanThanhToan: data.dieuKhoanThanhToan || null,
+    });
+    return { message: 'Cập nhật nhà cung cấp thành công', data: await this.nhaCungCapRepo.save(ncc) };
+  }
+
+  async ngungHopTacNhaCungCap(id: number) {
+    const ncc = await this.nhaCungCapRepo.findOne({ where: { id } });
+    if (!ncc) throw new NotFoundException('Không tìm thấy nhà cung cấp');
+    ncc.trangThai = 'ngung_hop_tac';
+    await this.nhaCungCapRepo.save(ncc);
+    return { message: 'Đã ngừng hợp tác với nhà cung cấp' };
+  }
+
+  async getNhaCungCap() {
+    return { data: await this.nhaCungCapRepo.find({ where: { trangThai: 'dang_hop_tac' }, order: { tenNhaCungCap: 'ASC' } }) };
+  }
+
+  async taoYeuCauNhap(data: any) {
+    if (!Array.isArray(data.chiTiet) || data.chiTiet.length === 0) {
+      throw new BadRequestException('Yêu cầu phải có ít nhất một thuốc');
+    }
+    const normalizedDetails = data.chiTiet.map((item) => ({
+      ...item,
+      thuocId: Number(item.thuocId),
+      soLuongDat: Number(item.soLuongDat),
+      donGiaBao: Number(item.donGiaBao || 0),
+    }));
+    if (normalizedDetails.some((item) => !Number.isInteger(item.thuocId) || item.thuocId <= 0)) {
+      throw new BadRequestException('Mỗi dòng yêu cầu phải chọn một thuốc hợp lệ');
+    }
+    if (normalizedDetails.some((item) => !Number.isFinite(item.soLuongDat) || item.soLuongDat <= 0)) {
+      throw new BadRequestException('Số lượng đặt phải lớn hơn 0');
+    }
+    if (normalizedDetails.some((item) => !Number.isFinite(item.donGiaBao) || item.donGiaBao < 0)) {
+      throw new BadRequestException('Giá dự kiến không được âm');
+    }
+    const medicineSet = new Set(normalizedDetails.map((item) => item.thuocId));
+    if (medicineSet.size !== normalizedDetails.length) {
+      throw new BadRequestException('Không được lặp cùng một thuốc trong một yêu cầu');
+    }
+    const count = await this.yeuCauNhapRepo.count();
+    const thuocIds = [...medicineSet];
+    const thuocDaCo = await this.thuocRepo.findBy({ id: In(thuocIds) });
+    if (thuocDaCo.length !== thuocIds.length) {
+      const idsHopLe = thuocDaCo.map((thuoc) => thuoc.id).join(', ');
+      throw new BadRequestException(
+        `Có mã thuốc không tồn tại. Mã hợp lệ trong yêu cầu hiện tại: ${idsHopLe || 'chưa có dữ liệu'}`,
+      );
+    }
+    const stoppedMedicine = thuocDaCo.find((thuoc) => thuoc.trangThai === 'ngung_kinh_doanh');
+    if (stoppedMedicine) {
+      throw new BadRequestException(`Thuốc ${stoppedMedicine.tenThuoc} đã ngừng kinh doanh, không thể lập yêu cầu mua mới`);
+    }
+    const yc = await this.yeuCauNhapRepo.save(this.yeuCauNhapRepo.create({
+      maYeuCau: `YC${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${String(count + 1).padStart(4, '0')}`,
+      nguoiLapId: Number(data.nguoiLapId || 1),
+      ghiChu: data.ghiChu || null,
+      tongDuToan: normalizedDetails.reduce((sum, item) => sum + item.soLuongDat * item.donGiaBao, 0),
+    }));
+    const details = normalizedDetails.map((item) => this.yeuCauNhapChiTietRepo.create({
+      yeuCauId: yc.id,
+      thuocId: item.thuocId,
+      nhaCungCapId: item.nhaCungCapId || null,
+      soLuongDat: item.soLuongDat,
+      donGiaBao: item.donGiaBao,
+      donGiaChon: Number(item.donGiaChon || item.donGiaBao || 0),
+      ghiChu: item.ghiChu || null,
+    }));
+    await this.yeuCauNhapChiTietRepo.save(details);
+    return { message: 'Đã gửi yêu cầu mua thuốc chờ Giám đốc duyệt', data: yc };
+  }
+
+  async duyetYeuCauNhap(id: number, duyet: boolean, lyDo?: string, nguoiDuyetId = 1) {
+    const yc = await this.yeuCauNhapRepo.findOne({ where: { id } });
+    if (!yc) throw new NotFoundException('Không tìm thấy yêu cầu nhập kho');
+    if (yc.trangThai !== 'cho_duyet') throw new BadRequestException('Yêu cầu không còn ở trạng thái chờ duyệt');
+    yc.trangThai = duyet ? 'da_duyet' : 'tu_choi';
+    yc.lyDoTuChoi = duyet ? null : (lyDo || 'Không nêu lý do');
+    yc.nguoiDuyetId = nguoiDuyetId;
+    yc.ngayDuyet = new Date();
+    return { message: duyet ? 'Đã duyệt yêu cầu mua thuốc' : 'Đã từ chối yêu cầu mua thuốc', data: await this.yeuCauNhapRepo.save(yc) };
+  }
+
+  async capNhatBaoGia(id: number, chiTiet: any[]) {
+    const yc = await this.yeuCauNhapRepo.findOne({ where: { id } });
+    if (!yc || !['da_duyet', 'dang_bao_gia'].includes(yc.trangThai)) throw new BadRequestException('Yêu cầu chưa được duyệt để nhập báo giá');
+    if (!Array.isArray(chiTiet) || chiTiet.length === 0) {
+      throw new BadRequestException('Phải nhập báo giá cho tất cả thuốc trong yêu cầu');
+    }
+    const details = await this.yeuCauNhapChiTietRepo.find({ where: { yeuCauId: id } });
+    if (chiTiet.length !== details.length || new Set(chiTiet.map((item) => Number(item.id))).size !== details.length) {
+      throw new BadRequestException('Danh sách báo giá không khớp với yêu cầu mua thuốc');
+    }
+    const suppliers = await this.nhaCungCapRepo.find({ where: { trangThai: 'dang_hop_tac' } });
+    for (const item of chiTiet || []) {
+      const detail = details.find((row) => row.id === Number(item.id));
+      const selectedSupplier = suppliers.find((supplier) => supplier.id === Number(item.nhaCungCapId));
+      const selectedPrice = Number(item.donGiaChon || 0);
+      const quotes = Array.isArray(item.baoGiaSoSanh) ? item.baoGiaSoSanh : [];
+      if (!detail || !selectedSupplier || !Number.isFinite(selectedPrice) || selectedPrice <= 0) {
+        throw new BadRequestException('Mỗi thuốc phải có nhà cung cấp hợp lệ và giá chọn lớn hơn 0');
+      }
+      if (!quotes.some((quote) => Number(quote.nhaCungCapId) === selectedSupplier.id && Number(quote.donGia) === selectedPrice)) {
+        throw new BadRequestException('Giá chọn phải nằm trong bảng báo giá của nhà cung cấp');
+      }
+      await this.yeuCauNhapChiTietRepo.update(item.id, {
+        nhaCungCapId: selectedSupplier.id,
+        donGiaBao: Number(item.donGiaBao || 0),
+        donGiaChon: selectedPrice,
+        baoGiaSoSanh: quotes,
+      });
+    }
+    yc.trangThai = 'da_chon_nha_cung_cap';
+    yc.tongDuToan = (await this.yeuCauNhapChiTietRepo.find({ where: { yeuCauId: id } }))
+      .reduce((sum, item) => sum + Number(item.soLuongDat) * Number(item.donGiaChon), 0);
+    return { message: 'Đã lưu báo giá và lựa chọn nhà cung cấp', data: await this.yeuCauNhapRepo.save(yc) };
+  }
+
+  async tiepNhanHang(id: number, chiTiet: any[]) {
+    const yc = await this.yeuCauNhapRepo.findOne({ where: { id } });
+    if (!yc || !['da_duyet', 'da_chon_nha_cung_cap', 'dang_giao'].includes(yc.trangThai)) {
+      throw new BadRequestException('Yêu cầu chưa sẵn sàng để tiếp nhận hàng');
+    }
+    const details = await this.yeuCauNhapChiTietRepo.find({ where: { yeuCauId: id } });
+    for (const item of chiTiet || []) {
+      const detail = details.find((row) => row.id === Number(item.id));
+      if (!detail) continue;
+      const acceptedBefore = Number(detail.soLuongDatChatLuong || 0);
+      const giao = Number(item.soLuongGiao);
+      const dat = Number(item.soLuongDatChatLuong);
+      const hong = Number(item.soLuongHong);
+      if (![giao, dat, hong].every(Number.isFinite) || giao < 0 || dat < 0 || hong < 0) {
+        throw new BadRequestException(`Số lượng kiểm nhận không hợp lệ ở dòng ${detail.id}`);
+      }
+      if (giao > Number(detail.soLuongDat)) {
+        throw new BadRequestException(`Số lượng giao không được vượt số lượng đặt ở dòng ${detail.id}`);
+      }
+      if (dat < Number(detail.soLuongDatChatLuong || 0) || giao < Number(detail.soLuongGiao || 0)) {
+        throw new BadRequestException(`Không được giảm số lượng đã kiểm nhận ở dòng ${detail.id}`);
+      }
+      if (giao !== dat + hong) throw new BadRequestException(`Số lượng giao phải bằng đạt + hỏng ở dòng ${detail.id}`);
+      if (dat > 0 && (!item.ngayHetHan || new Date(item.ngayHetHan) <= new Date())) {
+        throw new BadRequestException(`Hạn dùng phải được nhập và phải ở tương lai ở dòng ${detail.id}`);
+      }
+      detail.soLuongGiao = giao;
+      detail.soLuongDatChatLuong = dat;
+      detail.soLuongHong = hong;
+      detail.soLuongThieu = Math.max(0, Number(detail.soLuongDat) - giao);
+      detail.maLo = item.maLo || detail.maLo;
+      detail.ngayHetHan = item.ngayHetHan || detail.ngayHetHan;
+      detail.ghiChu = item.ghiChu || detail.ghiChu;
+      await this.yeuCauNhapChiTietRepo.save(detail);
+
+      const acceptedDelta = dat - acceptedBefore;
+      if (acceptedDelta > 0 && detail.thuocId) {
+        const thuoc = await this.thuocRepo.findOne({ where: { id: detail.thuocId } });
+        if (!thuoc) throw new NotFoundException(`Không tìm thấy thuốc ID ${detail.thuocId}`);
+        let lo = detail.maLo
+          ? await this.loThuocRepo.findOne({ where: { thuocId: detail.thuocId, maLo: detail.maLo } })
+          : null;
+        if (!lo) {
+          lo = this.loThuocRepo.create({
+            thuocId: detail.thuocId,
+            maLo: detail.maLo || `LO-${id}-${detail.id}`,
+            ngaySanXuat: null,
+            ngayHetHan: detail.ngayHetHan,
+            soLuongNhap: acceptedDelta,
+            soLuongTon: acceptedDelta,
+            giaNhap: Number(detail.donGiaChon || 0),
+            nhaCungCap: detail.nhaCungCapId ? String(detail.nhaCungCapId) : null,
+            trangThai: 'con_hang',
+          });
+        } else {
+          lo.soLuongNhap = Number(lo.soLuongNhap || 0) + acceptedDelta;
+          lo.soLuongTon = Number(lo.soLuongTon || 0) + acceptedDelta;
+          lo.giaNhap = Number(detail.donGiaChon || lo.giaNhap || 0);
+        }
+        await this.loThuocRepo.save(lo);
+        thuoc.tonKhoTong = Number(thuoc.tonKhoTong || 0) + acceptedDelta;
+        thuoc.trangThai = 'con_hang';
+        await this.thuocRepo.save(thuoc);
+      }
+    }
+    yc.tongThucTe = details.reduce((sum, item) => sum + Number(item.soLuongDatChatLuong) * Number(item.donGiaChon), 0);
+    yc.trangThai = details.some((item) => item.soLuongHong > 0 || item.soLuongThieu > 0) ? 'giao_mot_phan' : 'da_nhap_kho';
+    if (yc.trangThai === 'da_nhap_kho') yc.trangThaiChiTra = 'cho_chi';
+    return { message: 'Đã kiểm nhận hàng; chỉ số lượng đạt được nhập kho', data: await this.yeuCauNhapRepo.save(yc) };
+  }
+
+  async chiTraNhaCungCap(
+    id: number,
+    data: { soTien?: number; phuongThucChi?: string; soChungTuChi?: string; ghiChu?: string },
+    nguoiChiTraId = 1,
+  ) {
+    const yc = await this.yeuCauNhapRepo.findOne({ where: { id } });
+    if (!yc) throw new NotFoundException('Không tìm thấy yêu cầu nhập kho');
+    if (yc.trangThai !== 'da_nhap_kho') throw new BadRequestException('Chỉ được chi trả sau khi hoàn tất kiểm nhận và nhập đủ hàng');
+    if (yc.trangThaiChiTra === 'da_chi') throw new BadRequestException('Yêu cầu đã được chi trả');
+    const soTien = Number(data.soTien ?? yc.tongThucTe);
+    if (!Number.isFinite(soTien) || soTien <= 0) throw new BadRequestException('Số tiền chi trả phải lớn hơn 0');
+    if (soTien !== Number(yc.tongThucTe)) throw new BadRequestException('Số tiền chi phải đúng bằng tổng giá trị thực tế');
+    if (!['chuyen_khoan', 'tien_mat', 'the'].includes(data.phuongThucChi || '')) {
+      throw new BadRequestException('Phương thức chi không hợp lệ');
+    }
+    if (data.soChungTuChi) {
+      const duplicate = await this.yeuCauNhapRepo.findOne({ where: { soChungTuChi: data.soChungTuChi } });
+      if (duplicate && duplicate.id !== id) throw new BadRequestException('Số chứng từ chi đã được sử dụng');
+    }
+    yc.trangThaiChiTra = 'da_chi';
+    yc.soTienChiTra = soTien;
+    yc.phuongThucChi = data.phuongThucChi || 'chuyen_khoan';
+    yc.soChungTuChi = data.soChungTuChi || `PC-${yc.maYeuCau}`;
+    yc.ghiChuChi = data.ghiChu || null;
+    yc.nguoiChiTraId = nguoiChiTraId;
+    yc.ngayChiTra = new Date();
+    yc.ghiChu = data.ghiChu ? `${yc.ghiChu || ''}\nChi trả: ${data.ghiChu}`.trim() : yc.ghiChu;
+    return { message: 'Thu ngân đã ghi nhận chi trả nhà cung cấp', data: await this.yeuCauNhapRepo.save(yc) };
+  }
 
   /**
    * Lấy danh sách danh mục thuốc & tồn kho (kèm thông tin Lô & Hạn sử dụng)
@@ -74,7 +385,7 @@ export class NhaThuocService {
   }
 
   /**
-   * Thêm thuốc mới (kèm khởi tạo Lô & Hạn sử dụng)
+   * Thêm thuốc vào danh mục; lô hàng chỉ được tạo khi kiểm nhận phiếu mua.
    */
   async taoThuoc(data: any) {
     const count = await this.thuocRepo.count();
@@ -84,8 +395,6 @@ export class NhaThuocService {
       maThuoc = `TH_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     }
 
-    const tonKho = Number(data.tonKhoTong || 0);
-
     const newThuoc = this.thuocRepo.create({
       maThuoc,
       tenThuoc: data.tenThuoc,
@@ -94,30 +403,12 @@ export class NhaThuocService {
       hamLuong: data.hamLuong || null,
       duongDung: data.duongDung || 'Uống',
       giaBan: Number(data.giaBan || 0),
-      tonKhoTong: tonKho,
+      tonKhoTong: 0,
       moTa: data.moTa || null,
-      trangThai: tonKho > 0 ? 'con_hang' : 'het_hang',
+      trangThai: 'het_hang',
     });
 
     const saved = await this.thuocRepo.save(newThuoc);
-
-    // Khởi tạo lô thuốc tương ứng
-    const maLo = data.maLo?.trim() || `L_${saved.maThuoc}_${new Date().getFullYear()}`;
-    const ngaySanXuat = data.ngaySanXuat ? new Date(data.ngaySanXuat) : new Date();
-    const ngayHetHan = data.ngayHetHan ? new Date(data.ngayHetHan) : new Date(Date.now() + 365 * 24 * 3600 * 1000 * 2);
-
-    const newLo = this.loThuocRepo.create({
-      thuocId: saved.id,
-      maLo,
-      ngaySanXuat,
-      ngayHetHan,
-      soLuongNhap: tonKho > 0 ? tonKho : 100,
-      soLuongTon: tonKho,
-      giaNhap: Math.round(Number(data.giaBan || 0) * 0.7),
-      nhaCungCap: data.nhaCungCap || 'Dược Hậu Giang (DHG Pharma)',
-      trangThai: tonKho > 0 ? 'con_hang' : 'het_hang',
-    });
-    await this.loThuocRepo.save(newLo);
 
     return { message: 'Thêm thuốc mới thành công', data: saved };
   }
@@ -129,7 +420,10 @@ export class NhaThuocService {
     const thuoc = await this.thuocRepo.findOne({ where: { id } });
     if (!thuoc) throw new NotFoundException('Không tìm thấy thuốc');
 
-    const tonKhoTong = data.tonKhoTong !== undefined ? Number(data.tonKhoTong) : thuoc.tonKhoTong;
+    if (data.tonKhoTong !== undefined && Number(data.tonKhoTong) !== Number(thuoc.tonKhoTong)) {
+      throw new BadRequestException('Không được sửa trực tiếp tồn kho; hãy lập yêu cầu nhập hoặc phiếu điều chỉnh kho');
+    }
+    const tonKhoTong = Number(thuoc.tonKhoTong);
 
     await this.thuocRepo.update(id, {
       tenThuoc: data.tenThuoc,
@@ -143,39 +437,6 @@ export class NhaThuocService {
       trangThai: tonKhoTong > 0 ? 'con_hang' : 'het_hang',
     });
 
-    // Cập nhật hoặc tạo lô thuốc
-    let lo = await this.loThuocRepo.findOne({
-      where: { thuocId: id },
-      order: { ngayHetHan: 'ASC' },
-    });
-
-    const ngaySanXuat = data.ngaySanXuat ? new Date(data.ngaySanXuat) : undefined;
-    const ngayHetHan = data.ngayHetHan ? new Date(data.ngayHetHan) : undefined;
-    const maLo = data.maLo?.trim();
-    const nhaCungCap = data.nhaCungCap?.trim();
-
-    if (lo) {
-      if (maLo) lo.maLo = maLo;
-      if (ngaySanXuat) lo.ngaySanXuat = ngaySanXuat;
-      if (ngayHetHan) lo.ngayHetHan = ngayHetHan;
-      if (nhaCungCap) lo.nhaCungCap = nhaCungCap;
-      if (data.tonKhoTong !== undefined) lo.soLuongTon = Number(data.tonKhoTong);
-      await this.loThuocRepo.save(lo);
-    } else {
-      const newLo = this.loThuocRepo.create({
-        thuocId: id,
-        maLo: maLo || `L_${thuoc.maThuoc}_${new Date().getFullYear()}`,
-        ngaySanXuat: ngaySanXuat || new Date(),
-        ngayHetHan: ngayHetHan || new Date(Date.now() + 365 * 24 * 3600 * 1000 * 2),
-        soLuongNhap: tonKhoTong > 0 ? tonKhoTong : 100,
-        soLuongTon: tonKhoTong,
-        giaNhap: Math.round(Number(data.giaBan || thuoc.giaBan) * 0.7),
-        nhaCungCap: nhaCungCap || 'Dược Hậu Giang (DHG Pharma)',
-        trangThai: tonKhoTong > 0 ? 'con_hang' : 'het_hang',
-      });
-      await this.loThuocRepo.save(newLo);
-    }
-
     return { message: 'Cập nhật thông tin thuốc thành công' };
   }
 
@@ -186,10 +447,23 @@ export class NhaThuocService {
     const thuoc = await this.thuocRepo.findOne({ where: { id } });
     if (!thuoc) throw new NotFoundException('Không tìm thấy thuốc');
 
-    // Xóa các lô liên quan trước
+    const soLo = await this.loThuocRepo.count({ where: { thuocId: id } });
+    const soDongDon = await this.donThuocChiTietRepo.count({ where: { thuocId: id } });
+    const soDongNhap = await this.yeuCauNhapChiTietRepo.count({ where: { thuocId: id } });
+    if (soLo > 0 || soDongDon > 0 || soDongNhap > 0 || Number(thuoc.tonKhoTong) > 0) {
+      throw new BadRequestException('Thuốc đã có lịch sử hoặc tồn kho; hãy dùng chức năng Ngừng kinh doanh để giữ nguyên dữ liệu ERP');
+    }
+    // Chỉ xóa dữ liệu danh mục chưa phát sinh nghiệp vụ.
     await this.loThuocRepo.delete({ thuocId: id });
     await this.thuocRepo.delete(id);
     return { message: 'Xóa thuốc thành công' };
+  }
+
+  async ngungKinhDoanhThuoc(id: number) {
+    const thuoc = await this.thuocRepo.findOne({ where: { id } });
+    if (!thuoc) throw new NotFoundException('Không tìm thấy thuốc');
+    thuoc.trangThai = 'ngung_kinh_doanh';
+    return { message: 'Đã ngừng kinh doanh thuốc và giữ nguyên lịch sử kho', data: await this.thuocRepo.save(thuoc) };
   }
 
   /**
@@ -255,6 +529,9 @@ export class NhaThuocService {
           bacSi: dt.bacSiKe?.nhanVien?.hoTen || 'Bác sĩ',
           ngayKe: dt.ngayKe,
           trangThai: dt.trangThai,
+          luaChonMua: dt.luaChonMua,
+          maPhieuNhanThuoc: dt.maPhieuNhanThuoc,
+          ngayCapPhat: dt.ngayCapPhat,
           ghiChu: dt.ghiChu,
           soLuongMon: dt.chiTiet ? dt.chiTiet.length : 0,
           benhNhan: benhNhan
@@ -390,6 +667,9 @@ export class NhaThuocService {
         bacSi: dt.bacSiKe?.nhanVien?.hoTen,
         ngayKe: dt.ngayKe,
         trangThai: dt.trangThai,
+        luaChonMua: dt.luaChonMua,
+        maPhieuNhanThuoc: dt.maPhieuNhanThuoc,
+        ngayCapPhat: dt.ngayCapPhat,
         ghiChu: dt.ghiChu,
         luotTiepNhanId,
         benhNhan: benhNhan
@@ -439,6 +719,9 @@ export class NhaThuocService {
       if (!dt) throw new NotFoundException('Không tìm thấy đơn thuốc');
       if (dt.trangThai === 'da_cap_phat') throw new BadRequestException('Đơn thuốc này đã được cấp phát trước đó');
       if (dt.trangThai !== 'cho_duyet') throw new BadRequestException('Đơn thuốc chưa ở trạng thái chờ cấp phát');
+      if (dt.luaChonMua !== 'mua_tai_benh_vien') {
+        throw new BadRequestException('Đơn thuốc này được chọn mua bên ngoài hoặc chưa có lựa chọn mua tại bệnh viện');
+      }
 
       // Kiểm tra trạng thái thanh toán viện phí tại quầy thu ngân
       const bak = await manager.getRepository(BenhAnKham).findOne({ where: { id: dt.benhAnKhamId } });
@@ -491,6 +774,8 @@ export class NhaThuocService {
       }
 
       dt.trangThai = 'da_cap_phat';
+      dt.maPhieuNhanThuoc = `PN${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${String(dt.id).padStart(5, '0')}`;
+      dt.ngayCapPhat = new Date();
       return donRepo.save(dt);
     });
 
@@ -551,6 +836,29 @@ export class NhaThuocService {
     return {
       message: 'Kê đơn thuốc thành công',
       data: result,
+    };
+  }
+
+  async capNhatLuaChonMua(id: number, luaChonMua: 'mua_tai_benh_vien' | 'mua_ngoai') {
+    if (!['mua_tai_benh_vien', 'mua_ngoai'].includes(luaChonMua)) {
+      throw new BadRequestException('Lựa chọn mua thuốc không hợp lệ');
+    }
+    const dt = await this.donThuocRepo.findOne({ where: { id } });
+    if (!dt) throw new NotFoundException('Không tìm thấy đơn thuốc');
+    if (dt.trangThai === 'da_cap_phat') {
+      throw new BadRequestException('Không thể thay đổi lựa chọn sau khi đã cấp thuốc');
+    }
+    dt.luaChonMua = luaChonMua;
+    if (luaChonMua === 'mua_ngoai') {
+      dt.trangThai = 'mua_ngoai';
+    } else if (dt.trangThai === 'mua_ngoai') {
+      dt.trangThai = 'cho_duyet';
+    }
+    return {
+      message: luaChonMua === 'mua_tai_benh_vien'
+        ? 'Đã chọn mua thuốc tại bệnh viện'
+        : 'Đã ghi nhận bệnh nhân mua thuốc bên ngoài',
+      data: await this.donThuocRepo.save(dt),
     };
   }
 
@@ -817,16 +1125,56 @@ export class NhaThuocService {
         const mlData: any = await response.json();
         return {
           message: 'Dự báo nhu cầu thuốc thành công',
-          data: mlData.data,
+          engine: mlData.engine || 'holt_winters_drug_demand_estimator',
+          heSoTangTruongBenhNhan: mlData.heSoTangTruongBenhNhan ?? null,
+          soLuongThuocDuBao: mlData.soLuongThuocDuBao || (mlData.data || []).length,
+          data: mlData.data || [],
         };
       }
     } catch (mlErr) {
-      console.warn('[DuBaoThuoc] Không thể kết nối Python ML microservice:', mlErr.message);
+      console.warn('[DuBaoThuoc] Không thể kết nối Python ML microservice, kích hoạt thuật toán fallback nội bộ:', mlErr.message);
     }
+
+    // Fallback tính toán nội bộ (Moving Average + Reorder Point Estimator)
+    const fallbackResults = itemsForForecast
+      .filter((item) => item.tieuThuTrungBinhNgay && item.tieuThuTrungBinhNgay > 0)
+      .map((item) => {
+        const velocity = item.tieuThuTrungBinhNgay!;
+        const projected_demand_7d = Math.round(velocity * 7);
+        const projected_demand_horizon = Math.round(velocity * horizonDays);
+        const days_left = velocity > 0 ? Number((item.tonKhoTong / velocity).toFixed(1)) : 999;
+        const safety_stock = Math.round(velocity * 5);
+        const reorder_needed = item.tonKhoTong <= safety_stock || days_left <= 7;
+        const suggested_reorder_qty = Math.max(0, projected_demand_horizon + safety_stock - item.tonKhoTong);
+
+        let status = 'an_toan';
+        if (item.tonKhoTong <= 0) status = 'het_hang';
+        else if (days_left <= 3) status = 'nguy_cap';
+        else if (days_left <= 7) status = 'canh_bao';
+
+        return {
+          id: item.id,
+          maThuoc: item.maThuoc,
+          tenThuoc: item.tenThuoc,
+          donViTinh: item.donViTinh,
+          tonKhoHienTai: item.tonKhoTong,
+          tieuThuTrungBinhNgay: Number(velocity.toFixed(1)),
+          duBaoTieuThu7Ngay: projected_demand_7d,
+          duBaoTieuThu14Ngay: projected_demand_horizon,
+          soNgayConLai: days_left,
+          nguongAnToan: safety_stock,
+          trangThai: status,
+          canNhapHang: reorder_needed,
+          soLuongDeXuatNhap: reorder_needed ? suggested_reorder_qty : 0,
+        };
+      });
+
     return {
-      message: 'Chưa có dữ liệu dự báo nhu cầu thuốc.',
-      data: [],
-      dataQuality: { source: 'don_thuoc_chi_tiet', historyDays: 30 },
+      message: 'Dự báo nhu cầu thuốc (tính toán nội bộ fallback)',
+      engine: 'internal_moving_average_estimator',
+      heSoTangTruongBenhNhan: null,
+      soLuongThuocDuBao: fallbackResults.length,
+      data: fallbackResults,
     };
   }
 }

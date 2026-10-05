@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { apiGet, apiPost, apiPatch } from '../../../services/api';
+import { apiGet, apiPost, apiPatch, apiDelete } from '../../../services/api';
 import { formatDateTime, formatDate } from '../../../utils/formatDate';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import {
@@ -40,10 +40,284 @@ const TAB_FILTERS = [
 
 const ITEMS_PER_PAGE = 8;
 
+const parseResultConfig = (value) => {
+  if (!value) return [];
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const parseResultDetails = (value) => {
+  if (!value) return {};
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const parseAttachments = (value) => {
+  if (!value) return [];
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    if (Array.isArray(parsed)) return parsed.filter(Boolean);
+  } catch {
+    // Dữ liệu cũ là một URL đơn.
+  }
+  return typeof value === 'string' ? [value] : [];
+};
+
+const attachmentName = (url) => decodeURIComponent(String(url).split('/').pop() || 'Tệp kết quả');
+
+const getApiErrorMessage = (error, fallback) => {
+  const message = error?.response?.data?.message
+    || error?.data?.message
+    || error?.message
+    || (typeof error === 'string' ? error : '');
+  return Array.isArray(message) ? message.join(', ') : message || fallback;
+};
+
+const DEFAULT_RESULT_CONFIG = {
+  XN001: {
+    department: 'Khoa Xét nghiệm',
+    specimen: 'Máu tĩnh mạch - ống EDTA',
+    fields: [
+      ['WBC', 'Bạch cầu WBC', 'number', 'G/L', '4.0-10.0', 'Huyết học'],
+      ['NEU_percent', 'Bạch cầu trung tính NEU%', 'number', '%', '40-75', 'Huyết học'],
+      ['LYM_percent', 'Lympho LYM%', 'number', '%', '20-45', 'Huyết học'],
+      ['RBC', 'Hồng cầu RBC', 'number', 'T/L', 'Nam 4.5-5.9; Nữ 4.0-5.2', 'Hồng cầu'],
+      ['HGB', 'Hemoglobin HGB', 'number', 'g/dL', 'Nam 13-17; Nữ 12-16', 'Hồng cầu'],
+      ['HCT', 'Hematocrit HCT', 'number', 'L/L', 'Nam 0.40-0.50; Nữ 0.35-0.47', 'Hồng cầu'],
+      ['MCV', 'Thể tích trung bình hồng cầu MCV', 'number', 'fL', '80-100', 'Hồng cầu'],
+      ['MCH', 'Lượng Hb trung bình hồng cầu MCH', 'number', 'pg', '27-33', 'Hồng cầu'],
+      ['MCHC', 'Nồng độ Hb trung bình MCHC', 'number', 'g/dL', '32-36', 'Hồng cầu'],
+      ['PLT', 'Tiểu cầu PLT', 'number', 'G/L', '150-450', 'Tiểu cầu'],
+      ['MPV', 'Thể tích trung bình tiểu cầu MPV', 'number', 'fL', '7-12', 'Tiểu cầu'],
+    ],
+  },
+  XN002: {
+    department: 'Khoa Xét nghiệm',
+    specimen: 'Máu tĩnh mạch - huyết thanh/huyết tương',
+    fields: [
+      ['Glucose', 'Glucose máu lúc đói', 'number', 'mmol/L', '3.9-5.5 lúc đói', 'Đường huyết'],
+      ['Urea', 'Ure', 'number', 'mmol/L', '2.5-7.5', 'Chức năng thận'],
+      ['Creatinine', 'Creatinine', 'number', 'µmol/L', 'Nam 62-115; Nữ 44-97', 'Chức năng thận'],
+      ['AST', 'Aspartate aminotransferase AST', 'number', 'U/L', 'Nam <40; Nữ <35', 'Men gan'],
+      ['ALT', 'Alanine aminotransferase ALT', 'number', 'U/L', 'Nam <41; Nữ <35', 'Men gan'],
+      ['Bilirubin_total', 'Bilirubin toàn phần', 'number', 'µmol/L', '5-21', 'Gan-mật'],
+      ['Bilirubin_direct', 'Bilirubin trực tiếp', 'number', 'µmol/L', '<5', 'Gan-mật'],
+      ['Total_protein', 'Protein toàn phần', 'number', 'g/L', '64-83', 'Gan-mật'],
+      ['Albumin', 'Albumin', 'number', 'g/L', '35-50', 'Gan-mật'],
+    ],
+  },
+  XN003: {
+    department: 'Phòng Thăm dò chức năng',
+    specimen: 'Điện tâm đồ 12 chuyển đạo',
+    fields: [
+      ['Rate', 'Tần số tim', 'number', 'lần/phút', '60-100', 'Thông số đo'],
+      ['Rhythm', 'Nhịp', 'select', '', 'Ghi theo bản đọc ECG', 'Phân tích nhịp', ['Nhịp xoang', 'Rung nhĩ', 'Cuồng nhĩ', 'Khác']],
+      ['PR', 'Khoảng PR', 'number', 'ms', '120-200', 'Khoảng thời gian'],
+      ['QRS', 'Thời gian QRS', 'number', 'ms', '<120', 'Khoảng thời gian'],
+      ['QTc', 'QT hiệu chỉnh QTc', 'number', 'ms', 'Theo giới tính và máy đọc', 'Khoảng thời gian'],
+      ['Axis', 'Trục QRS', 'number', 'độ', '-30 đến +90', 'Điện học'],
+      ['ST_T', 'Đoạn ST và sóng T', 'textarea', '', 'Mô tả biến đổi nếu có', 'Điện học'],
+      ['Conclusion', 'Kết luận điện tâm đồ', 'textarea', '', 'Kết luận chuyên môn', 'Kết luận'],
+    ],
+  },
+  XN004: {
+    department: 'Khoa Xét nghiệm',
+    specimen: 'Nước tiểu giữa dòng - lọ sạch chuyên dụng',
+    fields: [
+      ['Color', 'Màu sắc', 'select', '', 'Vàng nhạt', 'Vật lý', ['Vàng nhạt', 'Vàng', 'Vàng đậm', 'Đỏ/nâu', 'Khác']],
+      ['Appearance', 'Độ trong', 'select', '', 'Trong', 'Vật lý', ['Trong', 'Hơi đục', 'Đục']],
+      ['Specific_gravity', 'Tỷ trọng', 'number', '', '1.005-1.030', 'Hóa học'],
+      ['pH', 'pH', 'number', '', '5.0-8.0', 'Hóa học'],
+      ['Protein', 'Protein', 'select', '', 'Âm tính', 'Hóa học', ['Âm tính', 'Vết', '1+', '2+', '3+', '4+']],
+      ['Glucose', 'Glucose', 'select', '', 'Âm tính', 'Hóa học', ['Âm tính', 'Vết', '1+', '2+', '3+', '4+']],
+      ['Ketone', 'Ketone', 'select', '', 'Âm tính', 'Hóa học', ['Âm tính', 'Vết', '1+', '2+', '3+', '4+']],
+      ['Blood', 'Hồng cầu/hemoglobin', 'select', '', 'Âm tính', 'Hóa học', ['Âm tính', 'Vết', '1+', '2+', '3+']],
+      ['Nitrite', 'Nitrite', 'select', '', 'Âm tính', 'Hóa học', ['Âm tính', 'Dương tính']],
+      ['Leukocyte_esterase', 'Esterase bạch cầu', 'select', '', 'Âm tính', 'Hóa học', ['Âm tính', 'Vết', '1+', '2+', '3+']],
+      ['RBC_microscopy', 'Hồng cầu soi cặn', 'text', 'TB/vi trường', '0-2', 'Soi cặn'],
+      ['WBC_microscopy', 'Bạch cầu soi cặn', 'text', 'TB/vi trường', '0-5', 'Soi cặn'],
+      ['Bacteria', 'Vi khuẩn', 'select', '', 'Không thấy', 'Soi cặn', ['Không thấy', 'Ít', 'Vừa', 'Nhiều']],
+    ],
+  },
+  CD001: {
+    department: 'Khoa Chẩn đoán hình ảnh',
+    specimen: 'Phổi, màng phổi, tim và trung thất trên X-quang ngực thẳng',
+    fields: [
+      ['Lungs', 'Nhu mô hai phổi', 'textarea', '', 'Mô tả tổn thương nếu có', 'Phổi'],
+      ['Pleura', 'Màng phổi và góc sườn hoành', 'textarea', '', 'Tràn khí/tràn dịch hoặc không', 'Phổi'],
+      ['Heart', 'Tim', 'textarea', '', 'Kích thước/chỉ số tim-ngực', 'Tim-trung thất'],
+      ['Mediastinum', 'Trung thất/rốn phổi', 'textarea', '', 'Mô tả hình ảnh', 'Tim-trung thất'],
+      ['Bones_soft_tissue', 'Xương và phần mềm', 'textarea', '', 'Mô tả bất thường nếu có', 'Khác'],
+      ['Conclusion', 'Kết luận X-quang ngực', 'textarea', '', 'Kết luận chẩn đoán hình ảnh', 'Kết luận'],
+    ],
+  },
+  CD002: {
+    department: 'Khoa Chẩn đoán hình ảnh',
+    specimen: 'Gan, mật, tụy, lách, thận, bàng quang và dịch ổ bụng trên siêu âm',
+    fields: [
+      ['Liver', 'Gan', 'textarea', '', 'Kích thước, bờ, nhu mô, tổn thương khu trú', 'Tạng đặc'],
+      ['Gallbladder', 'Túi mật', 'textarea', '', 'Thành, sỏi/bùn, dịch quanh túi mật', 'Đường mật'],
+      ['Bile_duct', 'Đường mật', 'textarea', '', 'Đường mật trong/ngoài gan, ống mật chủ', 'Đường mật'],
+      ['Pancreas', 'Tụy', 'textarea', '', 'Kích thước, nhu mô, ống tụy', 'Tạng đặc'],
+      ['Spleen', 'Lách', 'textarea', '', 'Kích thước, nhu mô, tổn thương', 'Tạng đặc'],
+      ['Right_kidney', 'Thận phải', 'textarea', '', 'Kích thước, nhu mô, sỏi, ứ nước', 'Thận-tiết niệu'],
+      ['Left_kidney', 'Thận trái', 'textarea', '', 'Kích thước, nhu mô, sỏi, ứ nước', 'Thận-tiết niệu'],
+      ['Bladder', 'Bàng quang', 'textarea', '', 'Mức độ căng, thành, lòng bàng quang', 'Thận-tiết niệu'],
+      ['Aorta', 'Động mạch chủ bụng', 'textarea', '', 'Đường kính, phình/tắc nếu có', 'Mạch máu'],
+      ['Ascites', 'Dịch ổ bụng', 'textarea', '', 'Vị trí/lượng dịch hoặc không có dịch', 'Phúc mạc'],
+      ['Conclusion', 'Kết luận siêu âm ổ bụng', 'textarea', '', 'Kết luận chẩn đoán hình ảnh', 'Kết luận'],
+    ],
+  },
+  XN005: {
+    department: 'Khoa Xét nghiệm',
+    specimen: 'Máu tĩnh mạch - huyết thanh/huyết tương',
+    fields: [
+      ['Cholesterol_total', 'Cholesterol toàn phần', 'number', 'mmol/L', '<5.2', 'Mỡ máu'],
+      ['Triglyceride', 'Triglyceride', 'number', 'mmol/L', '<1.7', 'Mỡ máu'],
+      ['HDL_C', 'HDL-C', 'number', 'mmol/L', '>1.0 nam; >1.3 nữ', 'Mỡ máu'],
+      ['LDL_C', 'LDL-C', 'number', 'mmol/L', '<3.4', 'Mỡ máu'],
+    ],
+  },
+  XN006: {
+    department: 'Khoa Xét nghiệm',
+    specimen: 'Máu tĩnh mạch - ống EDTA',
+    fields: [
+      ['HbA1c', 'Hemoglobin glycated HbA1c', 'number', '%', '<5.7', 'Đường huyết'],
+      ['Estimated_average_glucose', 'Glucose trung bình ước tính', 'number', 'mmol/L', 'Theo HbA1c', 'Đường huyết'],
+      ['Conclusion', 'Nhận định kiểm soát đường huyết', 'textarea', '', 'Ghi theo kết quả và chỉ định', 'Kết luận'],
+    ],
+  },
+  XN007: {
+    department: 'Khoa Xét nghiệm',
+    specimen: 'Máu tĩnh mạch - huyết thanh/huyết tương',
+    fields: [
+      ['Sodium', 'Natri Na+', 'number', 'mmol/L', '135-145', 'Điện giải'],
+      ['Potassium', 'Kali K+', 'number', 'mmol/L', '3.5-5.1', 'Điện giải'],
+      ['Chloride', 'Clo Cl-', 'number', 'mmol/L', '98-107', 'Điện giải'],
+      ['Calcium_total', 'Calci toàn phần', 'number', 'mmol/L', '2.15-2.55', 'Điện giải'],
+    ],
+  },
+  XN008: {
+    department: 'Khoa Xét nghiệm',
+    specimen: 'Máu tĩnh mạch - huyết thanh/huyết tương',
+    fields: [
+      ['CRP', 'CRP định lượng', 'number', 'mg/L', '<5', 'Viêm'],
+      ['Conclusion', 'Nhận định CRP', 'textarea', '', 'Đánh giá cùng lâm sàng', 'Kết luận'],
+    ],
+  },
+  XN009: {
+    department: 'Khoa Xét nghiệm',
+    specimen: 'Máu tĩnh mạch - ống citrate',
+    fields: [
+      ['PT', 'Thời gian prothrombin PT', 'number', 'giây', '11-14', 'Đông máu'],
+      ['INR', 'INR', 'number', '', '0.8-1.2 (không dùng thuốc chống đông)', 'Đông máu'],
+      ['APTT', 'Thời gian thromboplastin từng phần hoạt hóa APTT', 'number', 'giây', '25-35', 'Đông máu'],
+      ['Fibrinogen', 'Fibrinogen', 'number', 'g/L', '2.0-4.0', 'Đông máu'],
+    ],
+  },
+  XN010: {
+    department: 'Khoa Xét nghiệm',
+    specimen: 'Phân tươi - lọ đựng bệnh phẩm chuyên dụng',
+    fields: [
+      ['Color', 'Màu sắc phân', 'text', '', 'Nâu vàng thường gặp', 'Đại thể'],
+      ['Consistency', 'Tính chất', 'select', '', 'Khuôn', 'Đại thể', ['Khuôn', 'Mềm', 'Lỏng', 'Nhầy', 'Khác']],
+      ['Blood', 'Máu đại thể', 'select', '', 'Không thấy', 'Đại thể', ['Không thấy', 'Có']],
+      ['WBC', 'Bạch cầu soi phân', 'text', 'TB/vi trường', 'Không thấy hoặc ít', 'Vi thể'],
+      ['RBC', 'Hồng cầu soi phân', 'text', 'TB/vi trường', 'Không thấy', 'Vi thể'],
+      ['Parasite', 'Ký sinh trùng/đơn bào', 'textarea', '', 'Không thấy', 'Vi thể'],
+      ['Conclusion', 'Kết luận xét nghiệm phân', 'textarea', '', 'Kết luận chuyên môn', 'Kết luận'],
+    ],
+  },
+  XN011: {
+    department: 'Khoa Xét nghiệm',
+    specimen: 'Máu tĩnh mạch - huyết thanh',
+    fields: [
+      ['HBsAg', 'Kháng nguyên bề mặt viêm gan B HBsAg', 'select', '', 'Âm tính', 'Viêm gan virus', ['Âm tính', 'Dương tính', 'Nghi ngờ']],
+      ['Method', 'Phương pháp xét nghiệm', 'text', '', 'Ghi theo bộ xét nghiệm/máy', 'Thông tin xét nghiệm'],
+      ['Conclusion', 'Kết luận HBsAg', 'textarea', '', 'Bác sĩ xét nghiệm kết luận', 'Kết luận'],
+    ],
+  },
+  CD003: {
+    department: 'Khoa Chẩn đoán hình ảnh',
+    specimen: 'Thận, niệu quản đoạn quan sát được và bàng quang',
+    fields: [
+      ['Right_kidney', 'Thận phải', 'textarea', '', 'Kích thước, nhu mô, sỏi, ứ nước', 'Thận'],
+      ['Left_kidney', 'Thận trái', 'textarea', '', 'Kích thước, nhu mô, sỏi, ứ nước', 'Thận'],
+      ['Ureters', 'Niệu quản', 'textarea', '', 'Giãn, sỏi nếu quan sát được', 'Tiết niệu'],
+      ['Bladder', 'Bàng quang', 'textarea', '', 'Thành, lòng, tồn lưu sau tiểu nếu đo', 'Tiết niệu'],
+      ['Conclusion', 'Kết luận siêu âm tiết niệu', 'textarea', '', 'Kết luận chẩn đoán hình ảnh', 'Kết luận'],
+    ],
+  },
+  CD004: {
+    department: 'Khoa Chẩn đoán hình ảnh',
+    specimen: 'Tuyến giáp và hạch vùng cổ trên siêu âm',
+    fields: [
+      ['Right_lobe', 'Thùy phải tuyến giáp', 'textarea', '', 'Kích thước, thể tích, nhu mô, nhân', 'Tuyến giáp'],
+      ['Left_lobe', 'Thùy trái tuyến giáp', 'textarea', '', 'Kích thước, thể tích, nhu mô, nhân', 'Tuyến giáp'],
+      ['Isthmus', 'Eo tuyến giáp', 'textarea', '', 'Bề dày và bất thường', 'Tuyến giáp'],
+      ['Neck_nodes', 'Hạch vùng cổ', 'textarea', '', 'Vị trí, kích thước, hình thái nếu có', 'Hạch cổ'],
+      ['Conclusion', 'Kết luận siêu âm tuyến giáp', 'textarea', '', 'Kết luận chẩn đoán hình ảnh', 'Kết luận'],
+    ],
+  },
+  CD005: {
+    department: 'Khoa Chẩn đoán hình ảnh',
+    specimen: 'Tử cung, phần phụ và thai (nếu có) trên siêu âm',
+    fields: [
+      ['Uterus', 'Tử cung', 'textarea', '', 'Tư thế, kích thước, cơ tử cung, nội mạc', 'Tử cung'],
+      ['Right_adnexa', 'Phần phụ phải', 'textarea', '', 'Buồng trứng, nang/khối nếu có', 'Phần phụ'],
+      ['Left_adnexa', 'Phần phụ trái', 'textarea', '', 'Buồng trứng, nang/khối nếu có', 'Phần phụ'],
+      ['Pregnancy', 'Thai và phần phụ thai', 'textarea', '', 'Tuổi thai, tim thai, vị trí, nhau, ối nếu có', 'Thai kỳ'],
+      ['Conclusion', 'Kết luận siêu âm sản-phụ khoa', 'textarea', '', 'Kết luận chẩn đoán hình ảnh', 'Kết luận'],
+    ],
+  },
+  CD006: {
+    department: 'Khoa Chẩn đoán hình ảnh',
+    specimen: 'Hai tuyến vú và hạch vùng nách trên siêu âm',
+    fields: [
+      ['Right_breast', 'Vú phải', 'textarea', '', 'Mô tuyến, tổn thương, vị trí/kích thước nếu có', 'Tuyến vú'],
+      ['Left_breast', 'Vú trái', 'textarea', '', 'Mô tuyến, tổn thương, vị trí/kích thước nếu có', 'Tuyến vú'],
+      ['Axillary_nodes', 'Hạch nách', 'textarea', '', 'Kích thước, hình thái nếu có', 'Hạch vùng'],
+      ['BIRADS', 'Phân loại BI-RADS siêu âm', 'select', '', 'Theo BI-RADS hiện hành', 'Phân loại', ['BI-RADS 1', 'BI-RADS 2', 'BI-RADS 3', 'BI-RADS 4', 'BI-RADS 5', 'Chưa phân loại']],
+      ['Conclusion', 'Kết luận siêu âm tuyến vú', 'textarea', '', 'Kết luận và khuyến nghị theo dõi', 'Kết luận'],
+    ],
+  },
+  CD007: {
+    department: 'Phòng Thăm dò chức năng',
+    specimen: 'Tim và mạch máu trên siêu âm Doppler tim',
+    fields: [
+      ['Chambers', 'Các buồng tim', 'textarea', '', 'Kích thước và hình thái', 'Cấu trúc tim'],
+      ['Valves', 'Van tim', 'textarea', '', 'Hình thái, hở/hẹp nếu có', 'Van tim'],
+      ['LVEF', 'Phân suất tống máu thất trái LVEF', 'number', '%', 'Tham chiếu theo phương pháp đo', 'Chức năng tim'],
+      ['Pericardium', 'Màng ngoài tim', 'textarea', '', 'Dịch màng tim nếu có', 'Màng ngoài tim'],
+      ['Conclusion', 'Kết luận siêu âm tim', 'textarea', '', 'Bác sĩ tim mạch kết luận', 'Kết luận'],
+    ],
+  },
+};
+
+const getFallbackServiceConfig = (service) => {
+  const fallback = DEFAULT_RESULT_CONFIG[service?.maDichVu];
+  if (!fallback) return null;
+  return {
+    ...fallback,
+    fields: fallback.fields.map(([key, label, type, unit, reference, section, options]) => ({
+      key, label, type, unit, reference, section, options,
+    })),
+  };
+};
+
 export default function XetNghiemListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterLoai, setFilterLoai] = useState('all');
+  const [filterNhom, setFilterNhom] = useState('all');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -92,6 +366,15 @@ export default function XetNghiemListPage() {
       .replace(/đ/g, 'd')
       .replace(/Đ/g, 'd')
       .trim();
+  };
+
+  const getServiceGroup = (service) => {
+    const name = normalizeText(service?.tenDichVu);
+    if (name.includes('sieu am')) return 'sieu_am';
+    if (name.includes('x-quang') || name.includes('x quang')) return 'x_quang';
+    if (name.includes('dien tam do') || name.includes('ecg')) return 'ecg';
+    if (service?.loai === 'xet_nghiem') return 'xet_nghiem';
+    return 'khac';
   };
 
   const getInitials = (name) => {
@@ -151,12 +434,17 @@ export default function XetNghiemListPage() {
       result = result.filter((item) => item.dichVu?.loai === filterLoai);
     }
 
-    // 3. Ngày tháng
+    // 3. Nhóm dịch vụ cụ thể
+    if (filterNhom && filterNhom !== 'all') {
+      result = result.filter((item) => getServiceGroup(item.dichVu) === filterNhom);
+    }
+
+    // 4. Ngày tháng
     if (filterDateFrom || filterDateTo) {
       result = result.filter((item) => matchesDate(item, filterDateFrom, filterDateTo));
     }
 
-    // 4. Tìm kiếm từ khóa
+    // 5. Tìm kiếm từ khóa
     if (debouncedKeyword.trim()) {
       const kw = normalizeText(debouncedKeyword);
       result = result.filter((item) => {
@@ -171,7 +459,7 @@ export default function XetNghiemListPage() {
     }
 
     return result;
-  }, [rawList, filterStatus, filterLoai, filterDateFrom, filterDateTo, debouncedKeyword]);
+  }, [rawList, filterStatus, filterLoai, filterNhom, filterDateFrom, filterDateTo, debouncedKeyword]);
 
   // Thống kê nhanh
   const stats = useMemo(() => {
@@ -219,7 +507,7 @@ export default function XetNghiemListPage() {
   };
 
   const isFiltered =
-    filterStatus !== 'all' || filterLoai !== 'all' || filterDateFrom || filterDateTo || searchKeyword;
+    filterStatus !== 'all' || filterLoai !== 'all' || filterNhom !== 'all' || filterDateFrom || filterDateTo || searchKeyword;
 
   return (
     <div className="space-y-4 pb-10 animate-fade-in">
@@ -359,7 +647,7 @@ export default function XetNghiemListPage() {
           </div>
 
           {/* Lọc Loại dịch vụ */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-2">
             <select
               value={filterLoai}
               onChange={(e) => {
@@ -374,8 +662,27 @@ export default function XetNghiemListPage() {
             </select>
           </div>
 
+          {/* Lọc nhóm dịch vụ cụ thể */}
+          <div className="lg:col-span-2">
+            <select
+              value={filterNhom}
+              onChange={(e) => {
+                setFilterNhom(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-gray-200 bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 text-gray-800 transition-all font-medium"
+            >
+              <option value="all">Tất cả nhóm dịch vụ</option>
+              <option value="xet_nghiem">Xét nghiệm máu/nước tiểu/phân</option>
+              <option value="sieu_am">Siêu âm</option>
+              <option value="x_quang">X-quang</option>
+              <option value="ecg">Điện tâm đồ</option>
+              <option value="khac">Nhóm khác</option>
+            </select>
+          </div>
+
           {/* Lọc Trạng thái */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-2">
             <select
               value={filterStatus}
               onChange={(e) => {
@@ -398,6 +705,7 @@ export default function XetNghiemListPage() {
                 onClick={() => {
                   setFilterStatus('all');
                   setFilterLoai('all');
+                  setFilterNhom('all');
                   setFilterDateFrom('');
                   setFilterDateTo('');
                   setSearchKeyword('');
@@ -713,8 +1021,16 @@ function ChiDinhDetailPanel({ id }) {
   const cd = data?.data?.chiDinh;
   const kq = data?.data?.ketQua;
 
-  const [result, setResult] = useState({ giaTri: '', donVi: '', nhanXet: '', fileDinhKem: '' });
+  const [result, setResult] = useState({
+    giaTri: '',
+    donVi: '',
+    nhanXet: '',
+    fileDinhKem: '',
+    ketQuaChiTiet: {},
+  });
+  const [attachments, setAttachments] = useState([]);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [correctionMode, setCorrectionMode] = useState(false);
 
   useEffect(() => {
     if (kq) {
@@ -723,30 +1039,53 @@ function ChiDinhDetailPanel({ id }) {
         donVi: kq.donVi || cd?.dichVu?.donViKetQua || '',
         nhanXet: kq.nhanXet || '',
         fileDinhKem: kq.fileDinhKem || '',
+        ketQuaChiTiet: parseResultDetails(kq.ketQuaChiTiet ?? kq.ket_qua_chi_tiet),
       });
+      setAttachments(parseAttachments(kq.fileDinhKem ?? kq.file_dinh_kem));
     } else if (cd?.dichVu) {
-      setResult((prev) => ({
-        ...prev,
+      // Chỉ định mới phải bắt đầu với biểu mẫu trống, không dùng lại dữ liệu
+      // của chỉ định vừa mở trước đó.
+      setResult({
+        giaTri: '',
         donVi: cd.dichVu.donViKetQua || '',
-      }));
+        nhanXet: '',
+        fileDinhKem: '',
+        ketQuaChiTiet: {},
+      });
+      setAttachments([]);
+      setCorrectionMode(false);
     }
   }, [kq, cd]);
 
   const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const formData = new FormData();
-    formData.append('file', file);
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
     setUploadingFile(true);
     try {
-      const res = await apiPost('/xet-nghiem/upload', formData);
-      const url = res?.data?.url || res?.url;
-      setResult((prev) => ({ ...prev, fileDinhKem: url }));
+      const uploaded = await Promise.all(files.map(async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await apiPost('/xet-nghiem/upload', formData);
+        return res?.data?.url || res?.url;
+      }));
+      setAttachments((prev) => [...prev, ...uploaded.filter(Boolean)]);
     } catch (err) {
       console.error('Lỗi tải file:', err);
-      alert('Không thể upload file: ' + (err.response?.data?.message || err.message));
+      alert('Không thể upload file: ' + getApiErrorMessage(err, 'Máy chủ không phản hồi'));
     } finally {
       setUploadingFile(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveAttachment = async (url) => {
+    if (!window.confirm(`Xóa tệp "${attachmentName(url)}"?`)) return;
+    try {
+      await apiDelete(`/xet-nghiem/upload/${encodeURIComponent(attachmentName(url))}`);
+      setAttachments((prev) => prev.filter((item) => item !== url));
+    } catch (err) {
+      console.error('Lỗi xóa file:', err);
+      alert('Không thể xóa file: ' + getApiErrorMessage(err, 'Máy chủ không phản hồi'));
     }
   };
 
@@ -777,6 +1116,17 @@ function ChiDinhDetailPanel({ id }) {
     },
   });
 
+  const correctionMut = useMutation({
+    mutationFn: ({ nhanXet, lyDo }) => apiPatch(`/xet-nghiem/chi-dinh/${id}/hieu-chinh`, { nhanXet, lyDo }),
+    onSuccess: (res) => {
+      setCorrectionMode(false);
+      qc.invalidateQueries(['chi-dinh-detail', id]);
+      qc.invalidateQueries({ queryKey: ['thong-bao'] });
+      alert(res?.message || 'Đã hiệu chỉnh nhận xét và gửi lại thông tin cho bác sĩ.');
+    },
+    onError: (err) => alert(getApiErrorMessage(err, 'Không thể hiệu chỉnh nhận xét')),
+  });
+
   if (isLoading) {
     return (
       <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center text-gray-400 shadow-xs">
@@ -805,6 +1155,20 @@ function ChiDinhDetailPanel({ id }) {
 
   const nextStep = STATUS_FLOW[cd.trangThai];
   const isCdha = cd.dichVu?.loai === 'cdha';
+  const isUltrasound = isCdha && (
+    /^CD00[2-7]$/i.test(String(cd.dichVu?.maDichVu || '')) ||
+    String(cd.dichVu?.tenDichVu || '').toLowerCase().includes('siêu âm')
+  );
+  const fallbackConfig = getFallbackServiceConfig(cd.dichVu);
+  const resultFields = parseResultConfig(cd.dichVu?.cauHinhKetQua || cd.dichVu?.cau_hinh_ket_qua);
+  const configuredFields = resultFields.length > 0 ? resultFields : fallbackConfig?.fields || [];
+  const hasStructuredFields = configuredFields.length > 0;
+  const resultSections = configuredFields.reduce((sections, field) => {
+    const section = field.section || 'Kết quả';
+    if (!sections[section]) sections[section] = [];
+    sections[section].push(field);
+    return sections;
+  }, {});
 
   return (
     <div className="space-y-3.5">
@@ -873,8 +1237,16 @@ function ChiDinhDetailPanel({ id }) {
             </span>
           </div>
           <div>
-            <span className="text-gray-400 block text-[10px] uppercase">Đơn vị thực hiện</span>
-            <span className="font-semibold text-gray-800 block mt-0.5">Khoa Xét nghiệm & CĐHA</span>
+            <span className="text-gray-400 block text-[10px] uppercase">Bộ phận thực hiện</span>
+            <span className="font-semibold text-gray-800 block mt-0.5">
+              {cd.dichVu?.boPhanThucHien || cd.dichVu?.bo_phan_thuc_hien || fallbackConfig?.department || 'Chưa cấu hình'}
+            </span>
+          </div>
+          <div>
+            <span className="text-gray-400 block text-[10px] uppercase">Bệnh phẩm/đối tượng khảo sát</span>
+            <span className="font-semibold text-gray-800 block mt-0.5">
+              {cd.dichVu?.mauBenhPham || cd.dichVu?.mau_benh_pham || fallbackConfig?.specimen || (isCdha ? 'Cơ quan khảo sát trên hình ảnh' : 'Chưa cấu hình')}
+            </span>
           </div>
           {cd.ghiChuChiDinh && (
             <div className="col-span-2 pt-1 border-t border-gray-100 text-gray-700">
@@ -915,36 +1287,119 @@ function ChiDinhDetailPanel({ id }) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              resultMut.mutate(result);
+              resultMut.mutate({
+                ...result,
+                fileDinhKem: JSON.stringify(attachments),
+                ketQuaChiTiet: JSON.stringify(result.ketQuaChiTiet || {}),
+              });
             }}
             className="space-y-3 text-xs"
           >
             <div className="p-3 bg-primary-50/40 border border-primary-100/70 rounded-xl space-y-2.5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">
-                    Trị số / Kết quả <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={result.giaTri}
-                    onChange={(e) => setResult((r) => ({ ...r, giaTri: e.target.value }))}
-                    placeholder={isCdha ? 'VD: Bình thường, không u hạt...' : 'VD: 4.5, Âm tính, Dương tính...'}
-                    className="w-full p-2 rounded-lg border border-gray-200 bg-white text-xs sm:text-sm text-gray-900 focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Đơn vị đo</label>
-                  <input
-                    type="text"
-                    value={result.donVi}
-                    onChange={(e) => setResult((r) => ({ ...r, donVi: e.target.value }))}
-                    placeholder={cd.dichVu?.donViKetQua || 'VD: mmol/L, G/L...'}
-                    className="w-full p-2 rounded-lg border border-gray-200 bg-white text-xs sm:text-sm text-gray-900 focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
+                {hasStructuredFields ? (
+                  <div className="sm:col-span-2 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-bold text-gray-700">Các chỉ số cần nhập</label>
+                      <span className="text-[11px] text-gray-500">
+                        Nhập theo mẫu của labo; khoảng tham chiếu chỉ mang tính tham khảo.
+                      </span>
+                    </div>
+                    <div className="space-y-3">
+                      {Object.entries(resultSections).map(([section, fields]) => (
+                        <div key={section} className="rounded-lg border border-primary-100 bg-white p-2.5">
+                          <h5 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-primary-800">{section}</h5>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {fields.map((field) => (
+                              <div key={field.key} className={field.type === 'textarea' ? 'sm:col-span-2' : ''}>
+                                <label className="block text-[11px] font-semibold text-gray-700 mb-1">
+                                  {field.label} {field.unit ? `(${field.unit})` : ''}
+                                  {field.required !== false && <span className="text-red-500"> *</span>}
+                                </label>
+                                {field.type === 'select' ? (
+                            <select
+                              required={field.required !== false}
+                              value={result.ketQuaChiTiet?.[field.key] || ''}
+                              onChange={(e) =>
+                                setResult((r) => ({
+                                  ...r,
+                                  ketQuaChiTiet: { ...r.ketQuaChiTiet, [field.key]: e.target.value },
+                                }))
+                              }
+                              className="w-full p-2 rounded-lg border border-gray-200 bg-white text-xs text-gray-900 focus:ring-2 focus:ring-primary-500"
+                            >
+                              <option value="">-- Chọn kết quả --</option>
+                              {(field.options || []).map((option) => (
+                                <option key={option} value={option}>{option}</option>
+                              ))}
+                            </select>
+                                ) : field.type === 'textarea' ? (
+                            <textarea
+                              rows={2}
+                              required={field.required !== false}
+                              value={result.ketQuaChiTiet?.[field.key] || ''}
+                              onChange={(e) =>
+                                setResult((r) => ({
+                                  ...r,
+                                  ketQuaChiTiet: { ...r.ketQuaChiTiet, [field.key]: e.target.value },
+                                }))
+                              }
+                              placeholder={field.reference ? `Tham chiếu: ${field.reference}` : 'Nhập kết quả'}
+                              className="w-full p-2 rounded-lg border border-gray-200 bg-white text-xs text-gray-900 focus:ring-2 focus:ring-primary-500"
+                            />
+                                ) : (
+                            <input
+                              type={field.type === 'number' ? 'number' : 'text'}
+                              step={field.type === 'number' ? 'any' : undefined}
+                              required={field.required !== false}
+                              value={result.ketQuaChiTiet?.[field.key] || ''}
+                              onChange={(e) =>
+                                setResult((r) => ({
+                                  ...r,
+                                  ketQuaChiTiet: { ...r.ketQuaChiTiet, [field.key]: e.target.value },
+                                }))
+                              }
+                              placeholder={field.reference ? `Tham chiếu: ${field.reference}` : 'Nhập kết quả'}
+                              className="w-full p-2 rounded-lg border border-gray-200 bg-white text-xs text-gray-900 focus:ring-2 focus:ring-primary-500"
+                            />
+                                )}
+                                {field.reference && (
+                                  <p className="mt-1 text-[10px] text-gray-500">TGĐC tham khảo: {field.reference}</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block font-bold text-gray-700 mb-1">
+                        Trị số / Kết quả <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={result.giaTri}
+                        onChange={(e) => setResult((r) => ({ ...r, giaTri: e.target.value }))}
+                        placeholder={isCdha ? 'VD: Bình thường, không u hạt...' : 'VD: 4.5, Âm tính, Dương tính...'}
+                        className="w-full p-2 rounded-lg border border-gray-200 bg-white text-xs sm:text-sm text-gray-900 focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-gray-700 mb-1">Đơn vị đo</label>
+                      <input
+                        type="text"
+                        value={result.donVi}
+                        onChange={(e) => setResult((r) => ({ ...r, donVi: e.target.value }))}
+                        placeholder={cd.dichVu?.donViKetQua || 'VD: mmol/L, G/L...'}
+                        className="w-full p-2 rounded-lg border border-gray-200 bg-white text-xs sm:text-sm text-gray-900 focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Khoảng tham chiếu */}
@@ -953,7 +1408,7 @@ function ChiDinhDetailPanel({ id }) {
                 <span>
                   Khoảng tham chiếu chuẩn:{' '}
                   <strong className="text-gray-900">
-                    {cd.dichVu?.giaTriBinhThuong || 'Chưa thiết lập'}
+                    {cd.dichVu?.giaTriBinhThuong || 'Theo khoảng tham chiếu trên từng chỉ số'}
                   </strong>
                   .
                 </span>
@@ -969,6 +1424,7 @@ function ChiDinhDetailPanel({ id }) {
                 rows={3}
                 value={result.nhanXet}
                 onChange={(e) => setResult((r) => ({ ...r, nhanXet: e.target.value }))}
+                disabled={Boolean(kq?.daGuiBacSi) && !correctionMode}
                 placeholder={
                   isCdha
                     ? 'Mô tả chi tiết phát hiện hình ảnh, cấu trúc giải phẫu và kết luận...'
@@ -978,79 +1434,89 @@ function ChiDinhDetailPanel({ id }) {
               />
             </div>
 
-            {/* Đính kèm File / Ảnh X-Quang / Siêu âm */}
+            {/* Đính kèm ảnh siêu âm hoặc file kết quả */}
             <div className="space-y-1.5">
               <label className="block font-bold text-gray-700">
-                Ảnh / File kết quả (X-Quang, siêu âm, tài liệu PDF)
+                {isUltrasound
+                  ? 'Ảnh siêu âm (nên tải đầy đủ ảnh chụp khảo sát)'
+                  : isCdha
+                    ? 'Ảnh / PDF kết quả chẩn đoán hình ảnh'
+                    : 'Tài liệu kết quả đính kèm'}
               </label>
 
               <div className="flex items-center gap-2">
                 <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 text-xs font-semibold text-gray-700 cursor-pointer transition-colors shadow-2xs">
-                  <UploadCloud className="h-4 w-4 text-primary-600" />
-                  <span>{uploadingFile ? 'Đang tải lên...' : 'Tải ảnh / file lên'}</span>
+                  <UploadCloud className={`h-4 w-4 ${isUltrasound ? 'text-purple-600' : 'text-primary-600'}`} />
+                  <span>
+                    {uploadingFile
+                      ? 'Đang tải lên...'
+                      : isUltrasound
+                        ? 'Tải ảnh siêu âm lên'
+                        : 'Tải ảnh / PDF lên'}
+                  </span>
                   <input
                     type="file"
-                    accept="image/*,.pdf"
+                    accept={isUltrasound ? 'image/*' : 'image/*,.pdf'}
+                    multiple
                     onChange={handleFileUpload}
                     disabled={uploadingFile}
                     className="hidden"
                   />
                 </label>
 
-                {result.fileDinhKem && (
+                {attachments.length > 0 && (
                   <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
-                    <CheckCircle2 className="h-3 w-3" /> Đã có tệp đính kèm
+                    <CheckCircle2 className="h-3 w-3" /> {attachments.length} tệp đã tải
                   </span>
                 )}
               </div>
+              {isUltrasound && (
+                <p className="text-[11px] text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-2.5 py-2">
+                  Có thể chọn nhiều ảnh siêu âm cùng lúc. Ảnh sẽ được lưu cùng phiếu kết quả để bác sĩ xem lại từng ảnh.
+                </p>
+              )}
 
               {/* Preview */}
-              {result.fileDinhKem && (
-                <div className="p-2 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between mt-1.5">
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    {result.fileDinhKem.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
-                      <img
-                        src={
-                          result.fileDinhKem.startsWith('http')
-                            ? result.fileDinhKem
-                            : `http://localhost:5000${result.fileDinhKem}`
-                        }
-                        alt="Ảnh kết quả"
-                        className="h-10 w-10 object-cover rounded-lg border shrink-0 bg-white"
-                      />
-                    ) : (
-                      <FileText className="h-7 w-7 text-primary-600 shrink-0" />
-                    )}
-                    <span className="text-xs text-gray-600 font-mono truncate max-w-[200px]">
-                      {result.fileDinhKem}
-                    </span>
-                  </div>
-                  <a
-                    href={
-                      result.fileDinhKem.startsWith('http')
-                        ? result.fileDinhKem
-                        : `http://localhost:5000${result.fileDinhKem}`
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-1.5 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg flex items-center gap-1 text-xs font-semibold"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" /> Xem
-                  </a>
+              {attachments.length > 0 && (
+                <div className="space-y-2 mt-1.5">
+                  {attachments.map((url) => {
+                    const fileUrl = url.startsWith('http') ? url : `http://localhost:5000${url}`;
+                    const isImage = /\.(jpeg|jpg|gif|png|webp)$/i.test(url);
+                    return (
+                      <div key={url} className="p-2 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                          {isImage ? (
+                            <img src={fileUrl} alt={attachmentName(url)} className="h-10 w-10 object-cover rounded-lg border shrink-0 bg-white" />
+                          ) : (
+                            <FileText className="h-7 w-7 text-primary-600 shrink-0" />
+                          )}
+                          <span className="text-xs text-gray-600 font-mono truncate">{attachmentName(url)}</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <a href={fileUrl} target="_blank" rel="noreferrer" className="p-1.5 text-primary-600 hover:bg-primary-50 rounded-lg flex items-center gap-1 text-xs font-semibold">
+                            <ExternalLink className="h-3.5 w-3.5" /> Xem
+                          </a>
+                          <button type="button" onClick={() => handleRemoveAttachment(url)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg text-xs font-semibold">
+                            Xóa
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
 
             {/* Submit button */}
             <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-              <button
+              {!kq?.daGuiBacSi && <button
                 type="submit"
                 disabled={resultMut.isLoading}
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
               >
                 <Check className="h-3.5 w-3.5" />
                 <span>{resultMut.isLoading ? 'Đang lưu...' : 'Lưu kết quả'}</span>
-              </button>
+              </button>}
             </div>
           </form>
 
@@ -1069,9 +1535,31 @@ function ChiDinhDetailPanel({ id }) {
           )}
 
           {kq?.daGuiBacSi && (
-            <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-center text-xs font-bold text-emerald-800 flex items-center justify-center gap-1.5">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <span>Đã chuyển phát kết quả cho Bác sĩ</span>
+            <div className="space-y-2">
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-center text-xs font-bold text-emerald-800 flex items-center justify-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <span>Đã chuyển phát kết quả cho Bác sĩ</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!correctionMode) {
+                    setCorrectionMode(true);
+                    return;
+                  }
+                  const lyDo = window.prompt('Nhập lý do hiệu chỉnh nhận xét:');
+                  if (!lyDo?.trim()) return;
+                  correctionMut.mutate({ nhanXet: result.nhanXet, lyDo: lyDo.trim() });
+                }}
+                disabled={correctionMut.isLoading}
+                className="w-full flex items-center justify-center gap-1.5 py-2 px-4 rounded-xl text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors cursor-pointer"
+              >
+                {correctionMut.isLoading
+                  ? 'Đang lưu hiệu chỉnh...'
+                  : correctionMode
+                    ? 'Lưu hiệu chỉnh và gửi lại bác sĩ'
+                    : 'Mở khóa để hiệu chỉnh nhận xét'}
+              </button>
             </div>
           )}
         </div>

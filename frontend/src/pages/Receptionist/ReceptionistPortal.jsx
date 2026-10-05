@@ -12,6 +12,7 @@ const ThongTinCaNhanPage   = lazy(() => import('./NhanVienShared/ThongTinCaNhanP
 const LichLamViecPage      = lazy(() => import('./NhanVienShared/LichLamViecPage'));
 const GuiDonGiamDocPage    = lazy(() => import('./NhanVienShared/GuiDonGiamDocPage'));
 const AiTriageReceptionPage = lazy(() => import('./AiTriageReceptionPage'));
+const ChamCongPage          = lazy(() => import('./NhanVienShared/ChamCongPage'));
 
 function Loader() {
   return (
@@ -40,6 +41,7 @@ export default function ReceptionistPortal() {
           <Route path="lich-lam-viec"  element={<LichLamViecPage />} />
           <Route path="gui-don"        element={<GuiDonGiamDocPage />} />
           <Route path="ai-triage"      element={<AiTriageReceptionPage />} />
+          <Route path="cham-cong"      element={<ChamCongPage />} />
           <Route path="*" element={<Navigate to="hang-doi" replace />} />
         </Routes>
       </Suspense>

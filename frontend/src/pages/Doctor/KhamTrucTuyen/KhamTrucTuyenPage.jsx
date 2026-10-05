@@ -1,16 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import useAuthStore from '../../../store/authStore';
 import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
-import { apiGet, apiPost } from '../../../services/api';
+import { apiGet, apiPost, apiPatch } from '../../../services/api';
 import { formatDateTime, formatDate, checkTelehealthAccess } from '../../../utils/formatDate';
-import TelehealthVideoModal from '../../../components/Telehealth/TelehealthVideoModal';
+import useTelehealthStore from '../../../store/telehealthStore';
 import {
-  Video, MessageSquare, Send, Calendar, Clock, User,
+  Video, Calendar, Clock, User,
   FileText, Pill, CheckCircle2, ShieldCheck, AlertCircle, Search, SlidersHorizontal,
-  RotateCcw, X, ChevronDown
+  RotateCcw, X, ChevronDown, Activity, Phone
 } from 'lucide-react';
 
 const getTodayKey = () => {
@@ -27,21 +27,19 @@ const getAppointmentDateKey = (item) => {
 
 export default function KhamTrucTuyenPage() {
   const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+  const { startCall, isOpen: isCallOpen, maximizeCall } = useTelehealthStore();
   const [selectedLich, setSelectedLich] = useState(null);
-  const [showVideoModal, setShowVideoModal] = useState(false);
-  const [messages, setMessages] = useState([
-    { sender: 'benh_nhan', text: 'Chào bác sĩ, dạo này tôi hay bị đau đầu về chiều và hoa mắt.', time: '09:00' },
-    { sender: 'bac_si', text: 'Chào anh/chị. Triệu chứng này xuất hiện bao lâu rồi? Anh/chị có bị đo huyết áp gần đây không?', time: '09:02' },
-  ]);
-  const [inputMsg, setInputMsg] = useState('');
   const [formAdvise, setFormAdvise] = useState({ chanDoan: '', loiKhuyen: '' });
+  const [savingAdvise, setSavingAdvise] = useState(false);
   const [showDatLichModal, setShowDatLichModal] = useState(false);
+  const [bookedAppointmentMap, setBookedAppointmentMap] = useState({});
 
   // Bộ lọc cho danh sách tư vấn
   const [searchTerm, setSearchTerm] = useState('');
   const [timeFilter, setTimeFilter] = useState('all'); // 'all', 'today', 'tomorrow', '7days', 'thisWeek', 'custom'
   const [selectedDate, setSelectedDate] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'can_join', 'da_xac_nhan', 'cho_xac_nhan', 'hoan_thanh', 'da_huy'
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'can_join', 'dang_kham', 'da_xac_nhan', 'cho_xac_nhan', 'hoan_thanh', 'da_huy'
   const [shiftFilter, setShiftFilter] = useState('all'); // 'all', 'sang', 'chieu'
 
   // Lấy danh sách lịch tư vấn online
@@ -52,8 +50,131 @@ export default function KhamTrucTuyenPage() {
     enabled: !!user?.id,
   });
 
+  // Lấy danh sách lịch hẹn để kiểm tra ca đặt khám trực tiếp hộ đã tạo trong CSDL
+  const { data: allApptsData } = useQuery({
+    queryKey: ['lich-hen-all-booked'],
+    queryFn: () => apiGet('/lich-hen?limit=200'),
+    staleTime: 5000,
+    enabled: !!user?.id,
+  });
+
   const rawItems = Array.isArray(data) ? data : data?.data;
   const items = rawItems || [];
+  const allAppts = Array.isArray(allApptsData) ? allApptsData : allApptsData?.data || [];
+
+  // Tự động liên kết và tra cứu các ca khám trực tiếp đã được Bác sĩ đặt hộ từ ca Telehealth
+  const bookedFollowUpMap = useMemo(() => {
+    const map = { ...bookedAppointmentMap };
+    allAppts.forEach((app) => {
+      if (app.ghiChu && app.ghiChu.includes('[Bác sĩ đặt lịch trực tiếp từ ca Telehealth')) {
+        const match = app.ghiChu.match(/\[Bác sĩ đặt lịch trực tiếp từ ca Telehealth\s*(LH\d+)\]/i);
+        if (match && match[1]) {
+          const telehealthCode = match[1];
+          const thLich = items.find((it) => it.maLichHen === telehealthCode);
+          if (thLich) {
+            map[thLich.id] = app;
+          }
+        }
+      }
+    });
+    return map;
+  }, [allAppts, items, bookedAppointmentMap]);
+
+  const handleHoanTatTuVan = async () => {
+    if (!activeLich?.id) return;
+
+    if (activeLich.trangThai === 'da_huy') {
+      alert('Ca khám này đã bị hủy, không thể gửi kết luận tư vấn.');
+      return;
+    }
+
+    if (activeLich.trangThai === 'hoan_thanh') {
+      alert('Ca tư vấn trực tuyến này đã hoàn tất trước đó.');
+      return;
+    }
+
+    if (!formAdvise.chanDoan.trim() && !formAdvise.loiKhuyen.trim()) {
+      if (!window.confirm('Bạn chưa nhập chẩn đoán hoặc lời khuyên. Bạn có chắc muốn hoàn tất ca tư vấn này?')) {
+        return;
+      }
+    }
+
+    setSavingAdvise(true);
+    try {
+      const res = await apiPost(`/lich-hen/${activeLich.id}/hoan-tat-tu-van`, {
+        chanDoan: formAdvise.chanDoan,
+        loiKhuyen: formAdvise.loiKhuyen,
+      });
+
+      alert(res?.message || 'Đã hoàn tất ca tư vấn trực tuyến và ghi nhận hồ sơ bệnh án thành công!');
+      queryClient.invalidateQueries(['lich-tu-van-online']);
+      setFormAdvise({ chanDoan: '', loiKhuyen: '' });
+    } catch (err) {
+      console.error('Lỗi hoàn tất tư vấn:', err);
+      alert(err?.error?.message || err?.message || 'Có lỗi khi lưu kết luận tư vấn.');
+    } finally {
+      setSavingAdvise(false);
+    }
+  };
+
+  const handleStartVideoCall = async (lich) => {
+    if (!lich) return;
+
+    // Kiểm tra thời gian: nếu ca khám đã quá giờ hẹn (đã hết 60 phút) thì không được vào
+    const access = checkTelehealthAccess(lich.ngayHen || lich.ngayKham, lich.gioHen || lich.gioKham);
+    if (access.isExpired) {
+      alert(`⏰ CA KHÁM TRỰC TUYẾN ĐÃ HẾT GIỜ:\n\n${access.statusMessage}\nPhòng khám trực tuyến đã đóng, không thể tham gia cuộc gọi.`);
+      return;
+    }
+    if (!access.canJoin) {
+      alert(`⏰ CHƯA ĐẾN GIỜ KHÁM:\n\n${access.statusMessage}`);
+      return;
+    }
+
+    // Ràng buộc nghiệp vụ: Bác sĩ không được vào ca mới nếu có ca khác đang "dang_kham"
+    const danglingKham = items.find((it) => it.trangThai === 'dang_kham' && it.id !== lich.id);
+    if (danglingKham) {
+      const bnName = danglingKham.benhNhan?.hoTen || 'Bệnh nhân';
+      const maLh = danglingKham.maLichHen || `#${danglingKham.id}`;
+      const timeInfo = `${danglingKham.gioHen || danglingKham.gioKham || ''} ngày ${formatDate(danglingKham.ngayHen || danglingKham.ngayKham)}`;
+
+      alert(
+        `⚠️ BÁC SĨ CHƯA KẾT LUẬN CA KHÁM TRƯỚC!\n\n` +
+        `• Mã ca khám: ${maLh}\n` +
+        `• Bệnh nhân: ${bnName}\n` +
+        `• Giờ hẹn: ${timeInfo}\n\n` +
+        `Ca khám trên hiện đang ở trạng thái [Đang khám] và chưa có kết luận tư vấn.\n` +
+        `Bác sĩ bắt buộc phải hoàn tất kết luận chuyên môn cho ca này trước khi bắt đầu cuộc gọi với ca mới!`
+      );
+      // Tự động chuyển màn hình về đúng ca đang khám dở dang để Bác sĩ kết luận
+      setSelectedLich(danglingKham);
+      return;
+    }
+
+    if (isCallOpen) {
+      maximizeCall();
+      return;
+    }
+
+    // Tự động chuyển trạng thái lịch hẹn sang dang_kham nếu đang là da_xac_nhan hoặc cho_xac_nhan
+    if (lich.trangThai !== 'dang_kham') {
+      try {
+        await apiPatch(`/lich-hen/${lich.id}/trang-thai`, {
+          trangThai: 'dang_kham',
+          ghiChu: 'Bác sĩ đã bắt đầu cuộc gọi khám trực tuyến',
+        });
+        queryClient.invalidateQueries(['lich-tu-van-online']);
+      } catch (err) {
+        console.warn('Không thể cập nhật trạng thái dang_kham:', err);
+      }
+    }
+
+    startCall({
+      participantName: lich?.benhNhan?.hoTen || 'Bệnh nhân',
+      role: 'doctor',
+      appointmentInfo: lich || {},
+    });
+  };
 
   const handleResetFilters = () => {
     setSearchTerm('');
@@ -108,6 +229,7 @@ export default function KhamTrucTuyenPage() {
 
       // 2. Lọc theo trạng thái
       if (statusFilter === 'can_join') {
+        if (item.trangThai === 'da_huy' || item.trangThai === 'hoan_thanh' || item.trangThai === 'cho_thanh_toan') return false;
         const itemAccess = checkTelehealthAccess(item.ngayHen || item.ngayKham, item.gioHen || item.gioKham);
         if (!itemAccess.canJoin) return false;
       } else if (statusFilter !== 'all') {
@@ -140,20 +262,15 @@ export default function KhamTrucTuyenPage() {
     });
   }, [items, searchTerm, statusFilter, timeFilter, selectedDate, shiftFilter]);
 
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (!inputMsg.trim()) return;
-    setMessages((prev) => [
-      ...prev,
-      { sender: 'bac_si', text: inputMsg, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) },
-    ]);
-    setInputMsg('');
-  };
-
   const activeLich = filteredItems.find((item) => item.id === selectedLich?.id) || filteredItems[0];
+  const isDaHuy = activeLich?.trangThai === 'da_huy';
+  const isDangKham = activeLich?.trangThai === 'dang_kham';
   const activeAccess = activeLich
     ? checkTelehealthAccess(activeLich.ngayHen || activeLich.ngayKham, activeLich.gioHen || activeLich.gioKham)
     : { canJoin: true };
+
+  // Tìm ca khám khác đang ở trạng thái 'dang_kham' (chưa hoàn tất kết luận)
+  const otherDanglingKham = items.find((it) => it.trangThai === 'dang_kham' && it.id !== activeLich?.id);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -165,9 +282,9 @@ export default function KhamTrucTuyenPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-13rem)]">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-auto lg:h-[calc(100vh-13rem)]">
         {/* Danh sách ca tư vấn */}
-        <MedCard className="flex flex-col h-full overflow-hidden p-4">
+        <MedCard className="flex flex-col min-h-[350px] lg:h-full overflow-hidden p-4">
           <div className="flex items-center justify-between mb-2.5">
             <h3 className="text-base font-bold text-gray-900 flex items-center gap-1.5">
               <Calendar className="h-4 w-4 text-primary-600" /> Lịch tư vấn trực tuyến
@@ -263,6 +380,7 @@ export default function KhamTrucTuyenPage() {
                   className="w-full appearance-none rounded-lg border border-gray-300 bg-white py-1.5 pl-2 pr-6 text-[11px] font-medium text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 >
                   <option value="all">Tất cả trạng thái</option>
+                  <option value="dang_kham">🟣 Đang khám</option>
                   <option value="can_join">🔴 Đang mở phòng</option>
                   <option value="da_xac_nhan">Đã xác nhận</option>
                   <option value="cho_xac_nhan">Chờ xác nhận</option>
@@ -332,10 +450,14 @@ export default function KhamTrucTuyenPage() {
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-bold text-primary-700">{item.maLichHen}</span>
-                    {itemAccess.canJoin ? (
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                        Đang mở phòng
+                    {item.trangThai === 'dang_kham' ? (
+                      <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full border border-purple-300 flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-purple-600 animate-ping"></span>
+                        Đang khám
+                      </span>
+                    ) : item.trangThai === 'cho_thanh_toan' ? (
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
+                        Chờ BN thanh toán
                       </span>
                     ) : item.trangThai === 'da_huy' ? (
                       <span className="text-[10px] font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
@@ -344,6 +466,11 @@ export default function KhamTrucTuyenPage() {
                     ) : item.trangThai === 'hoan_thanh' ? (
                       <span className="text-[10px] font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
                         Đã hoàn thành
+                      </span>
+                    ) : itemAccess.canJoin ? (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                        Đang mở phòng
                       </span>
                     ) : (
                       <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
@@ -377,7 +504,7 @@ export default function KhamTrucTuyenPage() {
 
         {/* Khung Khám & Chat Trực tuyến */}
         {activeLich && (
-          <div className="lg:col-span-2 flex flex-col h-full space-y-4">
+          <div className="lg:col-span-2 flex flex-col min-w-0 h-full space-y-4">
             {/* Header thông tin bệnh nhân */}
             <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
               <div className="flex items-center gap-3">
@@ -392,21 +519,78 @@ export default function KhamTrucTuyenPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <MedButton
-                  variant="secondary"
-                  size="sm"
-                  leftIcon={<Calendar className="h-4 w-4 text-blue-600" />}
-                  onClick={() => setShowDatLichModal(true)}
-                >
-                  + Đặt lịch khám trực tiếp hộ BN
-                </MedButton>
+                {bookedFollowUpMap[activeLich.id] ? (
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200">
+                    <CheckCircle2 className="h-4 w-4 text-blue-600" />
+                    <span>Đã hoàn tất đặt lịch khám hộ ({bookedFollowUpMap[activeLich.id].maLichHen || 'Thành công'})</span>
+                  </div>
+                ) : (
+                  <MedButton
+                    variant="secondary"
+                    size="sm"
+                    disabled={isDaHuy}
+                    leftIcon={<Calendar className={`h-4 w-4 ${isDaHuy ? 'text-gray-400' : 'text-blue-600'}`} />}
+                    onClick={() => !isDaHuy && setShowDatLichModal(true)}
+                    title={isDaHuy ? 'Ca khám đã bị hủy - Không thể đặt lịch hộ' : 'Đặt lịch khám trực tiếp hộ BN'}
+                  >
+                    + Đặt lịch khám trực tiếp hộ BN
+                  </MedButton>
+                )}
 
-                {activeAccess.canJoin ? (
+                {activeLich.trangThai === 'cho_thanh_toan' ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200">
+                      💳 BN chưa thanh toán phí tư vấn
+                    </span>
+                    <MedButton
+                      variant="secondary"
+                      size="sm"
+                      disabled
+                      leftIcon={<Video className="h-4 w-4 text-gray-400" />}
+                      title="Bệnh nhân chưa thanh toán phí khám trực tuyến"
+                    >
+                      Chờ thanh toán
+                    </MedButton>
+                  </div>
+                ) : activeLich.trangThai === 'da_huy' ? (
+                  <span className="text-xs font-semibold text-red-700 bg-red-50 px-3 py-1.5 rounded-lg border border-red-200">
+                    🚫 Ca khám đã bị hủy
+                  </span>
+                ) : activeLich.trangThai === 'hoan_thanh' ? (
+                  <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                    ✓ Đã hoàn tất tư vấn
+                  </span>
+                ) : activeAccess.isExpired ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-1.5 rounded-lg border border-gray-200">
+                      🔒 Đã hết giờ khám (Đóng phòng)
+                    </span>
+                    <MedButton
+                      variant="secondary"
+                      size="sm"
+                      disabled
+                      leftIcon={<Video className="h-4 w-4 text-gray-400" />}
+                      title={activeAccess.statusMessage}
+                    >
+                      Đã kết thúc
+                    </MedButton>
+                  </div>
+                ) : isDangKham ? (
                   <MedButton
                     variant="primary"
                     size="sm"
                     leftIcon={<Video className="h-4 w-4" />}
-                    onClick={() => setShowVideoModal(true)}
+                    onClick={() => handleStartVideoCall(activeLich)}
+                    className="bg-purple-600 hover:bg-purple-700 shadow-sm animate-pulse text-white font-bold"
+                  >
+                    📹 Đang trong cuộc khám
+                  </MedButton>
+                ) : activeAccess.canJoin ? (
+                  <MedButton
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<Video className="h-4 w-4" />}
+                    onClick={() => handleStartVideoCall(activeLich)}
                     className="bg-emerald-600 hover:bg-emerald-700 shadow-sm animate-pulse"
                   >
                     Mở Video Call
@@ -414,9 +598,7 @@ export default function KhamTrucTuyenPage() {
                 ) : (
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 hidden sm:inline-block">
-                      {activeAccess.isTooEarly
-                        ? `⏱️ Mở lúc ${activeAccess.openTimeText} (còn ${activeAccess.timeLeftText})`
-                        : `Đã qua giờ hẹn (${activeAccess.startTimeText})`}
+                      ⏱️ Mở lúc {activeAccess.openTimeText} (còn {activeAccess.timeLeftText})
                     </span>
                     <MedButton
                       variant="secondary"
@@ -432,165 +614,252 @@ export default function KhamTrucTuyenPage() {
               </div>
             </div>
 
-            {/* Chat & Ghi nhận kết quả */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
-              {/* Khung chat */}
-              <div className="bg-white rounded-xl border border-gray-200 flex flex-col h-full overflow-hidden">
-                <div className="p-3 border-b border-gray-100 bg-gray-50 font-semibold text-xs text-gray-700 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <MessageSquare className="h-4 w-4 text-primary-600" /> Tin nhắn tư vấn trực tiếp
+            {/* Chi tiết ca tư vấn & Ghi nhận kết quả (Đã xóa khung chat ngoài - Video Call đã có chat riêng) */}
+            <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 p-5 flex flex-col space-y-4 overflow-y-auto">
+              {/* Header ca khám & trạng thái */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-base text-gray-900 flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-primary-600" /> Kết luận tư vấn & Chẩn đoán từ xa
+                  </h4>
+                  {isDangKham && (
+                    activeAccess.isExpired ? (
+                      <span className="text-xs font-bold text-gray-700 bg-gray-100 border border-gray-300 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-gray-500" />
+                        Đã kết thúc cuộc gọi • Chờ kết luận
+                      </span>
+                    ) : (
+                      <span className="text-xs font-bold text-purple-700 bg-purple-100 border border-purple-300 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-purple-600 animate-ping"></span>
+                        Đang trong ca khám trực tuyến
+                      </span>
+                    )
+                  )}
+                </div>
+                {activeLich?.trangThai === 'hoan_thanh' ? (
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full flex items-center gap-1">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Đã hoàn tất & Lưu bệnh án
                   </span>
-                  {activeAccess.canJoin ? (
-                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                      Phòng khám đang mở
-                    </span>
-                  ) : activeAccess.isTooEarly ? (
-                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-full">
-                      Mở trước giờ khám 15p
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                      Đã qua giờ khám
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                  {!activeAccess.canJoin && (
-                    <div className="rounded-xl bg-amber-50 border border-amber-200/80 p-3 text-xs text-amber-900 space-y-1">
-                      {activeAccess.isTooEarly ? (
-                        <>
-                          <p className="font-bold flex items-center gap-1.5 text-amber-900">
-                            <Clock className="h-4 w-4 text-amber-600 flex-shrink-0" /> Chưa đến thời gian mở phòng khám & chat trực tuyến
-                          </p>
-                          <p className="text-[11px] text-amber-700">
-                            Hệ thống chỉ mở phòng khám và kênh chat trực tuyến trước giờ khám <strong>15 phút</strong> (lúc <strong>{activeAccess.openTimeText}</strong>).
-                          </p>
-                          <p className="text-[11px] font-semibold text-amber-900">
-                            ⏳ Thời gian đếm ngược: Còn {activeAccess.timeLeftText} nữa.
-                          </p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="font-bold flex items-center gap-1.5 text-gray-700">
-                            <Clock className="h-4 w-4 text-gray-500 flex-shrink-0" /> Ca khám trực tuyến đã qua khung giờ hẹn
-                          </p>
-                          <p className="text-[11px] text-gray-600">
-                            Lịch hẹn khám này đã kết thúc khung giờ (lúc {activeAccess.startTimeText}).
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {messages.map((m, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex flex-col ${m.sender === 'bac_si' ? 'items-end' : 'items-start'}`}
-                    >
-                      <div
-                        className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm ${
-                          m.sender === 'bac_si'
-                            ? 'bg-primary-600 text-white rounded-br-none'
-                            : 'bg-gray-100 text-gray-800 rounded-bl-none'
-                        }`}
-                      >
-                        {m.text}
-                      </div>
-                      <span className="text-[10px] text-gray-400 mt-1 px-1">{m.time}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {activeAccess.canJoin ? (
-                  <form onSubmit={handleSendMessage} className="p-2 border-t flex gap-2">
-                    <input
-                      type="text"
-                      value={inputMsg}
-                      onChange={(e) => setInputMsg(e.target.value)}
-                      placeholder="Nhập tin nhắn tư vấn..."
-                      className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
-                    <MedButton type="submit" variant="primary" size="sm">
-                      <Send className="h-4 w-4" />
-                    </MedButton>
-                  </form>
-                ) : (
-                  <div className="p-2.5 bg-gray-50 border-t text-center text-xs text-gray-500 italic">
-                    {activeAccess.isTooEarly
-                      ? `🔒 Khung chat sẽ tự động mở lúc ${activeAccess.openTimeText} (trước giờ khám 15 phút)`
-                      : `🔒 Khung chat đã đóng do đã qua khung giờ hẹn`}
-                  </div>
-                )}
+                ) : isDaHuy ? (
+                  <span className="text-xs font-bold text-red-700 bg-red-100 px-3 py-1 rounded-full flex items-center gap-1">
+                    <AlertCircle className="h-4 w-4 text-red-600" /> Ca khám đã bị hủy
+                  </span>
+                ) : null}
               </div>
 
-              {/* Kết luận & Chẩn đoán Telehealth */}
-              <div className="bg-white rounded-xl border border-gray-200 flex flex-col h-full p-4 space-y-3">
-                <h4 className="font-bold text-sm text-gray-900 flex items-center gap-1.5">
-                  <FileText className="h-4 w-4 text-primary-600" /> Kết luận tư vấn từ xa
-                </h4>
-                <div className="flex-1 space-y-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Chẩn đoán sơ bộ</label>
-                    <textarea
-                      rows={3}
-                      value={formAdvise.chanDoan}
-                      onChange={(e) => setFormAdvise({ ...formAdvise, chanDoan: e.target.value })}
-                      placeholder="Nhập chẩn đoán từ xa..."
-                      className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:ring-2 focus:ring-primary-500"
-                    />
+              {/* Thông báo ngữ cảnh */}
+              {otherDanglingKham && (
+                <div className="rounded-xl bg-amber-50 border border-amber-300 p-3 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-sm text-amber-900">
+                        Có ca khám chưa kết luận: [{otherDanglingKham.maLichHen}] - {otherDanglingKham.benhNhan?.hoTen}
+                      </p>
+                      <p className="text-xs text-amber-800 mt-0.5">
+                        Ca khám này đang ở trạng thái <strong>[Đang khám]</strong>. Bạn vẫn có thể xem thông tin ca hiện tại, nhưng bắt buộc phải hoàn tất kết luận cho ca của <strong>{otherDanglingKham.benhNhan?.hoTen}</strong> trước khi bắt đầu cuộc gọi cho ca mới.
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Lời khuyên & Chỉ định</label>
-                    <textarea
-                      rows={4}
-                      value={formAdvise.loiKhuyen}
-                      onChange={(e) => setFormAdvise({ ...formAdvise, loiKhuyen: e.target.value })}
-                      placeholder="Dặn dò chế độ ăn, tái khám hoặc đi xét nghiệm tại phòng khám..."
-                      className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:ring-2 focus:ring-primary-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t flex flex-wrap gap-2 justify-end">
                   <MedButton
                     variant="secondary"
                     size="sm"
-                    leftIcon={<Calendar className="h-4 w-4 text-blue-600" />}
-                    onClick={() => setShowDatLichModal(true)}
+                    onClick={() => setSelectedLich(otherDanglingKham)}
+                    className="bg-white border-amber-300 text-amber-900 hover:bg-amber-100 font-bold shrink-0 text-xs shadow-2xs"
+                  >
+                    👉 Chuyển đến ca {otherDanglingKham.maLichHen} để kết luận
+                  </MedButton>
+                </div>
+              )}
+
+              {isDaHuy ? (
+                <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-xs text-red-900 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5 text-red-800 text-sm">
+                    <AlertCircle className="h-4 w-4 text-red-600 shrink-0" /> Ca khám này đã bị hủy
+                  </p>
+                  <p className="text-xs text-red-700">
+                    Lịch hẹn trực tuyến đã hủy bỏ. Chức năng gọi video và ghi nhận kết luận tư vấn đã bị đóng.
+                  </p>
+                  {activeLich.ghiChu && (
+                    <p className="text-xs text-red-800 pt-1 font-medium">
+                      Lý do/Ghi chú: {activeLich.ghiChu}
+                    </p>
+                  )}
+                </div>
+              ) : activeLich?.trangThai === 'hoan_thanh' ? (
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-900 space-y-0.5">
+                  <p className="font-bold flex items-center gap-1.5 text-emerald-800 text-sm">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" /> Ca tư vấn đã hoàn tất thành công
+                  </p>
+                  <p className="text-xs text-emerald-700">
+                    Kết luận tư vấn và dặn dò đã được ghi nhận vào Hồ sơ bệnh án điện tử (EMR) của bệnh nhân.
+                  </p>
+                </div>
+              ) : isDangKham ? (
+                activeAccess.isExpired ? (
+                  <div className="rounded-xl bg-gray-50 border border-gray-200 p-3 text-xs text-gray-700 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-gray-500 shrink-0" />
+                      <div>
+                        <p className="font-bold text-sm text-gray-800">Cuộc gọi trực tuyến đã kết thúc (Hết thời gian)</p>
+                        <p className="text-xs text-gray-500">Phòng gọi video đã đóng do hết giờ khám. Bác sĩ vui lòng hoàn tất chẩn đoán và bấm "Hoàn tất tư vấn & Lưu bệnh án" để kết thúc ca khám.</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-purple-50 border border-purple-200 p-3 text-xs text-purple-900 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Activity className="h-5 w-5 text-purple-600 shrink-0" />
+                      <div>
+                        <p className="font-bold text-sm text-purple-900">Ca khám trực tuyến đang diễn ra</p>
+                        <p className="text-xs text-purple-700">Bác sĩ vui lòng ghi chép kết luận chuyên môn bên dưới và bấm "Hoàn tất tư vấn" khi kết thúc buổi làm việc.</p>
+                      </div>
+                    </div>
+                    <MedButton
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleStartVideoCall(activeLich)}
+                      leftIcon={<Video className="h-4 w-4" />}
+                      className="bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs"
+                    >
+                      Xem phòng Video
+                    </MedButton>
+                  </div>
+                )
+              ) : null}
+
+              {/* Tóm tắt thông tin ca khám & Bệnh nhân */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-gray-50/80 rounded-xl p-3 border border-gray-100 text-xs">
+                <div>
+                  <span className="text-gray-500 block mb-0.5 font-medium">Bệnh nhân:</span>
+                  <p className="font-bold text-gray-900 text-sm">{activeLich.benhNhan?.hoTen}</p>
+                  <p className="text-gray-600">{activeLich.benhNhan?.gioiTinh === 'nam' ? 'Nam' : activeLich.benhNhan?.gioiTinh === 'nu' ? 'Nữ' : ''} {activeLich.benhNhan?.ngaySinh ? `• ${formatDate(activeLich.benhNhan?.ngaySinh)}` : ''}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500 block mb-0.5 font-medium">Thời gian hẹn:</span>
+                  <p className="font-bold text-gray-900">{activeLich.gioHen || activeLich.gioKham} ngày {formatDate(activeLich.ngayHen || activeLich.ngayKham)}</p>
+                  <p className="text-primary-700 font-medium">Mã lịch hẹn: {activeLich.maLichHen}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500 block mb-0.5 font-medium">Lý do khám / Triệu chứng:</span>
+                  <p className="font-semibold text-gray-800 line-clamp-2">{activeLich.lyDoKham || 'Tư vấn sức khỏe tổng quát từ xa'}</p>
+                </div>
+              </div>
+
+              {/* Form chẩn đoán và lời khuyên full width */}
+              <div className="flex-1 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-800 mb-1.5 flex items-center gap-1.5">
+                    <FileText className="h-4 w-4 text-primary-600" /> Chẩn đoán sơ bộ & Tình trạng bệnh
+                  </label>
+                  <textarea
+                    rows={4}
+                    disabled={isDaHuy || activeLich?.trangThai === 'hoan_thanh'}
+                    value={formAdvise.chanDoan}
+                    onChange={(e) => setFormAdvise({ ...formAdvise, chanDoan: e.target.value })}
+                    placeholder={
+                      isDaHuy
+                        ? 'Ca khám đã bị hủy...'
+                        : activeLich?.trangThai === 'hoan_thanh'
+                        ? 'Ca khám đã hoàn tất...'
+                        : 'Nhập chẩn đoán chuyên môn, triệu chứng lâm sàng ghi nhận qua video call...'
+                    }
+                    className="w-full rounded-xl border border-gray-300 p-3 text-sm focus:ring-2 focus:ring-primary-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-800 mb-1.5 flex items-center gap-1.5">
+                    <Pill className="h-4 w-4 text-emerald-600" /> Lời khuyên, Dặn dò & Hướng xử trí
+                  </label>
+                  <textarea
+                    rows={5}
+                    disabled={isDaHuy || activeLich?.trangThai === 'hoan_thanh'}
+                    value={formAdvise.loiKhuyen}
+                    onChange={(e) => setFormAdvise({ ...formAdvise, loiKhuyen: e.target.value })}
+                    placeholder={
+                      isDaHuy
+                        ? 'Ca khám đã bị hủy...'
+                        : activeLich?.trangThai === 'hoan_thanh'
+                        ? 'Ca khám đã hoàn tất...'
+                        : 'Dặn dò chế độ dinh dưỡng, theo dõi triệu chứng, chỉ định dùng thuốc hoặc yêu cầu đến khám trực tiếp tại phòng khám...'
+                    }
+                    className="w-full rounded-xl border border-gray-300 p-3 text-sm focus:ring-2 focus:ring-primary-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed transition"
+                  />
+                </div>
+              </div>
+
+              {/* Nút hành động cuối trang */}
+              <div className="pt-3 border-t border-gray-100 flex flex-wrap gap-2.5 justify-end items-center">
+                {bookedFollowUpMap[activeLich.id] ? (
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200">
+                    <CheckCircle2 className="h-4 w-4 text-blue-600" />
+                    <span>Đã hoàn tất đặt lịch khám hộ ({bookedFollowUpMap[activeLich.id].maLichHen || 'Thành công'})</span>
+                  </div>
+                ) : (
+                  <MedButton
+                    variant="secondary"
+                    size="sm"
+                    disabled={isDaHuy}
+                    leftIcon={<Calendar className={`h-4 w-4 ${isDaHuy ? 'text-gray-400' : 'text-blue-600'}`} />}
+                    onClick={() => !isDaHuy && setShowDatLichModal(true)}
+                    title={isDaHuy ? 'Ca khám đã bị hủy - Không thể đặt lịch hộ' : 'Đặt lịch khám trực tiếp hộ BN'}
                   >
                     + Đặt lịch khám trực tiếp hộ BN
                   </MedButton>
+                )}
+
+                {activeLich?.trangThai === 'hoan_thanh' ? (
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <span>Đã hoàn tất tư vấn (Đã lưu bệnh án)</span>
+                  </div>
+                ) : isDaHuy ? (
+                  <MedButton
+                    variant="secondary"
+                    size="sm"
+                    disabled
+                    leftIcon={<AlertCircle className="h-4 w-4 text-gray-400" />}
+                    className="cursor-not-allowed text-gray-400 bg-gray-100 border-gray-200"
+                    title="Ca khám đã bị hủy - Không thể gửi kết luận"
+                  >
+                    Đã khóa tư vấn (Ca hủy)
+                  </MedButton>
+                ) : (
                   <MedButton
                     variant="primary"
-                    size="sm"
+                    size="md"
+                    loading={savingAdvise}
+                    disabled={savingAdvise}
                     leftIcon={<CheckCircle2 className="h-4 w-4" />}
-                    onClick={() => alert('Đã hoàn thành ca tư vấn trực tuyến!')}
+                    onClick={handleHoanTatTuVan}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5"
                   >
-                    Hoàn tất tư vấn
+                    Hoàn tất tư vấn & Lưu bệnh án
                   </MedButton>
-                </div>
+                )}
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Modal Video Call Telehealth */}
-      <TelehealthVideoModal
-        isOpen={showVideoModal}
-        onClose={() => setShowVideoModal(false)}
-        participantName={activeLich?.benhNhan?.hoTen || 'Bệnh nhân'}
-        role="doctor"
-        appointmentInfo={activeLich || {}}
-      />
-
       {/* Modal Đặt lịch khám trực tiếp hộ bệnh nhân */}
       {showDatLichModal && activeLich && (
         <DatLichHoModal
           benhNhan={activeLich.benhNhan}
+          activeLich={activeLich}
+          doctorUser={user}
           onClose={() => setShowDatLichModal(false)}
+          onSuccess={(newAppt) => {
+            setBookedAppointmentMap((prev) => ({
+              ...prev,
+              [activeLich.id]: newAppt,
+            }));
+            queryClient.invalidateQueries(['lich-tu-van-online']);
+            queryClient.invalidateQueries(['lich-hen-all-booked']);
+            queryClient.invalidateQueries(['lich-hen-bac-si']);
+          }}
         />
       )}
     </div>
@@ -598,30 +867,35 @@ export default function KhamTrucTuyenPage() {
 }
 
 /* ──── MODAL ĐẶT LỊCH KHÁM HỘ BỆNH NHÂN KHI TƯ VẤN ONLINE ──── */
-function DatLichHoModal({ benhNhan, onClose }) {
-  const [ngayKham, setNgayKham] = useState(new Date(Date.now() + 86400000).toISOString().slice(0, 10));
-  const [gioKham, setGioKham] = useState('08:30');
+function DatLichHoModal({ benhNhan, activeLich, doctorUser, onClose, onSuccess }) {
+  const [ngayHen, setNgayHen] = useState(new Date(Date.now() + 86400000).toISOString().slice(0, 10));
+  const [gioHen, setGioHen] = useState('08:30');
   const [lyDo, setLyDo] = useState('Khám trực tiếp theo chỉ định từ ca tư vấn Telehealth từ xa');
-  const [hinhThuc, setHinhThuc] = useState('truc_tiep');
   const [loading, setLoading] = useState(false);
+
+  // Trích xuất chuyên khoa từ ca tư vấn trực tuyến (nếu có)
+  const chuyenKhoaMatch = activeLich?.lyDoKham?.match(/\[Chuyên khoa:\s*([^\]]+)\]/i);
+  const chuyenKhoa = chuyenKhoaMatch ? chuyenKhoaMatch[1].trim() : 'Nội tổng quát';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await apiPost('/lich-hen', {
-        benhNhanId: benhNhan?.id || 1,
-        ngayKham,
-        gioKham,
+      const res = await apiPost('/lich-hen', {
+        benhNhanId: benhNhan?.id,
+        ngayHen,
+        gioHen,
         lyDoKham: lyDo,
-        hinhThucKham: hinhThuc,
+        chuyenKhoa,
+        hinhThuc: 'truc_tiep',
+        ghiChu: `[Bác sĩ đặt lịch trực tiếp từ ca Telehealth ${activeLich?.maLichHen || ''}]`,
       });
-      alert(`Đã đặt lịch khám trực tiếp hộ bệnh nhân ${benhNhan?.hoTen || ''} thành công vào ${ngayKham} lúc ${gioKham}!`);
+      alert(`Đã đặt lịch khám trực tiếp hộ bệnh nhân ${benhNhan?.hoTen || ''} thành công vào ${ngayHen} lúc ${gioHen}!`);
+      if (onSuccess) onSuccess(res?.data || res);
       onClose();
     } catch (err) {
-      console.error(err);
-      alert('Đã tạo lịch hẹn khám cho bệnh nhân!');
-      onClose();
+      console.error('Lỗi đặt lịch hộ:', err);
+      alert(err?.error?.message || err?.message || 'Có lỗi khi tạo lịch hẹn khám cho bệnh nhân.');
     } finally {
       setLoading(false);
     }
@@ -647,8 +921,8 @@ function DatLichHoModal({ benhNhan, onClose }) {
             <label className="block text-xs font-semibold text-gray-700 mb-1">Ngày đến khám tại phòng khám</label>
             <input
               type="date"
-              value={ngayKham}
-              onChange={(e) => setNgayKham(e.target.value)}
+              value={ngayHen}
+              onChange={(e) => setNgayHen(e.target.value)}
               className="w-full rounded-lg border border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-primary-500"
               required
             />
@@ -657,8 +931,8 @@ function DatLichHoModal({ benhNhan, onClose }) {
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Khung giờ dự kiến</label>
             <select
-              value={gioKham}
-              onChange={(e) => setGioKham(e.target.value)}
+              value={gioHen}
+              onChange={(e) => setGioHen(e.target.value)}
               className="w-full rounded-lg border border-gray-300 py-2 px-3 text-sm focus:ring-2 focus:ring-primary-500"
             >
               <option value="07:30">07:30 - Ca Sáng</option>

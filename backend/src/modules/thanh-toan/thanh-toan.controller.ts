@@ -78,6 +78,16 @@ export class ThanhToanController {
     });
   }
 
+  @Patch('hoa-don/:id/lua-chon-thuoc')
+  @Roles('thu_ngan', 'tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Chọn mua thuốc tại bệnh viện hoặc mua ngoài trước khi thanh toán' })
+  capNhatLuaChonThuoc(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { luaChonMua: 'mua_tai_benh_vien' | 'mua_ngoai' },
+  ) {
+    return this.thanhToanService.capNhatLuaChonThuocHoaDon(id, body.luaChonMua);
+  }
+
   @Post('vnpay/tao-url')
   @Roles('thu_ngan', 'benh_nhan', 'quan_tri_vien')
   @ApiOperation({ summary: 'Tạo URL thanh toán VNPay Sandbox' })
@@ -98,4 +108,3 @@ export class ThanhToanController {
     return this.thanhToanService.getInHoaDon(id);
   }
 }
-

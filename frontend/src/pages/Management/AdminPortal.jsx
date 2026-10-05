@@ -7,6 +7,7 @@ import DanhMucDungChungPage from './DanhMucDungChungPage';
 import SaoLuuDuLieuPage from './SaoLuuDuLieuPage';
 import NhatKyHeThongPage from './NhatKyHeThongPage';
 import ThongTinCaNhanPage from '../Receptionist/NhanVienShared/ThongTinCaNhanPage';
+import CaiDatChamCongPage from './CaiDatChamCongPage';
 
 export default function AdminPortal() {
   return (
@@ -30,7 +31,10 @@ export default function AdminPortal() {
         {/* 6. Nhật ký hệ thống & Kiểm toán */}
         <Route path="nhat-ky" element={<NhatKyHeThongPage />} />
 
-        {/* 7. Thông tin cá nhân */}
+        {/* 7. Cài đặt chấm công & WiFi */}
+        <Route path="cai-dat-cham-cong" element={<CaiDatChamCongPage />} />
+
+        {/* 8. Thông tin cá nhân */}
         <Route path="ca-nhan" element={<ThongTinCaNhanPage />} />
 
         {/* Redirect root to tong-quan */}

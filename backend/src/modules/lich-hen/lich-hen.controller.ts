@@ -6,7 +6,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { LichHenService } from './lich-hen.service';
 import {
   TaoLichHenDto, CapNhatTrangThaiLichHenDto,
-  TimKiemLichHenDto, LaySlotTrongDto,
+  TimKiemLichHenDto, LaySlotTrongDto, ChinhSuaLichHenDto,
 } from './dto/lich-hen.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -90,6 +90,17 @@ export class LichHenController {
     return this.service.huyLichHenBoiBenhNhan(id, user.id);
   }
 
+  @Patch(':id/chinh-sua')
+  @Roles('benh_nhan', 'tiep_tan', 'quan_tri_vien')
+  @ApiOperation({ summary: 'Bệnh nhân chỉnh sửa / đổi lịch hẹn (Tối thiểu trước 24h, kiểm tra trùng slot)' })
+  chinhSuaLichHen(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ChinhSuaLichHenDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.service.chinhSuaLichHenBoiBenhNhan(id, dto, user?.id);
+  }
+
   @Post(':id/bac-si-huy-ca')
   @Roles('bac_si', 'quan_tri_vien')
   @ApiOperation({ summary: 'Bác sĩ gửi yêu cầu hủy ca khám (Bắt buộc nhập lý do, trước tối thiểu 1 ngày, trình Giám đốc duyệt)' })
@@ -130,5 +141,16 @@ export class LichHenController {
   @ApiOperation({ summary: 'Kích hoạt quét và gửi email nhắc lịch hẹn tự động trong 24h tới' })
   guiNhacLichTuDong() {
     return this.service.guiNhacLichTuDong();
+  }
+
+  @Post(':id/hoan-tat-tu-van')
+  @Roles('bac_si', 'quan_tri_vien', 'tiep_tan')
+  @ApiOperation({ summary: 'Bác sĩ hoàn tất ca tư vấn trực tuyến (Telehealth) & ghi nhận kết luận bệnh án' })
+  hoanTatTuVan(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { chanDoan?: string; loiKhuyen?: string },
+    @CurrentUser() user: any,
+  ) {
+    return this.service.hoanTatTuVan(id, body, user);
   }
 }

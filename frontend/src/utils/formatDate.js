@@ -65,21 +65,25 @@ export const calculateAge = tinhTuoi;
  * Kiểm tra xem lịch khám trực tuyến đã đến thời gian mở phòng khám hay chưa.
  * Quy định: Phòng khám và khung chat mở trước giờ hẹn 15 phút.
  */
-export const checkTelehealthAccess = (ngay, gio) => {
+export const checkTelehealthAccess = (ngay, gio, ghiChu = '') => {
   if (!ngay || !gio) {
     return { canJoin: true, isTooEarly: false, isExpired: false, statusMessage: 'Sẵn sàng' };
+  }
+
+  // Nếu phòng đang mở (bác sĩ đã khởi tạo hoặc hệ thống đánh dấu đang mở phòng)
+  if (typeof ghiChu === 'string' && ghiChu.includes('Ca khám trực tuyến Telehealth đang mở phòng')) {
+    return { canJoin: true, isTooEarly: false, isExpired: false, statusMessage: 'Phòng khám trực tuyến đang mở. Sẵn sàng vào khám!' };
   }
 
   try {
     const now = new Date();
 
-    // Tách ngày yyyy-mm-dd
-    let dateStr = '';
-    if (typeof ngay === 'string') {
-      dateStr = ngay.slice(0, 10);
-    } else if (ngay instanceof Date) {
-      dateStr = ngay.toISOString().slice(0, 10);
-    }
+    // Chuyển đổi ngày theo múi giờ địa phương (tránh lỗi lệch ngày UTC .slice(0, 10))
+    const d = typeof ngay === 'string' ? parseISO(ngay) : ngay;
+    const year = isNaN(d.getTime()) ? now.getFullYear() : d.getFullYear();
+    const month = isNaN(d.getTime()) ? now.getMonth() + 1 : d.getMonth() + 1;
+    const day = isNaN(d.getTime()) ? now.getDate() : d.getDate();
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
     // Tách giờ bắt đầu: '15:30:00' -> '15:30:00', '09:00 - 09:30' -> '09:00:00'
     let timePart = String(gio).trim().split('-')[0].trim();
@@ -97,14 +101,15 @@ export const checkTelehealthAccess = (ngay, gio) => {
 
     // Thời điểm mở phòng: trước giờ khám 15 phút
     const openTime = new Date(apptDateTime.getTime() - 15 * 60 * 1000);
-    // Thời điểm đóng phòng: sau giờ hẹn 90 phút
-    const closeTime = new Date(apptDateTime.getTime() + 90 * 60 * 1000);
+    // Thời điểm đóng phòng: sau giờ khám 60 phút (hết ca khám quy định 1 tiếng)
+    const closeTime = new Date(apptDateTime.getTime() + 60 * 60 * 1000);
 
     const diffMs = openTime.getTime() - now.getTime();
     const minutesUntilOpen = Math.ceil(diffMs / (60 * 1000));
 
     const openTimeText = `${String(openTime.getHours()).padStart(2, '0')}:${String(openTime.getMinutes()).padStart(2, '0')}`;
     const startTimeText = `${String(apptDateTime.getHours()).padStart(2, '0')}:${String(apptDateTime.getMinutes()).padStart(2, '0')}`;
+    const closeTimeText = `${String(closeTime.getHours()).padStart(2, '0')}:${String(closeTime.getMinutes()).padStart(2, '0')}`;
 
     if (now < openTime) {
       const hoursUntil = Math.floor(minutesUntilOpen / 60);
@@ -117,6 +122,7 @@ export const checkTelehealthAccess = (ngay, gio) => {
         isExpired: false,
         openTimeText,
         startTimeText,
+        closeTimeText,
         minutesUntilOpen,
         timeLeftText,
         statusMessage: `Phòng khám mở trước 15 phút (lúc ${openTimeText} ngày ${formatDate(dateStr)}). Còn ${timeLeftText} nữa.`,
@@ -130,9 +136,10 @@ export const checkTelehealthAccess = (ngay, gio) => {
         isExpired: true,
         openTimeText,
         startTimeText,
+        closeTimeText,
         minutesUntilOpen: 0,
         timeLeftText: '0 phút',
-        statusMessage: `Ca khám trực tuyến đã qua khung giờ hẹn (lúc ${startTimeText} ngày ${formatDate(dateStr)}).`,
+        statusMessage: `Ca khám trực tuyến đã quá giờ hẹn (đóng phòng lúc ${closeTimeText}).`,
       };
     }
 

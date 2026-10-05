@@ -6,8 +6,9 @@ import { formatCurrency } from '../../utils/formatCurrency';
 import {
   FileText, Activity, Pill, FlaskConical, Stethoscope, User, AlertTriangle, Clock,
   Printer, ExternalLink, Eye, CheckCircle2, CreditCard, Search, Calendar,
-  ChevronDown, ChevronUp, RotateCcw, X, Filter, Star
+  ChevronDown, ChevronUp, RotateCcw, X, Filter, Star, Video, Check
 } from 'lucide-react';
+import { parseAttachmentUrls, toAttachmentUrl } from '../../utils/fileAttachments';
 import InPhieuKhamModal from '../../components/Print/InPhieuKhamModal';
 import InDonThuocModal from '../../components/Print/InDonThuocModal';
 import InKetQuaXetNghiemModal from '../../components/Print/InKetQuaXetNghiemModal';
@@ -18,6 +19,7 @@ export default function HoSoYTeBenhNhanPage() {
   const [printDonThuoc, setPrintDonThuoc] = useState({ open: false, donThuoc: null, record: null });
   const [printXetNghiem, setPrintXetNghiem] = useState({ open: false, items: [], record: null });
   const [reviewModalData, setReviewModalData] = useState({ isOpen: false, appointment: null });
+  const [previewFile, setPreviewFile] = useState(null);
 
   // Bộ lọc & Tìm kiếm hồ sơ y tế
   const [timeRange, setTimeRange] = useState('all'); // 'all', '7days', '30days', 'thisMonth', '3months', 'thisYear', 'custom'
@@ -92,6 +94,8 @@ export default function HoSoYTeBenhNhanPage() {
           (c) => c.trangThai !== 'huy' && c.chiDinh?.trangThai !== 'huy'
         );
         if (!cls || cls.length === 0) return false;
+      } else if (filterType === 'tele_health') {
+        if (ba.hinhThucKham !== 'truc_tuyen') return false;
       } else if (filterType === 'da_hoan_thanh') {
         if (ba.trangThai !== 'da_hoan_thanh') return false;
       } else if (filterType === 'dang_kham') {
@@ -321,6 +325,7 @@ export default function HoSoYTeBenhNhanPage() {
               <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mr-1">Phân loại:</span>
               {[
                 { id: 'all', label: 'Tất cả' },
+                { id: 'tele_health', label: '💻 Khám trực tuyến' },
                 { id: 'has_thuoc', label: 'Có đơn thuốc' },
                 { id: 'has_cls', label: 'Có xét nghiệm / CĐHA' },
                 { id: 'da_hoan_thanh', label: 'Đã hoàn thành' },
@@ -422,8 +427,15 @@ export default function HoSoYTeBenhNhanPage() {
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-bold text-gray-900 text-sm sm:text-base">
-                        Lần khám ngày {formatDateTime(ba.ngayKham || ba.taoLuc)}
+                        {ba.hinhThucKham === 'truc_tuyen'
+                          ? `Tư vấn trực tuyến ngày ${formatDateTime(ba.ngayKham || ba.taoLuc)}`
+                          : `Lần khám ngày ${formatDateTime(ba.ngayKham || ba.taoLuc)}`}
                       </h3>
+                      {ba.hinhThucKham === 'truc_tuyen' && (
+                        <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full border text-purple-700 bg-purple-50 border-purple-200 flex items-center gap-1">
+                          <Video className="h-3 w-3 text-purple-600" /> Khám trực tuyến Telehealth
+                        </span>
+                      )}
                       <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
                         ba.trangThai === 'da_hoan_thanh'
                           ? 'text-green-700 bg-green-50 border-green-200'
@@ -437,8 +449,10 @@ export default function HoSoYTeBenhNhanPage() {
                       <span className="flex items-center gap-1 font-medium text-gray-700">
                         <Stethoscope className="h-3.5 w-3.5 text-blue-600" /> {bacSiTen}
                       </span>
-                      {ba.luotTiepNhanId && (
+                      {ba.luotTiepNhanId ? (
                         <span className="text-gray-400 font-mono">· Mã lượt khám #{ba.luotTiepNhanId}</span>
+                      ) : (
+                        item.lichHenId && <span className="text-purple-600 font-mono">· Ca tư vấn #{item.lichHenId}</span>
                       )}
                     </p>
 
@@ -488,10 +502,17 @@ export default function HoSoYTeBenhNhanPage() {
                       e.stopPropagation();
                       setPrintPhieuKham({ open: true, record: item });
                     }}
-                    className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 flex items-center gap-1 transition cursor-pointer"
-                    title="In phiếu khám bệnh"
+                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border flex items-center gap-1 transition cursor-pointer ${
+                      ba.hinhThucKham === 'truc_tuyen'
+                        ? 'border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100'
+                        : 'border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100'
+                    }`}
+                    title={ba.hinhThucKham === 'truc_tuyen' ? 'In phiếu tư vấn khám trực tuyến' : 'In phiếu khám bệnh'}
                   >
-                    <Printer className="h-3.5 w-3.5" /> <span className="hidden sm:inline">In phiếu khám</span>
+                    <Printer className="h-3.5 w-3.5" />{' '}
+                    <span className="hidden sm:inline">
+                      {ba.hinhThucKham === 'truc_tuyen' ? 'In phiếu tư vấn' : 'In phiếu khám'}
+                    </span>
                   </button>
                   {donThuoc && donThuoc.length > 0 && (
                     <button
@@ -573,15 +594,30 @@ export default function HoSoYTeBenhNhanPage() {
               <div className="border-t border-gray-200 p-4 sm:p-6 bg-slate-50/40 space-y-5">
 
             {/* Chẩn đoán & Sinh hiệu */}
+            {/* Chẩn đoán & Lâm sàng / Hướng dẫn tư vấn */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div className="rounded-xl bg-blue-50 p-4 border border-blue-100 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 flex items-center gap-1">
-                  <FileText className="h-3.5 w-3.5" /> Chẩn đoán & Lâm sàng
+              <div className={`rounded-xl p-4 border space-y-2.5 ${
+                ba.hinhThucKham === 'truc_tuyen'
+                  ? 'bg-purple-50/70 border-purple-200'
+                  : 'bg-blue-50 border-blue-100'
+              }`}>
+                <p className={`text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5 ${
+                  ba.hinhThucKham === 'truc_tuyen' ? 'text-purple-800' : 'text-blue-700'
+                }`}>
+                  {ba.hinhThucKham === 'truc_tuyen' ? (
+                    <>
+                      <Video className="h-3.5 w-3.5 text-purple-600" /> Kết luận & Chẩn đoán Telehealth
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-3.5 w-3.5 text-blue-600" /> Chẩn đoán & Lâm sàng
+                    </>
+                  )}
                 </p>
                 {ba.chanDoanXacDinh ? (
                   <div>
-                    <span className="text-xs font-medium text-gray-500 block">Chẩn đoán xác định (ICD-10):</span>
-                    <p className="font-semibold text-gray-900 text-sm">{ba.chanDoanXacDinh}</p>
+                    <span className="text-xs font-medium text-gray-500 block">Chẩn đoán chuyên môn:</span>
+                    <p className="font-bold text-gray-900 text-sm">{ba.chanDoanXacDinh}</p>
                   </div>
                 ) : null}
                 {ba.chanDoanSoBo && (
@@ -591,20 +627,27 @@ export default function HoSoYTeBenhNhanPage() {
                   </div>
                 )}
                 {ba.trieuChung && (
-                  <p className="text-xs text-gray-600 pt-1 border-t border-blue-100">
-                    <strong>Triệu chứng:</strong> {ba.trieuChung}
+                  <p className="text-xs text-gray-700 pt-1 border-t border-purple-100/80">
+                    <strong>Lý do khám / Triệu chứng:</strong> {ba.trieuChung}
                   </p>
                 )}
                 {ba.phuongPhapDieuTri && (
-                  <p className="text-xs text-gray-600">
-                    <strong>Hướng điều trị:</strong> {ba.phuongPhapDieuTri}
-                  </p>
+                  <div className={`p-2.5 rounded-lg border text-xs ${
+                    ba.hinhThucKham === 'truc_tuyen'
+                      ? 'bg-white/80 border-purple-200 text-purple-950 font-medium'
+                      : 'bg-white/60 border-blue-100 text-gray-800'
+                  }`}>
+                    <strong className="block text-[11px] uppercase tracking-wide text-purple-700 mb-0.5">
+                      💡 Lời khuyên & Hướng dẫn của Bác sĩ:
+                    </strong>
+                    {ba.phuongPhapDieuTri}
+                  </div>
                 )}
               </div>
 
               <div className="rounded-xl bg-gray-50 p-4 border border-gray-200 space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-1">
-                  <Activity className="h-3.5 w-3.5 text-blue-600" /> Chỉ số sinh hiệu
+                  <Activity className="h-3.5 w-3.5 text-blue-600" /> Chỉ số sinh hiệu & Ghi chú
                 </p>
                 {sinhHieu ? (
                   <div className="grid grid-cols-2 gap-2 text-xs font-medium text-gray-700 pt-1">
@@ -614,7 +657,16 @@ export default function HoSoYTeBenhNhanPage() {
                     <span>SpO2: <strong>{sinhHieu.spo2 || 98}%</strong></span>
                   </div>
                 ) : (
-                  <p className="text-xs text-gray-400 py-2">Chưa ghi nhận chỉ số sinh hiệu</p>
+                  <div className="text-xs text-gray-500 py-2 space-y-1">
+                    {ba.hinhThucKham === 'truc_tuyen' ? (
+                      <div className="flex items-start gap-1.5 text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200">
+                        <Check className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <span>Ca khám trực tuyến từ xa qua Video Call. Đã được bác sĩ chuyên khoa tư vấn trực tiếp và ghi nhận vào bệnh án ngoại trú điện tử (EMR).</span>
+                      </div>
+                    ) : (
+                      <p className="text-gray-400">Chưa ghi nhận chỉ số sinh hiệu</p>
+                    )}
+                  </div>
                 )}
                 {ba.taiKham && (
                   <div className="pt-2 border-t border-gray-200 text-xs text-blue-600 font-medium flex items-center gap-1">
@@ -648,9 +700,7 @@ export default function HoSoYTeBenhNhanPage() {
                     const donVi = kq?.donVi ?? kq?.don_vi ?? dv.donViKetQua ?? '';
                     const thamChieu = dv.giaTriBinhThuong || 'Bình thường';
                     const nhanXet = kq?.nhanXet ?? kq?.nhan_xet;
-                    const fileDinhKem = kq?.fileDinhKem ?? kq?.file_dinh_kem;
-                    const fileUrl = fileDinhKem ? (fileDinhKem.startsWith('http') ? fileDinhKem : `http://localhost:5000${fileDinhKem}`) : null;
-                    const isImage = fileDinhKem && fileDinhKem.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+                    const fileUrls = parseAttachmentUrls(kq?.fileDinhKem ?? kq?.file_dinh_kem);
                     const isCoKetQua = c.trangThai === 'co_ket_qua' || !!kq;
 
                     return (
@@ -726,63 +776,50 @@ export default function HoSoYTeBenhNhanPage() {
                             )}
 
                             {/* Tệp đính kèm */}
-                            {fileUrl && (
+                            {fileUrls.length > 0 && (
                               <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-2">
                                 <div className="flex items-center justify-between text-xs">
                                   <span className="font-semibold text-gray-800 flex items-center gap-1.5">
                                     📎 Tệp kết quả đính kèm (Ảnh chẩn đoán / File PDF)
                                   </span>
-                                  <a
-                                    href={fileUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 hover:underline"
-                                  >
-                                    Mở trong tab mới <ExternalLink className="h-3 w-3" />
-                                  </a>
+                                  <span className="text-xs text-gray-500">{fileUrls.length} tệp</span>
                                 </div>
 
-                                {isImage ? (
-                                  <div className="flex items-center gap-3 pt-1">
-                                    <img
-                                      src={fileUrl}
-                                      alt="Ảnh kết quả cận lâm sàng"
-                                      className="h-20 w-28 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 transition"
-                                      onClick={() => window.open(fileUrl, '_blank')}
-                                    />
-                                    <div className="text-xs text-gray-500 space-y-1">
-                                      <p className="font-medium text-gray-700">Ảnh kết quả siêu âm / X-Quang / Nội soi</p>
-                                      <p className="text-[11px] text-gray-400">Nhấn vào ảnh để xem kích thước gốc phóng to</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {fileUrls.map((file, fileIndex) => {
+                                    const fileUrl = toAttachmentUrl(file);
+                                    const isImage = /\.(jpeg|jpg|gif|png|webp)$/i.test(file);
+                                    return isImage ? (
                                       <button
+                                        key={file}
                                         type="button"
-                                        onClick={() => window.open(fileUrl, '_blank')}
-                                        className="inline-flex items-center gap-1 text-blue-600 font-semibold hover:underline text-[11px]"
+                                        onClick={() => setPreviewFile({
+                                          url: fileUrl,
+                                          name: `Ảnh kết quả ${fileIndex + 1}`,
+                                          files: fileUrls.map(toAttachmentUrl),
+                                          index: fileIndex,
+                                        })}
+                                        className="text-left"
                                       >
-                                        <Eye className="h-3 w-3" /> Xem ảnh cỡ lớn
+                                        <img src={fileUrl} alt={`Ảnh kết quả ${fileIndex + 1}`} className="h-24 w-full object-cover rounded-lg border border-gray-200" />
                                       </button>
-                                    </div>
-                                  </div>
-                                ) : isCoKetQua ? (
-                                  <div className="p-3 bg-green-50 rounded-lg border border-green-200 text-xs text-green-700 flex items-center gap-2">
-                                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
-                                    <span>Kết quả đã hoàn tất và đang được đồng bộ. Vui lòng tải lại hồ sơ sau ít phút nếu chưa hiển thị chi tiết.</span>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200">
-                                    <div className="flex items-center gap-2">
-                                      <FileText className="h-5 w-5 text-blue-600" />
-                                      <span className="text-xs font-semibold text-gray-700">Tài liệu kết quả y khoa (.PDF)</span>
-                                    </div>
-                                    <a
-                                      href={fileUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="text-xs font-semibold text-blue-600 bg-white px-3 py-1 rounded border border-gray-200 hover:bg-gray-50 transition"
-                                    >
-                                      Xem tài liệu ↗
-                                    </a>
-                                  </div>
-                                )}
+                                    ) : (
+                                      <button
+                                        key={file}
+                                        type="button"
+                                        onClick={() => setPreviewFile({
+                                          url: fileUrl,
+                                          name: `Tài liệu y khoa ${fileIndex + 1}`,
+                                          files: fileUrls.map(toAttachmentUrl),
+                                          index: fileIndex,
+                                        })}
+                                        className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-lg border border-gray-200 text-xs font-semibold text-blue-600 text-left"
+                                      >
+                                        <FileText className="h-5 w-5" /> Tài liệu y khoa {fileIndex + 1}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             )}
 
@@ -953,6 +990,71 @@ export default function HoSoYTeBenhNhanPage() {
       </div>
     );
   })}
+
+      {previewFile && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/75 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={previewFile.name}
+          onClick={() => setPreviewFile(null)}
+        >
+          <div
+            className="relative w-full max-w-6xl h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200">
+              <span className="text-sm font-semibold text-gray-800 truncate">{previewFile.name}</span>
+              <button
+                type="button"
+                onClick={() => setPreviewFile(null)}
+                className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100"
+                aria-label="Đóng xem trước"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 bg-gray-100 flex items-center justify-center p-3">
+              {/\.(jpeg|jpg|gif|png|webp)(?:[?#].*)?$/i.test(previewFile.url) ? (
+                <img src={previewFile.url} alt={previewFile.name} className="max-w-full max-h-full object-contain" />
+              ) : (
+                <iframe
+                  src={previewFile.url}
+                  title={previewFile.name}
+                  className="w-full h-full border-0 bg-white"
+                />
+              )}
+            </div>
+            {previewFile.files?.length > 1 && (
+              <div className="flex items-center justify-center gap-3 px-4 py-3 border-t border-gray-200">
+                <button
+                  type="button"
+                  disabled={previewFile.index <= 0}
+                  onClick={() => {
+                    const index = previewFile.index - 1;
+                    setPreviewFile({ ...previewFile, index, url: previewFile.files[index], name: `Tệp kết quả ${index + 1}` });
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-semibold disabled:opacity-40"
+                >
+                  Trước
+                </button>
+                <span className="text-xs text-gray-500">{previewFile.index + 1} / {previewFile.files.length}</span>
+                <button
+                  type="button"
+                  disabled={previewFile.index >= previewFile.files.length - 1}
+                  onClick={() => {
+                    const index = previewFile.index + 1;
+                    setPreviewFile({ ...previewFile, index, url: previewFile.files[index], name: `Tệp kết quả ${index + 1}` });
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-semibold disabled:opacity-40"
+                >
+                  Sau
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Modal In Phiếu Khám Bệnh cho Bệnh Nhân */}
       <InPhieuKhamModal

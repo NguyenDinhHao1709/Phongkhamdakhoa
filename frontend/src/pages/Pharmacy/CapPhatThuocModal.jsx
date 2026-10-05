@@ -202,6 +202,11 @@ export default function CapPhatThuocModal({ donThuocId, onClose, onSuccess }) {
           </MedButton>
           {donThuoc?.trangThai !== 'da_cap_phat' && (
             <div className="flex items-center gap-3">
+              {donThuoc?.luaChonMua === 'mua_ngoai' && (
+                <span className="text-xs text-amber-700 font-semibold hidden sm:inline">
+                  Bệnh nhân đã chọn mua thuốc bên ngoài
+                </span>
+              )}
               {donThuoc?.trangThaiThanhToan !== 'da_thanh_toan' && (
                 <span className="text-xs text-amber-700 font-medium hidden sm:inline">
                   (Cần hoàn tất thanh toán trước khi cấp phát)
@@ -210,7 +215,7 @@ export default function CapPhatThuocModal({ donThuocId, onClose, onSuccess }) {
               <MedButton
                 variant="primary"
                 loading={submitting}
-                disabled={checkInsufficient || donThuoc?.trangThaiThanhToan !== 'da_thanh_toan'}
+                disabled={checkInsufficient || donThuoc?.trangThaiThanhToan !== 'da_thanh_toan' || donThuoc?.luaChonMua !== 'mua_tai_benh_vien'}
                 onClick={handleDispense}
                 leftIcon={<PackageCheck className="h-4 w-4" />}
               >
@@ -223,4 +228,3 @@ export default function CapPhatThuocModal({ donThuocId, onClose, onSuccess }) {
     </div>
   );
 }
-

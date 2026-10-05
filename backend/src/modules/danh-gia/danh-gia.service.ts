@@ -161,10 +161,13 @@ export class DanhGiaService {
 
     // Tính điểm trung bình
     let diemTrungBinh: number;
-    if (dto.diemCls && dto.diemCls > 0) {
-      diemTrungBinh = Math.round(((dto.diemBacSi * 2 + dto.diemCls + dto.diemTiepDon) / 4) * 100) / 100;
+    const isOnline = lichHen?.hinhThuc === 'truc_tuyen';
+    if (isOnline) {
+      diemTrungBinh = dto.diemBacSi;
+    } else if (dto.diemCls && dto.diemCls > 0) {
+      diemTrungBinh = Math.round(((dto.diemBacSi * 2 + dto.diemCls + (dto.diemTiepDon || 5)) / 4) * 100) / 100;
     } else {
-      diemTrungBinh = Math.round(((dto.diemBacSi * 2 + dto.diemTiepDon) / 3) * 100) / 100;
+      diemTrungBinh = Math.round(((dto.diemBacSi * 2 + (dto.diemTiepDon || 5)) / 3) * 100) / 100;
     }
 
     const danhGia = this.danhGiaRepo.create({
@@ -173,8 +176,8 @@ export class DanhGiaService {
       benhNhanId: benhNhan.id,
       bacSiId,
       diemBacSi: dto.diemBacSi,
-      diemCls: dto.diemCls || null,
-      diemTiepDon: dto.diemTiepDon,
+      diemCls: isOnline ? null : (dto.diemCls || null),
+      diemTiepDon: isOnline ? (dto.diemBacSi || 5) : (dto.diemTiepDon || 5),
       diemTrungBinh,
       tieuChiHaiLong: dto.tieuChiHaiLong || [],
       nhanXet: dto.nhanXet || null,
@@ -221,10 +224,51 @@ export class DanhGiaService {
     };
   }
 
+  private parseDateRange(query: { range?: string; tuNgay?: string; denNgay?: string }) {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    let fromDate = todayStr;
+    let toDate = todayStr;
+
+    const range = query.range || 'thang_nay';
+    if (range === 'hom_nay') {
+      fromDate = todayStr;
+      toDate = todayStr;
+    } else if (range === 'tuan_nay' || range === '7days') {
+      const day = now.getDay();
+      const diffToMonday = (day === 0 ? -6 : 1) - day;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diffToMonday);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      fromDate = monday.toISOString().slice(0, 10);
+      toDate = sunday.toISOString().slice(0, 10);
+    } else if (range === 'thang_nay' || range === 'month') {
+      const y = now.getFullYear();
+      const m = now.getMonth();
+      const lastDay = new Date(y, m + 1, 0);
+      fromDate = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+      toDate = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+    } else if (range === 'quy_nay') {
+      const y = now.getFullYear();
+      const m = now.getMonth();
+      const quarter = Math.floor(m / 3);
+      const firstMonth = quarter * 3;
+      const lastMonth = firstMonth + 2;
+      const lastDay = new Date(y, lastMonth + 1, 0);
+      fromDate = `${y}-${String(firstMonth + 1).padStart(2, '0')}-01`;
+      toDate = `${y}-${String(lastMonth + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+    } else if (query.tuNgay && query.denNgay) {
+      fromDate = query.tuNgay;
+      toDate = query.denNgay;
+    }
+    return { fromDate, toDate };
+  }
+
   /**
    * Bác sĩ xem thống kê đánh giá & danh sách nhận xét của chính mình
    */
-  async thongKeDanhGiaBacSi(user: any, query: { range?: string; tuNgay?: string; denNgay?: string }) {
+  async thongKeDanhGiaBacSi(user: any, query: { range?: string; tuNgay?: string; denNgay?: string; hinhThuc?: string }) {
     const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: user.id } });
     if (!nv) {
       return { message: 'OK', data: { tongDanhGia: 0, diemBacSiTB: 5.0, diemTrungBinhChung: 5.0, tyLeHaiLong: '100%', phanBoSao: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }, danhSachNhanXet: [] } };
@@ -235,13 +279,23 @@ export class DanhGiaService {
       return { message: 'OK', data: { tongDanhGia: 0, diemBacSiTB: 5.0, diemTrungBinhChung: 5.0, tyLeHaiLong: '100%', phanBoSao: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }, danhSachNhanXet: [] } };
     }
 
+    const { fromDate, toDate } = this.parseDateRange(query);
+
     const qb = this.danhGiaRepo.createQueryBuilder('dg')
       .leftJoinAndSelect('dg.benhNhan', 'bn')
       .leftJoinAndSelect('dg.lichHen', 'lh')
       .where('dg.bacSiId = :bacSiId', { bacSiId: bs.id })
-      .orderBy('dg.taoLuc', 'DESC');
+      .andWhere('DATE(COALESCE(lh.ngayHen, dg.taoLuc)) BETWEEN :fromDate AND :toDate', { fromDate, toDate });
 
-    const list = await qb.getMany();
+    if (query.hinhThuc && query.hinhThuc !== 'all') {
+      if (query.hinhThuc === 'truc_tuyen') {
+        qb.andWhere('lh.hinhThuc = :hinhThuc', { hinhThuc: 'truc_tuyen' });
+      } else if (query.hinhThuc === 'truc_tiep') {
+        qb.andWhere('(lh.hinhThuc = :hinhThuc OR lh.hinhThuc IS NULL)', { hinhThuc: 'truc_tiep' });
+      }
+    }
+
+    const list = await qb.orderBy('dg.taoLuc', 'DESC').getMany();
     const tongDanhGia = list.length;
 
     if (tongDanhGia === 0) {
@@ -304,15 +358,25 @@ export class DanhGiaService {
   /**
    * Giám đốc xem CSAT toàn viện, bảng xếp hạng Bác sĩ, và cảnh báo phản hồi thấp
    */
-  async thongKeDanhGiaGiamDoc(query: { range?: string; tuNgay?: string; denNgay?: string }) {
+  async thongKeDanhGiaGiamDoc(query: { range?: string; tuNgay?: string; denNgay?: string; hinhThuc?: string }) {
+    const { fromDate, toDate } = this.parseDateRange(query);
+
     const qb = this.danhGiaRepo.createQueryBuilder('dg')
       .leftJoinAndSelect('dg.benhNhan', 'bn')
       .leftJoinAndSelect('dg.bacSi', 'bs')
       .leftJoinAndSelect('bs.nhanVien', 'bsNv')
       .leftJoinAndSelect('dg.lichHen', 'lh')
-      .orderBy('dg.taoLuc', 'DESC');
+      .where('DATE(COALESCE(lh.ngayHen, dg.taoLuc)) BETWEEN :fromDate AND :toDate', { fromDate, toDate });
 
-    const list = await qb.getMany();
+    if (query.hinhThuc && query.hinhThuc !== 'all') {
+      if (query.hinhThuc === 'truc_tuyen') {
+        qb.andWhere('lh.hinhThuc = :hinhThuc', { hinhThuc: 'truc_tuyen' });
+      } else if (query.hinhThuc === 'truc_tiep') {
+        qb.andWhere('(lh.hinhThuc = :hinhThuc OR lh.hinhThuc IS NULL)', { hinhThuc: 'truc_tiep' });
+      }
+    }
+
+    const list = await qb.orderBy('dg.taoLuc', 'DESC').getMany();
     const tongDanhGia = list.length;
 
     if (tongDanhGia === 0) {

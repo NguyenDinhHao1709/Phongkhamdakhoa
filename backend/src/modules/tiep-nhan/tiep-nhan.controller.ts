@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Body, Param,
-  Query, ParseIntPipe, UseGuards,
+  Query, ParseIntPipe, UseGuards, Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import {
@@ -12,12 +12,35 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
+import { Public } from '../../common/decorators/public.decorator';
+
 @ApiTags('Tiếp nhận')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('tiep-nhan')
 export class TiepNhanController {
   constructor(private readonly service: TiepNhanService) {}
+
+  @Public()
+  @Get('man-hinh-tv')
+  @ApiOperation({ summary: 'Dữ liệu phát sóng Màn hình TV gọi số sảnh chờ trung tâm' })
+  getManHinhTV() {
+    return this.service.getManHinhTVSanhCho();
+  }
+
+  @Public()
+  @Get('tts')
+  @ApiOperation({ summary: 'Phát âm thanh giọng đọc tiếng Việt chuẩn MP3 cho màn hình TV' })
+  streamTts(@Query('text') text: string, @Res() res: any) {
+    return this.service.streamVietnameseTts(text, res);
+  }
+
+  @Post(':id/goi-loa')
+  @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Phát loa gọi số thứ tự bệnh nhân vào phòng khám' })
+  goiSoLoa(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.service.goiSoLoa(id, user?.id || user?.userId);
+  }
 
   @Get('hang-doi')
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien')

@@ -12,7 +12,7 @@ import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { LichLamViec } from '../nhan-vien/entities/lich-lam-viec.entity';
 import { CaLamViec } from '../nhan-vien/entities/ca-lam-viec.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
-import { TaoLichHenDto, CapNhatTrangThaiLichHenDto, TimKiemLichHenDto, LaySlotTrongDto } from './dto/lich-hen.dto';
+import { TaoLichHenDto, CapNhatTrangThaiLichHenDto, TimKiemLichHenDto, LaySlotTrongDto, ChinhSuaLichHenDto } from './dto/lich-hen.dto';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 
 // Các slot giờ khám trong ngày (mỗi ca khám cách nhau 1 tiếng)
@@ -77,8 +77,8 @@ export class LichHenService implements OnModuleInit {
       const thresholdDateStr = getLocalDateString(threshold);
       const thresholdTimeStr = `${String(threshold.getHours()).padStart(2, '0')}:${String(threshold.getMinutes()).padStart(2, '0')}:${String(threshold.getSeconds()).padStart(2, '0')}`;
 
-      // Cập nhật tất cả các lịch hẹn có (ngày < thresholdDate) hoặc (ngày = thresholdDate và giờ <= thresholdTime)
-      // mà chưa hoàn thành và chưa hủy -> chuyển sang trạng thái DA_HUY
+      // 1. CHỈ tự động hủy các ca khám TRỰC TIẾP quá 30 phút mà bệnh nhân không đến quầy tiếp nhận
+      // Tuyệt đối KHÔNG tự động hủy ca trực tuyến (truc_tuyen / Telehealth) trong ngày hẹn
       const result = await this.repo.createQueryBuilder()
         .update(LichHen)
         .set({
@@ -86,17 +86,40 @@ export class LichHenService implements OnModuleInit {
           ghiChu: () => `COALESCE(CONCAT(COALESCE(ghi_chu, ''), ' [Tự động hủy do quá thời gian hẹn khám]'), '[Tự động hủy do quá thời gian hẹn khám]')`
         })
         .where('trang_thai NOT IN (:...doneStates)', {
-          doneStates: [TrangThaiLichHen.HOAN_THANH, TrangThaiLichHen.DA_HUY],
+          doneStates: [TrangThaiLichHen.HOAN_THANH, TrangThaiLichHen.DA_HUY, TrangThaiLichHen.DANG_KHAM],
+        })
+        .andWhere('(hinh_thuc IS NULL OR hinh_thuc != :trucTuyen)', {
+          trucTuyen: 'truc_tuyen',
         })
         .andWhere('(ngay_hen < :thresholdDateStr OR (ngay_hen = :thresholdDateStr AND gio_hen <= :thresholdTimeStr))', {
           thresholdDateStr,
           thresholdTimeStr,
         })
+        .andWhere('id NOT IN (SELECT ltn.lich_hen_id FROM luot_tiep_nhan ltn WHERE ltn.lich_hen_id IS NOT NULL)')
         .execute();
 
       if (result.affected && result.affected > 0) {
-        console.log(`[LichHen] Đã tự động hủy ${result.affected} ca khám quá thời gian hẹn.`);
+        console.log(`[LichHen] Đã tự động hủy ${result.affected} ca khám trực tiếp quá thời gian hẹn.`);
       }
+
+      // 2. Với ca TRỰC TUYẾN: Chỉ tự động hủy nếu đã QUÁ HẠN NGÀY HẸN (tức là từ ngày hôm trước trở về trước)
+      const todayStr = getLocalDateString();
+      await this.repo.createQueryBuilder()
+        .update(LichHen)
+        .set({
+          trangThai: TrangThaiLichHen.DA_HUY,
+          ghiChu: () => `COALESCE(CONCAT(COALESCE(ghi_chu, ''), ' [Tự động hủy do hết hạn ngày tư vấn trực tuyến]'), '[Tự động hủy do hết hạn ngày tư vấn trực tuyến]')`
+        })
+        .where('trang_thai NOT IN (:...doneStates)', {
+          doneStates: [TrangThaiLichHen.HOAN_THANH, TrangThaiLichHen.DA_HUY, TrangThaiLichHen.DANG_KHAM],
+        })
+        .andWhere('hinh_thuc = :trucTuyen', {
+          trucTuyen: 'truc_tuyen',
+        })
+        .andWhere('ngay_hen < :todayStr', {
+          todayStr,
+        })
+        .execute();
     } catch (err: any) {
       console.warn('[LichHen] Lỗi tự động hủy lịch quá giờ:', err.message);
     }
@@ -152,6 +175,9 @@ export class LichHenService implements OnModuleInit {
       qb.andWhere('lh.hinh_thuc = :hinhThucFilter', { hinhThucFilter });
     }
 
+    // Không hiển thị các ca tiếp nhận vãng lai tại quầy vào danh sách lịch hẹn đặt trước
+    qb.andWhere('(lh.nguon_dat IS NULL OR lh.nguon_dat != :tiepTanDat)', { tiepTanDat: 'tiep_tan_dat' });
+
     const [items, total] = await qb.getManyAndCount();
     return {
       data: items,
@@ -171,6 +197,7 @@ export class LichHenService implements OnModuleInit {
       .leftJoinAndSelect('lh.bacSi', 'bs')
       .leftJoinAndSelect('bs.nhanVien', 'nv')
       .where('(bn.nguoi_dung_id = :userId OR lh.benh_nhan_id = (SELECT id FROM benh_nhan WHERE nguoi_dung_id = :userId LIMIT 1) OR lh.ghi_chu LIKE :pattern)', { userId, pattern })
+      .andWhere('lh.nguon_dat != :tiepTanDat', { tiepTanDat: 'tiep_tan_dat' })
       .orderBy('lh.taoLuc', 'DESC');
 
     const items = await qb.getMany();
@@ -279,8 +306,9 @@ export class LichHenService implements OnModuleInit {
       // Tìm ca làm việc của bác sĩ
       const docShifts = shiftsOnDate.filter((s) => s.nhanVienId === doc.nhanVienId);
       const hasDeclaredShifts = docShifts.length > 0;
-      const worksMorning = !hasDeclaredShifts || docShifts.some((s) => s.caLamViec?.tenCa?.toLowerCase().includes('sáng') || s.caLamViecId === 1);
-      const worksAfternoon = !hasDeclaredShifts || docShifts.some((s) => s.caLamViec?.tenCa?.toLowerCase().includes('chiều') || s.caLamViecId === 2);
+      // Chỉ tính đi làm nếu Giám đốc đã phân công ca trực thực tế trên hệ thống
+      const worksMorning = hasDeclaredShifts && docShifts.some((s) => s.caLamViec?.tenCa?.toLowerCase().includes('sáng') || s.caLamViecId === 1);
+      const worksAfternoon = hasDeclaredShifts && docShifts.some((s) => s.caLamViec?.tenCa?.toLowerCase().includes('chiều') || s.caLamViecId === 2);
 
       const slots = STANDARD_SLOTS.map(({ slot, ca }) => {
         const inShift = (ca === 'sang' && worksMorning) || (ca === 'chieu' && worksAfternoon);
@@ -315,8 +343,11 @@ export class LichHenService implements OnModuleInit {
       };
     });
 
+    // Chỉ hiển thị những bác sĩ thực sự có ca trực trong ngày do Giám đốc phân công
+    const availableDoctors = result.filter((d) => d.dangTruc);
+
     return {
-      data: result,
+      data: availableDoctors,
       ngay: ngayKham,
       chuyenKhoa,
       message: 'Lấy danh sách bác sĩ trực và ca khám thành công',
@@ -478,8 +509,42 @@ export class LichHenService implements OnModuleInit {
       }
     }
 
-    // 4. KIỂM TRA SLOT BÁC SĨ (NẾU CÓ CHỈ ĐỊNH BÁC SĨ CỤ THỂ)
-    if (dto.bacSiId && dto.gioHen) {
+    // 4. KIỂM TRA LỊCH TRỰC VÀ SLOT BÁC SĨ (NẾU CÓ CHỈ ĐỊNH BÁC SĨ CỤ THỂ)
+    if (dto.bacSiId && dto.gioHen && dto.ngayHen) {
+      const bacSi = await this.bacSiRepo.findOne({
+        where: { id: dto.bacSiId },
+        relations: ['nhanVien'],
+      });
+
+      if (bacSi) {
+        const shifts = await this.lichLamViecRepo.find({
+          where: {
+            nhanVienId: bacSi.nhanVienId,
+            ngayLam: dto.ngayHen,
+          },
+          relations: ['caLamViec'],
+        });
+
+        const isMorning = dto.gioHen < '12:00';
+        const hasValidShift = shifts.some((s) => {
+          const tenCa = s.caLamViec?.tenCa?.toLowerCase() || '';
+          if (isMorning) {
+            return tenCa.includes('sáng') || s.caLamViecId === 1;
+          } else {
+            return tenCa.includes('chiều') || s.caLamViecId === 2;
+          }
+        });
+
+        if (!hasValidShift) {
+          const caName = isMorning ? 'Ca Sáng' : 'Ca Chiều';
+          const docName = bacSi.nhanVien?.hoTen || 'Bác sĩ';
+          throw new BadRequestException({
+            code: 'BAC_SI_KHONG_CO_LICH_TRUC',
+            message: `${docName} chưa có lịch làm việc vào ${caName} ngày ${dto.ngayHen}. Vui lòng chọn bác sĩ đang có ca trực hoặc chọn ngày khác.`,
+          });
+        }
+      }
+
       const trung = await this.repo.findOne({
         where: {
           bacSiId: dto.bacSiId,
@@ -506,6 +571,36 @@ export class LichHenService implements OnModuleInit {
       .replace(/^\[Chuyên khoa:\s*[^\]]+\]\s*/i, '')
       .trim();
     const lyDoKham = `${chuyenKhoa ? `[Chuyên khoa: ${chuyenKhoa}] ` : ''}${lyDoKhamGoc}`.trim();
+    let datBoiNhanVienId: number | null = null;
+    if (nguoiDatVaiTro !== 'benh_nhan' && nguoiDatId) {
+      const nv = await this.dataSource.getRepository(NhanVien).findOne({ where: { nguoiDungId: nguoiDatId } });
+      if (nv) {
+        datBoiNhanVienId = nv.id;
+      } else {
+        // Dự phòng nếu nguoiDatId chính là nhan_vien.id
+        const nvById = await this.dataSource.getRepository(NhanVien).findOne({ where: { id: nguoiDatId } });
+        if (nvById) datBoiNhanVienId = nvById.id;
+      }
+    }
+
+    const isNeedDeposit = nguoiDatVaiTro === 'benh_nhan' || nguonDat === 'bac_si_dat';
+    let hanThanhToan: Date | null = null;
+    if (isNeedDeposit) {
+      const [h, m] = (dto.gioHen || '08:00').split(':').map(Number);
+      const [y, mon, d] = (dto.ngayHen || '').split('-').map(Number);
+      const apptDate = new Date(y, (mon || 1) - 1, d || 1, h || 8, m || 0, 0);
+      
+      const twentyFourHoursFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const twentyFourHoursBeforeAppt = new Date(apptDate.getTime() - 24 * 60 * 60 * 1000);
+
+      if (twentyFourHoursBeforeAppt.getTime() > now.getTime()) {
+        hanThanhToan = new Date(Math.min(twentyFourHoursFromNow.getTime(), twentyFourHoursBeforeAppt.getTime()));
+      } else {
+        // Đặt sát ngày hẹn (< 24h) -> cho hạn thanh toán là 15 phút từ lúc đặt
+        hanThanhToan = new Date(now.getTime() + 15 * 60 * 1000);
+      }
+    }
+
     const lh = this.repo.create({
       benhNhanId: finalBenhNhanId,
       bacSiId: dto.bacSiId || null,
@@ -517,8 +612,9 @@ export class LichHenService implements OnModuleInit {
       ghiChu: `${dto.ghiChu || ''} ${noteDatHo}${needsAssignment ? ` ${CHO_PHAN_CONG_MARKER}` : ''}`.trim(),
       maLichHen,
       nguonDat,
-      trangThai: nguoiDatVaiTro === 'benh_nhan' ? TrangThaiLichHen.CHO_THANH_TOAN : TrangThaiLichHen.DA_XAC_NHAN,
-      datBoiNhanVienId: nguoiDatVaiTro !== 'benh_nhan' ? nguoiDatId : null,
+      trangThai: isNeedDeposit ? TrangThaiLichHen.CHO_THANH_TOAN : TrangThaiLichHen.DA_XAC_NHAN,
+      hanThanhToan,
+      datBoiNhanVienId,
     });
     const saved = await this.repo.save(lh);
     if (nguoiDatVaiTro !== 'benh_nhan' && needsAssignment) {
@@ -767,6 +863,179 @@ export class LichHenService implements OnModuleInit {
     };
   }
 
+  // ─── BỆNH NHÂN CHỈNH SỬA / ĐỔI LỊCH HẸN (Tối thiểu trước ngày khám 1 ngày / 24 tiếng) ───
+  async chinhSuaLichHenBoiBenhNhan(id: number, dto: ChinhSuaLichHenDto, userId?: number) {
+    const lh = await this.repo.findOne({
+      where: { id },
+      relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
+    });
+
+    if (!lh) {
+      throw new NotFoundException({ code: 'LICH_HEN_KHONG_TON_TAI', message: 'Không tìm thấy lịch hẹn' });
+    }
+
+    if ([TrangThaiLichHen.DA_HUY, TrangThaiLichHen.HOAN_THANH].includes(lh.trangThai)) {
+      throw new BadRequestException({
+        code: 'LICH_HEN_KHONG_THE_CHINH_SUA',
+        message: 'Lịch hẹn này đã hoàn thành hoặc đã bị hủy, không thể chỉnh sửa.',
+      });
+    }
+
+    // 1. Kiểm tra ranh giới 24 tiếng so với giờ hẹn hiện tại
+    const now = new Date();
+    const ngayGioCuStr = `${lh.ngayHen}T${lh.gioHen}`;
+    const gioHenCuFull = new Date(ngayGioCuStr);
+    const diffHours = (gioHenCuFull.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+    if (diffHours < 24) {
+      throw new BadRequestException({
+        code: 'KHONG_THE_CHINH_SUA_DUOI_24_TIENG',
+        message: 'Theo quy định phòng khám, chỉ có thể chỉnh sửa/đổi lịch hẹn trước ngày hẹn khám tối thiểu 1 ngày (24 tiếng). Lịch hẹn hiện tại còn dưới 24 tiếng nữa là đến giờ khám nên không thể đổi lịch trực tuyến.',
+      });
+    }
+
+    // 2. Kiểm tra ngày hẹn mới hợp lệ (trong khoảng từ 2 đến 7 ngày tính từ ngày hiện tại)
+    const ngayGioMoiStr = `${dto.ngayHen}T${dto.gioHen}:00`;
+    const gioHenMoiFull = new Date(ngayGioMoiStr);
+    if (Number.isNaN(gioHenMoiFull.getTime())) {
+      throw new BadRequestException({ code: 'THOI_GIAN_KHONG_HOP_LE', message: 'Ngày hoặc giờ hẹn mới không hợp lệ.' });
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const minDate = new Date(today);
+    minDate.setDate(minDate.getDate() + 2); // Tối thiểu trước 2 ngày
+
+    const maxDate = new Date(today);
+    maxDate.setDate(maxDate.getDate() + 7); // Tối đa 7 ngày
+    maxDate.setHours(23, 59, 59, 999);
+
+    const appointmentDate = new Date(dto.ngayHen + 'T00:00:00');
+
+    if (appointmentDate < minDate || appointmentDate > maxDate) {
+      throw new BadRequestException({
+        code: 'NGOAI_KHOANG_2_DEN_7_NGAY',
+        message: 'Theo quy định, lịch hẹn khám chỉ được phép đổi sang ngày trong khoảng từ 2 đến 7 ngày tính từ ngày hiện tại.',
+      });
+    }
+
+    // 3. Kiểm tra trùng ca/giờ của chính bệnh nhân trong ngày mới (loại trừ chính lịch hẹn này)
+    const gioHenShort = (dto.gioHen || '').substring(0, 5);
+    const isCaSang = (dto.gioHen || '') < '12:00';
+    const tenCaMoi = isCaSang ? 'Ca Sáng (08:00 - 11:00)' : 'Ca Chiều (13:30 - 16:30)';
+
+    const dsLichHenKhac = await this.repo.find({
+      where: {
+        benhNhanId: lh.benhNhanId,
+        ngayHen: dto.ngayHen,
+      },
+    });
+
+    const activeKhac = dsLichHenKhac.filter(
+      (item) => item.id !== lh.id && ![TrangThaiLichHen.DA_HUY].includes(item.trangThai)
+    );
+
+    for (const item of activeKhac) {
+      const itemGioShort = (item.gioHen || '').substring(0, 5);
+      const itemIsCaSang = (item.gioHen || '') < '12:00';
+      const tenCaCu = itemIsCaSang ? 'Ca Sáng' : 'Ca Chiều';
+
+      if (itemGioShort === gioHenShort) {
+        throw new ConflictException({
+          code: 'TRUNG_GIO_KHAM_TRONG_NGAY',
+          message: `Bạn đã có lịch hẹn ${item.maLichHen} vào khung giờ ${itemGioShort} ngày ${dto.ngayHen}. Vui lòng chọn khung giờ khác.`,
+        });
+      }
+
+      if (itemIsCaSang === isCaSang) {
+        throw new ConflictException({
+          code: 'TRUNG_CA_KHAM_TRONG_NGAY',
+          message: `Bạn đã có lịch hẹn ${item.maLichHen} ở ${tenCaCu} ngày ${dto.ngayHen}. Bệnh nhân không được đặt trùng ca trong cùng ngày.`,
+        });
+      }
+    }
+
+    // 4. Kiểm tra ca trực và slot của Bác sĩ được chọn
+    const targetBacSiId = dto.bacSiId || lh.bacSiId;
+    if (targetBacSiId) {
+      const bacSi = await this.bacSiRepo.findOne({
+        where: { id: targetBacSiId },
+        relations: ['nhanVien'],
+      });
+
+      if (bacSi) {
+        const shifts = await this.lichLamViecRepo.find({
+          where: {
+            nhanVienId: bacSi.nhanVienId,
+            ngayLam: dto.ngayHen,
+          },
+          relations: ['caLamViec'],
+        });
+
+        const isMorning = dto.gioHen < '12:00';
+        const hasValidShift = shifts.some((s) => {
+          const tenCa = s.caLamViec?.tenCa?.toLowerCase() || '';
+          if (isMorning) {
+            return tenCa.includes('sáng') || s.caLamViecId === 1;
+          } else {
+            return tenCa.includes('chiều') || s.caLamViecId === 2;
+          }
+        });
+
+        if (!hasValidShift) {
+          const caName = isMorning ? 'Ca Sáng' : 'Ca Chiều';
+          const docName = bacSi.nhanVien?.hoTen || 'Bác sĩ';
+          throw new BadRequestException({
+            code: 'BAC_SI_KHONG_CO_LICH_TRUC',
+            message: `${docName} không có lịch trực vào ${caName} ngày ${dto.ngayHen}. Vui lòng chọn bác sĩ hoặc ngày khác.`,
+          });
+        }
+      }
+
+      // Kiểm tra xem slot mới đã có ai đặt chưa (loại trừ chính lịch hẹn này)
+      const trungSlot = await this.repo.findOne({
+        where: {
+          bacSiId: targetBacSiId,
+          ngayHen: dto.ngayHen,
+          gioHen: dto.gioHen,
+        },
+      });
+
+      if (trungSlot && trungSlot.id !== lh.id && ![TrangThaiLichHen.DA_HUY, TrangThaiLichHen.HOAN_THANH].includes(trungSlot.trangThai)) {
+        throw new ConflictException({
+          code: 'LICH_HEN_TRUNG_GIO',
+          message: `Bác sĩ đã có bệnh nhân khác đặt vào khung giờ ${gioHenShort} ngày ${dto.ngayHen}. Vui lòng chọn khung giờ khác.`,
+        });
+      }
+    }
+
+    // 5. Cập nhật thông tin lịch hẹn
+    const ngayHenCu = lh.ngayHen;
+    const gioHenCu = lh.gioHen;
+    const hinhThucCu = lh.hinhThuc;
+
+    lh.ngayHen = dto.ngayHen;
+    lh.gioHen = dto.gioHen;
+    if (dto.bacSiId) lh.bacSiId = dto.bacSiId;
+    if (dto.hinhThuc) lh.hinhThuc = dto.hinhThuc;
+    if (dto.lyDoKham) lh.lyDoKham = dto.lyDoKham;
+
+    const noteDoiLich = `[Đổi lịch từ ${ngayHenCu} ${gioHenCu} (${hinhThucCu || 'truc_tiep'}) sang ${dto.ngayHen} ${dto.gioHen} (${lh.hinhThuc || 'truc_tiep'}) lúc ${new Date().toLocaleString('vi-VN')}]`;
+    lh.ghiChu = lh.ghiChu ? `${lh.ghiChu} | ${noteDoiLich}` : noteDoiLich;
+    lh.capNhatLuc = new Date();
+
+    const saved = await this.repo.save(lh);
+
+    const withRelations = await this.findOne(saved.id);
+
+    return {
+      success: true,
+      data: withRelations,
+      message: `Đổi lịch hẹn thành công sang ngày ${dto.ngayHen} lúc ${dto.gioHen}!`,
+    };
+  }
+
   // ─── BÁC SĨ YÊU CẦU HỦY CA KHÁM (Trước tối thiểu 1 ngày, bắt buộc nhập lý do, trình Giám đốc duyệt) ───
   async bacSiYeuCauHuyCa(id: number, lyDo: string, currentUser: any) {
     if (!lyDo || !lyDo.trim()) {
@@ -994,6 +1263,93 @@ export class LichHenService implements OnModuleInit {
       message: `Đã quét và gửi nhắc lịch tự động cho ${ketQuaGui.length} bệnh nhân có lịch hẹn trong 24 giờ tới.`,
       soLuong: ketQuaGui.length,
       danhSach: ketQuaGui,
+    };
+  }
+
+  /**
+   * Hoàn tất ca tư vấn trực tuyến (Telehealth) & lưu kết luận bệnh án
+   */
+  async hoanTatTuVan(id: number, body: { chanDoan?: string; loiKhuyen?: string }, user: any) {
+    const lh = await this.repo.findOne({
+      where: { id },
+      relations: ['benhNhan', 'bacSi'],
+    });
+
+    if (!lh) {
+      throw new NotFoundException('Không tìm thấy ca tư vấn trực tuyến.');
+    }
+
+    if (lh.trangThai === TrangThaiLichHen.HOAN_THANH) {
+      throw new BadRequestException({
+        code: 'CA_KHAM_DA_HOAN_THANH',
+        message: 'Ca tư vấn trực tuyến này đã hoàn tất trước đó.',
+      });
+    }
+
+    // Chỉ cho phép kết luận khi ca khám đã bắt đầu mở (từ trước giờ hẹn 15 phút trở đi)
+    if (lh.ngayHen && lh.gioHen) {
+      const dateStr = String(lh.ngayHen).substring(0, 10);
+      let timeStr = String(lh.gioHen).trim();
+      if (timeStr.length === 5) timeStr += ':00';
+      const apptDateTime = new Date(`${dateStr}T${timeStr}`);
+      if (!isNaN(apptDateTime.getTime())) {
+        const openTime = new Date(apptDateTime.getTime() - 15 * 60 * 1000);
+        const now = new Date();
+        if (now < openTime) {
+          throw new BadRequestException({
+            code: 'CHUA_DEN_GIO_KHAM',
+            message: 'Chưa đến thời gian khám bệnh. Bác sĩ chỉ có thể gửi kết luận khi ca khám đang diễn ra hoặc sau khi đã tư vấn.',
+          });
+        }
+      }
+    }
+
+    // Cập nhật trạng thái lịch hẹn sang 'hoan_thanh'
+    lh.trangThai = TrangThaiLichHen.HOAN_THANH;
+    const ghiChuMoi = `[Telehealth Kết luận] Chẩn đoán: ${body.chanDoan || 'Đã tư vấn'}; Lời khuyên: ${body.loiKhuyen || 'Theo dõi tại nhà'}`;
+    lh.ghiChu = `${lh.ghiChu || ''}\n${ghiChuMoi}`.trim();
+    await this.repo.save(lh);
+
+    // Ghi nhận hoặc cập nhật vào bệnh án nếu có hồ sơ
+    try {
+      // Tìm hoặc tạo hồ sơ bệnh án
+      const hsRows = await this.repo.manager.query(
+        `SELECT id, ma_ho_so FROM ho_so_benh_an WHERE benh_nhan_id = ? LIMIT 1`,
+        [lh.benhNhanId],
+      );
+      let hoSoBenhAnId = hsRows && hsRows.length > 0 ? hsRows[0].id : null;
+      if (!hoSoBenhAnId) {
+        const maHoSo = `HS${Date.now().toString().slice(-6)}`;
+        const insHs = await this.repo.manager.query(
+          `INSERT INTO ho_so_benh_an (ma_ho_so, benh_nhan_id, ngay_tao, trang_thai) VALUES (?, ?, NOW(), 'hoat_dong')`,
+          [maHoSo, lh.benhNhanId],
+        );
+        hoSoBenhAnId = insHs.insertId;
+      }
+
+      // Lưu phiếu khám bệnh án (benh_an_kham)
+      await this.repo.manager.query(
+        `INSERT INTO benh_an_kham 
+         (ho_so_benh_an_id, luot_tiep_nhan_id, bac_si_id, ngay_kham, chan_doan_so_bo, chan_doan_xac_dinh, trieu_chung, phuong_phap_dieu_tri, hinh_thuc_kham, trang_thai, ghi_chu)
+         VALUES (?, NULL, ?, NOW(), ?, ?, ?, ?, 'truc_tuyen', 'da_hoan_thanh', ?)`,
+        [
+          hoSoBenhAnId,
+          lh.bacSiId || 1,
+          body.chanDoan || 'Tư vấn khám từ xa',
+          body.chanDoan || 'Tư vấn khám từ xa',
+          lh.lyDoKham || 'Tư vấn trực tuyến Telehealth',
+          body.loiKhuyen || 'Theo dõi sức khỏe và tái khám theo chỉ định',
+          `Ca tư vấn trực tuyến Telehealth (Mã lịch: ${lh.maLichHen})`,
+        ],
+      );
+    } catch (bakErr) {
+      console.warn('[Telehealth] Không thể ghi nhận benh_an_kham:', bakErr.message);
+    }
+
+    return {
+      success: true,
+      message: 'Đã hoàn tất ca tư vấn trực tuyến và lưu kết luận chuyên môn thành công.',
+      data: lh,
     };
   }
 }

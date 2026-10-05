@@ -176,26 +176,26 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-between font-sans">
       {/* Header */}
-      <header className="w-full bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600">
+      <header className="w-full bg-white border-b border-gray-200 px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group" onClick={() => navigate('/')}>
+          <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-primary-600">
             <Stethoscope className="h-5 w-5 text-white" />
           </div>
-          <span className="text-lg font-bold text-gray-900 tracking-tight group-hover:text-primary-600 transition-colors">
+          <span className="text-base sm:text-lg font-bold text-gray-900 tracking-tight group-hover:text-primary-600 transition-colors">
             Phòng Khám Đa Khoa
           </span>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => navigate('/login')}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-bold text-gray-700 hover:bg-slate-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-bold text-gray-700 hover:bg-slate-50 transition-colors"
           >
             <LogIn className="h-4 w-4 text-gray-500" /> Đăng nhập
           </button>
           <button
             onClick={() => navigate('/')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-gray-600 hover:text-primary-600 hover:bg-slate-50 transition-colors"
+            className="hidden xs:flex sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold text-gray-600 hover:text-primary-600 hover:bg-slate-50 transition-colors"
           >
             <Home className="h-4 w-4" /> Trang chủ
           </button>
@@ -203,11 +203,11 @@ export default function RegisterPage() {
       </header>
 
       {/* Body Form Đăng ký ở chính giữa */}
-      <main className="flex flex-grow flex-col items-center justify-center px-4 py-10">
-        <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-sm border border-gray-100">
+      <main className="flex flex-grow flex-col items-center justify-center px-3 sm:px-4 py-6 sm:py-10">
+        <div className="w-full max-w-lg rounded-2xl bg-white p-5 sm:p-8 shadow-sm border border-gray-100">
           <div className="mb-6 text-center">
-            <h2 className="text-2xl font-bold text-gray-900">Đăng ký tài khoản</h2>
-            <p className="mt-1 text-sm text-gray-500">Tạo hồ sơ bệnh nhân điện tử để sử dụng dịch vụ</p>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Đăng ký tài khoản</h2>
+            <p className="mt-1 text-xs sm:text-sm text-gray-500">Tạo hồ sơ bệnh nhân điện tử để sử dụng dịch vụ</p>
           </div>
 
           {/* Stepper Chỉ báo tiến trình */}

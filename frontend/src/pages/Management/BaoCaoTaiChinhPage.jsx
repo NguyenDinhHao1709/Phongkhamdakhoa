@@ -4,10 +4,10 @@ import { apiGet } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { formatCurrency } from '../../utils/formatCurrency';
 import {
-  DollarSign, Download, Filter, Search, Calendar, CreditCard,
-  TrendingUp, RefreshCw, FileSpreadsheet, ArrowDownRight, Wallet,
-  Printer, Stethoscope, FlaskConical, Pill, Bed, ShieldCheck,
-  CheckCircle2, AlertTriangle, Clock, ArrowRight, Eye, Layers, Users
+  DollarSign, Download, Search, Calendar, CreditCard,
+  TrendingUp, RefreshCw, ArrowDownRight, Wallet,
+  Printer, Stethoscope, FlaskConical, Pill, ShieldCheck,
+  AlertTriangle, Clock, Users
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -26,7 +26,7 @@ const PHUONG_THUC_LABEL = {
 const COLORS = ['#2563EB', '#0D9488', '#F59E0B', '#8B5CF6', '#EC4899', '#6B7280'];
 
 export default function BaoCaoTaiChinhPage() {
-  const [activeTab, setActiveTab] = useState('tai_chinh'); // 'tai_chinh' | 'lam_sang' | 'duoc' | 'phong_giuong'
+  const [activeTab, setActiveTab] = useState('tai_chinh'); // 'tai_chinh' | 'lam_sang' | 'duoc'
   const [timeRange, setTimeRange] = useState('thang_nay');
   const [tuNgay, setTuNgay] = useState('');
   const [denNgay, setDenNgay] = useState('');
@@ -50,7 +50,6 @@ export default function BaoCaoTaiChinhPage() {
   const lamSang = report?.lamSang || {};
   const cls = report?.cls || {};
   const duoc = report?.duoc || {};
-  const vanHanh = report?.vanHanh || {};
 
   const danhSachHoaDon = taiChinh?.danhSachHoaDon || [];
 
@@ -131,18 +130,6 @@ export default function BaoCaoTaiChinhPage() {
         t.soLuongKe,
         t.donVi,
         t.doanhThu
-      ]);
-    } else if (activeTab === 'phong_giuong') {
-      headers = ['Số Giường', 'Khu Vực', 'Bệnh Nhân', 'Tuổi', 'Lý Do Lưu Bệnh / Chẩn Đoán', 'Giờ Tiếp Nhận', 'Chỉ Số Sinh Hiệu', 'Trạng Thái'];
-      rows = (vanHanh?.giuongHoiTinh205?.danhSachGiuong || []).map(g => [
-        g.soGiuong,
-        'P.205 Hồi Tỉnh',
-        `"${g.benhNhan || 'Trống'}"`,
-        g.tuoi || '',
-        `"${g.chanDoan || ''}"`,
-        g.vaoLuc || '',
-        `"${g.sinhHieu || ''}"`,
-        g.trangThai === 'dang_su_dung' ? 'Đang sử dụng' : g.trangThai === 'trong_san_sang' ? 'Sẵn sàng' : 'Khử trùng UV'
       ]);
     }
 
@@ -252,13 +239,12 @@ export default function BaoCaoTaiChinhPage() {
         </div>
       </div>
 
-      {/* ─── NAVIGATION TABS CHO 4 MẢNG BÁO CÁO CHÍNH ───────────────────── */}
+      {/* ─── NAVIGATION TABS CHO 3 MẢNG BÁO CÁO CHÍNH ───────────────────── */}
       <div className="flex border-b border-slate-200 bg-white rounded-t-2xl px-4 pt-2 gap-2 overflow-x-auto print:hidden">
         {[
           { id: 'tai_chinh', label: '💰 Tài Chính & Doanh Thu', icon: DollarSign },
           { id: 'lam_sang', label: '🩺 Khám Bệnh & Cận Lâm Sàng', icon: Stethoscope },
           { id: 'duoc', label: '💊 Kho Dược & Quầy Thuốc', icon: Pill },
-          { id: 'phong_giuong', label: '🏥 Vận Hành Khoa Phòng & Giường', icon: Bed },
         ].map(t => {
           const Icon = t.icon;
           const isActive = activeTab === t.id;
@@ -518,17 +504,25 @@ export default function BaoCaoTaiChinhPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {(lamSang?.chuyenKhoaStats || []).map((c, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-bold text-gray-900">{c.chuyenKhoa}</td>
-                      <td className="py-3 px-4 text-gray-600">{c.bacSiPhuTrach}</td>
-                      <td className="py-3 px-4 text-center font-bold text-primary-700">{c.soCa} ca</td>
-                      <td className="py-3 px-4 text-center">
-                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-gray-700 font-bold">{c.tyLe}</span>
+                  {(lamSang?.chuyenKhoaStats || []).length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="text-center py-6 text-gray-400 font-medium">
+                        Chưa có dữ liệu ca khám chuyên khoa trong khoảng thời gian này
                       </td>
-                      <td className="py-3 px-4 text-right font-bold text-emerald-700">{formatCurrency(c.doanhThu)}</td>
                     </tr>
-                  ))}
+                  ) : (
+                    (lamSang?.chuyenKhoaStats || []).map((c, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-3 px-4 font-bold text-gray-900">{c.chuyenKhoa}</td>
+                        <td className="py-3 px-4 text-gray-600">{c.bacSiPhuTrach}</td>
+                        <td className="py-3 px-4 text-center font-bold text-primary-700">{c.soCa} ca</td>
+                        <td className="py-3 px-4 text-center">
+                          <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-gray-700 font-bold">{c.tyLe}</span>
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-700">{formatCurrency(c.doanhThu)}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -552,26 +546,34 @@ export default function BaoCaoTaiChinhPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {(cls?.danhMucDichVu || []).map((d, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-bold text-gray-900">{d.tenDichVu}</td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                          d.loai === 'Xét nghiệm' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'
-                        }`}>
-                          {d.loai}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-center font-bold text-gray-800">{d.soCa}</td>
-                      <td className="py-3 px-4 text-right text-gray-600">{formatCurrency(d.donGia)}</td>
-                      <td className="py-3 px-4 text-right font-bold text-emerald-700">{formatCurrency(d.doanhThu)}</td>
-                      <td className="py-3 px-4 text-center">
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold">
-                          {d.tyLeHoanThanh}
-                        </span>
+                  {(cls?.danhMucDichVu || []).length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="text-center py-6 text-gray-400 font-medium">
+                        Chưa có dịch vụ cận lâm sàng nào phát sinh trong khoảng thời gian này
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    (cls?.danhMucDichVu || []).map((d, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-3 px-4 font-bold text-gray-900">{d.tenDichVu}</td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                            d.loai === 'Xét nghiệm' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'
+                          }`}>
+                            {d.loai}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-center font-bold text-gray-800">{d.soCa}</td>
+                        <td className="py-3 px-4 text-right text-gray-600">{formatCurrency(d.donGia)}</td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-700">{formatCurrency(d.doanhThu)}</td>
+                        <td className="py-3 px-4 text-center">
+                          <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold">
+                            {d.tyLeHoanThanh}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -644,16 +646,24 @@ export default function BaoCaoTaiChinhPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {(duoc?.topThuocKeDon || []).map((t, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-mono font-bold text-primary-700">{t.maThuoc}</td>
-                      <td className="py-3 px-4 font-bold text-gray-900">{t.tenThuoc}</td>
-                      <td className="py-3 px-4 text-gray-600 italic">{t.hoatChat}</td>
-                      <td className="py-3 px-4 text-gray-600">{t.loai}</td>
-                      <td className="py-3 px-4 text-center font-bold text-gray-800">{t.soLuongKe} {t.donVi}</td>
-                      <td className="py-3 px-4 text-right font-bold text-emerald-700">{formatCurrency(t.doanhThu)}</td>
+                  {(duoc?.topThuocKeDon || []).length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="text-center py-6 text-gray-400 font-medium">
+                        Chưa có dữ liệu đơn thuốc kê đơn trong khoảng thời gian này
+                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    (duoc?.topThuocKeDon || []).map((t, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-3 px-4 font-mono font-bold text-primary-700">{t.maThuoc}</td>
+                        <td className="py-3 px-4 font-bold text-gray-900">{t.tenThuoc}</td>
+                        <td className="py-3 px-4 text-gray-600 italic">{t.hoatChat}</td>
+                        <td className="py-3 px-4 text-gray-600">{t.loai}</td>
+                        <td className="py-3 px-4 text-center font-bold text-gray-800">{t.soLuongKe} {t.donVi}</td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-700">{formatCurrency(t.doanhThu)}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -677,22 +687,30 @@ export default function BaoCaoTaiChinhPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {(duoc?.canhBaoTonKho || []).map((c, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-mono font-bold text-gray-700">{c.maThuoc}</td>
-                      <td className="py-3 px-4 font-bold text-gray-900">{c.tenThuoc}</td>
-                      <td className="py-3 px-4 text-center font-black text-rose-600">{c.tonKhoHienTai} {c.donVi}</td>
-                      <td className="py-3 px-4 text-center font-bold text-gray-600">{c.tonKhoToiThieu} {c.donVi}</td>
-                      <td className="py-3 px-4 text-gray-600">{c.hanDung}</td>
-                      <td className="py-3 px-4 text-center">
-                        <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] ${
-                          c.mucDo === 'danger' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {c.mucDo === 'danger' ? 'Nguy cấp - Cần nhập ngay' : 'Sắp hết hàng'}
-                        </span>
+                  {(duoc?.canhBaoTonKho || []).length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="text-center py-6 text-emerald-600 font-medium">
+                        Tất cả các loại thuốc đều đảm bảo mức tồn kho an toàn
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    (duoc?.canhBaoTonKho || []).map((c, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-3 px-4 font-mono font-bold text-gray-700">{c.maThuoc}</td>
+                        <td className="py-3 px-4 font-bold text-gray-900">{c.tenThuoc}</td>
+                        <td className="py-3 px-4 text-center font-black text-rose-600">{c.tonKhoHienTai} {c.donVi}</td>
+                        <td className="py-3 px-4 text-center font-bold text-gray-600">{c.tonKhoToiThieu} {c.donVi}</td>
+                        <td className="py-3 px-4 text-gray-600">{c.hanDung}</td>
+                        <td className="py-3 px-4 text-center">
+                          <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] ${
+                            c.mucDo === 'danger' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {c.tinhTrang || (c.mucDo === 'danger' ? 'Cần nhập gấp' : 'Sắp hết hàng')}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -700,146 +718,6 @@ export default function BaoCaoTaiChinhPage() {
         </div>
       )}
 
-      {/* ═════════════════════════════════════════════════════════════════════ */}
-      {/* TAB 4: VẬN HÀNH KHOA PHÒNG, PHÒNG MỔ & GIƯỜNG BỆNH                  */}
-      {/* ═════════════════════════════════════════════════════════════════════ */}
-      {activeTab === 'phong_giuong' && (
-        <div className="space-y-6">
-          {/* KPI Cards Vận hành */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Tổng Phòng Khám</span>
-                <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <Layers className="h-5 w-5" />
-                </div>
-              </div>
-              <p className="text-2xl font-black text-blue-700 mt-2">{vanHanh?.tongPhongKham ?? '—'} phòng</p>
-              <p className="text-xs text-gray-500 mt-1">Đang hoạt động: <strong className="text-emerald-700">{vanHanh?.phongDangKham ?? '—'} ({vanHanh?.tyLeLieuDungPhong ?? '—'})</strong></p>
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Phòng Mổ P.204</span>
-                <div className="h-10 w-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
-                  <Stethoscope className="h-5 w-5" />
-                </div>
-              </div>
-              <p className="text-2xl font-black text-teal-700 mt-2">{vanHanh?.phongMo204?.soCaHomNay ?? '—'} ca mổ</p>
-              <p className="text-xs text-gray-500 mt-1">Lũy kế tháng: <strong className="text-gray-800">{vanHanh?.phongMo204?.tongCaThang ?? '—'} ca</strong></p>
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Giường Hồi Tỉnh P.205</span>
-                <div className="h-10 w-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                  <Bed className="h-5 w-5" />
-                </div>
-              </div>
-              <p className="text-2xl font-black text-indigo-700 mt-2">
-                {vanHanh?.giuongHoiTinh205?.dangSuDung ?? '—'} / {vanHanh?.giuongHoiTinh205?.tongGiuong ?? '—'} giường
-              </p>
-              <p className="text-xs text-gray-500 mt-1">Tỷ lệ lấp đầy: <strong className="text-indigo-700">{vanHanh?.giuongHoiTinh205?.tyLeLapDay ?? '—'}</strong></p>
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Giường Sẵn Sàng</span>
-                <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                  <CheckCircle2 className="h-5 w-5" />
-                </div>
-              </div>
-              <p className="text-2xl font-black text-emerald-700 mt-2">{vanHanh?.giuongHoiTinh205?.trongSanSang ?? '—'} giường</p>
-              <p className="text-xs text-gray-500 mt-1">Khử trùng UV: <strong className="text-amber-600">{vanHanh?.giuongHoiTinh205?.dangKhuTrung ?? '—'} giường</strong></p>
-            </div>
-          </div>
-
-          {/* Chi tiết Phòng mổ P.204 */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                <Stethoscope className="h-4 w-4 text-primary-600" /> {vanHanh?.phongMo204?.ten}
-              </h3>
-              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
-                Trạng thái: Hoạt động bình thường
-              </span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3 text-xs">
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <p className="text-gray-500">Bác sĩ phẫu thuật chính:</p>
-                <p className="font-bold text-gray-900 text-sm mt-0.5">{vanHanh?.phongMo204?.bacSiChinh}</p>
-                <p className="text-gray-500 mt-1">Điều dưỡng hỗ trợ: <strong>{vanHanh?.phongMo204?.dieuDuongPhu}</strong></p>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <p className="text-gray-500">Năng suất hoạt động:</p>
-                <p className="font-bold text-gray-900 text-sm mt-0.5">{vanHanh?.phongMo204?.soCaHomNay} ca mổ / ngày</p>
-                <p className="text-emerald-700 mt-1">Hiệu suất phòng: <strong>{vanHanh?.phongMo204?.tyLeCongSuat}</strong></p>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <p className="text-gray-500">Tiêu chuẩn kiểm soát nhiễm khuẩn:</p>
-                <p className="font-bold text-emerald-800 mt-0.5 flex items-center gap-1">
-                  <ShieldCheck className="h-4 w-4 text-emerald-600" /> {vanHanh?.phongMo204?.quyTrinhVoTrung}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Danh sách 8 Giường bệnh Hồi Tỉnh P.205 */}
-          <MedCard
-            title="🛏️ Chi Tiết Danh Sách 8 Giường Bệnh Hồi Tỉnh & Theo Dõi Tích Cực (P.205)"
-            subtitle="Theo dõi tên bệnh nhân, chẩn đoán, giờ tiếp nhận và chỉ số sinh hiệu thời gian thực"
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-gray-600 font-bold uppercase tracking-wider border-b border-gray-200">
-                  <tr>
-                    <th className="py-3 px-4">Số Giường</th>
-                    <th className="py-3 px-4">Bệnh Nhân</th>
-                    <th className="py-3 px-4">Tuổi</th>
-                    <th className="py-3 px-4">Chẩn Đoán / Lý Do Lưu Viện</th>
-                    <th className="py-3 px-4">Vào Lúc</th>
-                    <th className="py-3 px-4">Chỉ Số Sinh Hiệu (Mạch / HA / SpO2)</th>
-                    <th className="py-3 px-4 text-center">Trạng Thái</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {(vanHanh?.giuongHoiTinh205?.danhSachGiuong || []).map((g) => (
-                    <tr key={g.soGiuong} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-mono font-extrabold text-sm text-primary-700">{g.soGiuong}</td>
-                      <td className="py-3 px-4">
-                        <p className="font-bold text-gray-900">{g.benhNhan || 'Giường Trống'}</p>
-                      </td>
-                      <td className="py-3 px-4 text-gray-600">{g.tuoi ? `${g.tuoi} tuổi` : '-'}</td>
-                      <td className="py-3 px-4 text-gray-700 font-medium">{g.chanDoan || 'Sẵn sàng tiếp nhận bệnh nhân'}</td>
-                      <td className="py-3 px-4 text-gray-600">{g.vaoLuc || '-'}</td>
-                      <td className="py-3 px-4">
-                        <span className="font-mono text-[11px] font-semibold text-gray-800 bg-slate-100 px-2 py-0.5 rounded-md">
-                          {g.sinhHieu}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] ${
-                          g.trangThai === 'dang_su_dung'
-                            ? 'bg-blue-100 text-blue-800'
-                            : g.trangThai === 'trong_san_sang'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {g.trangThai === 'dang_su_dung'
-                            ? 'Đang lưu viện'
-                            : g.trangThai === 'trong_san_sang'
-                            ? 'Trống sẵn sàng'
-                            : 'Khử trùng UV'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </MedCard>
-        </div>
-      )}
     </div>
   );
 }

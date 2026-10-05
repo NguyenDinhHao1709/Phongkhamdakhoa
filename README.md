@@ -589,3 +589,9 @@ POST   /api/thanh-toan/:id                Xác nhận thanh toán
 ---
 
 *Hệ thống phát triển như đồ án tốt nghiệp — Khoa Công nghệ Thông tin*
+cd d:\KLTN\python-ml
+# Nếu dùng venv:
+.\venv\Scripts\python.exe -m uvicorn main:app --reload --port 5001
+
+# Hoặc nếu chạy python trực tiếp:
+python -m uvicorn main:app --reload --port 5001

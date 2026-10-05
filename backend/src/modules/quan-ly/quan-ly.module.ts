@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { HttpModule } from '@nestjs/axios';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 import { VaiTro } from '../auth/entities/vai-tro.entity';
@@ -47,6 +48,7 @@ import { ThongBaoModule } from '../thong-bao/thong-bao.module';
       LichHen,
     ]),
     ThongBaoModule,
+    HttpModule,
   ],
   controllers: [QuanLyController],
   providers: [QuanLyService],

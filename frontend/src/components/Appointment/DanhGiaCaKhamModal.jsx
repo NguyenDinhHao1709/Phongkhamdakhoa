@@ -13,7 +13,7 @@ const STAR_DESCRIPTIONS = {
   5: 'Rất hài lòng & Tuyệt vời',
 };
 
-const SUGGESTED_TAGS = [
+const SUGGESTED_TAGS_OFFLINE = [
   'Bác sĩ tận tâm, chu đáo',
   'Giải thích bệnh rõ ràng, dễ hiểu',
   'Kê đơn hợp lý, dặn dò kỹ',
@@ -23,11 +23,30 @@ const SUGGESTED_TAGS = [
   'Cơ sở vật chất sạch đẹp, hiện đại',
 ];
 
+const SUGGESTED_TAGS_ONLINE = [
+  'Bác sĩ tận tâm, chu đáo',
+  'Giải thích bệnh rõ ràng, dễ hiểu',
+  'Kê đơn / Dặn dò kỹ lưỡng',
+  'Tư vấn đúng giờ, lắng nghe ân cần',
+  'Hướng dẫn chăm sóc tại nhà cụ thể',
+  'Cuộc gọi video rõ nét, kết nối tốt',
+];
+
 export default function DanhGiaCaKhamModal({ isOpen, onClose, appointment, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [fetchingExisting, setFetchingExisting] = useState(true);
   const [daDanhGia, setDaDanhGia] = useState(false);
   const [existingData, setExistingData] = useState(null);
+
+  const isOnline = Boolean(
+    appointment?.hinhThuc === 'truc_tuyen' ||
+    appointment?.hinhThucKham === 'truc_tuyen' ||
+    appointment?.hinhThuc === 'online' ||
+    appointment?.ghiChu?.includes('Telehealth') ||
+    appointment?.ghiChu?.includes('khám trực tuyến')
+  );
+
+  const suggestedTags = isOnline ? SUGGESTED_TAGS_ONLINE : SUGGESTED_TAGS_OFFLINE;
 
   // Form states
   const [diemBacSi, setDiemBacSi] = useState(5);
@@ -116,8 +135,8 @@ export default function DanhGiaCaKhamModal({ isOpen, onClose, appointment, onSuc
         lichHenId: appointment.lichHenId || appointment.id,
         luotTiepNhanId: appointment.luotTiepNhanId || undefined,
         diemBacSi,
-        diemCls: hasCls ? diemCls : undefined,
-        diemTiepDon,
+        diemCls: isOnline ? undefined : (hasCls ? diemCls : undefined),
+        diemTiepDon: isOnline ? undefined : diemTiepDon,
         tieuChiHaiLong: selectedTags,
         nhanXet: nhanXet.trim() || undefined,
         anDanh,
@@ -141,7 +160,7 @@ export default function DanhGiaCaKhamModal({ isOpen, onClose, appointment, onSuc
   const renderStars = (score, setScore, hoverScore, setHoverScore, disabled = false) => {
     const current = hoverScore || score;
     return (
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {[1, 2, 3, 4, 5].map((star) => (
           <button
             key={star}
@@ -161,7 +180,7 @@ export default function DanhGiaCaKhamModal({ isOpen, onClose, appointment, onSuc
             />
           </button>
         ))}
-        <span className="text-xs font-bold text-amber-700 ml-2 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+        <span className="text-xs font-bold text-amber-700 ml-2 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 shrink-0">
           {STAR_DESCRIPTIONS[current] || ''}
         </span>
       </div>
@@ -172,10 +191,10 @@ export default function DanhGiaCaKhamModal({ isOpen, onClose, appointment, onSuc
   const chuyenKhoa = appointment.bacSi?.chuyenKhoa || appointment.chuyenKhoa || 'Đa khoa';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in overflow-y-auto">
-      <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden my-8 animate-scale-up">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in overflow-y-auto">
+      <div className="relative w-full max-w-xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100 overflow-hidden my-4 sm:my-8 animate-scale-up">
         {/* Header */}
-        <div className="relative bg-gradient-to-r from-blue-700 via-indigo-700 to-primary-700 p-6 text-white">
+        <div className="relative bg-gradient-to-r from-blue-700 via-indigo-700 to-primary-700 p-4 sm:p-6 text-white">
           <button
             onClick={onClose}
             className="absolute top-5 right-5 p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors"
@@ -184,13 +203,19 @@ export default function DanhGiaCaKhamModal({ isOpen, onClose, appointment, onSuc
           </button>
 
           <div className="flex items-center gap-2 text-amber-300 text-xs font-bold uppercase tracking-wider mb-1">
-            <Sparkles className="h-4 w-4" /> Đánh giá trải nghiệm khám bệnh
+            <Sparkles className="h-4 w-4" /> {isOnline ? 'Đánh giá tư vấn trực tuyến (Telehealth)' : 'Đánh giá trải nghiệm khám bệnh'}
           </div>
           <h2 className="text-xl font-black text-white">
-            {daDanhGia ? 'Xem Lại Đánh Giá Ca Khám' : 'Cảm Nhận Của Bạn Về Buổi Khám'}
+            {daDanhGia
+              ? 'Xem Lại Đánh Giá Ca Khám'
+              : isOnline
+              ? 'Cảm Nhận Của Bạn Về Buổi Tư Vấn Online'
+              : 'Cảm Nhận Của Bạn Về Buổi Khám'}
           </h2>
           <p className="text-blue-100 text-xs mt-1">
-            Ý kiến đóng góp quý báu của bạn giúp Bác sĩ, Nhân viên và Ban Giám Đốc nâng cao chất lượng điều trị.
+            {isOnline
+              ? 'Ý kiến đánh giá của bạn giúp Bác sĩ và Phòng khám nâng cao chất lượng tư vấn từ xa.'
+              : 'Ý kiến đóng góp quý báu của bạn giúp Bác sĩ, Nhân viên và Ban Giám Đốc nâng cao chất lượng điều trị.'}
           </p>
 
           {/* Box thông tin ca khám */}
@@ -242,66 +267,72 @@ export default function DanhGiaCaKhamModal({ isOpen, onClose, appointment, onSuc
                 </div>
               )}
 
-              {/* 1. ĐÁNH GIÁ BÁC SĨ KHÁM */}
+              {/* 1. ĐÁNH GIÁ BÁC SĨ KHÁM / TƯ VẤN */}
               <div className="bg-slate-50 p-4.5 rounded-2xl border border-slate-200/80 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-gray-900 flex items-center gap-2">
                     <Stethoscope className="h-4 w-4 text-primary-600" />
-                    1. Bác sĩ trực tiếp thăm khám ({tenBacSi}):
+                    {isOnline ? `Bác sĩ trực tiếp tư vấn (${tenBacSi}):` : `1. Bác sĩ trực tiếp thăm khám (${tenBacSi}):`}
                   </label>
                   <span className="text-[11px] font-semibold text-primary-600 bg-primary-50 px-2 py-0.5 rounded-full">
-                    Chuyên môn & Thái độ
+                    {isOnline ? 'Chuyên môn & Thái độ tư vấn' : 'Chuyên môn & Thái độ'}
                   </span>
                 </div>
                 {renderStars(diemBacSi, setDiemBacSi, hoverBacSi, setHoverBacSi, daDanhGia)}
               </div>
 
-              {/* 2. ĐÁNH GIÁ CẬN LÂM SÀNG (XÉT NGHIỆM / CĐHA) */}
-              <div className="bg-slate-50 p-4.5 rounded-2xl border border-slate-200/80 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-gray-900 flex items-center gap-2">
-                    <FlaskConical className="h-4 w-4 text-purple-600" />
-                    2. Dịch vụ Xét nghiệm & Chẩn đoán hình ảnh:
-                  </label>
-                  <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={hasCls}
-                      disabled={daDanhGia}
-                      onChange={(e) => setHasCls(e.target.checked)}
-                      className="rounded text-purple-600 focus:ring-purple-500"
-                    />
-                    <span>Có thực hiện CLS</span>
-                  </label>
-                </div>
-                {hasCls ? (
-                  renderStars(diemCls, setDiemCls, hoverCls, setHoverCls, daDanhGia)
-                ) : (
-                  <p className="text-xs text-gray-400 italic">Ca khám không chỉ định cận lâm sàng (bỏ qua tiêu chí này).</p>
-                )}
-              </div>
+              {/* 2 & 3. CHỈ DÀNH CHO KHÁM TRỰC TIẾP TẠI PHÒNG KHÁM */}
+              {!isOnline && (
+                <>
+                  {/* 2. ĐÁNH GIÁ CẬN LÂM SÀNG (XÉT NGHIỆM / CĐHA) */}
+                  <div className="bg-slate-50 p-4.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-gray-900 flex items-center gap-2">
+                        <FlaskConical className="h-4 w-4 text-purple-600" />
+                        2. Dịch vụ Xét nghiệm & Chẩn đoán hình ảnh:
+                      </label>
+                      <label className="flex items-center gap-1.5 text-[11px] text-gray-500 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={hasCls}
+                          disabled={daDanhGia}
+                          onChange={(e) => setHasCls(e.target.checked)}
+                          className="rounded text-purple-600 focus:ring-purple-500"
+                        />
+                        <span>Có thực hiện CLS</span>
+                      </label>
+                    </div>
+                    {hasCls ? (
+                      renderStars(diemCls, setDiemCls, hoverCls, setHoverCls, daDanhGia)
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">Ca khám không chỉ định cận lâm sàng (bỏ qua tiêu chí này).</p>
+                    )}
+                  </div>
 
-              {/* 3. ĐÁNH GIÁ TIẾP ĐÓN & THỦ TỤC */}
-              <div className="bg-slate-50 p-4.5 rounded-2xl border border-slate-200/80 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-gray-900 flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-emerald-600" />
-                    3. Khâu Tiếp đón, Lễ tân & Cơ sở vật chất:
-                  </label>
-                  <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-                    Chỉ dẫn & Tiện nghi
-                  </span>
-                </div>
-                {renderStars(diemTiepDon, setDiemTiepDon, hoverTiepDon, setHoverTiepDon, daDanhGia)}
-              </div>
+                  {/* 3. ĐÁNH GIÁ TIẾP ĐÓN & THỦ TỤC */}
+                  <div className="bg-slate-50 p-4.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-gray-900 flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-emerald-600" />
+                        3. Khâu Tiếp đón, Lễ tân & Cơ sở vật chất:
+                      </label>
+                      <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                        Chỉ dẫn & Tiện nghi
+                      </span>
+                    </div>
+                    {renderStars(diemTiepDon, setDiemTiepDon, hoverTiepDon, setHoverTiepDon, daDanhGia)}
+                  </div>
+                </>
+              )}
 
               {/* 4. CHỌN TIÊU CHÍ HÀI LÒNG NHANH */}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                  <Heart className="h-3.5 w-3.5 text-rose-500" /> Điều bạn ấn tượng nhất trong buổi khám:
+                  <Heart className="h-3.5 w-3.5 text-rose-500" />
+                  {isOnline ? 'Điều bạn hài lòng nhất khi tư vấn với Bác sĩ:' : 'Điều bạn ấn tượng nhất trong buổi khám:'}
                 </label>
                 <div className="flex flex-wrap gap-2 pt-1">
-                  {SUGGESTED_TAGS.map((tag) => {
+                  {suggestedTags.map((tag) => {
                     const active = selectedTags.includes(tag);
                     return (
                       <button
@@ -313,7 +344,7 @@ export default function DanhGiaCaKhamModal({ isOpen, onClose, appointment, onSuc
                           active
                             ? 'bg-blue-600 text-white border-blue-600 font-semibold shadow-2xs'
                             : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:bg-blue-50/50'
-                        } ${daDanhGia ? 'cursor-default' : ''}`}
+                        } ${daDanhGia ? 'cursor-default' : 'cursor-pointer'}`}
                       >
                         {active ? '✓ ' : '+ '}{tag}
                       </button>
@@ -326,13 +357,19 @@ export default function DanhGiaCaKhamModal({ isOpen, onClose, appointment, onSuc
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
                   <MessageSquare className="h-3.5 w-3.5 text-blue-600" />
-                  Ý kiến đóng góp hoặc Lời cảm ơn gửi tới Bác sĩ & Phòng khám:
+                  {isOnline
+                    ? 'Ý kiến nhận xét hoặc Lời cảm ơn gửi tới Bác sĩ:'
+                    : 'Ý kiến đóng góp hoặc Lời cảm ơn gửi tới Bác sĩ & Phòng khám:'}
                 </label>
                 <textarea
                   value={nhanXet}
                   disabled={daDanhGia}
                   onChange={(e) => setNhanXet(e.target.value)}
-                  placeholder="Chia sẻ trải nghiệm của bạn (ví dụ: Bác sĩ tư vấn rất tận tâm, thuốc uống đỡ nhiều, phòng khám sạch sẽ...)"
+                  placeholder={
+                    isOnline
+                      ? 'Chia sẻ trải nghiệm của bạn (ví dụ: Bác sĩ tư vấn rất kỹ lưỡng, dặn dò chu đáo, hướng dẫn điều trị rõ ràng...)'
+                      : 'Chia sẻ trải nghiệm của bạn (ví dụ: Bác sĩ tư vấn rất tận tâm, thuốc uống đỡ nhiều, phòng khám sạch sẽ...)'
+                  }
                   rows={3}
                   className="w-full text-xs p-3 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-primary-500 focus:outline-none transition-all disabled:bg-gray-100 disabled:text-gray-600"
                 ></textarea>

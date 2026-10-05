@@ -44,21 +44,109 @@ export default function AppointmentTicketModal({
   const qrData = qrCodeValue || `${maLichHen}|STT:${soThuTu}|DATE:${ngayHen}|TIME:${gioHen}`;
 
   const handlePrint = () => {
-    window.print();
+    const printContent = printRef.current;
+    if (!printContent) return;
+
+    // Dọn dẹp iframe in cũ nếu có để tránh đệm trạng thái
+    const oldIframe = document.getElementById('ticket-print-iframe');
+    if (oldIframe) {
+      oldIframe.remove();
+    }
+
+    const iframe = document.createElement('iframe');
+    iframe.id = 'ticket-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const headStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((tag) => tag.outerHTML)
+      .join('\n');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Phiếu Hẹn Khám - ${maLichHen}</title>
+          ${headStyles}
+          <style>
+            @page {
+              size: auto;
+              margin: 10mm;
+            }
+            @media print {
+              html, body, body * {
+                visibility: visible !important;
+              }
+              #print-section, #print-section * {
+                visibility: visible !important;
+              }
+            }
+            body {
+              background-color: #ffffff !important;
+              color: #000000 !important;
+              margin: 0;
+              padding: 12px;
+              display: flex;
+              justify-content: center;
+              align-items: flex-start;
+              font-family: "Times New Roman", Times, serif;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            #print-section {
+              position: relative !important;
+              width: 100% !important;
+              max-width: 480px !important;
+              margin: 0 auto !important;
+              padding: 24px !important;
+              border: 1.5px solid #cbd5e1 !important;
+              border-radius: 16px !important;
+              background-color: #ffffff !important;
+              box-shadow: none !important;
+              visibility: visible !important;
+            }
+            #print-section * {
+              visibility: visible !important;
+            }
+          </style>
+        </head>
+        <body>
+          <div id="print-section">
+            ${printContent.innerHTML}
+          </div>
+        </body>
+      </html>
+    `;
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    }, 400);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-lg rounded-3xl bg-white shadow-2xl border border-gray-100 overflow-hidden my-6 animate-fade-in flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2 sm:p-4 overflow-y-auto">
+      <div className="relative w-full max-w-lg rounded-2xl sm:rounded-3xl bg-white shadow-2xl border border-gray-100 overflow-hidden my-4 sm:my-6 animate-fade-in flex flex-col">
         {/* Header Modal */}
-        <div className="bg-gradient-to-r from-blue-700 to-primary-600 px-6 py-4 text-white flex items-center justify-between no-print">
+        <div className="bg-gradient-to-r from-blue-700 to-primary-600 px-4 sm:px-6 py-3.5 sm:py-4 text-white flex items-center justify-between no-print">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20 backdrop-blur-md font-bold">
               <CheckCircle2 className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h2 className="text-base font-bold leading-tight">Phiếu Hẹn Khám Điện Tử</h2>
-              <p className="text-xs text-blue-100">Đã thanh toán tạm ứng & Xác nhận lịch hẹn</p>
+              <h2 className="text-sm sm:text-base font-bold leading-tight">Phiếu Hẹn Khám Điện Tử</h2>
+              <p className="text-[11px] sm:text-xs text-blue-100">Đã thanh toán tạm ứng & Xác nhận lịch hẹn</p>
             </div>
           </div>
           <button
@@ -71,7 +159,7 @@ export default function AppointmentTicketModal({
         </div>
 
         {/* Nội dung phiếu hẹn (Khu vực có thể in ra) */}
-        <div ref={printRef} id="print-section" className="p-6 space-y-5 bg-white">
+        <div ref={printRef} id="print-section" className="p-4 sm:p-6 space-y-4 sm:space-y-5 bg-white">
           {/* Logo & Tên cơ sở */}
           <div className="text-center pb-4 border-b border-dashed border-gray-200">
             <div className="inline-flex items-center justify-center gap-2 text-primary-700 font-extrabold text-base tracking-wide uppercase">
@@ -209,4 +297,3 @@ export default function AppointmentTicketModal({
     </div>
   );
 }
-

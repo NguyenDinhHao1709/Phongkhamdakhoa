@@ -10,6 +10,7 @@ export enum TrangThaiLichHen {
   CHO_THANH_TOAN = 'cho_thanh_toan',
   CHO_XAC_NHAN   = 'cho_xac_nhan',
   DA_XAC_NHAN    = 'da_xac_nhan',
+  DANG_KHAM      = 'dang_kham',
   DA_HUY         = 'da_huy',
   HOAN_THANH     = 'hoan_thanh',
   VANG_MAT       = 'vang_mat',
@@ -57,6 +58,9 @@ export class LichHen {
 
   @Column({ name: 'nguon_dat', type: 'enum', enum: ['benh_nhan_tu_dat', 'tiep_tan_dat', 'bac_si_dat'], nullable: true })
   nguonDat: string;
+
+  @Column({ name: 'han_thanh_toan', type: 'datetime', nullable: true })
+  hanThanhToan: Date;
 
   @Column({ name: 'dat_boi_nhan_vien_id', nullable: true })
   datBoiNhanVienId: number;

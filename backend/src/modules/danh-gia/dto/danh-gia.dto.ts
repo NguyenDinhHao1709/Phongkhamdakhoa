@@ -27,11 +27,12 @@ export class TaoDanhGiaDto {
   @Max(5)
   diemCls?: number;
 
-  @ApiProperty({ description: 'Điểm đánh giá Tiếp đón & CSVC (1-5 sao)', default: 5 })
+  @ApiPropertyOptional({ description: 'Điểm đánh giá Tiếp đón & CSVC (1-5 sao)', default: 5 })
+  @IsOptional()
   @IsInt()
   @Min(1)
   @Max(5)
-  diemTiepDon: number;
+  diemTiepDon?: number;
 
   @ApiPropertyOptional({ description: 'Các tiêu chí hài lòng nhanh', type: [String] })
   @IsOptional()

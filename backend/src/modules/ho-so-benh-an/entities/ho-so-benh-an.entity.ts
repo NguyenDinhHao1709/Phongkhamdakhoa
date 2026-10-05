@@ -5,6 +5,7 @@ import {
 } from 'typeorm';
 import { BenhNhan } from '../../benh-nhan/entities/benh-nhan.entity';
 import { BacSi } from '../../nhan-vien/entities/bac-si.entity';
+import { Aes256Transformer } from '../../../common/transformers/aes-256.transformer';
 
 export enum TrangThaiHoSo {
   HOAT_DONG = 'hoat_dong',
@@ -33,7 +34,12 @@ export class HoSoBenhAn {
   })
   trangThai: TrangThaiHoSo;
 
-  @Column({ name: 'ghi_chu_tong_quat', type: 'text', nullable: true })
+  @Column({
+    name: 'ghi_chu_tong_quat',
+    type: 'text',
+    nullable: true,
+    transformer: new Aes256Transformer(),
+  })
   ghiChuTongQuat: string;
 
   // Relations
@@ -60,8 +66,8 @@ export class BenhAnKham {
   @Column({ name: 'ho_so_benh_an_id' })
   hoSoBenhAnId: number;
 
-  @Column({ name: 'luot_tiep_nhan_id' })
-  luotTiepNhanId: number;
+  @Column({ name: 'luot_tiep_nhan_id', nullable: true })
+  luotTiepNhanId: number | null;
 
   @Column({ name: 'bac_si_id' })
   bacSiId: number;
@@ -69,22 +75,47 @@ export class BenhAnKham {
   @CreateDateColumn({ name: 'ngay_kham' })
   ngayKham: Date;
 
-  @Column({ name: 'trieu_chung', type: 'text', nullable: true })
+  @Column({
+    name: 'trieu_chung',
+    type: 'text',
+    nullable: true,
+    transformer: new Aes256Transformer(),
+  })
   trieuChung: string;
 
-  @Column({ name: 'chan_doan_so_bo', type: 'text', nullable: true })
+  @Column({
+    name: 'chan_doan_so_bo',
+    type: 'text',
+    nullable: true,
+    transformer: new Aes256Transformer(),
+  })
   chanDoanSoBo: string;
 
-  @Column({ name: 'chan_doan_xac_dinh', type: 'text', nullable: true })
+  @Column({
+    name: 'chan_doan_xac_dinh',
+    type: 'text',
+    nullable: true,
+    transformer: new Aes256Transformer(),
+  })
   chanDoanXacDinh: string;
 
   @Column({ name: 'ma_icd10', length: 50, nullable: true })
   maIcd10: string;
 
-  @Column({ name: 'ket_qua_kham', type: 'text', nullable: true })
+  @Column({
+    name: 'ket_qua_kham',
+    type: 'text',
+    nullable: true,
+    transformer: new Aes256Transformer(),
+  })
   ketQuaKham: string;
 
-  @Column({ name: 'phuong_phap_dieu_tri', type: 'text', nullable: true })
+  @Column({
+    name: 'phuong_phap_dieu_tri',
+    type: 'text',
+    nullable: true,
+    transformer: new Aes256Transformer(),
+  })
   phuongPhapDieuTri: string;
 
   @Column({ name: 'tai_kham', type: 'date', nullable: true })
@@ -106,7 +137,12 @@ export class BenhAnKham {
   })
   trangThai: TrangThaiBenhAnKham;
 
-  @Column({ name: 'ghi_chu', type: 'text', nullable: true })
+  @Column({
+    name: 'ghi_chu',
+    type: 'text',
+    nullable: true,
+    transformer: new Aes256Transformer(),
+  })
   ghiChu: string;
 
   // Relations

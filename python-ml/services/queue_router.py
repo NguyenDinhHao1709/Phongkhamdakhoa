@@ -53,14 +53,21 @@ class DynamicQueueRouter:
             state = self.queue_states.get(loai, 0)
             if isinstance(state, dict):
                 so_nguoi_cho = max(0, int(state.get("count", 0)))
-                avg_time = float(state.get("avg_service_minutes") or 0)
+                avg_time = float(state.get("avg_service_minutes") or 15)
             else:
                 so_nguoi_cho = max(0, int(state or 0))
-                avg_time = 0
-            # Thời gian chờ trước khi đến lượt
-            wait_min = so_nguoi_cho * avg_time
+                avg_time = 15.0
+
+            # Giới hạn avg_time dịch vụ y tế thực tế hợp lý trong khoảng 5 - 30 phút
+            if avg_time > 0:
+                avg_time = max(5.0, min(30.0, avg_time))
+            else:
+                avg_time = 15.0
+
+            # Thời gian chờ trước khi đến lượt (làm tròn số phút nguyên)
+            wait_min = round(so_nguoi_cho * avg_time)
             # Thời gian thực hiện các dịch vụ của chính bệnh nhân này
-            proc_min = len(items) * avg_time
+            proc_min = round(len(items) * avg_time)
             total_room_min = wait_min + proc_min
 
             room_estimates.append({
@@ -71,7 +78,7 @@ class DynamicQueueRouter:
                 "thoi_gian_thuc_hien": proc_min,
                 "tong_phut": total_room_min,
                 "danh_sach_dich_vu": [it.get("tenDichVu") for it in items],
-                "co_du_lieu_thoi_gian": avg_time > 0,
+                "co_du_lieu_thoi_gian": True,
             })
 
         # 3. Tính tổng thời gian theo thứ tự FIFO (thứ tự chỉ định ban đầu)
@@ -90,15 +97,19 @@ class DynamicQueueRouter:
 
         for idx, room in enumerate(sorted_rooms):
             buoc_num = idx + 1
-            wait_here = room["thoi_gian_cho_du_kien"]
-            proc_here = room["thoi_gian_thuc_hien"]
+            wait_here = round(room["thoi_gian_cho_du_kien"])
+            proc_here = round(room["thoi_gian_thuc_hien"])
 
             # Đánh giá mức độ đông
-            if room["so_nguoi_cho"] <= 1:
+            if room["so_nguoi_cho"] == 0:
+                tinh_trang = "trong"
+                badge_color = "emerald"
+                mota_hang_doi = "Phòng đang trống (0 người chờ)"
+            elif room["so_nguoi_cho"] <= 2:
                 tinh_trang = "vong"
                 badge_color = "emerald"
-                mota_hang_doi = f"Phòng vắng (chỉ {room['so_nguoi_cho']} người chờ)"
-            elif room["so_nguoi_cho"] <= 3:
+                mota_hang_doi = f"Phòng vắng ({room['so_nguoi_cho']} người chờ)"
+            elif room["so_nguoi_cho"] <= 4:
                 tinh_trang = "vua"
                 badge_color = "amber"
                 mota_hang_doi = f"Phòng vừa phải ({room['so_nguoi_cho']} người chờ)"
@@ -107,11 +118,22 @@ class DynamicQueueRouter:
                 badge_color = "red"
                 mota_hang_doi = f"Phòng khá đông ({room['so_nguoi_cho']} người chờ)"
 
-            khuyen_nghi = (
-                f"⭐ ĐẾN ĐÂY ĐẦU TIÊN! {mota_hang_doi}, bạn sẽ được phục vụ ngay trong ~{wait_here} phút."
-                if buoc_num == 1 and len(sorted_rooms) > 1 else
-                f"Bước {buoc_num}: Di chuyển đến đây sau khi hoàn thành bước {buoc_num - 1}."
-            )
+            if buoc_num == 1:
+                if len(sorted_rooms) == 1:
+                    if room["so_nguoi_cho"] == 0:
+                        khuyen_nghi = "Đến thực hiện ngay tại phòng này. Hiện không có người chờ phía trước."
+                    else:
+                        khuyen_nghi = f"Đến thực hiện cận lâm sàng tại phòng này. Có {room['so_nguoi_cho']} người chờ phía trước (~{wait_here} phút)."
+                else:
+                    if room["so_nguoi_cho"] == 0:
+                        khuyen_nghi = "Ưu tiên đến phòng này trước vì hiện không có người chờ, bạn sẽ được phục vụ ngay."
+                    else:
+                        khuyen_nghi = f"Ưu tiên đến phòng này trước. Thời gian chờ ngắn hơn (~{wait_here} phút)."
+            else:
+                if room["so_nguoi_cho"] == 0:
+                    khuyen_nghi = f"Bước {buoc_num}: Di chuyển đến đây sau khi xong bước trước (phòng đang trống)."
+                else:
+                    khuyen_nghi = f"Bước {buoc_num}: Di chuyển đến đây sau khi hoàn thành bước {buoc_num - 1} (~{wait_here} phút chờ)."
 
             routing_plan.append({
                 "buoc": buoc_num,
@@ -131,9 +153,9 @@ class DynamicQueueRouter:
         # Tiết kiệm ước tính = Chênh lệch thời gian chờ nếu đi phòng đông trước vs phòng vắng trước
         max_wait = max((r["thoi_gian_cho_du_kien"] for r in room_estimates), default=0)
         min_wait = min((r["thoi_gian_cho_du_kien"] for r in room_estimates), default=0)
-        tiet_kiem_phut = max(0, max_wait - min_wait)
+        tiet_kiem_phut = round(max(0, max_wait - min_wait))
 
-        tong_thoi_gian_min_phut = sum(r["thoi_gian_cho_du_kien"] + r["thoi_gian_thuc_hien"] for r in sorted_rooms)
+        tong_thoi_gian_min_phut = round(sum(r["thoi_gian_cho_du_kien"] + r["thoi_gian_thuc_hien"] for r in sorted_rooms))
 
         return {
             "routing_plan": routing_plan,

@@ -255,6 +255,9 @@ CREATE TABLE `dich_vu_xet_nghiem` (
   `gia` decimal(12,2) NOT NULL DEFAULT '0.00',
   `don_vi_ket_qua` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `gia_tri_binh_thuong` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `bo_phan_thuc_hien` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `mau_benh_pham` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `cau_hinh_ket_qua` text COLLATE utf8mb4_unicode_ci,
   `mo_ta` text COLLATE utf8mb4_unicode_ci,
   `trang_thai` enum('hoat_dong','ngung') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'hoat_dong',
   PRIMARY KEY (`id`),
@@ -269,7 +272,13 @@ CREATE TABLE `dich_vu_xet_nghiem` (
 
 LOCK TABLES `dich_vu_xet_nghiem` WRITE;
 /*!40000 ALTER TABLE `dich_vu_xet_nghiem` DISABLE KEYS */;
-INSERT INTO `dich_vu_xet_nghiem` VALUES (1,'XN001','Công thức máu toàn phần (CBC)','xet_nghiem',120000.00,'G/L','4.0 - 10.0',NULL,'hoat_dong'),(2,'XN002','Sinh hóa máu (Đường huyết, Men gan, Ure, Creatinine)','xet_nghiem',250000.00,'mmol/L','3.9 - 6.4',NULL,'hoat_dong'),(3,'CD001','X-Quang ngực thẳng','cdha',150000.00,'Hình ảnh','Bình thường',NULL,'hoat_dong'),(4,'CD002','Siêu âm ổ bụng tổng quát','cdha',200000.00,'Hình ảnh','Bình thường',NULL,'hoat_dong'),(5,'XN003','Điện tâm đồ (ECG)','xet_nghiem',100000.00,'Nhịp tim','60 - 100 bpm',NULL,'hoat_dong');
+INSERT INTO `dich_vu_xet_nghiem` VALUES
+(1,'XN001','Công thức máu toàn phần (CBC)','xet_nghiem',120000.00,'G/L','4.0 - 10.0','Khoa Xét nghiệm','Máu tĩnh mạch','[{\"key\":\"Hồng cầu RBC\",\"label\":\"Hồng cầu RBC\",\"unit\":\"T/L\",\"reference\":\"Nam 4.5-5.9; Nữ 4.0-5.2\"},{\"key\":\"Hemoglobin HGB\",\"label\":\"Hemoglobin HGB\",\"unit\":\"g/dL\",\"reference\":\"Nam 13-17; Nữ 12-16\"},{\"key\":\"Bạch cầu WBC\",\"label\":\"Bạch cầu WBC\",\"unit\":\"G/L\",\"reference\":\"4.0-10.0\"},{\"key\":\"Tiểu cầu PLT\",\"label\":\"Tiểu cầu PLT\",\"unit\":\"G/L\",\"reference\":\"150-450\"}]',NULL,'hoat_dong'),
+(2,'XN002','Sinh hóa máu (Đường huyết, Men gan, Ure, Creatinine)','xet_nghiem',250000.00,'mmol/L','3.9 - 6.4','Khoa Xét nghiệm','Máu tĩnh mạch','[{\"key\":\"Glucose\",\"label\":\"Glucose\",\"unit\":\"mmol/L\",\"reference\":\"3.9-6.4 lúc đói\"},{\"key\":\"AST\",\"label\":\"AST\",\"unit\":\"U/L\",\"reference\":\"Nam < 40; Nữ < 35\"},{\"key\":\"ALT\",\"label\":\"ALT\",\"unit\":\"U/L\",\"reference\":\"Nam < 41; Nữ < 35\"},{\"key\":\"Ure\",\"label\":\"Ure\",\"unit\":\"mmol/L\",\"reference\":\"2.5-7.5\"},{\"key\":\"Creatinine\",\"label\":\"Creatinine\",\"unit\":\"µmol/L\",\"reference\":\"Nam 62-115; Nữ 44-97\"}]',NULL,'hoat_dong'),
+(3,'CD001','X-Quang ngực thẳng','cdha',150000.00,'Hình ảnh','Bình thường','Khoa Chẩn đoán hình ảnh',NULL,'[{\"key\":\"Phổi phải\",\"label\":\"Phổi phải\",\"unit\":\"\",\"reference\":\"Mô tả hình ảnh\"},{\"key\":\"Phổi trái\",\"label\":\"Phổi trái\",\"unit\":\"\",\"reference\":\"Mô tả hình ảnh\"},{\"key\":\"Tim-trung thất\",\"label\":\"Tim - trung thất\",\"unit\":\"\",\"reference\":\"Mô tả hình ảnh\"},{\"key\":\"Kết luận\",\"label\":\"Kết luận\",\"unit\":\"\",\"reference\":\"Kết luận CĐHA\"}]',NULL,'hoat_dong'),
+(4,'CD002','Siêu âm ổ bụng tổng quát','cdha',200000.00,'Hình ảnh','Bình thường','Khoa Chẩn đoán hình ảnh',NULL,'[{\"key\":\"Gan\",\"label\":\"Gan\",\"unit\":\"\",\"reference\":\"Mô tả hình ảnh\"},{\"key\":\"Mật\",\"label\":\"Mật\",\"unit\":\"\",\"reference\":\"Mô tả hình ảnh\"},{\"key\":\"Tụy-lách\",\"label\":\"Tụy - lách\",\"unit\":\"\",\"reference\":\"Mô tả hình ảnh\"},{\"key\":\"Thận-tiết niệu\",\"label\":\"Thận - tiết niệu\",\"unit\":\"\",\"reference\":\"Mô tả hình ảnh\"},{\"key\":\"Kết luận\",\"label\":\"Kết luận\",\"unit\":\"\",\"reference\":\"Kết luận CĐHA\"}]',NULL,'hoat_dong'),
+(5,'XN003','Điện tâm đồ (ECG)','xet_nghiem',100000.00,'Nhịp tim','60 - 100 bpm','Phòng Thăm dò chức năng',NULL,'[{\"key\":\"Nhịp tim\",\"label\":\"Nhịp tim\",\"unit\":\"lần/phút\",\"reference\":\"60-100\"},{\"key\":\"Nhịp\",\"label\":\"Nhịp\",\"unit\":\"\",\"reference\":\"Đều/xoang\"},{\"key\":\"Khoảng PR\",\"label\":\"Khoảng PR\",\"unit\":\"ms\",\"reference\":\"120-200\"},{\"key\":\"QRS\",\"label\":\"QRS\",\"unit\":\"ms\",\"reference\":\"< 120\"}]',NULL,'hoat_dong'),
+(6,'XN004','Tổng phân tích nước tiểu (10 thông số)','xet_nghiem',100000.00,'Định tính/định lượng','Theo từng thông số','Khoa Xét nghiệm','Nước tiểu giữa dòng','[{\"key\":\"Tỷ trọng\",\"label\":\"Tỷ trọng\",\"unit\":\"\",\"reference\":\"1.005-1.030\"},{\"key\":\"pH\",\"label\":\"pH\",\"unit\":\"\",\"reference\":\"5.0-8.0\"},{\"key\":\"Protein\",\"label\":\"Protein\",\"unit\":\"\",\"reference\":\"Âm tính\"},{\"key\":\"Glucose\",\"label\":\"Glucose\",\"unit\":\"\",\"reference\":\"Âm tính\"},{\"key\":\"Ketone\",\"label\":\"Ketone\",\"unit\":\"\",\"reference\":\"Âm tính\"},{\"key\":\"Hồng cầu\",\"label\":\"Hồng cầu\",\"unit\":\"\",\"reference\":\"Âm tính\"},{\"key\":\"Bilirubin\",\"label\":\"Bilirubin\",\"unit\":\"\",\"reference\":\"Âm tính\"},{\"key\":\"Urobilinogen\",\"label\":\"Urobilinogen\",\"unit\":\"\",\"reference\":\"0.2-1.0 mg/dL\"},{\"key\":\"Nitrite\",\"label\":\"Nitrite\",\"unit\":\"\",\"reference\":\"Âm tính\"},{\"key\":\"Bạch cầu\",\"label\":\"Bạch cầu\",\"unit\":\"\",\"reference\":\"Âm tính\"}]',NULL,'hoat_dong');
 /*!40000 ALTER TABLE `dich_vu_xet_nghiem` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -530,6 +539,7 @@ CREATE TABLE `ket_qua_xet_nghiem` (
   `gia_tri` text COLLATE utf8mb4_unicode_ci,
   `don_vi` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `nhan_xet` text COLLATE utf8mb4_unicode_ci,
+  `ket_qua_chi_tiet` text COLLATE utf8mb4_unicode_ci,
   `file_dinh_kem` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'URL Object Storage - anh Xquang/sieu am, KHONG luu BLOB',
   `nhap_boi_id` int DEFAULT NULL,
   `thoi_gian_nhap` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,

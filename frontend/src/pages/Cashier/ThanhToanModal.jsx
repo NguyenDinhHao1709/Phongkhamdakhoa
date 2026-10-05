@@ -12,6 +12,7 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
   const [soTienGiam, setSoTienGiam] = useState(0);
   const [ghiChu, setGhiChu] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [updatingMedicineChoice, setUpdatingMedicineChoice] = useState(false);
 
   useEffect(() => {
     fetchDetail();
@@ -49,6 +50,22 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
       setErrorMsg(err?.error?.message || 'Có lỗi xảy ra khi xác nhận thanh toán');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleMedicineChoice = async (luaChonMua) => {
+    setUpdatingMedicineChoice(true);
+    setErrorMsg('');
+    try {
+      const res = await apiPatch(`/thanh-toan/hoa-don/${hoaDonId}/lua-chon-thuoc`, { luaChonMua });
+      if (res.data) {
+        setHoaDon(res.data);
+        setSoTienGiam(Number(res.data.soTienGiam || 0));
+      }
+    } catch (err) {
+      setErrorMsg(err?.error?.message || 'Không thể cập nhật lựa chọn mua thuốc');
+    } finally {
+      setUpdatingMedicineChoice(false);
     }
   };
 
@@ -97,6 +114,43 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
             <div className="flex items-center gap-2 rounded-lg bg-danger-50 p-3 text-sm text-danger-700 border border-danger-200">
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
               <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {hoaDon?.trangThai !== 'da_thanh_toan' && hoaDon?.donThuoc?.length > 0 && (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
+              <div className="text-sm font-bold text-indigo-900">Lựa chọn nhận thuốc</div>
+              <p className="mt-1 text-xs text-indigo-800">
+                Đơn thuốc vẫn được lưu trong hồ sơ. Chỉ tính tiền và cấp thuốc khi bệnh nhân chọn mua tại bệnh viện.
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  disabled={updatingMedicineChoice}
+                  onClick={() => handleMedicineChoice('mua_tai_benh_vien')}
+                  className={`rounded-lg border px-3 py-2 text-left text-xs font-bold transition ${
+                    hoaDon.donThuoc.every((dt) => dt.luaChonMua === 'mua_tai_benh_vien')
+                      ? 'border-emerald-500 bg-emerald-100 text-emerald-900'
+                      : 'border-gray-300 bg-white text-gray-700 hover:border-emerald-400'
+                  }`}
+                >
+                  Mua thuốc tại bệnh viện
+                  <span className="mt-0.5 block font-normal">Tính vào hóa đơn và cấp tại nhà thuốc</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={updatingMedicineChoice}
+                  onClick={() => handleMedicineChoice('mua_ngoai')}
+                  className={`rounded-lg border px-3 py-2 text-left text-xs font-bold transition ${
+                    hoaDon.donThuoc.every((dt) => dt.luaChonMua === 'mua_ngoai')
+                      ? 'border-amber-500 bg-amber-100 text-amber-900'
+                      : 'border-gray-300 bg-white text-gray-700 hover:border-amber-400'
+                  }`}
+                >
+                  Mua thuốc bên ngoài
+                  <span className="mt-0.5 block font-normal">Không tính tiền thuốc vào hóa đơn bệnh viện</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -246,4 +300,3 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
     </div>
   );
 }
-

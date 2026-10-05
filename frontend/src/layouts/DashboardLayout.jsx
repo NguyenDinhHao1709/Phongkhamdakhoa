@@ -10,7 +10,8 @@ import {
   LogOut, ChevronLeft, ChevronRight, Bell,
   User, Settings, Video, Clock, Send, Bot, Database,
   Shield, Layers, TrendingUp, DollarSign,
-  FileSearch, CheckSquare, FileText,
+  FileSearch, CheckSquare, FileText, ScanFace,
+  Menu, X, PackagePlus
 } from 'lucide-react';
 
 
@@ -22,6 +23,7 @@ const MENU_CONFIG = {
     { to: '/tiep-tan/ai-triage', icon: Bot, label: 'Phân luồng AI Triage' },
     { to: '/tiep-tan/thong-ke', icon: BarChart3, label: 'Báo cáo tiếp đón' },
     { to: '/tiep-tan/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
+    { to: '/tiep-tan/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/tiep-tan/gui-don', icon: Send, label: 'Gửi yêu cầu' },
     { to: '/tiep-tan/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
@@ -32,6 +34,7 @@ const MENU_CONFIG = {
     { to: '/bac-si/lich-hen', icon: Calendar, label: 'Quản lý lịch hẹn' },
     { to: '/bac-si/thong-ke', icon: BarChart3, label: 'Báo cáo & Thống kê' },
     { to: '/bac-si/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
+    { to: '/bac-si/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/bac-si/gui-don', icon: Send, label: 'Gửi yêu cầu' },
     { to: '/bac-si/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
@@ -39,29 +42,36 @@ const MENU_CONFIG = {
     { to: '/ky-thuat-vien/xet-nghiem', icon: FlaskConical, label: 'Xét nghiệm & CĐHA' },
     { to: '/ky-thuat-vien/thong-ke', icon: BarChart3, label: 'Báo cáo & Thống kê' },
     { to: '/ky-thuat-vien/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
+    { to: '/ky-thuat-vien/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/ky-thuat-vien/gui-don', icon: Send, label: 'Gửi yêu cầu' },
     { to: '/ky-thuat-vien/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   nhan_vien_nha_thuoc: [
     { to: '/nha-thuoc/don-thuoc', icon: Pill, label: 'Cấp phát đơn thuốc' },
     { to: '/nha-thuoc/kho-thuoc', icon: Layers, label: 'Kho thuốc & Tồn kho' },
+    { to: '/nha-thuoc/mua-hang', icon: PackagePlus, label: 'Mua hàng & Nhập thuốc' },
     { to: '/nha-thuoc/thong-ke', icon: BarChart3, label: 'Báo cáo & Dự báo nhu cầu' },
     { to: '/nha-thuoc/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
+    { to: '/nha-thuoc/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/nha-thuoc/gui-don', icon: Send, label: 'Gửi yêu cầu' },
     { to: '/nha-thuoc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   nha_thuoc: [
     { to: '/nha-thuoc/don-thuoc', icon: Pill, label: 'Cấp phát đơn thuốc' },
     { to: '/nha-thuoc/kho-thuoc', icon: Layers, label: 'Kho thuốc & Tồn kho' },
+    { to: '/nha-thuoc/mua-hang', icon: PackagePlus, label: 'Mua hàng & Nhập thuốc' },
     { to: '/nha-thuoc/thong-ke', icon: BarChart3, label: 'Báo cáo & Dự báo nhu cầu' },
     { to: '/nha-thuoc/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
+    { to: '/nha-thuoc/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/nha-thuoc/gui-don', icon: Send, label: 'Gửi yêu cầu' },
     { to: '/nha-thuoc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   thu_ngan: [
     { to: '/thu-ngan/hoa-don', icon: Receipt, label: 'Quản lý viện phí & Hóa đơn' },
-    { to: '/thu-ngan/thong-ke', icon: BarChart3, label: 'Báo cáo doanh thu ca' },
+    { to: '/thu-ngan/chi-tra-nha-cung-cap', icon: DollarSign, label: 'Chi trả nhà cung cấp' },
+    { to: '/thu-ngan/thong-ke', icon: BarChart3, label: 'Báo cáo thống kê' },
     { to: '/thu-ngan/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
+    { to: '/thu-ngan/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/thu-ngan/gui-don', icon: Send, label: 'Gửi yêu cầu' },
     { to: '/thu-ngan/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
@@ -72,6 +82,7 @@ const MENU_CONFIG = {
     { to: '/quan-tri/danh-muc', icon: Layers, label: 'Danh mục dùng chung' },
     { to: '/quan-tri/sao-luu', icon: Database, label: 'Sao lưu & CSDL' },
     { to: '/quan-tri/nhat-ky', icon: FileText, label: 'Nhật ký hệ thống' },
+    { to: '/quan-tri/cai-dat-cham-cong', icon: ScanFace, label: 'Cài đặt chấm công & WiFi' },
     { to: '/quan-tri/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   quan_tri_vien_cap_cao: [
@@ -81,6 +92,7 @@ const MENU_CONFIG = {
     { to: '/quan-tri/danh-muc', icon: Layers, label: 'Danh mục dùng chung' },
     { to: '/quan-tri/sao-luu', icon: Database, label: 'Sao lưu & CSDL' },
     { to: '/quan-tri/nhat-ky', icon: FileText, label: 'Nhật ký hệ thống' },
+    { to: '/quan-tri/cai-dat-cham-cong', icon: ScanFace, label: 'Cài đặt chấm công & WiFi' },
     { to: '/quan-tri/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   ban_giam_doc: [
@@ -88,6 +100,7 @@ const MENU_CONFIG = {
     { to: '/ban-giam-doc/tai-chinh', icon: FileText, label: 'Báo cáo toàn diện BV' },
     { to: '/ban-giam-doc/du-bao-luong', icon: TrendingUp, label: 'Dự báo lưu lượng' },
     { to: '/ban-giam-doc/xep-lich', icon: Calendar, label: 'Phân ca làm việc' },
+    { to: '/ban-giam-doc/quan-ly-cham-cong', icon: ScanFace, label: 'Quản lý chấm công' },
     { to: '/ban-giam-doc/tra-cuu', icon: FileSearch, label: 'Tra cứu tổng hợp' },
     { to: '/ban-giam-doc/phe-duyet-don', icon: CheckSquare, label: 'Phê duyệt yêu cầu' },
     { to: '/ban-giam-doc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
@@ -96,6 +109,7 @@ const MENU_CONFIG = {
 
 export function DashboardLayout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
 
@@ -133,11 +147,86 @@ export function DashboardLayout({ children }) {
   };
 
   return (
-    <div className="flex h-screen bg-medical-bg overflow-hidden">
-      {/* ─── SIDEBAR ─────────────────────────────────────────────── */}
+    <div className="flex h-screen bg-medical-bg overflow-hidden relative">
+      {/* ─── MOBILE BACKDROP ──────────────────────────────────────── */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 md:hidden transition-opacity"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* ─── MOBILE DRAWER (Điện thoại & Tablet nhỏ < 768px) ──────── */}
       <aside
         className={clsx(
-          'flex flex-col bg-white border-r border-gray-200 shadow-sidebar transition-all duration-200',
+          'fixed inset-y-0 left-0 w-64 bg-white z-50 md:hidden flex flex-col shadow-2xl transition-transform duration-300 ease-in-out',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        )}
+      >
+        {/* Drawer Header */}
+        <div className="flex items-center justify-between border-b border-gray-100 h-16 px-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-xl bg-primary-600 shadow-xs">
+              <Stethoscope className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900 leading-tight">Phòng Khám</p>
+              <p className="text-xs text-gray-500">Đa Khoa</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors"
+            title="Đóng menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Drawer Menu */}
+        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+          {menuItems.map(({ to, icon: Icon, label }) => (
+            <NavLink
+              key={to}
+              to={to}
+              onClick={() => setMobileOpen(false)}
+              className={({ isActive }) => clsx(
+                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
+                isActive
+                  ? 'bg-primary-50 text-primary-700 font-semibold'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              )}
+            >
+              <Icon className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">{label}</span>
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Drawer Footer */}
+        <div className="border-t border-gray-100 p-3 bg-gray-50/50">
+          <div
+            onClick={() => { setMobileOpen(false); navigate(getProfileRoute()); }}
+            className="px-3 py-2 mb-2 rounded-xl bg-white border border-gray-200/80 hover:border-primary-300 cursor-pointer transition-colors shadow-2xs"
+            title="Xem thông tin cá nhân"
+          >
+            <p className="text-xs font-semibold text-gray-800 truncate">{user?.tenDangNhap}</p>
+            <p className="text-[11px] text-gray-500">{VAI_TRO_LABEL[user?.vaiTro] || user?.vaiTro}</p>
+          </div>
+          <button
+            onClick={() => { setMobileOpen(false); handleLogout(); }}
+            className="flex items-center justify-center gap-2 w-full rounded-xl px-3 py-2 text-sm text-red-600 bg-red-50 hover:bg-red-100 font-medium transition-colors"
+          >
+            <LogOut className="h-4 w-4 flex-shrink-0" />
+            <span>Đăng xuất</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ─── DESKTOP / TABLET SIDEBAR (≥ 768px) ────────────────────── */}
+      <aside
+        className={clsx(
+          'hidden md:flex flex-col bg-white border-r border-gray-200 shadow-sidebar transition-all duration-200 flex-shrink-0',
           collapsed ? 'w-16' : 'w-56',
         )}
       >
@@ -146,7 +235,7 @@ export function DashboardLayout({ children }) {
           'flex items-center border-b border-gray-100 h-16 px-4',
           collapsed ? 'justify-center' : 'gap-3',
         )}>
-          <div className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600">
+          <div className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 shadow-xs">
             <Stethoscope className="h-4 w-4 text-white" />
           </div>
           {!collapsed && (
@@ -207,16 +296,34 @@ export function DashboardLayout({ children }) {
       {/* ─── MAIN CONTENT ─────────────────────────────────────────── */}
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         {/* Header */}
-        <header className="flex items-center justify-between h-16 bg-white border-b border-gray-200 px-6 flex-shrink-0">
-          <button
-            onClick={() => setCollapsed((c) => !c)}
-            className="flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-          >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </button>
+        <header className="flex items-center justify-between h-16 bg-white border-b border-gray-200 px-3 sm:px-6 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            {/* Nút Hamburger trên điện thoại (< 768px) */}
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="md:hidden flex items-center justify-center h-9 w-9 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+              title="Mở menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
 
-          <div className="flex items-center gap-3">
-            {/* Notification Dropdown (Hiển thị chuông có số thông báo đỏ và danh sách khi bấm) */}
+            {/* Nút Thu gọn / Mở rộng Sidebar trên Laptop & Máy tính bảng (≥ 768px) */}
+            <button
+              onClick={() => setCollapsed((c) => !c)}
+              className="hidden md:flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+              title={collapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
+            >
+              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </button>
+
+            {/* Tiêu đề ngắn trên điện thoại */}
+            <div className="md:hidden flex items-center gap-1.5 ml-1">
+              <span className="text-xs font-bold text-gray-900 truncate">Phòng Khám Đa Khoa</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Notification Dropdown */}
             <NotificationDropdown />
 
             {/* Icon Người - Bấm để chuyển vào xem và chỉnh sửa thông tin cá nhân */}
@@ -231,8 +338,8 @@ export function DashboardLayout({ children }) {
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-6">
+        {/* Page Content với padding linh hoạt tương thích điện thoại & máy tính */}
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
           {children}
         </main>
       </div>

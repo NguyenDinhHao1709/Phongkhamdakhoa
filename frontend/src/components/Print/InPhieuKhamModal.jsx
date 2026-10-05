@@ -66,8 +66,16 @@ export default function InPhieuKhamModal({ isOpen, onClose, benhAn, benhNhan, ba
 
             {/* Tiêu đề tài liệu */}
             <div className="text-center my-6">
-              <h1 className="text-xl font-bold uppercase tracking-wider text-gray-900">PHIẾU KHÁM BỆNH VÀ ĐIỀU TRỊ</h1>
-              <p className="text-xs italic text-gray-600 mt-1">(Theo mẫu quy định hồ sơ bệnh án ngoại trú - Bộ Y Tế)</p>
+              <h1 className="text-xl font-bold uppercase tracking-wider text-gray-900">
+                {benhAn?.hinhThucKham === 'truc_tuyen'
+                  ? 'PHIẾU TƯ VẤN KHÁM BỆNH TỪ XA (TELEHEALTH)'
+                  : 'PHIẾU KHÁM BỆNH VÀ ĐIỀU TRỊ'}
+              </h1>
+              <p className="text-xs italic text-gray-600 mt-1">
+                {benhAn?.hinhThucKham === 'truc_tuyen'
+                  ? '(Hồ sơ tư vấn sức khỏe trực tuyến ngoại trú - Hệ thống Telehealth)'
+                  : '(Theo mẫu quy định hồ sơ bệnh án ngoại trú - Bộ Y Tế)'}
+              </p>
             </div>
 
             {/* PHẦN I: HÀNH CHÍNH */}
@@ -77,59 +85,68 @@ export default function InPhieuKhamModal({ isOpen, onClose, benhAn, benhNhan, ba
               </h2>
               <div className="grid grid-cols-12 gap-2 text-xs">
                 <div className="col-span-6">
-                  1. Họ và tên: <strong className="text-sm uppercase">{benhNhan?.hoTen || 'Nguyễn Văn A'}</strong>
+                  1. Họ và tên: <strong className="text-sm uppercase">{benhNhan?.hoTen || 'Chưa cập nhật'}</strong>
                 </div>
                 <div className="col-span-3">
-                  2. Ngày sinh: <strong>{benhNhan?.ngaySinh ? formatDate(benhNhan.ngaySinh) : '01/01/1990'}</strong>
+                  2. Ngày sinh: <strong>{benhNhan?.ngaySinh ? formatDate(benhNhan.ngaySinh) : (benhNhan?.namSinh || 'Chưa cập nhật')}</strong>
                 </div>
                 <div className="col-span-3">
-                  3. Giới tính: <strong>{benhNhan?.gioiTinh === 'nam' ? 'Nam' : 'Nữ'}</strong>
+                  3. Giới tính: <strong>{benhNhan?.gioiTinh === 'nam' ? 'Nam' : benhNhan?.gioiTinh === 'nu' ? 'Nữ' : 'Chưa cập nhật'}</strong>
                 </div>
 
                 <div className="col-span-6">
-                  4. Số điện thoại: <strong>{benhNhan?.soDienThoai || '0901234567'}</strong>
+                  4. Số điện thoại: <strong>{benhNhan?.soDienThoai || 'Chưa cập nhật'}</strong>
                 </div>
                 <div className="col-span-6">
-                  5. Thẻ BHYT: <strong>{benhNhan?.soBhyt || 'Chưa đăng ký'}</strong>
+                  5. Thẻ BHYT: <strong>{benhNhan?.soBhyt || 'Không có'}</strong>
                 </div>
 
                 <div className="col-span-12">
-                  6. Địa chỉ liên hệ: {benhNhan?.diaChi || 'TP. Hồ Chí Minh'}
+                  6. Địa chỉ liên hệ: {benhNhan?.diaChi || 'Chưa cập nhật'}
                 </div>
               </div>
             </div>
 
-            {/* PHẦN II: KHÁM BỆNH & SINH HIỆU */}
+            {/* PHẦN II: KHÁM BỆNH & CHỈ SỐ SINH HIỆU */}
             <div className="space-y-2 mb-4">
               <h2 className="font-bold text-xs uppercase bg-gray-200/80 px-2 py-1 text-gray-800">
-                II. KHÁM BỆNH & CHỈ SỐ SINH HIỆU
+                II. LÝ DO KHÁM & CHỈ SỐ SINH HIỆU
               </h2>
               <div className="text-xs space-y-1.5">
-                <p>1. Lý do đến khám: <strong>{benhAn?.trieuChung || benhAn?.lyDoKham || 'Khám tổng quát'}</strong></p>
-                <p>2. Bệnh sử: {benhAn?.benhSu || 'Bệnh nhân có triệu chứng kéo dài vài ngày trước khi đến khám.'}</p>
-                <p>3. Tiền sử dị ứng / bệnh lý: <span className="text-red-700 font-semibold">{benhAn?.tienSuBenh || 'Chưa ghi nhận tiền sử dị ứng thuốc'}</span></p>
+                <p>1. Lý do đến khám: <strong>{benhAn?.trieuChung || benhAn?.lyDoKham || 'Tư vấn trực tuyến'}</strong></p>
+                {benhAn?.benhSu && <p>2. Bệnh sử: {benhAn.benhSu}</p>}
+                {benhNhan?.diUng && <p>3. Dị ứng: <span className="text-red-700 font-semibold">{benhNhan.diUng}</span></p>}
+                {benhNhan?.tienSuBenh && <p>4. Tiền sử bệnh: {benhNhan.tienSuBenh}</p>}
 
-                {/* Bảng sinh hiệu */}
-                <div className="mt-2 border border-gray-300 rounded overflow-hidden">
-                  <div className="grid grid-cols-5 text-center bg-gray-50 border-b border-gray-300 py-1 font-semibold text-[11px]">
-                    <div>Mạch (nhịp/phút)</div>
-                    <div>Huyết áp (mmHg)</div>
-                    <div>Nhiệt độ (°C)</div>
-                    <div>Nhịp thở (lần/p)</div>
-                    <div>SpO2 (%)</div>
+                {/* Bảng sinh hiệu (chỉ hiển thị khi có dữ liệu thật từ DB) */}
+                {sinhHieu ? (
+                  <div className="mt-2 border border-gray-300 rounded overflow-hidden">
+                    <div className="grid grid-cols-5 text-center bg-gray-50 border-b border-gray-300 py-1 font-semibold text-[11px]">
+                      <div>Mạch (nhịp/phút)</div>
+                      <div>Huyết áp (mmHg)</div>
+                      <div>Nhiệt độ (°C)</div>
+                      <div>Nhịp thở (lần/p)</div>
+                      <div>SpO2 (%)</div>
+                    </div>
+                    <div className="grid grid-cols-5 text-center py-1.5 text-xs font-bold text-primary-900">
+                      <div>{sinhHieu.mach || sinhHieu.nhip_tim || '—'}</div>
+                      <div>{sinhHieu.huyet_ap_tam_thu && sinhHieu.huyet_ap_tam_truong ? `${sinhHieu.huyet_ap_tam_thu}/${sinhHieu.huyet_ap_tam_truong}` : (sinhHieu.huyetAp || '—')}</div>
+                      <div>{sinhHieu.nhiet_do_c || sinhHieu.nhietDoC || sinhHieu.nhietDo || '—'}</div>
+                      <div>{sinhHieu.nhip_tho || sinhHieu.nhipTho || '—'}</div>
+                      <div>{sinhHieu.spo2 ? `${sinhHieu.spo2}%` : '—'}</div>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-5 text-center py-1.5 text-xs font-bold text-primary-900">
-                    <div>{sinhHieu?.mach || 78}</div>
-                    <div>{sinhHieu?.huyetAp || '120/80'}</div>
-                    <div>{sinhHieu?.nhietDo || 36.8}</div>
-                    <div>{sinhHieu?.nhipTho || 18}</div>
-                    <div>{sinhHieu?.spo2 || 98}%</div>
-                  </div>
-                </div>
+                ) : (
+                  <p className="italic text-gray-500 text-[11px] pt-1">
+                    {benhAn?.hinhThucKham === 'truc_tuyen'
+                      ? '* Ca khám trực tuyến từ xa (Telehealth) — Không thực hiện đo sinh hiệu trực tiếp tại phòng khám.'
+                      : '* Chưa ghi nhận chỉ số sinh hiệu trong lần khám này.'}
+                  </p>
+                )}
               </div>
             </div>
 
-            {/* PHẦN III: CHỈ ĐỊNH CẬN LÂM SÀNG & KẾT QUẢ */}
+            {/* PHẦN III: CHỈ ĐỊNH CẬN LÂM SÀNG & KẾT QUẢ (nếu có) */}
             {dsXetNghiem && dsXetNghiem.length > 0 && (
               <div className="space-y-2 mb-4">
                 <h2 className="font-bold text-xs uppercase bg-gray-200/80 px-2 py-1 text-gray-800">
@@ -149,8 +166,8 @@ export default function InPhieuKhamModal({ isOpen, onClose, benhAn, benhNhan, ba
                       <tr key={i}>
                         <td className="border border-gray-300 px-2 py-1 text-center">{i + 1}</td>
                         <td className="border border-gray-300 px-2 py-1 font-semibold">{xn.dichVu?.tenDichVu || xn.tenDichVu || 'Xét nghiệm'}</td>
-                        <td className="border border-gray-300 px-2 py-1">{xn.ketQua || 'Bình thường'}</td>
-                        <td className="border border-gray-300 px-2 py-1 text-gray-600">{xn.ghiChuKetQua || 'Trong giới hạn bình thường'}</td>
+                        <td className="border border-gray-300 px-2 py-1">{xn.ketQua || 'Đang cập nhật'}</td>
+                        <td className="border border-gray-300 px-2 py-1 text-gray-600">{xn.ghiChuKetQua || ''}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -158,19 +175,26 @@ export default function InPhieuKhamModal({ isOpen, onClose, benhAn, benhNhan, ba
               </div>
             )}
 
-            {/* PHẦN IV: CHẨN ĐOÁN & ĐIỀU TRỊ */}
+            {/* PHẦN IV: CHẨN ĐOÁN & KẾT LUẬN / LỜI KHUYÊN */}
             <div className="space-y-2 mb-6">
               <h2 className="font-bold text-xs uppercase bg-gray-200/80 px-2 py-1 text-gray-800">
-                IV. CHẨN ĐOÁN & HƯỚNG ĐIỀU TRỊ
+                {benhAn?.hinhThucKham === 'truc_tuyen' ? 'III. CHẨN ĐOÁN & LỜI KHUYÊN TỪ XA' : 'IV. CHẨN ĐOÁN & HƯỚNG ĐIỀU TRỊ'}
               </h2>
               <div className="text-xs space-y-1.5">
                 <p>
-                  1. Chẩn đoán chính (ICD-10): <strong className="text-sm text-primary-900 font-bold">{benhAn?.chanDoan || 'Viêm họng cấp tính'}</strong>
-                  {benhAn?.maIcd && <span className="ml-2 bg-gray-100 px-1.5 py-0.5 border rounded">Mã: {benhAn.maIcd}</span>}
+                  1. Chẩn đoán chuyên môn: <strong className="text-sm text-primary-900 font-bold">{benhAn?.chanDoanXacDinh || benhAn?.chanDoanSoBo || benhAn?.chanDoan || 'Chưa ghi nhận'}</strong>
+                  {benhAn?.maIcd10 && <span className="ml-2 bg-gray-100 px-1.5 py-0.5 border rounded">Mã ICD-10: {benhAn.maIcd10}</span>}
                 </p>
-                <p>2. Chẩn đoán phân biệt / bệnh kèm theo: {benhAn?.chanDoanKemTheo || 'Không ghi nhận'}</p>
-                <p>3. Hướng giải quyết: <strong>{benhAn?.huongDieuTri || 'Điều trị ngoại trú, kê đơn thuốc uống và tái khám'}</strong></p>
-                <p>4. Lời dặn dò bác sĩ: {benhAn?.loiDan || 'Ăn uống đủ chất, nghỉ ngơi hợp lý, tái khám nếu triệu chứng không thuyên giảm sau 3 ngày.'}</p>
+                {benhAn?.chanDoanSoBo && benhAn?.chanDoanXacDinh && benhAn.chanDoanSoBo !== benhAn.chanDoanXacDinh && (
+                  <p>2. Chẩn đoán sơ bộ: {benhAn.chanDoanSoBo}</p>
+                )}
+                <p>
+                  {benhAn?.hinhThucKham === 'truc_tuyen' ? '2. Lời khuyên & Hướng dẫn điều trị:' : '2. Hướng điều trị & Lời dặn:'}{' '}
+                  <strong>{benhAn?.phuongPhapDieuTri || benhAn?.loiDan || benhAn?.huongDieuTri || 'Theo dõi sức khỏe và tái khám theo hướng dẫn'}</strong>
+                </p>
+                {benhAn?.taiKham && (
+                  <p>3. Hẹn tái khám: <strong>{formatDate(benhAn.taiKham)}</strong></p>
+                )}
               </div>
             </div>
 
@@ -180,20 +204,20 @@ export default function InPhieuKhamModal({ isOpen, onClose, benhAn, benhNhan, ba
                 <p className="font-semibold">NGƯỜI BỆNH / ĐẠI DIỆN</p>
                 <p className="italic text-[10px] text-gray-500">(Ký và ghi rõ họ tên)</p>
                 <div className="h-16"></div>
-                <p className="font-semibold">{benhNhan?.hoTen}</p>
+                <p className="font-semibold">{benhNhan?.hoTen || ''}</p>
               </div>
               <div className="text-center text-xs">
                 <p className="italic text-[11px]">
                   TP.HCM, ngày {today.getDate()} tháng {today.getMonth() + 1} năm {today.getFullYear()}
                 </p>
-                <p className="font-bold uppercase mt-1">BÁC SĨ KHÁM BỆNH</p>
+                <p className="font-bold uppercase mt-1">BÁC SĨ TƯ VẤN / KHÁM BỆNH</p>
                 <p className="italic text-[10px] text-gray-500">(Ký, đóng dấu và ghi rõ họ tên)</p>
                 <div className="h-16 flex items-center justify-center">
                   <span className="text-primary-700 italic font-serif font-bold text-base opacity-70">
                     {bacSi?.nhanVien?.hoTen || 'Bác sĩ chuyên khoa'}
                   </span>
                 </div>
-                <p className="font-bold text-gray-900">{bacSi?.nhanVien?.hoTen || 'BS. Chuyên Khoa I'}</p>
+                <p className="font-bold text-gray-900">{bacSi?.nhanVien?.hoTen || 'BS. Chuyên khoa'}</p>
               </div>
             </div>
           </div>

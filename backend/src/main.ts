@@ -7,11 +7,16 @@ import { ResponseTransformInterceptor } from './common/interceptors/response-tra
 
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['error', 'warn', 'log', 'debug'],
   });
+
+  // Tăng giới hạn payload body cho chấm công khuôn mặt & tải ảnh
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ extended: true, limit: '50mb' }));
 
   // Serve uploads folder from project root
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
@@ -34,7 +39,11 @@ async function bootstrap() {
   ]);
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.has(origin)) {
+      if (
+        !origin ||
+        allowedOrigins.has(origin) ||
+        /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)
+      ) {
         callback(null, true);
         return;
       }

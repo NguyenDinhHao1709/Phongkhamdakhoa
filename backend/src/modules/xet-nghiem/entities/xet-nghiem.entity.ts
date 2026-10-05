@@ -28,6 +28,15 @@ export class DichVuXetNghiem {
   @Column({ name: 'gia_tri_binh_thuong', length: 200, nullable: true })
   giaTriBinhThuong: string;
 
+  @Column({ name: 'bo_phan_thuc_hien', length: 100, nullable: true })
+  boPhanThucHien: string;
+
+  @Column({ name: 'mau_benh_pham', length: 100, nullable: true })
+  mauBenhPham: string;
+
+  @Column({ name: 'cau_hinh_ket_qua', type: 'text', nullable: true })
+  cauHinhKetQua: string;
+
   @Column({ name: 'mo_ta', type: 'text', nullable: true })
   moTa: string;
 
@@ -109,7 +118,10 @@ export class KetQuaXetNghiem {
   @Column({ name: 'nhan_xet', type: 'text', nullable: true })
   nhanXet: string;
 
-  @Column({ name: 'file_dinh_kem', length: 500, nullable: true })
+  @Column({ name: 'ket_qua_chi_tiet', type: 'text', nullable: true })
+  ketQuaChiTiet: string;
+
+  @Column({ name: 'file_dinh_kem', type: 'text', nullable: true })
   fileDinhKem: string;
 
   @Column({ name: 'nhap_boi_id', nullable: true })
@@ -125,4 +137,3 @@ export class KetQuaXetNghiem {
   @JoinColumn({ name: 'chi_dinh_id' })
   chiDinh: ChiDinhCanLamSang;
 }
-

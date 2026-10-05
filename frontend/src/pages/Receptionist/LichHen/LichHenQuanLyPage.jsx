@@ -96,6 +96,7 @@ export default function LichHenQuanLyPage() {
     chuyenKhoa: '',
     bacSiId: '',
     lyDoKham: '',
+    lyDoTaoLuot: '',
   });
 
   // Debounce search
@@ -335,14 +336,33 @@ export default function LichHenQuanLyPage() {
       }
 
       const payload = {
+        benhNhanId: formData.benhNhanId || undefined,
         hoTen: formData.hoTen.trim(),
         soDienThoai: formData.soDienThoai.trim(),
         bacSiId: formData.bacSiId ? Number(formData.bacSiId) : null,
         chuyenKhoa: chosenSpecialty,
         ghiChu: formData.lyDoKham,
+        lyDoTaoLuot: formData.lyDoTaoLuot || undefined,
       };
 
-      const res = await apiPost('/tiep-nhan/tai-quay', payload);
+      let res;
+      try {
+        res = await apiPost('/tiep-nhan/tai-quay', payload);
+      } catch (err) {
+        const apiError = err?.error || err;
+        if (apiError?.code !== 'LUOT_KHAM_DANG_HOAT_DONG') throw err;
+        const shouldCreateSupplement = window.confirm(
+          `${apiError.message}\n\nNhấn OK để tạo lượt bổ sung và ghi nhận lý do "Chuyển khoa/khám bổ sung".`
+        );
+        if (!shouldCreateSupplement) return;
+        res = await apiPost('/tiep-nhan/tai-quay', {
+          ...payload,
+          loaiLuot: 'luot_bo_sung',
+          choPhepTrung: true,
+          lyDoTaoLuot: 'Chuyển khoa/khám bổ sung theo yêu cầu tại quầy',
+          luotGocId: apiError.existingVisitId,
+        });
+      }
       alert(`Đã tiếp nhận bệnh nhân vào hàng đợi thành công!\n${res?.message || ''}`);
       setShowAddModal(false);
       setSelectedPatient(null);
@@ -1387,6 +1407,20 @@ export default function LichHenQuanLyPage() {
                   placeholder="Triệu chứng ban đầu..."
                   className="w-full p-2.5 text-xs sm:text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary-500 text-gray-800"
                 />
+              </div>
+              <div>
+                <label className="block mb-1 font-semibold text-gray-700">Lý do tạo lượt bổ sung (nếu có)</label>
+                <select
+                  value={formData.lyDoTaoLuot}
+                  onChange={(e) => setFormData({ ...formData, lyDoTaoLuot: e.target.value })}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                >
+                  <option value="">Lượt khám chính</option>
+                  <option value="Chuyển chuyên khoa theo yêu cầu bác sĩ">Chuyển chuyên khoa theo yêu cầu bác sĩ</option>
+                  <option value="Khám chuyên khoa khác">Khám chuyên khoa khác</option>
+                  <option value="Khám lại sau khi có kết quả cận lâm sàng">Khám lại sau khi có kết quả cận lâm sàng</option>
+                  <option value="Lượt trước đã hoàn thành">Lượt trước đã hoàn thành</option>
+                </select>
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">

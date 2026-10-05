@@ -56,6 +56,15 @@
   --shadow-card-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.07);
 }
 
+@layer utilities {
+  .pt-safe {
+    padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  }
+  .pb-safe {
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+  }
+}
+
 /* ============================================================
    Base Reset & Typography
    ============================================================ */
@@ -263,6 +272,7 @@
   html, body {
     background: white !important;
     color: black !important;
+    font-family: "Times New Roman", Times, serif !important;
     margin: 0 !important;
     padding: 0 !important;
     height: auto !important;
@@ -276,7 +286,9 @@
 
   /* Only print section is visible and positioned at the top left */
   #print-section,
-  #print-section * {
+  #print-section *,
+  #print-result-section,
+  #print-result-section * {
     visibility: visible;
   }
 
@@ -291,6 +303,12 @@
     border: none !important;
     box-shadow: none !important;
     background: transparent !important;
+    font-family: "Times New Roman", Times, serif !important;
+  }
+
+  #print-section,
+  #print-section * {
+    font-family: "Times New Roman", Times, serif !important;
   }
 
   .no-print,
@@ -314,4 +332,3 @@
     width: 100% !important;
   }
 }
-

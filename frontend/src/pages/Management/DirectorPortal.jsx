@@ -6,6 +6,7 @@ import ForecastDashboard from './ForecastDashboard';
 import XepLichLamViecPage from './XepLichLamViecPage';
 import TraCuuTongHopPage from './TraCuuTongHopPage';
 import DuyetYeuCauPage from './DuyetYeuCauPage';
+import QuanLyChamCongPage from './QuanLyChamCongPage';
 import ThongTinCaNhanPage from '../Receptionist/NhanVienShared/ThongTinCaNhanPage';
 
 export default function DirectorPortal() {
@@ -24,11 +25,15 @@ export default function DirectorPortal() {
         {/* UC 20: Quản lý & xếp lịch làm việc */}
         <Route path="xep-lich" element={<XepLichLamViecPage />} />
 
+        {/* Quản lý & Chấm công nhân viên */}
+        <Route path="quan-ly-cham-cong" element={<QuanLyChamCongPage />} />
+
         {/* UC 21: Tra cứu hồ sơ tổng hợp */}
         <Route path="tra-cuu" element={<TraCuuTongHopPage />} />
 
         {/* UC 22: Phê duyệt đơn / yêu cầu nhân viên */}
         <Route path="phe-duyet-don" element={<DuyetYeuCauPage />} />
+        <Route path="mua-hang-thuoc" element={<Navigate to="/ban-giam-doc/phe-duyet-don" replace />} />
 
         {/* Thông tin cá nhân */}
         <Route path="ca-nhan" element={<ThongTinCaNhanPage />} />
@@ -40,4 +45,3 @@ export default function DirectorPortal() {
     </DashboardLayout>
   );
 }
-

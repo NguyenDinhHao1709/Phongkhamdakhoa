@@ -1,14 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { DashboardLayout } from '../../../layouts/DashboardLayout';
 import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { VitalsCard } from '../../../design-system/components/VitalSign/VitalDisplay';
-import { apiGet } from '../../../services/api';
+import { apiGet, apiPost } from '../../../services/api';
 import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
-import { Clock, AlertTriangle, User2 } from 'lucide-react';
+import { Clock, AlertTriangle, User2, Tv, Volume2, Loader2 } from 'lucide-react';
 import useAuthStore from '../../../store/authStore';
 
 let socket = null;
@@ -24,6 +24,7 @@ function useHangDoi() {
 export default function HangDoiPage() {
   const { data, isLoading, refetch } = useHangDoi();
   const { accessToken } = useAuthStore();
+  const [callingId, setCallingId] = useState(null);
   const items = data?.data || [];
 
   // Kết nối WebSocket để nhận cập nhật real-time
@@ -36,27 +37,53 @@ export default function HangDoiPage() {
     }
 
     socket.on('queue:update', () => refetch());
+    socket.on('queue:call', () => refetch());
 
     return () => {
       socket.off('queue:update');
+      socket.off('queue:call');
     };
   }, []);
 
-  const dangKham = items.filter((i) => i.trangThai === 'dang_kham');
+  const handleGoiLoa = async (luotId) => {
+    setCallingId(luotId);
+    try {
+      await apiPost(`/tiep-nhan/${luotId}/goi-loa`);
+      refetch();
+    } catch (err) {
+      console.error('Lỗi gọi loa:', err);
+    } finally {
+      setCallingId(null);
+    }
+  };
+
+  const dangKham = items.filter((i) => ['dang_kham', 'dang_cls', 'da_co_kq_cls'].includes(i.trangThai));
   const choKham  = items.filter((i) => i.trangThai === 'cho_kham');
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Hàng đợi hôm nay</h1>
+          <h1 className="text-xl font-bold text-gray-900">Hàng đợi khám hôm nay</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {dangKham.length} đang khám · {choKham.length} chờ khám
           </p>
         </div>
-        <div className="flex items-center gap-1 rounded-full bg-success-light border border-success-main/30 px-3 py-1">
-          <div className="h-2 w-2 rounded-full bg-success-main animate-pulse" />
-          <span className="text-xs font-medium text-success-dark">Real-time</span>
+
+        <div className="flex items-center gap-3">
+          <a
+            href="/man-hinh-goi-so"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-sm hover:shadow"
+          >
+            <Tv className="w-4 h-4" /> Mở Màn Hình TV Sảnh Chờ (Full)
+          </a>
+
+          <div className="flex items-center gap-1.5 rounded-full bg-success-light border border-success-main/30 px-3 py-1.5">
+            <div className="h-2 w-2 rounded-full bg-success-main animate-pulse" />
+            <span className="text-xs font-medium text-success-dark">Real-time Sync</span>
+          </div>
         </div>
       </div>
 
@@ -73,7 +100,12 @@ export default function HangDoiPage() {
           ) : (
             <div className="space-y-3">
               {dangKham.map((item) => (
-                <QueueCard key={item.id} luot={item} />
+                <QueueCard
+                  key={item.id}
+                  luot={item}
+                  onGoiLoa={() => handleGoiLoa(item.id)}
+                  isCalling={callingId === item.id}
+                />
               ))}
             </div>
           )}
@@ -91,7 +123,12 @@ export default function HangDoiPage() {
           ) : (
             <div className="space-y-2">
               {choKham.map((item) => (
-                <QueueRow key={item.id} luot={item} />
+                <QueueRow
+                  key={item.id}
+                  luot={item}
+                  onGoiLoa={() => handleGoiLoa(item.id)}
+                  isCalling={callingId === item.id}
+                />
               ))}
             </div>
           )}
@@ -101,7 +138,7 @@ export default function HangDoiPage() {
   );
 }
 
-function QueueCard({ luot }) {
+function QueueCard({ luot, onGoiLoa, isCalling }) {
   const bn = luot.benhNhan || {};
   const bs = luot.bacSi?.nhanVien || {};
 
@@ -112,7 +149,18 @@ function QueueCard({ luot }) {
     >
       <div className="flex items-start justify-between mb-3">
         <span className="text-2xl font-bold text-primary-700">{luot.maSoThuTu}</span>
-        <StatusBadge status="dang_kham" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onGoiLoa}
+            disabled={isCalling}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold shadow-sm transition-colors"
+            title="Phát loa gọi lại số này lên TV"
+          >
+            {isCalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Volume2 className="w-3.5 h-3.5" />}
+            Gọi lại loa
+          </button>
+          <StatusBadge status={luot.trangThai || 'dang_kham'} />
+        </div>
       </div>
       <p className="font-semibold text-gray-900">{bn.hoTen}</p>
       <p className="text-sm text-gray-500">
@@ -124,7 +172,7 @@ function QueueCard({ luot }) {
   );
 }
 
-function QueueRow({ luot, idx }) {
+function QueueRow({ luot, onGoiLoa, isCalling }) {
   const bn = luot.benhNhan || {};
 
   return (
@@ -146,6 +194,17 @@ function QueueRow({ luot, idx }) {
           {bn.soDienThoai && ` · ${bn.soDienThoai}`}
         </p>
       </div>
+
+      <button
+        onClick={onGoiLoa}
+        disabled={isCalling}
+        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-colors flex-shrink-0"
+        title="Mời bệnh nhân vào khám và phát loa TV"
+      >
+        {isCalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Volume2 className="w-3.5 h-3.5" />}
+        Gọi vào khám
+      </button>
+
       <div className="flex items-center gap-1.5 text-xs text-gray-400 flex-shrink-0">
         <Clock className="h-3.5 w-3.5" />
         {formatDateTime(luot.thoiGianDen)}

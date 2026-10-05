@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import { formatCurrency } from '../../utils/formatCurrency';
@@ -30,6 +30,10 @@ import {
   Layers,
   ArrowRight,
   AlertCircle,
+  PackagePlus,
+  Zap,
+  Bot,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   BarChart,
@@ -44,13 +48,18 @@ import {
   Area,
   Legend,
 } from 'recharts';
+import NhapKhoModal from './NhapKhoModal';
 
 export default function ThongKeNhaThuocPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthStore();
 
-  // Active View Tab: 'overview' | 'alerts' | 'inventory'
-  const [activeTab, setActiveTab] = useState('overview');
+  const tabParam = searchParams.get('tab');
+  // Active View Tab: 'overview' | 'forecast' | 'alerts' | 'inventory'
+  const [activeTab, setActiveTab] = useState(
+    tabParam === 'forecast' || tabParam === 'alerts' || tabParam === 'inventory' ? tabParam : 'overview'
+  );
 
   // State bộ lọc (Filter states)
   const [timeFilter, setTimeFilter] = useState('7days'); // 'today' | '7days' | 'month' | 'quarter' | 'custom'
@@ -59,6 +68,13 @@ export default function ThongKeNhaThuocPage() {
   const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'con_hang' | 'canh_bao' | 'het_hang' | 'can_date'
   const [routeFilter, setRouteFilter] = useState('all'); // 'all' | 'Uống' | 'Tiêm' | 'Bôi ngoài da' | ...
   const [search, setSearch] = useState('');
+
+  // AI Forecast States
+  const [forecastHorizon, setForecastHorizon] = useState(14); // 7 | 14 | 30 ngày
+  const [forecastStatusFilter, setForecastStatusFilter] = useState('all'); // 'all' | 'can_nhap' | 'nguy_cap' | 'canh_bao' | 'an_toan'
+  const [forecastSearch, setForecastSearch] = useState('');
+  const [isNhapKhoOpen, setIsNhapKhoOpen] = useState(false);
+  const [selectedForecastThuoc, setSelectedForecastThuoc] = useState(null);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['thong-ke-nha-thuoc', user?.id, timeFilter, fromDate, toDate, statusFilter, routeFilter],
@@ -73,12 +89,89 @@ export default function ThongKeNhaThuocPage() {
     },
   });
 
-  // Query dữ liệu dự báo nhu cầu thuốc
-  const { data: forecastRes, isLoading: loadingForecast } = useQuery({
-    queryKey: ['du-bao-nhu-cau-thuoc', user?.id],
-    queryFn: () => apiGet('/nha-thuoc/du-bao-nhu-cau?horizonDays=14'),
+  // Query dữ liệu dự báo nhu cầu thuốc từ AI microservice
+  const {
+    data: forecastRes,
+    isLoading: loadingForecast,
+    refetch: refetchForecast,
+    isFetching: isFetchingForecast,
+  } = useQuery({
+    queryKey: ['du-bao-nhu-cau-thuoc', user?.id, forecastHorizon],
+    queryFn: () => apiGet(`/nha-thuoc/du-bao-nhu-cau?horizonDays=${forecastHorizon}`),
   });
+
   const forecastData = forecastRes?.data || [];
+  const forecastEngine = forecastRes?.engine || 'holt_winters_drug_demand_estimator';
+  const heSoTangTruongBenhNhan = forecastRes?.heSoTangTruongBenhNhan;
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      p.set('tab', tab);
+      return p;
+    });
+  };
+
+  const handleOpenNhapKhoForForecast = (item) => {
+    const fullThuoc = (stats.listThuoc || []).find((t) => t.id === item.id || t.maThuoc === item.maThuoc) || {};
+    setSelectedForecastThuoc({
+      id: item.id,
+      maThuoc: item.maThuoc,
+      tenThuoc: item.tenThuoc,
+      tenHoatChat: fullThuoc.tenHoatChat || '',
+      donViTinh: item.donViTinh || fullThuoc.donViTinh || 'Hộp',
+      giaBan: fullThuoc.giaBan || 0,
+      tonKhoHienTai: item.tonKhoHienTai,
+      tieuThuTrungBinhNgay: item.tieuThuTrungBinhNgay,
+      soNgayConLai: item.soNgayConLai,
+      soLuongDeXuatNhap: item.soLuongDeXuatNhap > 0 ? item.soLuongDeXuatNhap : Math.round((item.tieuThuTrungBinhNgay || 5) * 14),
+      ghiChu: `[AI Dự Báo Nhu Cầu] Tốc độ xuất ~${item.tieuThuTrungBinhNgay}/ngày. Tồn kho còn ~${item.soNgayConLai} ngày. Đề xuất nhập bổ sung.`,
+    });
+    setIsNhapKhoOpen(true);
+  };
+
+  const forecastMetrics = useMemo(() => {
+    const totalAnalyzed = forecastData.length;
+    const canNhapItems = forecastData.filter((i) => i.canNhapHang);
+    const nguyCapItems = forecastData.filter((i) => i.soNgayConLai <= 3);
+    const canhBaoItems = forecastData.filter((i) => i.soNgayConLai > 3 && i.soNgayConLai <= 7);
+    const totalProjectedDemand = forecastData.reduce((acc, cur) => acc + (cur.duBaoTieuThu14Ngay || 0), 0);
+    const totalSuggestedReorder = canNhapItems.reduce((acc, cur) => acc + (cur.soLuongDeXuatNhap || 0), 0);
+
+    return {
+      totalAnalyzed,
+      canNhapCount: canNhapItems.length,
+      nguyCapCount: nguyCapItems.length,
+      canhBaoCount: canhBaoItems.length,
+      totalProjectedDemand,
+      totalSuggestedReorder,
+    };
+  }, [forecastData]);
+
+  const filteredForecastData = useMemo(() => {
+    return forecastData.filter((i) => {
+      const matchSearch =
+        !forecastSearch.trim() ||
+        i.tenThuoc?.toLowerCase().includes(forecastSearch.toLowerCase()) ||
+        i.maThuoc?.toLowerCase().includes(forecastSearch.toLowerCase());
+
+      const matchStatus =
+        forecastStatusFilter === 'all'
+          ? true
+          : forecastStatusFilter === 'can_nhap'
+          ? i.canNhapHang
+          : forecastStatusFilter === 'nguy_cap'
+          ? i.soNgayConLai <= 3
+          : forecastStatusFilter === 'canh_bao'
+          ? i.soNgayConLai <= 7
+          : forecastStatusFilter === 'an_toan'
+          ? !i.canNhapHang && i.soNgayConLai > 7
+          : true;
+
+      return matchSearch && matchStatus;
+    });
+  }, [forecastData, forecastSearch, forecastStatusFilter]);
 
   const stats = data?.data || {
     tongSoThuoc: 0,
@@ -485,10 +578,10 @@ export default function ThongKeNhaThuocPage() {
         </div>
       </div>
 
-      {/* 4. Tab Navigation Switcher (Gọn Gàng & Không Rối) */}
-      <div className="flex items-center gap-2 bg-gray-100/90 p-1.5 rounded-2xl w-full sm:w-fit text-xs font-bold">
+      {/* 4. Tab Navigation Switcher (Gọn Gàng & Hiện Đại) */}
+      <div className="flex items-center gap-2 bg-gray-100/90 p-1.5 rounded-2xl w-full sm:w-fit text-xs font-bold flex-wrap">
         <button
-          onClick={() => setActiveTab('overview')}
+          onClick={() => handleTabChange('overview')}
           className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'overview'
               ? 'bg-white text-primary-700 shadow-xs'
@@ -496,11 +589,28 @@ export default function ThongKeNhaThuocPage() {
           }`}
         >
           <BarChart3 className="h-4 w-4" />
-          <span>Biểu Đồ & Dự Báo Nhu Cầu</span>
+          <span>Biểu Đồ & Xuất Nhập</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('alerts')}
+          onClick={() => handleTabChange('forecast')}
+          className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'forecast'
+              ? 'bg-white text-purple-700 shadow-xs ring-1 ring-purple-200'
+              : 'text-gray-500 hover:text-purple-700'
+          }`}
+        >
+          <Sparkles className="h-4 w-4 text-purple-600" />
+          <span>Dự Báo Nhu Cầu (AI)</span>
+          {forecastMetrics.canNhapCount > 0 && (
+            <span className="bg-purple-100 text-purple-700 px-1.5 py-0.2 rounded-full text-[10px] font-extrabold">
+              {forecastMetrics.canNhapCount} cần nhập
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => handleTabChange('alerts')}
           className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'alerts'
               ? 'bg-white text-rose-700 shadow-xs'
@@ -517,7 +627,7 @@ export default function ThongKeNhaThuocPage() {
         </button>
 
         <button
-          onClick={() => setActiveTab('inventory')}
+          onClick={() => handleTabChange('inventory')}
           className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === 'inventory'
               ? 'bg-white text-emerald-700 shadow-xs'
@@ -644,7 +754,7 @@ export default function ThongKeNhaThuocPage() {
 
           {/* Dự báo nhu cầu thuốc 14 ngày tới */}
           <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-xs space-y-3">
-            <div className="flex items-center justify-between border-b border-gray-50 pb-3">
+            <div className="flex items-center justify-between border-b border-gray-50 pb-3 flex-wrap gap-2">
               <div>
                 <h3 className="font-bold text-gray-900 text-sm sm:text-base flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-purple-600" />
@@ -654,9 +764,18 @@ export default function ThongKeNhaThuocPage() {
                   Tổng hợp tốc độ tiêu thụ trung bình ngày để đưa ra khuyến nghị đặt hàng lại
                 </p>
               </div>
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                Machine Learning Forecast
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleTabChange('forecast')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  <span>Mở bảng dự báo chuyên sâu</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                  Machine Learning
+                </span>
+              </div>
             </div>
 
             {loadingForecast ? (
@@ -679,6 +798,7 @@ export default function ThongKeNhaThuocPage() {
                       <th className="py-3 px-3.5 text-right">Dự báo 14 ngày</th>
                       <th className="py-3 px-3.5 text-center">Tồn kho còn (ngày)</th>
                       <th className="py-3 px-3.5 text-center">Khuyến nghị nhập</th>
+                      <th className="py-3 px-3.5 text-center">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 text-gray-700">
@@ -725,8 +845,369 @@ export default function ThongKeNhaThuocPage() {
                             </span>
                           )}
                         </td>
+                        <td className="py-3 px-3.5 text-center">
+                          {item.canNhapHang ? (
+                            <button
+                              onClick={() => handleOpenNhapKhoForForecast(item)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[10px] font-bold shadow-xs transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+                            >
+                              <PackagePlus className="h-3 w-3" />
+                              <span>Nhập ngay</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenNhapKhoForForecast(item)}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-gray-400 hover:text-purple-700 hover:bg-purple-50 rounded-lg text-[10px] font-medium transition-colors cursor-pointer"
+                            >
+                              <PlusCircle className="h-3 w-3" />
+                              <span>Tạo đơn</span>
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB CHUYÊN SÂU: DỰ BÁO NHU CẦU THUỐC AI & KẾ HOẠCH ĐẶT HÀNG ── */}
+      {activeTab === 'forecast' && (
+        <div className="space-y-5 animate-fade-in">
+          {/* Header & Bộ chọn chu kỳ dự báo */}
+          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="p-2 rounded-xl bg-purple-100 text-purple-700">
+                  <Bot className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                    Hệ Thống Trí Tuệ Nhân Tạo Dự Báo Nhu Cầu & Kế Hoạch Nhập Thuốc
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Mô hình Machine Learning phân tích tốc độ xuất kho từ đơn thuốc thực tế và đề xuất số lượng đặt hàng lại.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Chu kỳ dự báo & Nút tải lại */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-gray-500 font-semibold">Chu kỳ dự báo:</span>
+              <div className="inline-flex p-1 bg-gray-100 rounded-xl text-xs font-bold">
+                <button
+                  onClick={() => setForecastHorizon(7)}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    forecastHorizon === 7
+                      ? 'bg-white text-purple-700 shadow-xs'
+                      : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  7 Ngày tới
+                </button>
+                <button
+                  onClick={() => setForecastHorizon(14)}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    forecastHorizon === 14
+                      ? 'bg-white text-purple-700 shadow-xs'
+                      : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  14 Ngày (Chuẩn)
+                </button>
+                <button
+                  onClick={() => setForecastHorizon(30)}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    forecastHorizon === 30
+                      ? 'bg-white text-purple-700 shadow-xs'
+                      : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  30 Ngày tới
+                </button>
+              </div>
+
+              <button
+                onClick={() => refetchForecast()}
+                disabled={isFetchingForecast}
+                className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all shadow-xs active:scale-95 cursor-pointer ml-1"
+                title="Làm mới mô hình dự báo"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 text-gray-500 ${isFetchingForecast ? 'animate-spin text-purple-600' : ''}`} />
+                <span>Chạy lại ML</span>
+              </button>
+            </div>
+          </div>
+
+          {/* AI Banner: Thông tin mô hình & Nguyên lý Reorder Point */}
+          <div className="bg-gradient-to-r from-purple-50 via-indigo-50/40 to-blue-50/20 p-4 sm:p-5 rounded-2xl border border-purple-100 shadow-xs space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-purple-600" />
+                <span className="text-xs font-bold text-purple-900 uppercase tracking-wider">
+                  Thuật toán: {forecastEngine === 'internal_moving_average_estimator' ? 'Internal Moving Average + Reorder Point Estimator' : 'Holt-Winters Drug Demand Forecasting & Patient Flow Growth'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {heSoTangTruongBenhNhan && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    📈 Hệ số tăng trưởng lượt khám: {heSoTangTruongBenhNhan}x
+                  </span>
+                )}
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                  ⚡ Điểm đặt lại: Nhu cầu chu kỳ + 5 ngày Tồn An Toàn
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-purple-900/80 leading-relaxed">
+              Mô hình học máy phân tích lịch sử tiêu thụ 30 ngày qua trên từng mã thuốc và tính toán tốc độ xuất bình quân mỗi ngày. Khi số ngày tồn khả dụng (Runway) giảm dưới 7 ngày hoặc thấp hơn định mức an toàn, hệ thống sẽ đề xuất số lượng cần nhập bù đắp. Bấm <strong>"Lập Phiếu Nhập"</strong> để hệ thống tự điền dữ liệu và gửi Ban Giám Đốc duyệt chi mua thuốc.
+            </p>
+          </div>
+
+          {/* 4 KPI Cards Dự Báo AI */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  Thuốc Giám Sát Nhu Cầu
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                  <Pill className="h-4 w-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-extrabold text-gray-900 mt-2">
+                {forecastMetrics.totalAnalyzed} <span className="text-xs font-normal text-gray-500">mã</span>
+              </p>
+              <p className="text-[11px] text-gray-400 mt-0.5 font-medium">
+                Đang theo dõi tốc độ xuất kho
+              </p>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-rose-100 shadow-xs bg-gradient-to-br from-rose-50/50 to-white">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-rose-800 uppercase tracking-wider">
+                  Báo Động Cạn Kho (≤ 3 ngày)
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-extrabold text-rose-700 mt-2">
+                {forecastMetrics.nguyCapCount} <span className="text-xs font-normal text-rose-500">mã thuốc</span>
+              </p>
+              <p className="text-[11px] text-rose-600 mt-0.5 font-semibold">
+                Có nguy cơ gián đoạn cấp phát
+              </p>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-xs bg-gradient-to-br from-blue-50/40 to-white">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">
+                  Dự Kiến Tiêu Thụ ({forecastHorizon} ngày)
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                  <TrendingUp className="h-4 w-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-extrabold text-blue-900 mt-2">
+                {forecastMetrics.totalProjectedDemand.toLocaleString('vi-VN')} <span className="text-xs font-normal text-blue-600">đơn vị</span>
+              </p>
+              <p className="text-[11px] text-blue-600 mt-0.5 font-medium">
+                Ước tính theo nhu cầu người bệnh
+              </p>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-purple-200 shadow-xs bg-gradient-to-br from-purple-50/70 via-indigo-50/30 to-white">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-purple-900 uppercase tracking-wider">
+                  AI Đề Xuất Nhập Hàng
+                </span>
+                <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-xs">
+                  <Zap className="h-4 w-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-extrabold text-purple-900 mt-2">
+                {forecastMetrics.canNhapCount} <span className="text-xs font-normal text-purple-600">mã cần nhập</span>
+              </p>
+              <p className="text-[11px] text-purple-700 mt-0.5 font-semibold">
+                Tổng đề xuất: +{forecastMetrics.totalSuggestedReorder.toLocaleString('vi-VN')} đơn vị
+              </p>
+            </div>
+          </div>
+
+          {/* Bảng Dữ Liệu Dự Báo & Hành Động Đặt Thuốc */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
+            {/* Header của bảng & Bộ lọc danh mục */}
+            <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => setForecastStatusFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    forecastStatusFilter === 'all'
+                      ? 'bg-gray-900 text-white shadow-xs'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Tất cả ({forecastData.length})
+                </button>
+                <button
+                  onClick={() => setForecastStatusFilter('can_nhap')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    forecastStatusFilter === 'can_nhap'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+                  }`}
+                >
+                  ⚡ Cần Lập Phiếu Nhập ({forecastMetrics.canNhapCount})
+                </button>
+                <button
+                  onClick={() => setForecastStatusFilter('nguy_cap')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    forecastStatusFilter === 'nguy_cap'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                  }`}
+                >
+                  🚨 Nguy Cấp ≤ 3 ngày ({forecastMetrics.nguyCapCount})
+                </button>
+                <button
+                  onClick={() => setForecastStatusFilter('canh_bao')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    forecastStatusFilter === 'canh_bao'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                  }`}
+                >
+                  ⚠️ Cảnh Báo ≤ 7 ngày ({forecastMetrics.canhBaoCount})
+                </button>
+                <button
+                  onClick={() => setForecastStatusFilter('an_toan')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    forecastStatusFilter === 'an_toan'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                  }`}
+                >
+                  ✓ Đủ Tồn Kho An Toàn
+                </button>
+              </div>
+
+              {/* Ô tìm kiếm */}
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Tìm mã hoặc tên thuốc..."
+                  value={forecastSearch}
+                  onChange={(e) => setForecastSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:border-purple-500 focus:bg-white transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Nội dung bảng */}
+            {loadingForecast ? (
+              <p className="text-xs text-gray-400 py-12 text-center">Đang chạy thuật toán học máy phân tích dữ liệu...</p>
+            ) : filteredForecastData.length === 0 ? (
+              <p className="text-xs text-gray-400 py-12 text-center">
+                Không tìm thấy dữ liệu thuốc nào phù hợp với bộ lọc này.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50/80 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                      <th className="py-3 px-3.5">Mã & Tên thuốc</th>
+                      <th className="py-3 px-3.5 text-center">ĐVT</th>
+                      <th className="py-3 px-3.5 text-right">Tồn kho hiện tại</th>
+                      <th className="py-3 px-3.5 text-right">Tốc độ xuất/ngày</th>
+                      <th className="py-3 px-3.5 text-right bg-blue-50/30">Dự báo 7 ngày</th>
+                      <th className="py-3 px-3.5 text-right bg-purple-50/30">Dự báo {forecastHorizon} ngày</th>
+                      <th className="py-3 px-3.5 text-center">Thời gian còn tồn</th>
+                      <th className="py-3 px-3.5 text-right">Định mức an toàn</th>
+                      <th className="py-3 px-3.5 text-center">Đề xuất AI</th>
+                      <th className="py-3 px-3.5 text-center">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 text-gray-700">
+                    {filteredForecastData.map((item) => {
+                      const isDanger = item.soNgayConLai <= 3;
+                      const isWarning = item.soNgayConLai > 3 && item.soNgayConLai <= 7;
+
+                      return (
+                        <tr
+                          key={item.id || item.maThuoc}
+                          className={`hover:bg-purple-50/30 transition-colors ${
+                            item.canNhapHang ? 'bg-purple-50/10' : ''
+                          }`}
+                        >
+                          <td className="py-3 px-3.5">
+                            <span className="font-mono font-bold text-primary-700 block">
+                              {item.maThuoc}
+                            </span>
+                            <span className="font-bold text-gray-900 text-sm block">
+                              {item.tenThuoc}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3.5 text-center text-gray-500 font-medium">
+                            {item.donViTinh}
+                          </td>
+                          <td className="py-3 px-3.5 text-right font-extrabold text-sm text-gray-900">
+                            {item.tonKhoHienTai}
+                          </td>
+                          <td className="py-3 px-3.5 text-right text-gray-600 font-medium">
+                            ~{item.tieuThuTrungBinhNgay}
+                          </td>
+                          <td className="py-3 px-3.5 text-right font-bold text-blue-700 bg-blue-50/30">
+                            {item.duBaoTieuThu7Ngay}
+                          </td>
+                          <td className="py-3 px-3.5 text-right font-bold text-purple-700 bg-purple-50/30">
+                            {item.duBaoTieuThu14Ngay}
+                          </td>
+                          <td className="py-3 px-3.5 text-center">
+                            <span
+                              className={`px-2.5 py-1 rounded-full font-bold text-[11px] inline-flex items-center gap-1 ${
+                                isDanger
+                                  ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                  : isWarning
+                                  ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                                  : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                              }`}
+                            >
+                              {isDanger ? '🚨 ' : isWarning ? '⚠️ ' : '✓ '}
+                              {item.soNgayConLai > 365 ? '> 1 năm' : `~${item.soNgayConLai} ngày`}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3.5 text-right text-gray-500 font-medium">
+                            {item.nguongAnToan} {item.donViTinh}
+                          </td>
+                          <td className="py-3 px-3.5 text-center">
+                            {item.canNhapHang ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                Nhập +{item.soLuongDeXuatNhap} {item.donViTinh}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-emerald-700 bg-emerald-50">
+                                ✓ Đủ tồn kho
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3.5 text-center">
+                            <button
+                              onClick={() => handleOpenNhapKhoForForecast(item)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs shadow-purple-600/20 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+                            >
+                              <PackagePlus className="h-3.5 w-3.5" />
+                              <span>Lập Phiếu Nhập</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -925,6 +1406,22 @@ export default function ThongKeNhaThuocPage() {
             </p>
           )}
         </div>
+      )}
+
+      {/* Modal Lập Phiếu Nhập Kho Thuốc & Phê Duyệt Chi Phí */}
+      {isNhapKhoOpen && (
+        <NhapKhoModal
+          medicineList={stats.listThuoc || []}
+          defaultThuoc={selectedForecastThuoc}
+          onClose={() => {
+            setIsNhapKhoOpen(false);
+            setSelectedForecastThuoc(null);
+          }}
+          onSuccess={() => {
+            refetch();
+            refetchForecast();
+          }}
+        />
       )}
     </div>
   );

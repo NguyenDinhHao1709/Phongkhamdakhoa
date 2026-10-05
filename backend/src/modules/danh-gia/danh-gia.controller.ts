@@ -38,8 +38,9 @@ export class DanhGiaController {
     @Query('range') range?: string,
     @Query('tuNgay') tuNgay?: string,
     @Query('denNgay') denNgay?: string,
+    @Query('hinhThuc') hinhThuc?: string,
   ) {
-    return this.danhGiaService.thongKeDanhGiaBacSi(user, { range, tuNgay, denNgay });
+    return this.danhGiaService.thongKeDanhGiaBacSi(user, { range, tuNgay, denNgay, hinhThuc });
   }
 
   @Get('giam-doc')
@@ -49,8 +50,9 @@ export class DanhGiaController {
     @Query('range') range?: string,
     @Query('tuNgay') tuNgay?: string,
     @Query('denNgay') denNgay?: string,
+    @Query('hinhThuc') hinhThuc?: string,
   ) {
-    return this.danhGiaService.thongKeDanhGiaGiamDoc({ range, tuNgay, denNgay });
+    return this.danhGiaService.thongKeDanhGiaGiamDoc({ range, tuNgay, denNgay, hinhThuc });
   }
 
   @Patch(':id/phan-hoi')

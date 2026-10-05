@@ -27,6 +27,17 @@ function formatTimeShort(timeStr) {
   return timeStr.slice(0, 5);
 }
 
+// Làm sạch ghi chú, loại bỏ hoàn toàn các tiền tố kỹ thuật như [AI Phân ca], [AI phân lịch]
+function cleanGhiChu(ghiChu) {
+  if (!ghiChu) return '';
+  return ghiChu
+    .replace(/\[AI\s*Phân\s*ca\]/gi, '')
+    .replace(/\[AI\s*phân\s*lịch\]/gi, '')
+    .replace(/\[AI\]/gi, '')
+    .replace(/^[-–—:\s]+/, '')
+    .trim();
+}
+
 export default function LichLamViecPage() {
   const { user } = useAuthStore();
   const [currentMonday, setCurrentMonday] = useState(() => getMonday(new Date()));
@@ -433,10 +444,10 @@ export default function LichLamViecPage() {
                               </p>
                             )}
 
-                            {sh.ghiChu && (
-                              <p className="text-[10px] text-emerald-800 bg-white/60 px-1.5 py-0.5 rounded flex items-center gap-1 truncate" title={sh.ghiChu}>
+                            {cleanGhiChu(sh.ghiChu) && (
+                              <p className="text-[10px] text-emerald-800 bg-white/60 px-1.5 py-0.5 rounded flex items-center gap-1 truncate" title={cleanGhiChu(sh.ghiChu)}>
                                 <MapPin className="h-2.5 w-2.5 text-emerald-500 flex-shrink-0" />
-                                <span>{sh.ghiChu}</span>
+                                <span>{cleanGhiChu(sh.ghiChu)}</span>
                               </p>
                             )}
                           </div>
@@ -523,9 +534,9 @@ export default function LichLamViecPage() {
                         {sh.gioBatDau && sh.gioKetThuc ? `${formatTimeShort(sh.gioBatDau)} - ${formatTimeShort(sh.gioKetThuc)}` : 'Theo ca'}
                       </td>
                       <td className="py-2.5 px-3 text-gray-700">
-                        {sh.ghiChu ? (
+                        {cleanGhiChu(sh.ghiChu) ? (
                           <span className="flex items-center gap-1 text-gray-800">
-                            <MapPin className="h-3 w-3 text-emerald-600" /> {sh.ghiChu}
+                            <MapPin className="h-3 w-3 text-emerald-600" /> {cleanGhiChu(sh.ghiChu)}
                           </span>
                         ) : (
                           <span className="text-gray-400 italic">Theo phân công khoa</span>
@@ -623,7 +634,7 @@ export default function LichLamViecPage() {
                                   <div
                                     key={s.id}
                                     className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded px-1.5 py-0.5 text-[10px] font-bold truncate"
-                                    title={`${s.tenCa} ${s.ghiChu ? `(${s.ghiChu})` : ''}`}
+                                    title={`${s.tenCa} ${cleanGhiChu(s.ghiChu) ? `(${cleanGhiChu(s.ghiChu)})` : ''}`}
                                   >
                                     {s.tenCa}
                                   </div>

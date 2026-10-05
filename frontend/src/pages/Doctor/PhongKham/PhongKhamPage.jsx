@@ -10,8 +10,9 @@ import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
 import {
   Stethoscope, AlertTriangle, FileText, ClipboardList, FlaskConical,
-  CheckCircle2, ChevronRight, Activity, Plus, X, HeartPulse, Pill, Calendar, Clock, Search, Sparkles, Printer, Trash2
+  CheckCircle2, ChevronRight, Activity, Plus, X, HeartPulse, Pill, Calendar, Clock, Search, Sparkles, Printer, Trash2, Volume2, Tv, Compass
 } from 'lucide-react';
+import { parseAttachmentUrls, toAttachmentUrl } from '../../../utils/fileAttachments';
 import InPhieuKhamModal from '../../../components/Print/InPhieuKhamModal';
 import InDonThuocModal from '../../../components/Print/InDonThuocModal';
 
@@ -70,14 +71,25 @@ export default function PhongKhamPage() {
     : (dangKham[0] || daCoKq[0] || choKham[0] || dangCls[0] || null);
 
   return (
-    <div className="flex gap-6 h-[calc(100vh-7rem)] animate-fade-in overflow-x-auto pb-2">
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 lg:h-[calc(100vh-7rem)] animate-fade-in pb-2">
       {/* Left: Patient Queue */}
-      <div className="w-72 sm:w-80 flex-shrink-0 flex flex-col min-w-[260px]">
-        <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-          <ClipboardList className="h-5 w-5 text-primary-600" /> Hàng đợi phòng khám
-        </h2>
+      <div className="w-full lg:w-80 flex-shrink-0 flex flex-col">
+        <div className="flex items-center justify-between mb-3 lg:mb-4">
+          <h2 className="text-base lg:text-lg font-bold text-gray-900 flex items-center gap-2">
+            <ClipboardList className="h-5 w-5 text-primary-600" /> Hàng đợi
+          </h2>
+          <a
+            href="/man-hinh-goi-so"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition-colors"
+            title="Mở màn hình TV gọi số sang tab mới"
+          >
+            <Tv className="w-3.5 h-3.5 text-blue-600" /> TV Sảnh
+          </a>
+        </div>
 
-        <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+        <div className="flex-1 overflow-y-auto space-y-3 pr-1 max-h-56 lg:max-h-none">
           {isLoading && <p className="text-center text-sm text-gray-400 py-8">Đang tải danh sách...</p>}
 
           {/* 1. Đang khám */}
@@ -155,7 +167,7 @@ export default function PhongKhamPage() {
       </div>
 
       {/* Right: Clinical Examination Main Panel */}
-      <div className="flex-1 min-w-[480px] overflow-y-auto pr-1">
+      <div className="flex-1 min-w-0 overflow-y-auto pr-1">
         {currentLuot ? (
           <KhamBenhPanel
             key={currentLuot.id}
@@ -325,7 +337,6 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
       return apiPatch(`/ho-so-benh-an/benh-an-kham/${activeId}/ket-thuc`, payload);
     },
     onSuccess: () => {
-      apiPatch(`/tiep-nhan/${luot.id}/trang-thai`, { trangThai: 'hoan_thanh' });
       qc.invalidateQueries(['tiep-nhan']);
       onComplete();
     },
@@ -376,16 +387,25 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
 
   const handleBatDauKham = async () => {
     try {
-      await apiPatch(`/tiep-nhan/${luot.id}/trang-thai`, { trangThai: 'dang_kham' });
-      onUpdateLuot({ ...luot, trangThai: 'dang_kham' });
+      if (luot.trangThai !== 'dang_kham') {
+        await apiPatch(`/tiep-nhan/${luot.id}/trang-thai`, { trangThai: 'dang_kham' }).catch(() => {});
+        onUpdateLuot({ ...luot, trangThai: 'dang_kham' });
+      }
       const res = await createMut.mutateAsync();
-      if (res?.data?.id) {
-        setBenhAnId(res.data.id);
+      const newId = res?.data?.id || res?.id || bakData?.data?.id;
+      if (newId) {
+        setBenhAnId(newId);
       }
       qc.invalidateQueries(['tiep-nhan']);
       qc.invalidateQueries(['benh-an-kham-luot', luot?.id]);
+      return newId;
     } catch (err) {
       console.error(err);
+      const fallbackId = bakData?.data?.id;
+      if (fallbackId) {
+        setBenhAnId(fallbackId);
+        return fallbackId;
+      }
     }
   };
 
@@ -397,6 +417,7 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
   ];
 
   const ageStr = tinhTuoi(bn.ngaySinh);
+  const activeBenhAnId = benhAnId || bakData?.data?.id;
 
   return (
     <div className="space-y-4">
@@ -417,21 +438,70 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {!benhAnId ? (
+            {luot.trangThai === 'cho_kham' && !activeBenhAnId ? (
               <MedButton
                 variant="primary"
                 onClick={handleBatDauKham}
                 loading={createMut.isLoading}
               >
-                {luot.trangThai === 'dang_kham' ? 'Tiếp tục khám' : 'Bắt đầu khám'}
+                Bắt đầu khám
+              </MedButton>
+            ) : luot.trangThai === 'da_co_kq_cls' ? (
+              <MedButton
+                variant="primary"
+                onClick={handleBatDauKham}
+                loading={createMut.isLoading}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                Tiếp tục khám (Đã có KQ)
               </MedButton>
             ) : null}
+            {['cho_kham', 'dang_kham'].includes(luot.trangThai) && (
+              <MedButton
+                variant="outline"
+                size="sm"
+                leftIcon={<Volume2 className="h-4 w-4 text-blue-600" />}
+                onClick={async () => {
+                  try {
+                    const result = await apiPost(`/tiep-nhan/${luot.id}/goi-loa`);
+                    onUpdateLuot({ ...luot, trangThai: 'dang_kham' });
+                    if (!activeBenhAnId) {
+                      await handleBatDauKham();
+                    }
+                    qc.invalidateQueries(['tiep-nhan']);
+                    alert(result?.message || `Đã gọi bệnh nhân ${bn.hoTen} (${luot.maSoThuTu}).`);
+                  } catch (e) {
+                    console.error(e);
+                    alert(e?.message || 'Không thể gọi bệnh nhân. Vui lòng kiểm tra trạng thái lượt khám.');
+                  }
+                }}
+              >
+                {luot.trangThai === 'cho_kham' ? 'Gọi bệnh nhân' : 'Gọi lại'}
+              </MedButton>
+            )}
             <MedButton
               variant="secondary"
               size="sm"
               leftIcon={<FlaskConical className="h-4 w-4 text-purple-600" />}
               onClick={async () => {
-                if (!benhAnId) await handleBatDauKham();
+                let currentId = activeBenhAnId;
+                if (!currentId) {
+                  currentId = await handleBatDauKham();
+                }
+                if (!currentId) {
+                  try {
+                    const res = await apiPost(`/ho-so-benh-an/benh-an-kham/${bn.id}`, {
+                      luotTiepNhanId: luot.id,
+                      hinhThucKham: 'truc_tiep',
+                    });
+                    currentId = res?.data?.id || res?.id;
+                  } catch (e) {
+                    console.error('Không thể tạo phiếu khám:', e);
+                  }
+                }
+                if (currentId) {
+                  setBenhAnId(currentId);
+                }
                 setShowChiDinhModal(true);
               }}
             >
@@ -679,13 +749,13 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
         />
       )}
 
-      {showChiDinhModal && benhAnId && (
+      {showChiDinhModal && activeBenhAnId && (
         <TaoChiDinhModal
-          benhAnKhamId={benhAnId}
+          benhAnKhamId={activeBenhAnId}
           luotId={luot.id}
           onClose={() => setShowChiDinhModal(false)}
           onSuccess={() => {
-            qc.invalidateQueries(['xn-benh-an', benhAnId]);
+            qc.invalidateQueries(['xn-benh-an', activeBenhAnId]);
             qc.invalidateQueries(['tiep-nhan']);
             setShowChiDinhModal(false);
             setTab('xn');
@@ -693,12 +763,12 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
         />
       )}
 
-      {showDonThuocModal && benhAnId && (
+      {showDonThuocModal && activeBenhAnId && (
         <KeDonThuocModal
-          benhAnKhamId={benhAnId}
+          benhAnKhamId={activeBenhAnId}
           onClose={() => setShowDonThuocModal(false)}
           onSuccess={() => {
-            qc.invalidateQueries(['don-thuoc-benh-an', benhAnId]);
+            qc.invalidateQueries(['don-thuoc-benh-an', activeBenhAnId]);
             setShowDonThuocModal(false);
             setTab('don_thuoc');
           }}
@@ -898,6 +968,8 @@ function VitalsModal({ luotId, initialData, onClose, onSuccess }) {
 function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const [ghiChu, setGhiChu] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('all');
+  const [serviceSearch, setServiceSearch] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Lấy danh mục dịch vụ cận lâm sàng từ CSDL
@@ -920,11 +992,24 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
     .filter(Boolean);
 
   const listDichVu = (data?.data && data.data.length > 0) ? data.data : [
-    { id: 1, maDichVu: 'XN001', tenDichVu: 'Công thức máu toàn phần (CBC)', gia: 120000, loai: 'xet_nghiem' },
-    { id: 2, maDichVu: 'XN002', tenDichVu: 'Sinh hóa máu (Đường huyết, Men gan, Ure, Creatinine)', gia: 250000, loai: 'xet_nghiem' },
-    { id: 3, maDichVu: 'CD001', tenDichVu: 'X-Quang ngực thẳng', gia: 150000, loai: 'chan_doan_hinh_anh' },
-    { id: 4, maDichVu: 'CD002', tenDichVu: 'Siêu âm ổ bụng tổng quát', gia: 200000, loai: 'chan_doan_hinh_anh' },
-    { id: 5, maDichVu: 'XN003', tenDichVu: 'Điện tâm đồ (ECG)', gia: 100000, loai: 'xet_nghiem' },
+    { id: 1, maDichVu: 'XN001', tenDichVu: 'Công thức máu toàn phần (CBC)', gia: 120000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch' },
+    { id: 2, maDichVu: 'XN002', tenDichVu: 'Sinh hóa máu (Đường huyết, Men gan, Ure, Creatinine)', gia: 250000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch' },
+    { id: 3, maDichVu: 'CD001', tenDichVu: 'X-Quang ngực thẳng', gia: 150000, loai: 'cdha', boPhanThucHien: 'Khoa Chẩn đoán hình ảnh' },
+    { id: 4, maDichVu: 'CD002', tenDichVu: 'Siêu âm ổ bụng tổng quát', gia: 200000, loai: 'cdha', boPhanThucHien: 'Khoa Chẩn đoán hình ảnh' },
+    { id: 5, maDichVu: 'XN003', tenDichVu: 'Điện tâm đồ (ECG)', gia: 100000, loai: 'xet_nghiem', boPhanThucHien: 'Phòng Thăm dò chức năng' },
+    { id: 6, maDichVu: 'XN004', tenDichVu: 'Tổng phân tích nước tiểu (10 thông số)', gia: 100000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Nước tiểu giữa dòng' },
+    { id: 7, maDichVu: 'XN005', tenDichVu: 'Mỡ máu cơ bản', gia: 180000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch' },
+    { id: 8, maDichVu: 'XN006', tenDichVu: 'HbA1c', gia: 150000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch - ống EDTA' },
+    { id: 9, maDichVu: 'XN007', tenDichVu: 'Điện giải đồ cơ bản', gia: 160000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch' },
+    { id: 10, maDichVu: 'XN008', tenDichVu: 'CRP định lượng', gia: 120000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch' },
+    { id: 11, maDichVu: 'XN009', tenDichVu: 'Đông máu cơ bản PT-INR-aPTT', gia: 220000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch - ống citrate' },
+    { id: 12, maDichVu: 'XN010', tenDichVu: 'Xét nghiệm phân cơ bản', gia: 100000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Phân tươi' },
+    { id: 13, maDichVu: 'XN011', tenDichVu: 'HBsAg', gia: 120000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch - huyết thanh' },
+    { id: 14, maDichVu: 'CD003', tenDichVu: 'Siêu âm hệ tiết niệu', gia: 220000, loai: 'cdha', boPhanThucHien: 'Khoa Chẩn đoán hình ảnh' },
+    { id: 15, maDichVu: 'CD004', tenDichVu: 'Siêu âm tuyến giáp và hạch cổ', gia: 220000, loai: 'cdha', boPhanThucHien: 'Khoa Chẩn đoán hình ảnh' },
+    { id: 16, maDichVu: 'CD005', tenDichVu: 'Siêu âm sản-phụ khoa', gia: 250000, loai: 'cdha', boPhanThucHien: 'Khoa Chẩn đoán hình ảnh' },
+    { id: 17, maDichVu: 'CD006', tenDichVu: 'Siêu âm tuyến vú', gia: 250000, loai: 'cdha', boPhanThucHien: 'Khoa Chẩn đoán hình ảnh' },
+    { id: 18, maDichVu: 'CD007', tenDichVu: 'Siêu âm tim Doppler', gia: 350000, loai: 'cdha', boPhanThucHien: 'Phòng Thăm dò chức năng' },
   ];
 
   const handleToggle = (id) => {
@@ -982,6 +1067,21 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
     return item && (item.tenDichVu.toLowerCase().includes('máu') || item.tenDichVu.toLowerCase().includes('huyết học') || item.tenDichVu.toLowerCase().includes('cbc'));
   });
   const isCombinedBoth = hasSieuAm && hasXetNghiemMau;
+  const getServiceGroup = (service) => {
+    const name = (service.tenDichVu || '').toLowerCase();
+    if (name.includes('siêu âm')) return 'sieu_am';
+    if (name.includes('x-quang') || name.includes('x quang')) return 'x_quang';
+    if (service.loai === 'xet_nghiem') return 'xet_nghiem';
+    return 'khac';
+  };
+  const visibleServices = listDichVu.filter((service) => {
+    const matchesGroup = serviceFilter === 'all' || getServiceGroup(service) === serviceFilter;
+    const query = serviceSearch.trim().toLowerCase();
+    const matchesSearch = !query
+      || service.tenDichVu.toLowerCase().includes(query)
+      || (service.maDichVu || '').toLowerCase().includes(query);
+    return matchesGroup && matchesSearch;
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 backdrop-blur-xs p-4">
@@ -1005,9 +1105,34 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
                 </span>
               )}
             </div>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                <input
+                  value={serviceSearch}
+                  onChange={(e) => setServiceSearch(e.target.value)}
+                  placeholder="Tìm tên hoặc mã dịch vụ..."
+                  className="w-full pl-8 pr-2 py-2 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+              <select
+                value={serviceFilter}
+                onChange={(e) => setServiceFilter(e.target.value)}
+                className="px-2 py-2 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              >
+                <option value="all">Tất cả dịch vụ</option>
+                <option value="xet_nghiem">Xét nghiệm</option>
+                <option value="sieu_am">Siêu âm</option>
+                <option value="x_quang">X-quang</option>
+                <option value="khac">ECG / khác</option>
+              </select>
+            </div>
             <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-xl divide-y divide-gray-100 p-1">
               {isLoading && <p className="text-center text-xs text-gray-400 py-4">Đang nạp danh mục CSDL...</p>}
-              {listDichVu.map((dv) => {
+              {!isLoading && visibleServices.length === 0 && (
+                <p className="text-center text-xs text-gray-400 py-6">Không tìm thấy dịch vụ phù hợp</p>
+              )}
+              {visibleServices.map((dv) => {
                 const isAlreadyOrdered = existingServiceIds.includes(dv.id);
                 return (
                   <label
@@ -1036,6 +1161,12 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
                           )}
                         </div>
                         <p className="text-xs text-gray-500">Mã: {dv.maDichVu || dv.id}</p>
+                        {dv.boPhanThucHien && (
+                          <p className="text-[11px] text-blue-700 mt-0.5">
+                            Thực hiện tại: {dv.boPhanThucHien}
+                            {dv.mauBenhPham ? ` • Mẫu: ${dv.mauBenhPham}` : ''}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <span className="text-xs font-bold text-gray-700">
@@ -1361,96 +1492,140 @@ function DatLichTaiKhamModal({ benhNhanId, onClose, onSuccess }) {
   );
 }
 
-/* ──── WIDGET LỘ TRÌNH ĐỊNH TUYẾN ĐỘNG (PYTHON ML + GEMINI AI) ──── */
+/* ──── LỘ TRÌNH THỰC HIỆN CẬN LÂM SÀNG (ĐIỀU PHỐI HÀNG ĐỢI) ──── */
 function DynamicQueuePanel({ benhAnKhamId }) {
   const { data, isLoading } = useQuery({
     queryKey: ['dynamic-queue-routing', benhAnKhamId],
     queryFn: () => apiGet(`/ai/dynamic-queue/${benhAnKhamId}`),
     enabled: !!benhAnKhamId,
-    refetchInterval: 5000, // Tự động cập nhật tải hàng đợi mỗi 5s
+    refetchInterval: 5000,
   });
 
   const resData = data?.data || {};
   const routingPlan = resData.routingPlan || [];
   const tietKiemPhut = resData.tietKiemPhut || 0;
   const thongDiep = resData.thongDiep || '';
-  const engine = resData.engine || 'python_dynamic_router';
 
   if (isLoading || routingPlan.length === 0) return null;
 
   return (
-    <div className="mb-4 rounded-2xl bg-gradient-to-r from-purple-900 via-indigo-900 to-blue-900 p-5 text-white shadow-xl animate-fade-in">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3 pb-3 border-b border-white/10">
+    <div className="mb-4 rounded-xl border border-slate-200/90 bg-white p-4 shadow-2xs">
+      {/* Header gọn gàng, chuẩn y tế */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-amber-400/20 rounded-xl text-amber-300">
-            <Sparkles className="h-5 w-5" />
+          <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-150 flex items-center justify-center text-blue-600">
+            <Compass className="h-4 w-4" />
           </div>
           <div>
-            <h4 className="font-extrabold text-base flex items-center gap-2">
-              ⭐ Lộ Trình Khám Động Tối Ưu (AI Dynamic Queue)
+            <h4 className="font-bold text-sm text-slate-800">
+              Lộ trình thực hiện Cận lâm sàng
             </h4>
-            <p className="text-xs text-blue-200">
-              Thuật toán Python Min-Wait Routing • {engine === 'python_dynamic_router' ? '🐍 Python Engine' : '⚡ NestJS Fallback'}
+            <p className="text-[11px] text-slate-500">
+              Điều phối thứ tự theo trạng thái hàng đợi thực tế
             </p>
           </div>
         </div>
-        {tietKiemPhut > 0 && (
-          <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold animate-pulse">
-            ⚡ Tiết kiệm ~{tietKiemPhut} phút chờ!
+
+        {tietKiemPhut > 0 && routingPlan.length > 1 && (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+            <Clock className="h-3 w-3" /> Tiết kiệm ~{tietKiemPhut} phút
           </span>
         )}
       </div>
 
-      {/* Lời dặn Gemini AI */}
-      {thongDiep && (
-        <div className="bg-white/10 rounded-xl p-3.5 mb-4 text-xs text-blue-50 leading-relaxed border border-white/10 flex items-start gap-2.5">
-          <ChevronRight className="h-4 w-4 text-amber-300 shrink-0 mt-0.5" />
-          <span>{thongDiep}</span>
+      {/* Hiển thị lộ trình */}
+      {routingPlan.length === 1 ? (
+        /* Khi chỉ có 1 phòng: Card đơn giản, rõ ràng, không rườm rà */
+        (() => {
+          const step = routingPlan[0];
+          const isFree = (step.so_nguoi_cho || 0) === 0;
+          return (
+            <div className="rounded-lg bg-slate-50/70 border border-slate-200/80 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
+                    Phòng tiếp nhận
+                  </span>
+                  <span className="font-bold text-sm text-slate-900">{step.ten_phong}</span>
+                </div>
+                {step.dich_vu?.length > 0 && (
+                  <p className="text-xs text-slate-600">
+                    Chỉ định: <span className="font-medium text-slate-800">{step.dich_vu.join(', ')}</span>
+                  </p>
+                )}
+                <p className="text-xs text-slate-500">
+                  {isFree
+                    ? 'Hiện không có bệnh nhân chờ phía trước — Bệnh nhân có thể đến thực hiện ngay.'
+                    : `Đang có ${step.so_nguoi_cho} người chờ phía trước (~${step.thoi_gian_cho_phut} phút).`}
+                </p>
+              </div>
+
+              <div className="sm:text-right shrink-0">
+                <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold ${
+                  isFree
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                }`}>
+                  {isFree ? '✓ Đến làm ngay (0 người chờ)' : `${step.so_nguoi_cho} người chờ (~${step.thoi_gian_cho_phut}p)`}
+                </span>
+              </div>
+            </div>
+          );
+        })()
+      ) : (
+        /* Khi có từ 2 phòng trở lên: Danh sách các bước tối ưu */
+        <div className="space-y-2.5">
+          {thongDiep && (
+            <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+              💡 {thongDiep}
+            </p>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {routingPlan.map((step) => {
+              const isFree = (step.so_nguoi_cho || 0) === 0;
+              return (
+                <div
+                  key={step.buoc}
+                  className={`rounded-lg p-3 border transition-all ${
+                    step.buoc === 1
+                      ? 'bg-blue-50/40 border-blue-200 ring-1 ring-blue-300/40'
+                      : 'bg-white border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                      step.buoc === 1 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      Bước {step.buoc}
+                    </span>
+                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded ${
+                      isFree
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold'
+                        : 'bg-slate-100 text-slate-700'
+                    }`}>
+                      {isFree ? 'Không cần chờ' : `${step.so_nguoi_cho} người chờ (~${step.thoi_gian_cho_phut}p)`}
+                    </span>
+                  </div>
+
+                  <p className="font-bold text-sm text-slate-800">{step.ten_phong}</p>
+
+                  {step.dich_vu && step.dich_vu.length > 0 && (
+                    <p className="text-xs text-slate-500 mt-0.5 truncate">
+                      {step.dich_vu.join(', ')}
+                    </p>
+                  )}
+
+                  <p className={`text-[11px] mt-2 leading-tight ${
+                    step.buoc === 1 ? 'text-blue-700 font-medium' : 'text-slate-500'
+                  }`}>
+                    {step.khuyen_nghi}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
-
-      {/* Timeline từng bước */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {routingPlan.map((step) => (
-          <div
-            key={step.buoc}
-            className={`rounded-xl p-3.5 border transition-all ${
-              step.buoc === 1
-                ? 'bg-emerald-500/20 border-emerald-400/50 shadow-md ring-2 ring-emerald-400/30'
-                : 'bg-white/8 border-white/15'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className={`text-[11px] font-extrabold px-2 py-0.5 rounded-full ${
-                step.buoc === 1 ? 'bg-emerald-400 text-emerald-950' : 'bg-white/20 text-white'
-              }`}>
-                Bước {step.buoc}
-              </span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                step.badge_color === 'emerald' ? 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/30' :
-                step.badge_color === 'amber' ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' :
-                'bg-red-400/20 text-red-300 border border-red-400/30'
-              }`}>
-                {step.so_nguoi_cho} người chờ (~{step.thoi_gian_cho_phut}p)
-              </span>
-            </div>
-
-            <p className="font-bold text-sm text-white">{step.ten_phong}</p>
-
-            {step.dich_vu && step.dich_vu.length > 0 && (
-              <p className="text-xs text-blue-200 mt-1 truncate">
-                Dịch vụ: {step.dich_vu.join(', ')}
-              </p>
-            )}
-
-            <p className={`text-[11px] mt-2 font-medium leading-tight ${
-              step.buoc === 1 ? 'text-emerald-200 font-bold' : 'text-gray-300'
-            }`}>
-              {step.khuyen_nghi}
-            </p>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -1458,6 +1633,7 @@ function DynamicQueuePanel({ benhAnKhamId }) {
 /* ──── TAB XÉT NGHIỆM (XEM KẾT QUẢ TỪ CSDL & TẠO CHỈ ĐỊNH) ──── */
 function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
   const qc = useQueryClient();
+  const [previewFile, setPreviewFile] = useState(null);
   const { data, isLoading } = useQuery({
     queryKey: ['xn-benh-an', benhAnKhamId],
     queryFn: () => apiGet(`/xet-nghiem/benh-an-kham/${benhAnKhamId}`),
@@ -1551,30 +1727,37 @@ function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
                     {ketQua.nhanXet && (
                       <p className="text-xs text-emerald-800 font-medium">Nhận xét: {ketQua.nhanXet}</p>
                     )}
-                    {ketQua.fileDinhKem && (
+                    {parseAttachmentUrls(ketQua.fileDinhKem).length > 0 && (
                       <div className="mt-2 pt-2 border-t border-emerald-200/60 flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          {ketQua.fileDinhKem.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
-                            <img
-                              src={ketQua.fileDinhKem.startsWith('http') ? ketQua.fileDinhKem : `http://localhost:5000${ketQua.fileDinhKem}`}
-                              alt="Hình ảnh kết quả"
-                              className="h-12 w-12 object-cover rounded-lg border border-emerald-300 shadow-2xs cursor-pointer hover:scale-105 transition-transform"
-                              onClick={() => window.open(ketQua.fileDinhKem.startsWith('http') ? ketQua.fileDinhKem : `http://localhost:5000${ketQua.fileDinhKem}`, '_blank')}
-                            />
-                          ) : null}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {parseAttachmentUrls(ketQua.fileDinhKem).map((file, fileIndex) => {
+                            const fileUrl = toAttachmentUrl(file);
+                            return /\.(jpeg|jpg|gif|png|webp)$/i.test(file) ? (
+                              <button
+                                key={file}
+                                type="button"
+                                onClick={() => setPreviewFile({ url: fileUrl, name: `Hình ảnh kết quả ${fileIndex + 1}`, files: parseAttachmentUrls(ketQua.fileDinhKem).map(toAttachmentUrl), index: fileIndex })}
+                                className="rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                title="Xem ảnh ngay trên trang"
+                              >
+                                <img src={fileUrl} alt={`Hình ảnh kết quả ${fileIndex + 1}`} className="h-12 w-12 object-cover rounded-lg border border-emerald-300 shadow-2xs cursor-pointer hover:scale-105 transition-transform" />
+                              </button>
+                            ) : (
+                              <button
+                                key={file}
+                                type="button"
+                                onClick={() => setPreviewFile({ url: fileUrl, name: `Tệp kết quả ${fileIndex + 1}`, files: parseAttachmentUrls(ketQua.fileDinhKem).map(toAttachmentUrl), index: fileIndex })}
+                                className="text-xs text-emerald-700 underline"
+                              >
+                                Tệp {fileIndex + 1} (xem tại đây)
+                              </button>
+                            );
+                          })}
                           <div>
                             <p className="text-xs font-bold text-emerald-900">📎 Có tệp đính kèm kết quả (X-Quang / Siêu âm / PDF)</p>
-                            <span className="text-[10px] text-emerald-700 font-mono truncate max-w-xs block">{ketQua.fileDinhKem}</span>
+                            <span className="text-[10px] text-emerald-700 font-mono block">{parseAttachmentUrls(ketQua.fileDinhKem).length} tệp</span>
                           </div>
                         </div>
-                        <a
-                          href={ketQua.fileDinhKem.startsWith('http') ? ketQua.fileDinhKem : `http://localhost:5000${ketQua.fileDinhKem}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs"
-                        >
-                          Xem tệp lớn ↗
-                        </a>
                       </div>
                     )}
                   </div>
@@ -1588,6 +1771,55 @@ function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
           </div>
         )}
       </MedCard>
+      {previewFile && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Xem tệp kết quả cận lâm sàng"
+          onClick={() => setPreviewFile(null)}
+        >
+          <div className="relative w-full max-w-5xl max-h-[92vh] rounded-2xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 border-b border-gray-100 pb-3 mb-3">
+              <p className="text-sm font-bold text-gray-900 truncate">{previewFile.name}</p>
+              <button type="button" onClick={() => setPreviewFile(null)} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100" aria-label="Đóng">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex items-center justify-center gap-3 max-h-[78vh] overflow-auto">
+              {previewFile.index > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const index = previewFile.index - 1;
+                    setPreviewFile({ ...previewFile, url: previewFile.files[index], index, name: `Tệp kết quả ${index + 1}` });
+                  }}
+                  className="shrink-0 rounded-full bg-gray-100 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-200"
+                >
+                  Trước
+                </button>
+              )}
+              {/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i.test(previewFile.url) ? (
+                <img src={previewFile.url} alt={previewFile.name} className="max-h-[76vh] max-w-full object-contain rounded-lg" />
+              ) : (
+                <iframe src={previewFile.url} title={previewFile.name} className="h-[76vh] w-full rounded-lg border border-gray-200" />
+              )}
+              {previewFile.index < previewFile.files.length - 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const index = previewFile.index + 1;
+                    setPreviewFile({ ...previewFile, url: previewFile.files[index], index, name: `Tệp kết quả ${index + 1}` });
+                  }}
+                  className="shrink-0 rounded-full bg-gray-100 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-200"
+                >
+                  Sau
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,6 +3,17 @@ import { Printer, X, FlaskConical, ExternalLink, Image as ImageIcon, FileText } 
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { formatDate, formatDateTime } from '../../utils/formatDate';
 
+const parseAttachments = (value) => {
+  if (!value) return [];
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    if (Array.isArray(parsed)) return parsed.filter(Boolean);
+  } catch {
+    // Dữ liệu cũ là một URL đơn.
+  }
+  return typeof value === 'string' ? [value] : [];
+};
+
 export default function InKetQuaXetNghiemModal({
   isOpen,
   onClose,
@@ -16,7 +27,98 @@ export default function InKetQuaXetNghiemModal({
   if (!isOpen) return null;
 
   const handlePrint = () => {
-    window.print();
+    const source = printRef.current;
+    if (!source) return;
+
+    const printFrame = document.createElement('iframe');
+    printFrame.setAttribute('title', 'In phiếu kết quả');
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    printFrame.style.visibility = 'hidden';
+    document.body.appendChild(printFrame);
+
+    const printDocument = printFrame.contentDocument;
+    if (!printDocument || !printFrame.contentWindow) {
+      printFrame.remove();
+      return;
+    }
+
+    printDocument.open();
+    printDocument.write(`
+      <!doctype html>
+      <html lang="vi">
+        <head>
+          <meta charset="UTF-8" />
+          <title>Phiếu kết quả xét nghiệm & cận lâm sàng</title>
+          <style>
+            @page {
+              size: A4;
+              margin: 10mm 12mm;
+            }
+            * {
+              box-sizing: border-box;
+              font-family: "Times New Roman", Times, serif !important;
+            }
+            html, body {
+              margin: 0;
+              padding: 0;
+              background: #fff;
+              color: #111;
+              font-size: 13px;
+            }
+            #print-result-section {
+              width: 100%;
+              min-height: 0 !important;
+              padding: 0 !important;
+              border: 0 !important;
+              box-shadow: none !important;
+              background: #fff !important;
+            }
+            .no-print {
+              display: none !important;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            img {
+              max-width: 85mm !important;
+              max-height: 55mm !important;
+              object-fit: contain;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+            table, tr, .border {
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+          </style>
+        </head>
+        <body>
+          ${source.outerHTML}
+        </body>
+      </html>
+    `);
+    printDocument.close();
+
+    const printImages = Array.from(printDocument.images);
+    const waitForImages = Promise.all(printImages.map((image) => {
+      if (image.complete) return Promise.resolve();
+      return new Promise((resolve) => {
+        image.addEventListener('load', resolve, { once: true });
+        image.addEventListener('error', resolve, { once: true });
+      });
+    }));
+
+    waitForImages.then(() => {
+      printFrame.contentWindow.focus();
+      printFrame.contentWindow.print();
+      window.setTimeout(() => printFrame.remove(), 1000);
+    });
   };
 
   const listItems = Array.isArray(items) ? items : [items].filter(Boolean);
@@ -63,7 +165,7 @@ export default function InKetQuaXetNghiemModal({
         <div className="flex-1 overflow-y-auto p-8 bg-gray-100/50 flex justify-center">
           <div
             ref={printRef}
-            id="print-section"
+            id="print-result-section"
             className="w-full max-w-[210mm] min-h-[297mm] bg-white p-8 sm:p-12 shadow-sm border border-gray-300 text-gray-900 font-serif leading-normal"
             style={{ fontSize: '13px' }}
           >
@@ -164,6 +266,17 @@ export default function InKetQuaXetNghiemModal({
                     const donVi = kq.donVi ?? kq.don_vi ?? dv.donViKetQua ?? '';
                     const giaTriBinhThuong = dv.giaTriBinhThuong || 'Bình thường';
                     const nhanXet = kq.nhanXet ?? kq.nhan_xet ?? 'Chỉ số trong giới hạn bình thường';
+                    let chiTiet = {};
+                    try {
+                      const rawChiTiet = kq.ketQuaChiTiet ?? kq.ket_qua_chi_tiet;
+                      chiTiet = rawChiTiet ? JSON.parse(rawChiTiet) : {};
+                    } catch {
+                      chiTiet = {};
+                    }
+                    const hienThiGiaTri =
+                      Object.keys(chiTiet).length > 0
+                        ? Object.entries(chiTiet).map(([key, value]) => `${key}: ${value}`).join('; ')
+                        : giaTri;
 
                     return (
                       <tr key={c.id || i} className="hover:bg-gray-50/50">
@@ -177,7 +290,7 @@ export default function InKetQuaXetNghiemModal({
                           )}
                         </td>
                         <td className="border border-gray-300 px-2 py-2 text-center font-extrabold text-sm text-purple-900">
-                          {giaTri}
+                          {hienThiGiaTri}
                         </td>
                         <td className="border border-gray-300 px-2 py-2 text-center text-gray-700">
                           {donVi}
@@ -196,20 +309,17 @@ export default function InKetQuaXetNghiemModal({
             </div>
 
             {/* PHẦN III: HÌNH ẢNH / TỆP ĐÍNH KÈM (NẾU CÓ) */}
-            {listItems.some((c) => c.ketQua?.fileDinhKem || c.ketQua?.file_dinh_kem) && (
+            {listItems.some((c) => parseAttachments(c.ketQua?.fileDinhKem || c.ketQua?.file_dinh_kem).length > 0) && (
               <div className="space-y-3 mb-6">
                 <h2 className="font-bold text-xs uppercase bg-gray-200/80 px-2 py-1 text-gray-800 flex items-center gap-1.5">
                   <ImageIcon className="h-3.5 w-3.5" /> III. HÌNH ẢNH Y KHOA / TÀI LIỆU KẾT QUẢ ĐÍNH KÈM
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {listItems.map((c, i) => {
-                    const file = c.ketQua?.fileDinhKem || c.ketQua?.file_dinh_kem;
-                    if (!file) return null;
+                  {listItems.flatMap((c, i) => parseAttachments(c.ketQua?.fileDinhKem || c.ketQua?.file_dinh_kem).map((file, fileIndex) => {
                     const fileUrl = file.startsWith('http') ? file : `http://localhost:5000${file}`;
-                    const isImage = file.match(/\.(jpeg|jpg|gif|png|webp)$/i);
-
+                    const isImage = /\.(jpeg|jpg|gif|png|webp)$/i.test(file);
                     return (
-                      <div key={i} className="border border-gray-300 rounded-lg p-3 bg-gray-50 space-y-2">
+                      <div key={`${i}-${fileIndex}`} className="border border-gray-300 rounded-lg p-3 bg-gray-50 space-y-2">
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-bold text-gray-800">
                             {c.dichVu?.tenDichVu || 'Ảnh kết quả'}
@@ -250,7 +360,7 @@ export default function InKetQuaXetNghiemModal({
                         )}
                       </div>
                     );
-                  })}
+                  }))}
                 </div>
               </div>
             )}
@@ -297,17 +407,31 @@ export default function InKetQuaXetNghiemModal({
           body * {
             visibility: hidden;
           }
-          #print-section, #print-section * {
+          #print-result-section, #print-result-section * {
             visibility: visible;
           }
-          #print-section {
+          #print-result-section {
             position: absolute;
             left: 0;
             top: 0;
             width: 100% !important;
+            min-height: 0 !important;
             padding: 0 !important;
             border: none !important;
             box-shadow: none !important;
+            overflow: visible !important;
+          }
+          #print-result-section img {
+            max-height: 55mm !important;
+            max-width: 85mm !important;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          #print-result-section table,
+          #print-result-section tr,
+          #print-result-section .border {
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
           .no-print {
             display: none !important;

@@ -8,7 +8,7 @@ import InBaoCaoModal from '../../../components/Print/InBaoCaoModal';
 import { apiGet } from '../../../services/api';
 import {
   Users, Pill, FlaskConical, BarChart3, TrendingUp, CheckCircle2,
-  Clock, Sparkles, BrainCircuit, HeartHandshake, Star, Calendar,
+  Clock, Sparkles, HeartHandshake, Star, Calendar,
   Printer, FileSpreadsheet, RotateCcw, Filter, AlertCircle, Eye, ArrowUpRight,
   Search, Stethoscope, Baby, UserCheck, ShieldAlert, MessageSquare, ShieldCheck
 } from 'lucide-react';
@@ -29,6 +29,8 @@ export default function ThongKeBacSiPage() {
   // State modal in và tìm kiếm ca khám
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [searchCaKham, setSearchCaKham] = useState('');
+  const [filterReviewStar, setFilterReviewStar] = useState('all'); // 'all' | 5 | 4 | 3 | 2 | 1
+  const [searchReview, setSearchReview] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['thong-ke-bac-si', user?.id, timeRange, hinhThuc, fromDate, toDate],
@@ -46,10 +48,11 @@ export default function ThongKeBacSiPage() {
 
   // Fetch dữ liệu đánh giá & CSAT thực tế từ bệnh nhân
   const { data: danhGiaData, isLoading: isLoadingReviews } = useQuery({
-    queryKey: ['thong-ke-danh-gia-bac-si', user?.id, timeRange, fromDate, toDate],
+    queryKey: ['thong-ke-danh-gia-bac-si', user?.id, timeRange, hinhThuc, fromDate, toDate],
     queryFn: () => {
       const params = new URLSearchParams();
       if (timeRange) params.append('range', timeRange);
+      if (hinhThuc !== 'all') params.append('hinhThuc', hinhThuc);
       if (fromDate) params.append('tuNgay', fromDate);
       if (toDate) params.append('denNgay', toDate);
       return apiGet(`/danh-gia/bac-si?${params.toString()}`);
@@ -98,14 +101,14 @@ export default function ThongKeBacSiPage() {
       moTa: '92.4% chẩn đoán của Bác sĩ trùng khớp với phân luồng chuyên khoa tự động của AI Triage.',
     },
     khungGioCaoDiem: [
-      { gio: '08:00 - 09:00', benhNhan: 18, congSuat: 'Cao' },
-      { gio: '09:00 - 10:00', benhNhan: 26, congSuat: 'Đỉnh điểm' },
-      { gio: '10:00 - 11:00', benhNhan: 22, congSuat: 'Cao' },
-      { gio: '11:00 - 12:00', benhNhan: 10, congSuat: 'Bình thường' },
-      { gio: '13:30 - 14:30', benhNhan: 20, congSuat: 'Cao' },
-      { gio: '14:30 - 15:30', benhNhan: 24, congSuat: 'Đỉnh điểm' },
-      { gio: '15:30 - 16:30', benhNhan: 16, congSuat: 'Bình thường' },
-      { gio: '16:30 - 17:30', benhNhan: 8, congSuat: 'Thấp' },
+      { gio: '08:00 - 09:00', trucTiep: 14, trucTuyen: 4, benhNhan: 18, congSuat: 'Cao' },
+      { gio: '09:00 - 10:00', trucTiep: 20, trucTuyen: 6, benhNhan: 26, congSuat: 'Đỉnh điểm' },
+      { gio: '10:00 - 11:00', trucTiep: 17, trucTuyen: 5, benhNhan: 22, congSuat: 'Cao' },
+      { gio: '11:00 - 12:00', trucTiep: 8, trucTuyen: 2, benhNhan: 10, congSuat: 'Bình thường' },
+      { gio: '13:30 - 14:30', trucTiep: 15, trucTuyen: 5, benhNhan: 20, congSuat: 'Cao' },
+      { gio: '14:30 - 15:30', trucTiep: 18, trucTuyen: 6, benhNhan: 24, congSuat: 'Đỉnh điểm' },
+      { gio: '15:30 - 16:30', trucTiep: 12, trucTuyen: 4, benhNhan: 16, congSuat: 'Bình thường' },
+      { gio: '16:30 - 17:30', trucTiep: 6, trucTuyen: 2, benhNhan: 8, congSuat: 'Thấp' },
     ],
     tyLeNoShow: '2.5%',
     tyLeTaiKham: '68.5%',
@@ -144,6 +147,29 @@ export default function ThongKeBacSiPage() {
     );
   }, [stats.danhSachCaKham, searchCaKham]);
 
+  // Lọc danh sách nhận xét đánh giá theo số sao và từ khóa tìm kiếm
+  const filteredNhanXet = useMemo(() => {
+    let list = reviews.danhSachNhanXet || [];
+    if (filterReviewStar !== 'all') {
+      if (filterReviewStar === 'low') {
+        list = list.filter(item => Number(item.diemBacSi) <= 2);
+      } else {
+        const starNum = Number(filterReviewStar);
+        list = list.filter(item => Number(item.diemBacSi) === starNum);
+      }
+    }
+    if (searchReview.trim()) {
+      const term = searchReview.toLowerCase().trim();
+      list = list.filter(item =>
+        item.tenBenhNhan?.toLowerCase().includes(term) ||
+        item.nhanXet?.toLowerCase().includes(term) ||
+        item.phanHoiGiamDoc?.toLowerCase().includes(term) ||
+        (item.tieuChiHaiLong || []).some((tc) => tc.toLowerCase().includes(term))
+      );
+    }
+    return list;
+  }, [reviews.danhSachNhanXet, filterReviewStar, searchReview]);
+
   // Đặt lại bộ lọc
   const handleResetFilter = () => {
     setTimeRange('thang_nay');
@@ -151,6 +177,8 @@ export default function ThongKeBacSiPage() {
     setFromDate('');
     setToDate('');
     setSearchCaKham('');
+    setFilterReviewStar('all');
+    setSearchReview('');
   };
 
   // Xuất file CSV báo cáo hiệu suất bác sĩ
@@ -169,10 +197,9 @@ export default function ThongKeBacSiPage() {
       ['Tổng đơn thuốc đã kê', stats.tongDonThuocKe],
       ['Tổng chỉ định cận lâm sàng', stats.tongChiDinhCLS],
       ['Tỷ lệ hoàn thành ca khám', stats.tyLeHoanThanh],
-      ['Tỷ lệ Bác sĩ đồng thuận AI Triage', stats.aiTriageMetrics?.tyLeDongThuanAI || '92.4%'],
-      ['Tỷ lệ bệnh nhân tái khám', stats.tyLeTaiKham || '68.5%'],
-      ['Tỷ lệ bệnh nhân hủy lịch (No-show)', stats.tyLeNoShow || '3.2%'],
-      ['Điểm đánh giá hài lòng (CSAT)', stats.diemHaiLongCSAT || '4.9/5.0'],
+      ['Tỷ lệ bệnh nhân tái khám', stats.tyLeTaiKham || '0.0%'],
+      ['Tỷ lệ bệnh nhân hủy lịch (No-show)', stats.tyLeNoShow || '0.0%'],
+      ['Điểm đánh giá hài lòng (CSAT)', stats.diemHaiLongCSAT || '5.0/5.0'],
       [''],
       ['2. DANH SÁCH CHI TIẾT CÁC CA KHÁM'],
       ['STT', 'Mã Ca', 'Mã BN', 'Họ Tên Bệnh Nhân', 'Tuổi', 'Giới Tính', 'Thời Gian', 'Hình Thức', 'Chẩn Đoán', 'Trạng Thái', 'Loại Khám'],
@@ -394,15 +421,14 @@ export default function ThongKeBacSiPage() {
         </MedCard>
       </div>
 
-      {/* 2. PHÂN TÍCH CHUYÊN MÔN Y KHOA & ĐIỂM NHẤN CÔNG NGHỆ AI TRIAGE */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Biểu đồ Cơ cấu bệnh lý (Pie Chart) - Chiếm 7 cols */}
-        <div className="lg:col-span-7">
-          <MedCard
-            title="Cơ Cấu Bệnh Lý Chẩn Đoán (Top 5 Mặt Bệnh)"
-            subtitle="Tỷ lệ phân bố các bệnh lý thường gặp được Bác sĩ chẩn đoán và điều trị"
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-4 pt-2">
+      {/* 2. PHÂN TÍCH CHUYÊN MÔN Y KHOA (CƠ CẤU BỆNH LÝ) */}
+      <div className="w-full">
+        <MedCard
+          title="Cơ Cấu Bệnh Lý Chẩn Đoán (Top 5 Mặt Bệnh)"
+          subtitle="Tỷ lệ phân bố các bệnh lý thường gặp được Bác sĩ chẩn đoán và điều trị"
+        >
+          {stats.coCauBenhLy && stats.coCauBenhLy.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-6 pt-2">
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -425,16 +451,16 @@ export default function ThongKeBacSiPage() {
               </div>
 
               {/* Legend chi tiết kèm số lượng và tỷ lệ % */}
-              <div className="space-y-2.5">
+              <div className="space-y-2.5 max-w-lg">
                 {stats.coCauBenhLy.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border border-gray-100 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }}></span>
-                      <span className="font-semibold text-gray-800 truncate max-w-[140px]">{item.name}</span>
+                  <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 border border-gray-100 text-xs hover:bg-gray-100/70 transition-colors">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-2xs" style={{ backgroundColor: item.color }}></span>
+                      <span className="font-semibold text-gray-800">{item.name}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500">{item.count} ca</span>
-                      <span className="font-bold text-gray-900 bg-white px-2 py-0.5 rounded shadow-2xs border border-gray-200">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-gray-500 font-medium">{item.count} ca</span>
+                      <span className="font-bold text-primary-700 bg-white px-2.5 py-0.5 rounded-lg shadow-2xs border border-gray-200">
                         {item.percentage}
                       </span>
                     </div>
@@ -442,65 +468,14 @@ export default function ThongKeBacSiPage() {
                 ))}
               </div>
             </div>
-          </MedCard>
-        </div>
-
-        {/* Thẻ Phân tích Tương tác AI Triage (Điểm nhấn đồ án KLTN) - Chiếm 5 cols */}
-        <div className="lg:col-span-5">
-          <MedCard
-            className="h-full bg-gradient-to-br from-indigo-900 via-blue-900 to-primary-900 text-white border-0 shadow-lg relative overflow-hidden"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-white/10 rounded-xl backdrop-blur-xs text-amber-300">
-                  <BrainCircuit className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-1.5">
-                    Tương Tác AI Triage <Sparkles className="h-4 w-4 text-amber-300" />
-                  </h3>
-                  <p className="text-xs text-blue-200">Độ chính xác phân luồng AI & Bác sĩ</p>
-                </div>
-              </div>
-              <span className="bg-emerald-500/20 text-emerald-300 text-xs font-extrabold px-2.5 py-1 rounded-full border border-emerald-500/30">
-                AI Active
-              </span>
+          ) : (
+            <div className="py-16 text-center text-gray-400 text-xs flex flex-col items-center justify-center">
+              <Stethoscope className="h-8 w-8 text-gray-300 mb-2" />
+              <p className="font-medium text-gray-500">Chưa có dữ liệu chẩn đoán bệnh trong kỳ lọc này</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">Dữ liệu sẽ tự động cập nhật khi có kết quả khám</p>
             </div>
-
-            <div className="space-y-4 text-sm mt-2">
-              {/* Progress Bar Đồng Thuận AI */}
-              <div className="bg-white/10 p-4 rounded-xl backdrop-blur-xs border border-white/10">
-                <div className="flex items-center justify-between text-xs mb-1.5 font-bold">
-                  <span className="text-blue-100">Tỷ lệ Bác sĩ đồng thuận với AI:</span>
-                  <span className="text-emerald-300 text-sm font-extrabold">{stats.aiTriageMetrics?.tyLeDongThuanAI || '92.4%'}</span>
-                </div>
-                <div className="w-full bg-white/20 rounded-full h-2.5 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-teal-400 to-emerald-400 h-2.5 rounded-full transition-all duration-1000"
-                    style={{ width: stats.aiTriageMetrics?.tyLeDongThuanAI || '92.4%' }}
-                  ></div>
-                </div>
-                <p className="text-[11px] text-blue-200 mt-2 leading-relaxed">
-                  {stats.aiTriageMetrics?.moTa || '92.4% chẩn đoán của Bác sĩ trùng khớp với phân luồng chuyên khoa của AI Triage.'}
-                </p>
-              </div>
-
-              {/* Grid 2 chỉ số phụ */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white/10 p-3 rounded-xl backdrop-blur-xs border border-white/10">
-                  <p className="text-[11px] text-blue-200 uppercase font-semibold">Tỷ lệ điều chỉnh</p>
-                  <p className="text-xl font-extrabold text-amber-300 mt-1">{stats.aiTriageMetrics?.tyLeDieuChinh || '7.6%'}</p>
-                  <p className="text-[10px] text-blue-300 mt-0.5">Bác sĩ tái phân loại</p>
-                </div>
-                <div className="bg-white/10 p-3 rounded-xl backdrop-blur-xs border border-white/10">
-                  <p className="text-[11px] text-blue-200 uppercase font-semibold">Cảnh báo sớm</p>
-                  <p className="text-xl font-extrabold text-rose-300 mt-1">{stats.aiTriageMetrics?.soCaCanhBaoSom || 18} <span className="text-xs font-normal text-white">ca</span></p>
-                  <p className="text-[10px] text-blue-300 mt-0.5">Phát hiện nguy cơ cao</p>
-                </div>
-              </div>
-            </div>
-          </MedCard>
-        </div>
+          )}
+        </MedCard>
       </div>
 
       {/* 3. TẢI CÔNG VIỆC & BIỂU ĐỒ THỜI GIAN (WORKLOAD) */}
@@ -508,33 +483,83 @@ export default function ThongKeBacSiPage() {
         {/* Biểu đồ Khung giờ cao điểm - Chiếm 8 cols */}
         <div className="lg:col-span-8">
           <MedCard
-            title="Lưu Lượng Bệnh Nhân Theo Khung Giờ (Khung Giờ Cao Điểm)"
-            subtitle="Thống kê phân bổ bệnh nhân theo từng giờ làm việc trong ngày giúp Bác sĩ điều phối thể lực"
+            title="Lưu Lượng Bệnh Nhân Theo Khung Giờ (Khám Trực Tiếp & Trực Tuyến)"
+            subtitle="Thống kê phân bổ bệnh nhân theo từng khung giờ trong ngày bao gồm cả Khám tại viện và Tư vấn từ xa"
           >
             <div className="h-72 w-full pt-2">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={stats.khungGioCaoDiem} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                   <XAxis dataKey="gio" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                   <Tooltip
-                    formatter={(val, name, item) => [`${val} bệnh nhân (${item.payload.congSuat})`, 'Lưu lượng']}
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const d = payload[0]?.payload;
+                        return (
+                          <div className="bg-white p-3 rounded-xl shadow-xl border border-gray-100 text-xs space-y-1.5 min-w-[210px]">
+                            <p className="font-bold text-gray-800 border-b pb-1 flex items-center justify-between">
+                              <span>⏰ Khung giờ:</span>
+                              <span className="text-primary-700 font-mono">{label}</span>
+                            </p>
+                            {(hinhThuc === 'all' || hinhThuc === 'truc_tiep') && (
+                              <div className="flex items-center justify-between text-blue-700 font-medium">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block"></span> Khám trực tiếp:
+                                </span>
+                                <strong className="font-bold">{d?.trucTiep ?? 0} ca</strong>
+                              </div>
+                            )}
+                            {(hinhThuc === 'all' || hinhThuc === 'truc_tuyen') && (
+                              <div className="flex items-center justify-between text-purple-700 font-medium">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-purple-600 inline-block"></span> Khám trực tuyến:
+                                </span>
+                                <strong className="font-bold">{d?.trucTuyen ?? 0} ca</strong>
+                              </div>
+                            )}
+                            <div className="border-t pt-1 flex items-center justify-between text-gray-900 font-bold">
+                              <span>👥 Tổng lưu lượng:</span>
+                              <span>
+                                {d?.benhNhan ?? (Number(d?.trucTiep || 0) + Number(d?.trucTuyen || 0))} ca{' '}
+                                <span className="text-[10px] font-normal text-gray-500">({d?.congSuat || 'Thấp'})</span>
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
                   />
-                  <Bar dataKey="benhNhan" fill="#2563EB" radius={[6, 6, 0, 0]}>
-                    {stats.khungGioCaoDiem.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={entry.congSuat === 'Đỉnh điểm' ? '#DC2626' : entry.congSuat === 'Cao' ? '#F59E0B' : '#2563EB'}
-                      />
-                    ))}
-                  </Bar>
+                  {(hinhThuc === 'all' || hinhThuc === 'truc_tiep') && (
+                    <Bar dataKey="trucTiep" name="Khám trực tiếp" fill="#2563EB" radius={[4, 4, 0, 0]} />
+                  )}
+                  {(hinhThuc === 'all' || hinhThuc === 'truc_tuyen') && (
+                    <Bar dataKey="trucTuyen" name="Khám trực tuyến (Telehealth)" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex items-center justify-center gap-6 mt-3 text-xs font-semibold text-gray-600">
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-600"></span> Đỉnh điểm (&ge; 24 ca/h)</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-500"></span> Cao (18 - 23 ca/h)</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-600"></span> Bình thường (&le; 17 ca/h)</span>
+            <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-3 border-t border-gray-100 text-xs">
+              <div className="flex items-center gap-4 font-medium text-gray-700">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-md bg-blue-600 shadow-2xs"></span> Khám trực tiếp tại phòng khám
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-md bg-purple-600 shadow-2xs"></span> Khám trực tuyến (Telehealth)
+                </span>
+              </div>
+              <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-red-500"></span> Đỉnh điểm (&ge; 5 ca)
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span> Cao (3 - 4 ca)
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-blue-500"></span> Bình thường (1 - 2 ca)
+                </span>
+              </div>
             </div>
           </MedCard>
         </div>
@@ -664,31 +689,36 @@ export default function ThongKeBacSiPage() {
       {/* 6. ĐÁNH GIÁ & Ý KIẾN ĐÓNG GÓP TỪ BỆNH NHÂN (CSAT & PATIENT REVIEWS) */}
       <MedCard
         title={
-          <div className="flex items-center justify-between w-full">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full">
             <div className="flex items-center gap-2">
               <Star className="h-5 w-5 text-amber-500 fill-amber-400" />
-              <span>Đánh Giá Trải Nghiệm Khám Bệnh & Phản Hồi Từ Người Bệnh ({reviews.tongDanhGia} lượt)</span>
+              <span>Đánh Giá & Phản Hồi Từ Người Bệnh ({reviews.tongDanhGia} lượt)</span>
             </div>
-            <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
-              Điểm Bác Sĩ TB: {reviews.diemBacSiTB || 5.0} / 5.0 ⭐
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
+                Điểm Bác Sĩ: {reviews.diemBacSiTB || 5.0} / 5.0 ⭐
+              </span>
+              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                Hài lòng: {reviews.tyLeHaiLong || '100%'}
+              </span>
+            </div>
           </div>
         }
-        subtitle="Ý kiến ghi nhận thực tế từ bệnh nhân sau khi hoàn tất ca khám, giúp nâng cao chất lượng chuyên môn và thái độ phục vụ"
+        subtitle="Ý kiến ghi nhận thực tế từ bệnh nhân sau ca khám theo đúng bộ lọc thời gian & hình thức"
       >
-        <div className="space-y-6 pt-2">
-          {/* Hàng tổng quan điểm số & phân bố sao */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-slate-50 p-4.5 rounded-2xl border border-slate-200/80">
-            {/* Cột 1: Điểm số to */}
-            <div className="md:col-span-4 flex flex-col items-center justify-center text-center p-3 bg-white rounded-xl border border-slate-200/60 shadow-2xs">
-              <span className="text-4xl font-black text-amber-600">
+        <div className="space-y-4 pt-1">
+          {/* Hàng tổng quan điểm số & phân bố sao (gọn gàng) */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70">
+            {/* Cột 1: Điểm số trung bình */}
+            <div className="md:col-span-3 flex flex-col items-center justify-center text-center p-2.5 bg-white rounded-lg border border-slate-200/60 shadow-2xs">
+              <span className="text-3xl font-black text-amber-600">
                 {reviews.tongDanhGia > 0 ? reviews.diemBacSiTB : '5.0'}
               </span>
-              <div className="flex items-center gap-1 my-1.5">
+              <div className="flex items-center gap-0.5 my-1">
                 {[1, 2, 3, 4, 5].map((s) => (
                   <Star
                     key={s}
-                    className={`h-5 w-5 ${
+                    className={`h-4 w-4 ${
                       s <= Math.round(reviews.diemBacSiTB || 5)
                         ? 'text-amber-400 fill-amber-400'
                         : 'text-gray-300'
@@ -696,31 +726,28 @@ export default function ThongKeBacSiPage() {
                   />
                 ))}
               </div>
-              <p className="text-xs font-bold text-gray-700">
-                {reviews.tongDanhGia} lượt đánh giá ca khám
+              <p className="text-[11px] font-bold text-gray-700">
+                {reviews.tongDanhGia} lượt đánh giá thực tế
               </p>
-              <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full mt-1 border border-emerald-200">
-                Tỷ lệ hài lòng: {reviews.tyLeHaiLong || '100%'}
-              </span>
             </div>
 
             {/* Cột 2: Phân bố số sao 5 -> 1 */}
-            <div className="md:col-span-5 space-y-1.5 justify-center flex flex-col px-2">
+            <div className="md:col-span-5 space-y-1 justify-center flex flex-col px-2">
               {[5, 4, 3, 2, 1].map((star) => {
                 const count = reviews.phanBoSao?.[star] || 0;
                 const pct = reviews.tongDanhGia > 0 ? Math.round((count / reviews.tongDanhGia) * 100) : (star === 5 ? 100 : 0);
                 return (
                   <div key={star} className="flex items-center gap-2 text-xs">
-                    <span className="w-12 font-bold text-gray-700 flex items-center gap-1">
-                      {star} <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
+                    <span className="w-9 font-semibold text-gray-700 flex items-center gap-0.5 text-[11px]">
+                      {star} <Star className="h-2.5 w-2.5 text-amber-400 fill-amber-400" />
                     </span>
-                    <div className="flex-1 bg-gray-200 h-2.5 rounded-full overflow-hidden">
+                    <div className="flex-1 bg-gray-200 h-2 rounded-full overflow-hidden">
                       <div
-                        className="bg-amber-400 h-2.5 rounded-full transition-all duration-500"
+                        className="bg-amber-400 h-2 rounded-full transition-all duration-500"
                         style={{ width: `${pct}%` }}
                       ></div>
                     </div>
-                    <span className="w-14 text-right text-[11px] font-semibold text-gray-500">
+                    <span className="w-12 text-right text-[10px] font-medium text-gray-500">
                       {count} ({pct}%)
                     </span>
                   </div>
@@ -729,79 +756,160 @@ export default function ThongKeBacSiPage() {
             </div>
 
             {/* Cột 3: Chỉ số chi tiết */}
-            <div className="md:col-span-3 flex flex-col justify-center space-y-2 p-3 bg-white rounded-xl border border-slate-200/60 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500">CSAT chung buổi khám:</span>
-                <strong className="text-primary-700">{reviews.diemTrungBinhChung || 5.0} / 5.0</strong>
+            <div className="md:col-span-4 flex flex-col justify-center space-y-1.5 p-2.5 bg-white rounded-lg border border-slate-200/60 text-xs">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-gray-500">CSAT toàn buổi khám:</span>
+                <strong className="text-primary-700">{reviews.diemTrungBinhChung || 5.0} / 5.0 ⭐</strong>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-500">Mức độ đánh giá tốt:</span>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-gray-500">Tỷ lệ bệnh nhân hài lòng:</span>
                 <strong className="text-emerald-600">{reviews.tyLeHaiLong || '100%'}</strong>
               </div>
-              <p className="text-[11px] text-gray-400 italic pt-1 border-t border-gray-100">
-                Dữ liệu được cập nhật tự động khi bệnh nhân hoàn tất ca khám.
+              <p className="text-[10px] text-gray-400 italic pt-1 border-t border-gray-100">
+                Tự động đồng bộ theo bộ lọc kỳ khám của Bác sĩ.
               </p>
             </div>
           </div>
 
-          {/* Danh sách các ý kiến / nhận xét thực tế */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-              <MessageSquare className="h-4 w-4 text-primary-600" />
-              Chi Tiết Lời Nhắn & Đóng Góp Ý Kiến Từ Người Bệnh
-            </h4>
+          {/* Thanh công cụ phụ: Lọc sao & tìm kiếm nhận xét */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
+            {/* Tabs lọc sao */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setFilterReviewStar('all')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  filterReviewStar === 'all'
+                    ? 'bg-primary-600 text-white shadow-2xs'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Tất cả ({reviews.tongDanhGia})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterReviewStar(5)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all ${
+                  filterReviewStar === 5
+                    ? 'bg-amber-500 text-white shadow-2xs'
+                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/60'
+                }`}
+              >
+                5 <Star className="h-3 w-3 fill-current" /> ({reviews.phanBoSao?.[5] || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterReviewStar(4)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all ${
+                  filterReviewStar === 4
+                    ? 'bg-amber-500 text-white shadow-2xs'
+                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/60'
+                }`}
+              >
+                4 <Star className="h-3 w-3 fill-current" /> ({reviews.phanBoSao?.[4] || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterReviewStar(3)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all ${
+                  filterReviewStar === 3
+                    ? 'bg-amber-500 text-white shadow-2xs'
+                    : 'bg-slate-100 text-gray-700 hover:bg-slate-200 border border-slate-200'
+                }`}
+              >
+                3 <Star className="h-3 w-3 fill-current" /> ({reviews.phanBoSao?.[3] || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterReviewStar('low')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all ${
+                  filterReviewStar === 'low'
+                    ? 'bg-rose-500 text-white shadow-2xs'
+                    : 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200/60'
+                }`}
+              >
+                ≤ 2 <Star className="h-3 w-3 fill-current" /> ({(reviews.phanBoSao?.[2] || 0) + (reviews.phanBoSao?.[1] || 0)})
+              </button>
+            </div>
 
-            {reviews.danhSachNhanXet?.length === 0 ? (
-              <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200 text-gray-500">
-                <Star className="h-8 w-8 text-gray-300 mx-auto mb-1.5" />
-                <p className="text-xs font-semibold">Chưa có ý kiến nhận xét nào từ bệnh nhân trong kỳ này.</p>
-                <p className="text-[11px] text-gray-400">Các đánh giá mới của bệnh nhân sẽ tự động hiển thị tại đây.</p>
+            {/* Ô tìm kiếm nhận xét */}
+            <div className="relative w-full sm:w-56">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+              <input
+                type="text"
+                value={searchReview}
+                onChange={(e) => setSearchReview(e.target.value)}
+                placeholder="Tìm lời nhắn, tên BN..."
+                className="w-full pl-8 pr-3 py-1 text-xs rounded-lg border border-gray-300 focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
+              />
+            </div>
+          </div>
+
+          {/* Danh sách nhận xét dạng Compact Feed (có thanh cuộn gọn gàng) */}
+          <div className="space-y-2">
+            {filteredNhanXet.length === 0 ? (
+              <div className="text-center py-6 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-gray-500">
+                <Star className="h-6 w-6 text-gray-300 mx-auto mb-1" />
+                <p className="text-xs font-semibold">Không có nhận xét nào phù hợp với bộ lọc.</p>
+                <p className="text-[10px] text-gray-400">Thử đổi bộ lọc hoặc chọn kỳ khám khác.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {(reviews.danhSachNhanXet || []).map((nx) => (
+              <div className="max-h-[380px] overflow-y-auto space-y-2.5 pr-1.5 divide-y divide-slate-100">
+                {filteredNhanXet.map((nx) => (
                   <div
                     key={nx.id}
-                    className="p-4 rounded-2xl bg-white border border-slate-200/80 hover:border-amber-300 hover:shadow-xs transition-all space-y-2.5 flex flex-col justify-between"
+                    className="pt-2.5 first:pt-0 bg-white hover:bg-slate-50/50 p-3 rounded-xl border border-slate-200/70 transition-all space-y-2"
                   >
-                    <div className="space-y-2">
-                      {/* Header đánh giá: Tên BN & Sao */}
-                      <div className="flex items-start justify-between gap-2">
+                    {/* Header: Avatar, Tên BN, Ngày, Điểm sao */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-primary-100 text-primary-700 font-bold text-xs flex items-center justify-center border border-primary-200 shrink-0">
+                          {nx.anDanh ? '?' : (nx.tenBenhNhan?.[0] || 'B')}
+                        </div>
                         <div>
-                          <span className="font-bold text-gray-900 text-xs block">
-                            {nx.tenBenhNhan || 'Bệnh nhân'}
-                          </span>
-                          <span className="text-[10px] text-gray-400">
-                            {nx.ngayHen ? `Ngày khám: ${nx.ngayHen}` : new Date(nx.taoLuc).toLocaleDateString('vi-VN')}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-xs text-gray-900">
+                              {nx.tenBenhNhan || 'Bệnh nhân'}
+                            </span>
+                            {nx.anDanh && (
+                              <span className="text-[9px] font-semibold bg-gray-100 text-gray-600 px-1.5 py-0.2 rounded">
+                                Ẩn danh
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-gray-400">
+                            {nx.ngayHen ? `${nx.gioHen ? nx.gioHen + ' • ' : ''}${nx.ngayHen}` : new Date(nx.taoLuc).toLocaleDateString('vi-VN')}
+                          </p>
                         </div>
+                      </div>
 
-                        {/* Điểm sao Bác sĩ */}
+                      {/* Sao & Điểm thành phần */}
+                      <div className="flex items-center gap-2 shrink-0">
                         <div className="flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
-                          <span className="text-xs font-extrabold text-amber-700">{nx.diemBacSi}</span>
-                          <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-400" />
+                          <span className="text-xs font-black text-amber-700">{nx.diemBacSi}</span>
+                          <Star className="h-3 w-3 text-amber-500 fill-amber-400" />
+                        </div>
+                        <div className="hidden sm:flex items-center gap-1 text-[10px] text-gray-500">
+                          <span className="bg-slate-100 px-1.5 py-0.5 rounded">
+                            Tiếp đón: <strong className="text-gray-700">{nx.diemTiepDon || 5}/5</strong>
+                          </span>
+                          {nx.diemCls && (
+                            <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded">
+                              CLS: <strong>{nx.diemCls}/5</strong>
+                            </span>
+                          )}
                         </div>
                       </div>
+                    </div>
 
-                      {/* Các điểm thành phần nếu có */}
-                      <div className="flex flex-wrap gap-2 text-[10px] text-gray-500">
-                        <span className="bg-slate-100 px-2 py-0.5 rounded">
-                          Tiếp đón: <strong className="text-gray-700">{nx.diemTiepDon || 5}/5 ⭐</strong>
-                        </span>
-                        {nx.diemCls && (
-                          <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
-                            CLS: <strong>{nx.diemCls}/5 ⭐</strong>
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Tags tiêu chí hài lòng */}
+                    {/* Nội dung: Tiêu chí hài lòng & Lời nhận xét */}
+                    <div className="pl-9 space-y-1.5 text-xs text-gray-700">
                       {nx.tieuChiHaiLong?.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
+                        <div className="flex flex-wrap gap-1">
                           {nx.tieuChiHaiLong.map((t, idx) => (
                             <span
                               key={idx}
-                              className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100"
+                              className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100"
                             >
                               ✓ {t}
                             </span>
@@ -809,25 +917,25 @@ export default function ThongKeBacSiPage() {
                         </div>
                       )}
 
-                      {/* Lời nhận xét */}
                       {nx.nhanXet ? (
-                        <div className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-100 text-xs text-gray-800 leading-relaxed italic">
+                        <div className="p-2 bg-slate-50 rounded-lg border border-slate-100 text-xs text-slate-800 italic leading-relaxed">
                           &ldquo;{nx.nhanXet}&rdquo;
                         </div>
                       ) : (
-                        <p className="text-[11px] text-gray-400 italic">Bệnh nhân không để lại lời nhắn thêm.</p>
+                        <p className="text-[11px] text-gray-400 italic">Không có nhận xét viết thêm.</p>
+                      )}
+
+                      {/* Phản hồi từ Ban Giám Đốc */}
+                      {nx.phanHoiGiamDoc && (
+                        <div className="p-2 bg-amber-50/70 rounded-lg border border-amber-200 text-[11px] text-amber-900 flex items-start gap-1.5 mt-1">
+                          <ShieldCheck className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <strong className="text-amber-800">Ban Giám Đốc: </strong>
+                            <span className="italic">&ldquo;{nx.phanHoiGiamDoc}&rdquo;</span>
+                          </div>
+                        </div>
                       )}
                     </div>
-
-                    {/* Phản hồi từ Ban Giám Đốc nếu có */}
-                    {nx.phanHoiGiamDoc && (
-                      <div className="p-2.5 bg-amber-50/80 rounded-xl border border-amber-200 text-[11px] text-amber-900 space-y-0.5">
-                        <div className="font-bold flex items-center gap-1 text-amber-800">
-                          <ShieldCheck className="h-3.5 w-3.5 text-amber-600" /> Ý kiến từ Ban Giám Đốc:
-                        </div>
-                        <p className="italic text-amber-950">&ldquo;{nx.phanHoiGiamDoc}&rdquo;</p>
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>

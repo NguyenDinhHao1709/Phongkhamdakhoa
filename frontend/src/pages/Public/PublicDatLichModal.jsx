@@ -73,20 +73,26 @@ export default function PublicDatLichModal({
 
   useEffect(() => {
     fetchBacSi();
-  }, []);
+  }, [selectedChuyenKhoa, selectedNgayHen]);
 
   const fetchBacSi = async () => {
     try {
-      const res = await apiGet('/nhan-vien/bac-si-public');
-      if (res.data) setBacSiList(res.data);
+      if (selectedNgayHen) {
+        const res = await apiGet('/lich-hen/bac-si-ca-trong', {
+          chuyenKhoa: selectedChuyenKhoa || undefined,
+          ngay: selectedNgayHen,
+        });
+        if (res.data) setBacSiList(res.data);
+      } else {
+        const res = await apiGet('/nhan-vien/bac-si-public');
+        if (res.data) setBacSiList(res.data);
+      }
     } catch (err) {
       console.error('Lỗi tải danh sách bác sĩ:', err);
     }
   };
 
-  const filteredBacSi = selectedChuyenKhoa
-    ? bacSiList.filter((bs) => (bs.chuyenKhoa || '').toLowerCase().includes(selectedChuyenKhoa.toLowerCase()))
-    : bacSiList;
+  const filteredBacSi = bacSiList;
 
   const onSubmit = async (data) => {
     setSubmitting(true);
@@ -428,12 +434,16 @@ export default function PublicDatLichModal({
                     {...register('bacSiId')}
                     className="w-full rounded-xl border border-gray-300 p-2.5 text-sm bg-white focus:ring-2 focus:ring-primary-500 font-medium"
                   >
-                    <option value="">-- Khám với Bác sĩ trực phòng khám --</option>
-                    {filteredBacSi.map((bs) => (
-                      <option key={bs.id} value={bs.id}>
-                        {bs.hoTen} ({bs.chuyenKhoa || 'Đa khoa'})
-                      </option>
-                    ))}
+                    <option value="">-- Bác sĩ trực theo phân công --</option>
+                    {filteredBacSi.length > 0 ? (
+                      filteredBacSi.map((bs) => (
+                        <option key={bs.id} value={bs.id}>
+                          {bs.hoTen} ({bs.chuyenKhoa || 'Đa khoa'})
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>-- Chưa có lịch trực bác sĩ ngày này --</option>
+                    )}
                   </select>
                 </div>
               </div>

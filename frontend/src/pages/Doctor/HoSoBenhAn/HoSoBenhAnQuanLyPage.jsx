@@ -10,6 +10,7 @@ import {
   Clock, Printer, ExternalLink, Eye, CheckCircle2, CreditCard, ChevronDown,
   ChevronUp, RotateCcw, X, Filter, Stethoscope, AlertTriangle
 } from 'lucide-react';
+import { parseAttachmentUrls, toAttachmentUrl } from '../../../utils/fileAttachments';
 import InPhieuKhamModal from '../../../components/Print/InPhieuKhamModal';
 import InDonThuocModal from '../../../components/Print/InDonThuocModal';
 import InKetQuaXetNghiemModal from '../../../components/Print/InKetQuaXetNghiemModal';
@@ -722,9 +723,14 @@ export default function HoSoBenhAnQuanLyPage() {
                                 const donVi = kq?.donVi ?? kq?.don_vi ?? dv.donViKetQua ?? '';
                                 const thamChieu = dv.giaTriBinhThuong || 'Bình thường';
                                 const nhanXet = kq?.nhanXet ?? kq?.nhan_xet;
-                                const fileDinhKem = kq?.fileDinhKem ?? kq?.file_dinh_kem;
-                                const fileUrl = fileDinhKem ? (fileDinhKem.startsWith('http') ? fileDinhKem : `http://localhost:5000${fileDinhKem}`) : null;
-                                const isImage = fileDinhKem && fileDinhKem.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+                                let chiTiet = {};
+                                try {
+                                  const rawChiTiet = kq?.ketQuaChiTiet ?? kq?.ket_qua_chi_tiet;
+                                  chiTiet = rawChiTiet ? JSON.parse(rawChiTiet) : {};
+                                } catch {
+                                  chiTiet = {};
+                                }
+                                const fileUrls = parseAttachmentUrls(kq?.fileDinhKem ?? kq?.file_dinh_kem);
                                 const isCoKetQua = c.trangThai === 'co_ket_qua' || !!kq;
 
                                 return (
@@ -767,6 +773,16 @@ export default function HoSoBenhAnQuanLyPage() {
                                               <span className="text-lg font-bold text-purple-700">{giaTri || '—'}</span>
                                               {donVi && <span className="text-xs font-medium text-purple-600">{donVi}</span>}
                                             </div>
+                                            {Object.keys(chiTiet).length > 0 && (
+                                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100 text-xs">
+                                                {Object.entries(chiTiet).map(([key, value]) => (
+                                                  <div key={key} className="flex items-center justify-between gap-2">
+                                                    <span className="font-semibold text-gray-600">{key}</span>
+                                                    <span className="font-bold text-gray-900">{value || '—'}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
                                           </div>
 
                                           <div className="space-y-0.5">
@@ -799,57 +815,30 @@ export default function HoSoBenhAnQuanLyPage() {
                                         )}
 
                                         {/* Tệp đính kèm / Ảnh chẩn đoán */}
-                                        {fileUrl && (
+                                        {fileUrls.length > 0 && (
                                           <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-2">
                                             <div className="flex items-center justify-between text-xs">
                                               <span className="font-semibold text-gray-800 flex items-center gap-1.5">
                                                 📎 Tệp kết quả đính kèm (Ảnh chẩn đoán / PDF)
                                               </span>
-                                              <a
-                                                href={fileUrl}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="text-xs font-semibold text-primary-600 hover:text-primary-700 flex items-center gap-1 hover:underline"
-                                              >
-                                                Mở tab mới <ExternalLink className="h-3 w-3" />
-                                              </a>
+                                              <span className="text-xs text-gray-500">{fileUrls.length} tệp</span>
                                             </div>
 
-                                            {isImage ? (
-                                              <div className="flex items-center gap-3 pt-1">
-                                                <img
-                                                  src={fileUrl}
-                                                  alt="Ảnh kết quả"
-                                                  className="h-20 w-28 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80 transition"
-                                                  onClick={() => window.open(fileUrl, '_blank')}
-                                                />
-                                                <div className="text-xs text-gray-500 space-y-1">
-                                                  <p className="font-medium text-gray-700">Ảnh kết quả siêu âm / X-Quang / Nội soi</p>
-                                                  <button
-                                                    type="button"
-                                                    onClick={() => window.open(fileUrl, '_blank')}
-                                                    className="inline-flex items-center gap-1 text-primary-600 font-semibold hover:underline text-[11px]"
-                                                  >
-                                                    <Eye className="h-3 w-3" /> Xem ảnh kích thước gốc
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                              {fileUrls.map((file, fileIndex) => {
+                                                const fileUrl = toAttachmentUrl(file);
+                                                const isImage = /\.(jpeg|jpg|gif|png|webp)$/i.test(file);
+                                                return isImage ? (
+                                                  <button key={file} type="button" className="text-left" onClick={() => window.open(fileUrl, '_blank')}>
+                                                    <img src={fileUrl} alt={`Ảnh kết quả ${fileIndex + 1}`} className="h-24 w-full object-cover rounded-lg border border-gray-200" />
                                                   </button>
-                                                </div>
-                                              </div>
-                                            ) : (
-                                              <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-gray-200">
-                                                <div className="flex items-center gap-2">
-                                                  <FileText className="h-5 w-5 text-primary-600" />
-                                                  <span className="text-xs font-semibold text-gray-700">Tài liệu y khoa (.PDF)</span>
-                                                </div>
-                                                <a
-                                                  href={fileUrl}
-                                                  target="_blank"
-                                                  rel="noreferrer"
-                                                  className="text-xs font-semibold text-primary-600 bg-white px-3 py-1 rounded border border-gray-200 hover:bg-gray-50 transition"
-                                                >
-                                                  Xem tài liệu ↗
-                                                </a>
-                                              </div>
-                                            )}
+                                                ) : (
+                                                  <a key={file} href={fileUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-lg border border-gray-200 text-xs font-semibold text-primary-600">
+                                                    <FileText className="h-5 w-5" /> Tài liệu y khoa {fileIndex + 1} ↗
+                                                  </a>
+                                                );
+                                              })}
+                                            </div>
                                           </div>
                                         )}
                                       </div>

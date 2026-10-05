@@ -214,6 +214,13 @@ export class QuanLyController {
     return this.quanLyService.xoaLichPhanCa(id);
   }
 
+  @Post('phan-ca-tu-dong')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Phân ca làm việc tự động thông minh bằng thuật toán tối ưu (Ban Giám Đốc)' })
+  phanCaTuDong(@Body() body: { weekStart: string; overwrite?: boolean }) {
+    return this.quanLyService.phanCaTuDongThongMinh(body);
+  }
+
   // ─── QUẢN LÝ NHÂN SỰ & TÀI KHOẢN (CŨ) ────────────────────
   @Get('nhan-vien')
   @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
@@ -271,12 +278,13 @@ export class QuanLyController {
       },
     }),
   }))
-  uploadAvatar(@UploadedFile() file: Express.Multer.File) {
+  async uploadAvatar(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('nhanVienId') nhanVienId?: string,
+  ) {
     if (!file) throw new BadRequestException('File không hợp lệ');
-    return {
-      message: 'Upload thành công',
-      data: `/uploads/avatars/${file.filename}`
-    };
+    const nvId = nhanVienId ? parseInt(nhanVienId) : undefined;
+    return this.quanLyService.kiemTraVaLuuAvatar(file, nvId);
   }
 
   @Patch('nhan-vien/:id/trang-thai')

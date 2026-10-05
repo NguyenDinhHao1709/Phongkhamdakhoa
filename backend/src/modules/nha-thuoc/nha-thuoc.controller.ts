@@ -4,6 +4,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { NhaThuocService } from './nha-thuoc.service';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Nhà thuốc & Dược sĩ')
 @ApiBearerAuth()
@@ -12,28 +13,35 @@ export class NhaThuocController {
   constructor(private readonly nhaThuocService: NhaThuocService) {}
 
   @Get('thuoc')
-  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'bac_si')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'bac_si')
   @ApiOperation({ summary: 'Lấy danh mục thuốc & kho tồn' })
   getDanhSachThuoc(@Query('search') search?: string) {
     return this.nhaThuocService.getDanhSachThuoc(search);
   }
 
   @Post('thuoc')
-  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Thêm thuốc mới vào danh mục' })
   taoThuoc(@Body() body: any) {
     return this.nhaThuocService.taoThuoc(body);
   }
 
   @Patch('thuoc/:id')
-  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Cập nhật thông tin thuốc' })
   capNhatThuoc(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
     return this.nhaThuocService.capNhatThuoc(id, body);
   }
 
+  @Patch('thuoc/:id/ngung-kinh-doanh')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Ngừng kinh doanh thuốc, giữ nguyên lịch sử kho' })
+  ngungKinhDoanhThuoc(@Param('id', ParseIntPipe) id: number) {
+    return this.nhaThuocService.ngungKinhDoanhThuoc(id);
+  }
+
   @Delete('thuoc/:id')
-  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Xóa thuốc khỏi danh mục' })
   xoaThuoc(@Param('id', ParseIntPipe) id: number) {
     return this.nhaThuocService.xoaThuoc(id);
@@ -58,10 +66,20 @@ export class NhaThuocController {
   }
 
   @Post('don-thuoc/:id/cap-phat')
-  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Xác nhận cấp phát & trừ kho FEFO' })
   capPhatDonThuoc(@Param('id', ParseIntPipe) id: number) {
     return this.nhaThuocService.capPhatDonThuoc(id);
+  }
+
+  @Patch('don-thuoc/:id/lua-chon-mua')
+  @Roles('thu_ngan', 'tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Ghi nhận bệnh nhân mua thuốc tại bệnh viện hoặc mua ngoài' })
+  capNhatLuaChonMua(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { luaChonMua: 'mua_tai_benh_vien' | 'mua_ngoai' },
+  ) {
+    return this.nhaThuocService.capNhatLuaChonMua(id, body.luaChonMua);
   }
 
   @Post('don-thuoc')
@@ -72,7 +90,7 @@ export class NhaThuocController {
   }
 
   @Get('thong-ke')
-  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Thống kê & Báo cáo kho thuốc có bộ lọc' })
   getThongKeNhaThuoc(
     @Query('khoangThoiGian') khoangThoiGian?: string,
@@ -84,6 +102,70 @@ export class NhaThuocController {
     return this.nhaThuocService.getThongKeNhaThuoc({ khoangThoiGian, tuNgay, denNgay, trangThai, duongDung });
   }
 
+  @Get('mua-hang')
+  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc', 'thu_ngan')
+  getMuaHang(@Query('trangThai') trangThai?: string, @Query('trangThaiChiTra') trangThaiChiTra?: string) {
+    return this.nhaThuocService.getMuaHang(trangThai, trangThaiChiTra);
+  }
+
+  @Post('mua-hang/nha-cung-cap')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  taoNhaCungCap(@Body() body: any) {
+    return this.nhaThuocService.taoNhaCungCap(body);
+  }
+
+  @Patch('mua-hang/nha-cung-cap/:id')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  capNhatNhaCungCap(@Param('id') id: string, @Body() body: any) {
+    return this.nhaThuocService.capNhatNhaCungCap(Number(id), body);
+  }
+
+  @Delete('mua-hang/nha-cung-cap/:id')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  ngungHopTacNhaCungCap(@Param('id') id: string) {
+    return this.nhaThuocService.ngungHopTacNhaCungCap(Number(id));
+  }
+
+  @Get('mua-hang/nha-cung-cap')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  getNhaCungCap() {
+    return this.nhaThuocService.getNhaCungCap();
+  }
+
+  @Post('mua-hang/yeu-cau')
+  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  taoYeuCauNhap(@CurrentUser('id') userId: number, @Body() body: any) {
+    return this.nhaThuocService.taoYeuCauNhap({ ...body, nguoiLapId: userId || 1 });
+  }
+
+  @Patch('mua-hang/yeu-cau/:id/duyet')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  duyetYeuCauNhap(@CurrentUser('id') userId: number, @Param('id', ParseIntPipe) id: number, @Body() body: { duyet: boolean; lyDo?: string }) {
+    return this.nhaThuocService.duyetYeuCauNhap(id, body.duyet, body.lyDo, userId || 1);
+  }
+
+  @Patch('mua-hang/yeu-cau/:id/bao-gia')
+  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  capNhatBaoGia(@Param('id', ParseIntPipe) id: number, @Body() body: { chiTiet: any[] }) {
+    return this.nhaThuocService.capNhatBaoGia(id, body.chiTiet);
+  }
+
+  @Patch('mua-hang/yeu-cau/:id/tiep-nhan')
+  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  tiepNhanHang(@Param('id', ParseIntPipe) id: number, @Body() body: { chiTiet: any[] }) {
+    return this.nhaThuocService.tiepNhanHang(id, body.chiTiet);
+  }
+
+  @Patch('mua-hang/yeu-cau/:id/chi-tra')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  chiTraNhaCungCap(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { soTien?: number; phuongThucChi?: string; soChungTuChi?: string; ghiChu?: string },
+  ) {
+    return this.nhaThuocService.chiTraNhaCungCap(id, body, userId || 1);
+  }
+
   @Get('du-bao-nhu-cau')
   @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Dự báo nhu cầu thuốc ML (Holt-Winters) và cảnh báo điểm đặt hàng lại' })
@@ -91,4 +173,3 @@ export class NhaThuocController {
     return this.nhaThuocService.getDuBaoNhuCauThuoc(horizonDays ? Number(horizonDays) : 14);
   }
 }
-

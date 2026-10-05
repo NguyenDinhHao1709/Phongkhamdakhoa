@@ -1,6 +1,14 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import useAuthStore from "./store/authStore";
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [pathname]);
+  return null;
+}
 
 /* ================================================================
    Lazy-loaded pages — code splitting for performance
@@ -11,6 +19,7 @@ const LoginPage       = lazy(() => import("./pages/Login/LoginPage.jsx"));
 const RegisterPage    = lazy(() => import("./pages/Login/RegisterPage.jsx"));
 const UnauthorizedPage = lazy(() => import("./pages/Unauthorized/UnauthorizedPage.jsx"));
 const KioskPage       = lazy(() => import("./pages/Kiosk/KioskPage.jsx"));
+const ManHinhGoiSoPage = lazy(() => import("./pages/Public/ManHinhGoiSoPage.jsx"));
 
 // Portals
 import ReceptionistPortal from "./pages/Receptionist/ReceptionistPortal.jsx";
@@ -22,6 +31,7 @@ import ManagementPortal from "./pages/Management/ManagementPortal.jsx";
 import AdminPortal from "./pages/Management/AdminPortal.jsx";
 import DirectorPortal from "./pages/Management/DirectorPortal.jsx";
 import PatientPortal from "./pages/Patient/PatientPortal.jsx";
+import GlobalTelehealthModal from "./components/Telehealth/GlobalTelehealthModal";
 
 /* ================================================================
    Role-based home redirect
@@ -87,6 +97,8 @@ function PageLoader() {
 export default function App() {
   return (
     <Suspense fallback={<PageLoader />}>
+      <ScrollToTop />
+      <GlobalTelehealthModal />
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
@@ -96,14 +108,9 @@ export default function App() {
         {/* Public Homepage */}
         <Route path="/" element={<HomePage />} />
         <Route path="/dat-lich" element={<PublicDatLichPage />} />
-        <Route
-          path="/kiosk"
-          element={
-            <PrivateRoute>
-              <KioskPage />
-            </PrivateRoute>
-          }
-        />
+        <Route path="/kiosk" element={<KioskPage />} />
+        <Route path="/man-hinh-goi-so" element={<ManHinhGoiSoPage />} />
+        <Route path="/tv-hang-doi" element={<Navigate to="/man-hinh-goi-so" replace />} />
 
         {/* Receptionist Portal */}
         <Route
