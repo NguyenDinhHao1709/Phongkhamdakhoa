@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Camera, CheckCircle2, XCircle, LogIn, LogOut, Clock, AlertTriangle, Wifi, ShieldCheck, Calendar, AlertCircle } from 'lucide-react';
+import { Camera, CheckCircle2, XCircle, LogIn, LogOut, Clock, AlertTriangle, Wifi, ShieldCheck, Calendar, AlertCircle, Filter } from 'lucide-react';
 import { apiGet, apiPost } from '../../../services/api';
 import useAuthStore from '../../../store/authStore';
 
@@ -60,12 +60,106 @@ export default function ChamCongPage() {
     select: (res) => res?.data?.data || res?.data || {},
   });
 
-  // ─── Lịch sử 7 ngày ─────────────────────────────────────────────────────────
-  const { data: lichSu } = useQuery({
-    queryKey: ['cham-cong-lich-su'],
-    queryFn: () => apiGet('/cham-cong/lich-su'),
+  // ─── Bộ lọc Lịch sử chấm công: 'tuan_nay' | 'tuan_truoc' | 'thang_nay' | 'thang_truoc' | 'thang_chon' ───
+  const [filterType, setFilterType] = useState('tuan_nay');
+  const [customMonth, setCustomMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  const { tuNgay, denNgay, labelKhoangNgay } = useMemo(() => {
+    const formatISO = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+    const formatDisplay = (d) => {
+      const day = String(d.getDate()).padStart(2, '0');
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const y = d.getFullYear();
+      return `${day}/${m}/${y}`;
+    };
+
+    const now = new Date();
+    let start, end;
+
+    if (filterType === 'tuan_nay') {
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      start = new Date(now);
+      start.setDate(diff);
+      end = new Date(start);
+      end.setDate(start.getDate() + 6);
+    } else if (filterType === 'tuan_truoc') {
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      start = new Date(now);
+      start.setDate(diff - 7);
+      end = new Date(start);
+      end.setDate(start.getDate() + 6);
+    } else if (filterType === 'thang_nay') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    } else if (filterType === 'thang_truoc') {
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      end = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else if (filterType === 'thang_chon') {
+      const [y, m] = customMonth.split('-').map(Number);
+      start = new Date(y, m - 1, 1);
+      end = new Date(y, m, 0);
+    } else {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    }
+
+    return {
+      tuNgay: formatISO(start),
+      denNgay: formatISO(end),
+      labelKhoangNgay: `${formatDisplay(start)} - ${formatDisplay(end)}`,
+    };
+  }, [filterType, customMonth]);
+
+  // ─── Lịch sử chấm công theo bộ lọc ──────────────────────────────────────────
+  const { data: lichSu = [], isLoading: isLoadingLichSu } = useQuery({
+    queryKey: ['cham-cong-lich-su', tuNgay, denNgay],
+    queryFn: () => apiGet(`/cham-cong/lich-su?tuNgay=${tuNgay}&denNgay=${denNgay}`),
     select: (res) => res?.data?.data || res?.data || [],
   });
+
+  // ─── Thống kê tóm tắt theo khoảng thời gian đã lọc ──────────────────────────
+  const summaryLichSu = useMemo(() => {
+    let totalMinutes = 0;
+    let dungGio = 0;
+    let diMuon = 0;
+    let veSom = 0;
+
+    lichSu.forEach((item) => {
+      if (item.trangThai === 'dung_gio') dungGio++;
+      else if (item.trangThai === 'di_muon') diMuon++;
+      else if (item.trangThai === 've_som') veSom++;
+
+      if (item.gioVao && item.gioRa) {
+        const [h1, m1] = item.gioVao.split(':').map(Number);
+        const [h2, m2] = item.gioRa.split(':').map(Number);
+        let diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (diff < 0) diff += 24 * 60;
+        totalMinutes += diff;
+      }
+    });
+
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    const strTongThoiLuong = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+
+    return {
+      tongNgay: lichSu.length,
+      tongThoiLuong: totalMinutes > 0 ? strTongThoiLuong : '0h',
+      dungGio,
+      diMuon,
+      veSom,
+    };
+  }, [lichSu]);
 
   // ─── Mutation check-in / check-out ──────────────────────────────────────────
   const chamCongMutation = useMutation({
@@ -79,7 +173,7 @@ export default function ChamCongPage() {
       stopCamera();
     },
     onError: (err) => {
-      const msg = err?.response?.data?.message || err?.message || (typeof err === 'string' ? err : 'Xác thực thất bại');
+      const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err?.message || (typeof err === 'string' ? err : 'Xác thực thất bại');
       setErrorMsg(msg);
       setStep('error');
       stopCamera();
@@ -199,11 +293,20 @@ export default function ChamCongPage() {
       </div>
 
       {/* IP & WiFi Status */}
-      <div className="bg-white rounded-xl border p-4 flex items-center gap-3">
-        <Wifi className="h-5 w-5 text-blue-500 flex-shrink-0" />
-        <div>
-          <p className="text-sm font-medium text-gray-700">IP hiện tại của bạn</p>
-          <p className="text-xs text-gray-500 font-mono">{ipData?.ip || '...'}</p>
+      <div className="bg-white rounded-xl border p-4 flex items-center justify-between gap-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <Wifi className="h-5 w-5 text-blue-500 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-gray-700">Mạng Wi-Fi / IP hiện tại của bạn</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-xs text-blue-800 font-mono font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                {ipData?.ip || '...'}
+              </span>
+              <span className="text-xs text-gray-500 font-medium">
+                {ipData?.isLocalhost ? '(Máy nội bộ / Wi-Fi phòng khám)' : '(Mạng Wi-Fi)'}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -429,32 +532,132 @@ export default function ChamCongPage() {
       {/* Canvas ẩn để capture */}
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* Lịch sử chấm công */}
-      {lichSu && lichSu.length > 0 && (
-        <div className="bg-white rounded-xl border p-5">
-          <h2 className="font-semibold text-gray-800 mb-3">Lịch sử chấm công</h2>
+      {/* Lịch sử chấm công với Bộ lọc Tuần & Tháng */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100 pb-3">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-blue-600" />
+            <h2 className="font-bold text-gray-800 text-base">Lịch sử chấm công</h2>
+            <span className="text-xs bg-blue-50 text-blue-700 font-medium px-2.5 py-0.5 rounded-full border border-blue-200">
+              {labelKhoangNgay}
+            </span>
+          </div>
+
+          {/* Nhóm nút lọc Tuần / Tháng */}
+          <div className="flex flex-wrap items-center gap-1.5 bg-gray-100/80 p-1 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setFilterType('tuan_nay')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                filterType === 'tuan_nay'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Tuần này
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('tuan_truoc')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                filterType === 'tuan_truoc'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Tuần trước
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('thang_nay')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                filterType === 'thang_nay'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Tháng này
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('thang_truoc')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                filterType === 'thang_truoc'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Tháng trước
+            </button>
+            <div className="relative flex items-center">
+              <input
+                type="month"
+                value={customMonth}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setCustomMonth(e.target.value);
+                    setFilterType('thang_chon');
+                  }
+                }}
+                className={`px-2 py-1 text-xs font-semibold rounded-md border transition cursor-pointer ${
+                  filterType === 'thang_chon'
+                    ? 'bg-white text-blue-700 border-blue-400 shadow-sm'
+                    : 'bg-transparent text-gray-600 border-transparent hover:bg-gray-200/60'
+                }`}
+                title="Chọn tháng cụ thể"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Thanh KPI tóm tắt công làm việc */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-gray-50/70 p-3 rounded-lg border border-gray-100 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500">📅 Ngày làm:</span>
+            <span className="font-bold text-gray-800 text-sm">{summaryLichSu.tongNgay}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500">⏱️ Tổng thời lượng:</span>
+            <span className="font-bold text-blue-700 text-sm">{summaryLichSu.tongThoiLuong}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500">✅ Đúng giờ:</span>
+            <span className="font-bold text-green-700 text-sm">{summaryLichSu.dungGio}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500">⚠️ Đi muộn / về sớm:</span>
+            <span className="font-bold text-amber-700 text-sm">{summaryLichSu.diMuon + summaryLichSu.veSom}</span>
+          </div>
+        </div>
+
+        {/* Danh sách bản ghi */}
+        {isLoadingLichSu ? (
+          <div className="py-8 text-center text-sm text-gray-500">
+            Đang tải lịch sử chấm công...
+          </div>
+        ) : lichSu && lichSu.length > 0 ? (
           <div className="space-y-2">
-            {lichSu.slice(0, 10).map((item) => (
-              <div key={item.id} className="flex items-center justify-between py-2.5 border-b last:border-0 gap-3">
+            {lichSu.map((item) => (
+              <div key={item.id} className="flex items-center justify-between py-2.5 px-2 hover:bg-gray-50/80 rounded-lg border-b border-gray-100 last:border-0 gap-3 transition">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-gray-800">
-                    {new Date(item.ngayCham).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                    {new Date(item.ngayCham).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
                   </p>
                   {item.caLamViec && (
-                    <p className="text-xs text-gray-400 truncate">{item.caLamViec.tenCa}</p>
+                    <p className="text-xs text-gray-500 truncate">{item.caLamViec.tenCa}</p>
                   )}
                 </div>
 
                 <div className="text-center px-2">
                   <p className="text-[11px] text-gray-400 font-medium">Thời gian</p>
                   <div className="text-sm font-medium">
-                    <span className="text-green-600">{item.gioVao?.slice(0, 5) || '—'}</span>
+                    <span className="text-green-600 font-semibold">{item.gioVao?.slice(0, 5) || '—'}</span>
                     <span className="text-gray-400 mx-1">→</span>
-                    <span className="text-blue-600">{item.gioRa?.slice(0, 5) || '—'}</span>
+                    <span className="text-blue-600 font-semibold">{item.gioRa?.slice(0, 5) || '—'}</span>
                   </div>
                 </div>
 
-                <div className="text-center px-2">
+                <div className="text-center px-2 hidden sm:block">
                   <p className="text-[11px] text-gray-400 font-medium">Thời lượng làm</p>
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full inline-block ${
                     !item.gioRa && item.gioVao
@@ -482,8 +685,14 @@ export default function ChamCongPage() {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="py-10 text-center space-y-2">
+            <Calendar className="h-10 w-10 text-gray-300 mx-auto" />
+            <p className="text-sm font-medium text-gray-600">Không có dữ liệu chấm công</p>
+            <p className="text-xs text-gray-400">Không tìm thấy ca trực nào trong khoảng thời gian {labelKhoangNgay}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

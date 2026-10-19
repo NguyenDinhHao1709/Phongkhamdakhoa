@@ -22,6 +22,7 @@ import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
 import { NhatKyHeThong, LoaiNhatKy } from './entities/nhat-ky-he-thong.entity';
+import { BaoCaoBoPhan } from './entities/bao-cao-bo-phan.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -50,6 +51,7 @@ export class QuanLyService {
     @InjectRepository(DonThuoc) private donThuocRepo: Repository<DonThuoc>,
     @InjectRepository(LichHen) private lichHenRepo: Repository<LichHen>,
     @InjectRepository(NhatKyHeThong) private nhatKyRepo: Repository<NhatKyHeThong>,
+    @InjectRepository(BaoCaoBoPhan) private baoCaoBoPhanRepo: Repository<BaoCaoBoPhan>,
     private readonly thongBaoService: ThongBaoService,
     private readonly httpService: HttpService,
   ) {}
@@ -168,6 +170,11 @@ export class QuanLyService {
     return {
       data: {
         ...nv,
+        chuyenKhoa: bacSiInfo?.chuyenKhoa || null,
+        bangCap: bacSiInfo?.bangCap || null,
+        soChungChiHanhNghe: bacSiInfo?.soChungChiHanhNghe || null,
+        moTa: bacSiInfo?.moTa || null,
+        chuyenMon: ktvInfo?.chuyenMon || null,
         bacSi: bacSiInfo,
         kyThuatVien: ktvInfo,
       },
@@ -433,21 +440,27 @@ export class QuanLyService {
 
     // 5. Biểu đồ lượt khám và doanh thu theo ngày
     let trendQb = this.tiepNhanRepo.createQueryBuilder('ltn')
-      .select("DATE_FORMAT(ltn.thoiGianDen, '%d/%m')", 'ngay')
+      .select("DATE_FORMAT(ltn.thoiGianDen, '%Y-%m-%d')", 'rawDate')
+      .addSelect("DATE_FORMAT(ltn.thoiGianDen, '%d/%m')", 'ngay')
       .addSelect('COUNT(*)', 'soLuotKham')
-      .groupBy("DATE_FORMAT(ltn.thoiGianDen, '%d/%m')")
-      .orderBy("MIN(ltn.thoiGianDen)", 'ASC');
+      .groupBy("DATE_FORMAT(ltn.thoiGianDen, '%Y-%m-%d')")
+      .addGroupBy("DATE_FORMAT(ltn.thoiGianDen, '%d/%m')")
+      .orderBy("rawDate", 'ASC');
 
     let revTrendQb = this.hoaDonRepo.createQueryBuilder('hd')
-      .select("DATE_FORMAT(hd.ngayThanhToan, '%d/%m')", 'ngay')
+      .select("DATE_FORMAT(hd.ngayThanhToan, '%Y-%m-%d')", 'rawDate')
+      .addSelect("DATE_FORMAT(hd.ngayThanhToan, '%d/%m')", 'ngay')
       .addSelect('SUM(hd.thucThu)', 'doanhThu')
       .where('hd.trangThai = :st', { st: 'da_thanh_toan' })
-      .groupBy("DATE_FORMAT(hd.ngayThanhToan, '%d/%m')")
-      .orderBy("MIN(hd.ngayThanhToan)", 'ASC');
+      .groupBy("DATE_FORMAT(hd.ngayThanhToan, '%Y-%m-%d')")
+      .addGroupBy("DATE_FORMAT(hd.ngayThanhToan, '%d/%m')")
+      .orderBy("rawDate", 'ASC');
 
     if (startDateTime && endDateTime) {
       trendQb = trendQb.where('ltn.thoiGianDen BETWEEN :s AND :e', { s: startDateTime, e: endDateTime });
       revTrendQb = revTrendQb.andWhere('hd.ngayThanhToan BETWEEN :s AND :e', { s: startDateTime, e: endDateTime });
+    } else if (filter.range === 'tat_ca') {
+      // Toàn thời gian: Lấy đầy đủ lịch sử hoạt động, không limit để tránh làm đứt đoạn dữ liệu tháng 9 và 10
     } else {
       trendQb = trendQb.where('ltn.thoiGianDen >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
       revTrendQb = revTrendQb.andWhere('hd.ngayThanhToan >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
@@ -456,15 +469,46 @@ export class QuanLyService {
     const trendData = await trendQb.getRawMany();
     const revTrend = await revTrendQb.getRawMany();
 
-    // Merge trend
-    const chart7Days = trendData.map(t => {
-      const matchRev = revTrend.find(r => r.ngay === t.ngay);
-      return {
-        ngay: t.ngay,
-        soLuotKham: Number(t.soLuotKham),
-        doanhThu: matchRev ? Number(matchRev.doanhThu) : 0,
-      };
-    });
+    // Tập hợp và bù ngày liên tục (zero-filling) để biểu đồ luôn liền mạch, thanh mảnh
+    const dateMap = new Map<string, { rawDate: string; ngay: string; soLuotKham: number; doanhThu: number }>();
+
+    if (startDate && endDate) {
+      const startD = new Date(startDate);
+      const endD = new Date(endDate);
+      const diffTime = Math.abs(endD.getTime() - startD.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays <= 31) {
+        for (let i = 0; i <= diffDays; i++) {
+          const curr = new Date(startD);
+          curr.setDate(curr.getDate() + i);
+          const raw = curr.toISOString().slice(0, 10);
+          const dd = String(curr.getDate()).padStart(2, '0');
+          const mm = String(curr.getMonth() + 1).padStart(2, '0');
+          dateMap.set(raw, { rawDate: raw, ngay: `${dd}/${mm}`, soLuotKham: 0, doanhThu: 0 });
+        }
+      }
+    }
+
+    for (const t of trendData) {
+      const key = t.rawDate;
+      if (dateMap.has(key)) {
+        dateMap.get(key)!.soLuotKham = Number(t.soLuotKham || 0);
+      } else {
+        dateMap.set(key, { rawDate: key, ngay: t.ngay, soLuotKham: Number(t.soLuotKham || 0), doanhThu: 0 });
+      }
+    }
+
+    for (const r of revTrend) {
+      const key = r.rawDate;
+      if (dateMap.has(key)) {
+        dateMap.get(key)!.doanhThu = Number(r.doanhThu || 0);
+      } else {
+        dateMap.set(key, { rawDate: key, ngay: r.ngay, soLuotKham: 0, doanhThu: Number(r.doanhThu || 0) });
+      }
+    }
+
+    // Sắp xếp tăng dần theo rawDate (YYYY-MM-DD)
+    const chart7Days = Array.from(dateMap.values()).sort((a, b) => a.rawDate.localeCompare(b.rawDate));
 
     // 6. Cơ cấu doanh thu theo loại phí
     let coCauQb = this.hoaDonChiTietRepo.createQueryBuilder('ct')
@@ -714,15 +758,136 @@ export class QuanLyService {
     if (filter.tuNgay) tuNgayStr = `${filter.tuNgay} 00:00:00`;
     if (filter.denNgay) denNgayStr = `${filter.denNgay} 23:59:59`;
 
+    // 1.1 Thống kê Sổ quỹ & Chi phí hoạt động / Chi trả NCC (Thu ngân & Dược)
+    // a. Chi phí mua thuốc nhà cung cấp (từ yeu_cau_nhap_kho)
+    let chiNccSql = `
+      SELECT 
+        COUNT(id) AS tongDonNcc,
+        COALESCE(SUM(so_tien_chi_tra), 0) AS chiMuaThuocNcc
+      FROM yeu_cau_nhap_kho
+      WHERE trang_thai_chi_tra = 'da_chi'
+    `;
+    const chiNccParams: any[] = [];
+    if (tuNgayStr && denNgayStr) {
+      chiNccSql += ` AND ngay_chi_tra BETWEEN ? AND ? `;
+      chiNccParams.push(tuNgayStr, denNgayStr);
+    }
+    const chiNccRaw = await this.hoaDonRepo.query(chiNccSql, chiNccParams).catch(() => [{ tongDonNcc: 0, chiMuaThuocNcc: 0 }]);
+    const chiMuaThuocNcc = Number(chiNccRaw[0]?.chiMuaThuocNcc || 0);
+    const tongDonNcc = Number(chiNccRaw[0]?.tongDonNcc || 0);
+
+    // Chi tiết các khoản chi mua thuốc NCC
+    let chiNccListSql = `
+      SELECT 
+        y.id,
+        y.ma_yeu_cau AS maPhieu,
+        'Chi mua thuốc & vật tư NCC' AS loaiChi,
+        'Thanh toán nhập kho dược' AS khoanChi,
+        COALESCE(y.so_hoa_don_ncc, 'Hóa đơn NCC') AS nguoiNhan,
+        y.so_tien_chi_tra AS soTien,
+        COALESCE(y.phuong_thuc_chi, 'chuyen_khoan') AS phuongThucChi,
+        y.ngay_chi_tra AS ngayChi,
+        COALESCE(nv.ho_ten, 'Dược sĩ / Thủ quỹ') AS nguoiChi,
+        COALESCE(y.ghi_chu_chi, y.ghi_chu, '') AS ghiChu
+      FROM yeu_cau_nhap_kho y
+      LEFT JOIN nhan_vien nv ON y.nguoi_chi_tra_id = nv.id
+      WHERE y.trang_thai_chi_tra = 'da_chi'
+    `;
+    const chiNccListParams: any[] = [];
+    if (tuNgayStr && denNgayStr) {
+      chiNccListSql += ` AND y.ngay_chi_tra BETWEEN ? AND ? `;
+      chiNccListParams.push(tuNgayStr, denNgayStr);
+    }
+    chiNccListSql += ` ORDER BY y.ngay_chi_tra DESC LIMIT 150 `;
+    const chiNccListRaw = await this.hoaDonRepo.query(chiNccListSql, chiNccListParams).catch(() => []);
+
+    // b. Chi phí hoạt động vận hành (từ phieu_chi_hoat_dong)
+    let opexSql = `
+      SELECT 
+        COUNT(id) AS tongPhieuOpex,
+        COALESCE(SUM(so_tien), 0) AS tongTienOpex
+      FROM phieu_chi_hoat_dong
+    `;
+    const opexParams: any[] = [];
+    if (tuNgayStr && denNgayStr) {
+      opexSql += ` WHERE ngay_chi BETWEEN ? AND ? `;
+      opexParams.push(tuNgayStr, denNgayStr);
+    }
+    const opexRaw = await this.hoaDonRepo.query(opexSql, opexParams).catch(() => [{ tongPhieuOpex: 0, tongTienOpex: 0 }]);
+    const tongTienOpex = Number(opexRaw[0]?.tongTienOpex || 0);
+    const tongPhieuOpex = Number(opexRaw[0]?.tongPhieuOpex || 0);
+
+    // Chi tiết phiếu chi hoạt động
+    let opexListSql = `
+      SELECT 
+        p.id,
+        p.ma_phieu_chi AS maPhieu,
+        COALESCE(p.loai_chi, 'Chi phí vận hành') AS loaiChi,
+        p.khoan_chi AS khoanChi,
+        COALESCE(p.nguoi_nhan, 'Đối tác / Nội bộ') AS nguoiNhan,
+        p.so_tien AS soTien,
+        COALESCE(p.phuong_thuc_chi, 'tien_mat') AS phuongThucChi,
+        p.ngay_chi AS ngayChi,
+        COALESCE(nv.ho_ten, 'Kế toán / Thủ quỹ') AS nguoiChi,
+        COALESCE(p.ghi_chu, '') AS ghiChu
+      FROM phieu_chi_hoat_dong p
+      LEFT JOIN nhan_vien nv ON p.nguoi_lap_id = nv.id
+    `;
+    const opexListParams: any[] = [];
+    if (tuNgayStr && denNgayStr) {
+      opexListSql += ` WHERE p.ngay_chi BETWEEN ? AND ? `;
+      opexListParams.push(tuNgayStr, denNgayStr);
+    }
+    opexListSql += ` ORDER BY p.ngay_chi DESC LIMIT 150 `;
+    const opexListRaw = await this.hoaDonRepo.query(opexListSql, opexListParams).catch(() => []);
+
+    // Hợp nhất danh sách chi và sắp xếp theo ngày chi giảm dần
+    const danhSachChiPhi = [...chiNccListRaw, ...opexListRaw].sort((a, b) => {
+      const timeA = new Date(a.ngayChi || 0).getTime();
+      const timeB = new Date(b.ngayChi || 0).getTime();
+      return timeB - timeA;
+    });
+
+    const tongChiHoatDong = chiMuaThuocNcc + tongTienOpex;
+    const tongPhieuChi = tongDonNcc + tongPhieuOpex;
+    const thucThuRong = Math.max(0, Number(taiChinh.tongThucThu || 0) - tongChiHoatDong);
+
+    const tienMatTaiKet = Number(taiChinh.byPhuongThuc?.tien_mat || 0);
+    // Tổng thanh toán không dùng tiền mặt (Chuyển khoản, Thẻ POS, VNPay, MoMo, BHYT thanh toán)
+    const khongDungTienMat = Math.max(0, Number(taiChinh.tongThucThu || 0) - tienMatTaiKet);
+
+    const soQuyStats = {
+      tongThuVienPhi: Number(taiChinh.tongThucThu || 0),
+      tongChiHoatDong,
+      chiMuaThuocNcc,
+      tongTienOpex,
+      thucThuRong,
+      tongPhieuChi,
+      tienMatTaiKet,
+      chuyenKhoanNganHang: khongDungTienMat,
+      danhSachChiPhi,
+    };
+
     // 2. Thống kê Lâm sàng & Tiếp nhận
     let totalTiepNhan = 0;
+    let daKham = 0;
+    let dangKham = 0;
+    let choKham = 0;
+
+    let tnStatsQb = this.tiepNhanRepo.createQueryBuilder('ltn')
+      .select('COUNT(*)', 'total')
+      .addSelect("SUM(CASE WHEN ltn.trangThai IN ('hoan_thanh', 'hoan_tat', 'da_kham') THEN 1 ELSE 0 END)", 'daKham')
+      .addSelect("SUM(CASE WHEN ltn.trangThai = 'dang_kham' THEN 1 ELSE 0 END)", 'dangKham')
+      .addSelect("SUM(CASE WHEN ltn.trangThai IN ('cho_kham', 'dang_cho', 'tiep_nhan') THEN 1 ELSE 0 END)", 'choKham');
+
     if (tuNgayStr && denNgayStr) {
-      totalTiepNhan = await this.tiepNhanRepo.createQueryBuilder('ltn')
-        .where('ltn.thoiGianDen BETWEEN :s AND :e', { s: tuNgayStr, e: denNgayStr })
-        .getCount();
-    } else {
-      totalTiepNhan = await this.tiepNhanRepo.count();
+      tnStatsQb = tnStatsQb.where('ltn.thoiGianDen BETWEEN :s AND :e', { s: tuNgayStr, e: denNgayStr });
     }
+    const tnStatsRaw = await tnStatsQb.getRawOne().catch(() => null);
+    totalTiepNhan = Number(tnStatsRaw?.total || 0);
+    daKham = Number(tnStatsRaw?.daKham || 0);
+    dangKham = Number(tnStatsRaw?.dangKham || 0);
+    choKham = Number(tnStatsRaw?.choKham || 0);
 
     const tiepNhanHomNay = await this.tiepNhanRepo.createQueryBuilder('ltn')
       .where('DATE(ltn.thoiGianDen) = CURDATE()')
@@ -794,6 +959,35 @@ export class QuanLyService {
       };
     });
 
+    // Danh sách chi tiết bệnh nhân tiếp nhận khám
+    let tnListSql = `
+      SELECT 
+        ltn.id,
+        ltn.ma_so_thu_tu AS maSoThuTu,
+        ltn.thoi_gian_den AS thoiGianDen,
+        ltn.trang_thai AS trangThai,
+        COALESCE(ltn.chuyen_khoa, 'Đa khoa') AS chuyenKhoa,
+        COALESCE(bn.ho_ten, 'Vãng lai') AS benhNhanTen,
+        COALESCE(bn.so_dien_thoai, '-') AS benhNhanSdt,
+        COALESCE(bn.gioi_tinh, 'Khác') AS benhNhanGioiTinh,
+        COALESCE(nv_bs.ho_ten, 'Chưa chỉ định') AS bacSiTen,
+        COALESCE(pk.ten_phong, 'Phòng tiếp nhận') AS tenPhong,
+        CASE WHEN lh.nguon_dat = 'benh_nhan_tu_dat' THEN 'Đặt hẹn online' ELSE 'Tiếp nhận quầy' END AS nguonDonTiep
+      FROM luot_tiep_nhan ltn
+      LEFT JOIN benh_nhan bn ON ltn.benh_nhan_id = bn.id
+      LEFT JOIN bac_si bs ON ltn.bac_si_id = bs.id
+      LEFT JOIN nhan_vien nv_bs ON bs.nhan_vien_id = nv_bs.id
+      LEFT JOIN phong_kham pk ON ltn.phong_kham_id = pk.id
+      LEFT JOIN lich_hen lh ON ltn.lich_hen_id = lh.id
+    `;
+    const tnListParams: any[] = [];
+    if (tuNgayStr && denNgayStr) {
+      tnListSql += ` WHERE ltn.thoi_gian_den BETWEEN ? AND ? `;
+      tnListParams.push(tuNgayStr, denNgayStr);
+    }
+    tnListSql += ` ORDER BY ltn.thoi_gian_den DESC LIMIT 200 `;
+    const danhSachTiepNhan = await this.tiepNhanRepo.query(tnListSql, tnListParams).catch(() => []);
+
     // 3. Thống kê Cận Lâm Sàng (CLS)
     let clsQb = this.clsRepo.createQueryBuilder('cls');
     if (tuNgayStr && denNgayStr) {
@@ -857,14 +1051,53 @@ export class QuanLyService {
       };
     });
 
+    // Danh sách chi tiết các ca chỉ định cận lâm sàng
+    let clsListSql = `
+      SELECT 
+        cls.id,
+        cls.trang_thai AS trangThai,
+        cls.thoi_gian_chi_dinh AS thoiGianChiDinh,
+        COALESCE(cls.ghi_chu_chi_dinh, '') AS ghiChu,
+        dv.ten_dich_vu AS tenDichVu,
+        CASE WHEN dv.loai = 'cdha' THEN 'Chẩn đoán hình ảnh' ELSE 'Xét nghiệm' END AS loaiDichVu,
+        dv.gia AS donGia,
+        COALESCE(bn.ho_ten, 'Bệnh nhân') AS benhNhanTen,
+        COALESCE(bn.so_dien_thoai, '-') AS benhNhanSdt,
+        COALESCE(nv_bs.ho_ten, 'Bác sĩ') AS bacSiTen,
+        COALESCE(nv_ktv.ho_ten, 'Kỹ thuật viên') AS ktvTen
+      FROM chi_dinh_can_lam_sang cls
+      JOIN dich_vu_xet_nghiem dv ON cls.dich_vu_xet_nghiem_id = dv.id
+      JOIN benh_an_kham bak ON cls.benh_an_kham_id = bak.id
+      JOIN ho_so_benh_an hs ON bak.ho_so_benh_an_id = hs.id
+      JOIN benh_nhan bn ON hs.benh_nhan_id = bn.id
+      LEFT JOIN bac_si bs ON cls.bac_si_chi_dinh_id = bs.id
+      LEFT JOIN nhan_vien nv_bs ON bs.nhan_vien_id = nv_bs.id
+      LEFT JOIN ky_thuat_vien ktv ON cls.ky_thuat_vien_id = ktv.id
+      LEFT JOIN nhan_vien nv_ktv ON ktv.nhan_vien_id = nv_ktv.id
+    `;
+    const clsListParams: any[] = [];
+    if (tuNgayStr && denNgayStr) {
+      clsListSql += ` WHERE cls.thoi_gian_chi_dinh BETWEEN ? AND ? `;
+      clsListParams.push(tuNgayStr, denNgayStr);
+    }
+    clsListSql += ` ORDER BY cls.thoi_gian_chi_dinh DESC LIMIT 200 `;
+    const clsListRaw = await this.clsRepo.query(clsListSql, clsListParams).catch(() => []);
+    const danhSachChiDinhCls = clsListRaw.map((r: any) => ({
+      ...r,
+      donGia: Number(r.donGia || 0),
+    }));
+
     const clsStats = {
       tongChiDinh: clsTong,
       daHoanThanh: clsHoanThanh,
+      daThucHien: clsHoanThanh,
       dangThucHien: clsDangThucHien,
       choTiepNhan: clsCho,
+      choThucHien: clsDangThucHien + clsCho,
       tyLeHoanThanh: clsTong > 0 ? `${((clsHoanThanh / clsTong) * 100).toFixed(1)}%` : '100%',
       thoiGianChoTB: '14.5 phút',
       danhMucDichVu,
+      danhSachChiDinhCls,
     };
 
     // 4. Kho Dược & Nhà Thuốc
@@ -972,21 +1205,117 @@ export class QuanLyService {
     const tongDoanhThuDuoc = topThuocKeDon.reduce((sum: number, cur: any) => sum + cur.doanhThu, 0);
     const giaTriTrungBinhDon = soDonThuocDaXuat > 0 ? Math.round(tongDoanhThuDuoc / soDonThuocDaXuat) : 0;
 
+    // Tính tổng giá trị tài sản kho dược và số lượng cận date FEFO
+    const khoValRaw = await this.donThuocRepo.query(`
+      SELECT 
+        COUNT(id) AS tongSoMatHang,
+        COALESCE(SUM(ton_kho_tong * gia_ban), 0) AS tongGiaTriKho,
+        (SELECT COUNT(DISTINCT thuoc_id) FROM lo_thuoc WHERE so_luong_ton > 0 AND ngay_het_han <= DATE_ADD(NOW(), INTERVAL 90 DAY)) AS thuocCanDateFEFO,
+        (SELECT COUNT(DISTINCT CONCAT(t.id, '-', COALESCE(lt.id, '0'))) FROM thuoc t LEFT JOIN lo_thuoc lt ON lt.thuoc_id = t.id AND lt.so_luong_ton > 0 WHERE t.ton_kho_tong <= 100 OR lt.so_luong_ton <= 20) AS thuocSapHetHang
+      FROM thuoc
+    `).catch(() => [{ tongSoMatHang: 0, tongGiaTriKho: 0, thuocCanDateFEFO: 0, thuocSapHetHang: 0 }]);
+
+    // Chi tiết toàn bộ danh mục kho dược theo Lô và Hạn dùng (FEFO)
+    const rawTonKhoChiTiet = await this.donThuocRepo.query(`
+      SELECT 
+        t.id,
+        t.ma_thuoc AS maThuoc,
+        t.ten_thuoc AS tenThuoc,
+        COALESCE(t.ten_hoat_chat, '-') AS tenHoatChat,
+        COALESCE(t.don_vi_tinh, 'Viên') AS donViTinh,
+        t.ton_kho_tong AS tonKhoTong,
+        t.gia_ban AS giaBan,
+        COALESCE(lt_loai.ten_loai, 'Thuốc') AS tenLoai,
+        COALESCE(lt.ma_lo, 'LO-CHUNG') AS maLo,
+        lt.ngay_san_xuat AS ngaySanXuat,
+        lt.ngay_het_han AS ngayHetHan,
+        COALESCE(lt.so_luong_ton, t.ton_kho_tong) AS tonLo,
+        COALESCE(lt.gia_nhap, t.gia_ban * 0.8) AS giaNhap,
+        COALESCE(lt.nha_cung_cap, 'Công ty dược phẩm') AS nhaCungCap
+      FROM thuoc t
+      LEFT JOIN loai_thuoc lt_loai ON t.loai_thuoc_id = lt_loai.id
+      LEFT JOIN lo_thuoc lt ON lt.thuoc_id = t.id AND lt.so_luong_ton > 0
+      ORDER BY t.ten_thuoc ASC
+      LIMIT 300
+    `).catch(() => []);
+
+    const danhSachTonKhoChiTiet = rawTonKhoChiTiet.map((r: any) => {
+      const expDate = r.ngayHetHan ? new Date(r.ngayHetHan) : null;
+      let soNgayHetHan = 999;
+      if (expDate) {
+        soNgayHetHan = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      }
+      return {
+        ...r,
+        tonKhoTong: Number(r.tonKhoTong || 0),
+        giaBan: Number(r.giaBan || 0),
+        tonLo: Number(r.tonLo || 0),
+        giaNhap: Number(r.giaNhap || 0),
+        soNgayHetHan,
+      };
+    });
+
+    // Chi tiết đơn thuốc xuất
+    let dtListSql = `
+      SELECT 
+        dt.id,
+        dt.ma_don_thuoc AS maDonThuoc,
+        dt.ngay_ke AS ngayKe,
+        dt.ngay_cap_phat AS ngayCapPhat,
+        dt.trang_thai AS trangThai,
+        COALESCE(bn.ho_ten, 'Bệnh nhân') AS benhNhanTen,
+        COALESCE(bn.so_dien_thoai, '-') AS benhNhanSdt,
+        COALESCE(nv_bs.ho_ten, 'Bác sĩ') AS bacSiTen,
+        (SELECT COALESCE(SUM(dtct.so_luong * t.gia_ban), 0) FROM don_thuoc_chi_tiet dtct JOIN thuoc t ON dtct.thuoc_id = t.id WHERE dtct.don_thuoc_id = dt.id) AS tongTien
+      FROM don_thuoc dt
+      JOIN benh_an_kham bak ON dt.benh_an_kham_id = bak.id
+      JOIN ho_so_benh_an hs ON bak.ho_so_benh_an_id = hs.id
+      JOIN benh_nhan bn ON hs.benh_nhan_id = bn.id
+      LEFT JOIN bac_si bs ON dt.bac_si_ke_id = bs.id
+      LEFT JOIN nhan_vien nv_bs ON bs.nhan_vien_id = nv_bs.id
+    `;
+    const dtListParams: any[] = [];
+    if (tuNgayStr && denNgayStr) {
+      dtListSql += ` WHERE dt.ngay_ke BETWEEN ? AND ? `;
+      dtListParams.push(tuNgayStr, denNgayStr);
+    }
+    dtListSql += ` ORDER BY dt.ngay_ke DESC LIMIT 200 `;
+    const dtListRaw = await this.donThuocRepo.query(dtListSql, dtListParams).catch(() => []);
+    const danhSachDonThuocXuat = dtListRaw.map((r: any) => ({
+      ...r,
+      tongTien: Number(r.tongTien || 0),
+    }));
+
     const duocStats = {
       tongDoanhThuDuoc,
       soDonThuocDaXuat,
       giaTriTrungBinhDon,
+      tongSoMatHang: Number(khoValRaw[0]?.tongSoMatHang || 0),
+      tongSoThuoc: Number(khoValRaw[0]?.tongSoMatHang || 0),
+      tongGiaTriKho: Number(khoValRaw[0]?.tongGiaTriKho || 0),
+      thuocCanDateFEFO: Number(khoValRaw[0]?.thuocCanDateFEFO || 0),
+      sapHetHanCount: Number(khoValRaw[0]?.thuocCanDateFEFO || 0),
+      thuocSapHetHang: Number(khoValRaw[0]?.thuocSapHetHang || 0),
+      sapHetHangCount: Number(khoValRaw[0]?.thuocSapHetHang || 0),
       topThuocKeDon,
       canhBaoTonKho,
+      danhSachTonKhoChiTiet,
+      danhSachDonThuocXuat,
     };
 
     return {
       taiChinh,
+      soQuy: soQuyStats,
       lamSang: {
         totalTiepNhan,
+        tongTiepNhan: totalTiepNhan,
+        daKham,
+        dangKham,
+        choKham,
         tiepNhanHomNay,
         kenhTiepNhan,
         chuyenKhoaStats,
+        danhSachTiepNhan,
       },
       cls: clsStats,
       duoc: duocStats,
@@ -1078,16 +1407,27 @@ export class QuanLyService {
           if (lh) {
             if (action === 'duyet') {
               lh.trangThai = TrangThaiLichHen.DA_HUY;
-              lh.ghiChu = `${(lh.ghiChu || '').trim()} [Ban Giám Đốc đã duyệt hủy ca: ${don.ghiChuXuLy}] [Hệ thống đã hoàn tiền 100% tạm ứng 40.000đ cho bệnh nhân]`.trim();
+              lh.ghiChu = `${(lh.ghiChu || '').trim()} [CHỜ HOÀN CỌC 40.000đ] [Ban Giám Đốc đã duyệt hủy ca: ${don.ghiChuXuLy}] [Được hoàn tiền 100% tạm ứng 40.000đ]`.trim();
               await this.lichHenRepo.save(lh);
 
-              // 1. GỬI THÔNG BÁO CHO BỆNH NHÂN VỀ CA HỦY VÀ HOÀN TIỀN
+              // Đánh dấu phiếu thu tạm ứng (HDT...) sang trạng thái Chờ Thu ngân hoàn cọc (kèm thông tin nhận hoàn)
+              const maHdTamUng = `HDT${(lh.maLichHen || '').replace(/^LH/i, '')}`;
+              const pendingNote = `[CHỜ HOÀN CỌC 40.000đ] [TẠM ỨNG ĐẶT LỊCH] [MÃ_LỊCH_HẸN: ${lh.maLichHen}] [TK_HOÀN_TIỀN: chua_cung_cap|Chờ bệnh nhân cập nhật STK hoặc nhận tại quầy||${lh.benhNhan?.hoTen || ''}] [LÝ_DO_HỦY: Ban Giám Đốc phê duyệt hủy ca khám (${don.ghiChuXuLy || 'Theo đề xuất Bác sĩ'})]`;
+              await this.lichHenRepo.manager.query(
+                `UPDATE hoa_don
+                 SET trang_thai = 'da_thanh_toan',
+                     ghi_chu = ?
+                 WHERE (ma_hoa_don = ? OR ghi_chu LIKE ?)`,
+                [pendingNote, maHdTamUng, `%[MÃ_LỊCH_HẸN: ${lh.maLichHen}]%`],
+              ).catch(() => {});
+
+              // 1. GỬI THÔNG BÁO CHO BỆNH NHÂN VỀ CA HỦY VÀ HƯỚNG DẪN CẬP NHẬT STK NHẬN HOÀN CỌC
               const bnUserId = lh.benhNhan?.nguoiDungId;
               if (bnUserId) {
                 await this.thongBaoService.taoThongBao({
                   nguoiNhanId: bnUserId,
-                  tieuDe: `Thông báo hủy ca khám và hoàn tiền: ${lh.maLichHen}`,
-                  noiDung: `Ca khám mã ${lh.maLichHen} vào ngày ${lh.ngayHen} lúc ${lh.gioHen} của bạn đã được hủy theo đề xuất của Bác sĩ ${lh.bacSi?.nhanVien?.hoTen || ''} (Ban Giám Đốc đã phê duyệt). Tiền tạm ứng 40.000đ đã được hoàn lại 100% vào tài khoản thanh toán của bạn. Xin thứ lỗi vì sự bất tiện này!`,
+                  tieuDe: `Thông báo hủy ca khám & nhận hoàn cọc 40.000đ: ${lh.maLichHen}`,
+                  noiDung: `Ca khám mã ${lh.maLichHen} vào ngày ${lh.ngayHen} lúc ${lh.gioHen} của bạn đã được hủy theo đề xuất của Bác sĩ ${lh.bacSi?.nhanVien?.hoTen || ''} (Ban Giám Đốc đã phê duyệt). Quý khách được hoàn lại 100% tiền tạm ứng (40.000đ). Vui lòng vào mục "Lịch hẹn của tôi" bấm "Cập nhật STK nhận hoàn cọc" hoặc nhận trực tiếp tại Quầy Thu Ngân!`,
                   loai: 'lich_hen',
                   doiTuongBang: 'lich_hen',
                   doiTuongId: lh.id,
@@ -2448,5 +2788,203 @@ export class QuanLyService {
       const msg = err?.response?.data?.message || err?.response?.data?.detail || err.message;
       throw new BadRequestException(msg);
     }
+  }
+
+  // ==========================================
+  // BÁO CÁO CÁC BỘ PHẬN GỬI BAN GIÁM ĐỐC
+  // ==========================================
+
+  async taoBaoCaoBoPhan(userId: number, dto: {
+    boPhan: string;
+    tieuDe: string;
+    kyBaoCao?: string;
+    soLieuSnapshot?: any;
+    noiDung?: string;
+    kienNghi?: string;
+  }) {
+    if (!dto.boPhan?.trim()) throw new BadRequestException('Vui lòng chỉ định bộ phận lập báo cáo');
+    if (!dto.tieuDe?.trim()) throw new BadRequestException('Vui lòng nhập tiêu đề báo cáo');
+
+    const nv = await this.nhanVienRepo.findOneBy({ nguoiDungId: userId });
+    const count = await this.baoCaoBoPhanRepo.count();
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const maBaoCao = `BC-${dateStr}-${String(count + 1).padStart(4, '0')}`;
+
+    const baoCao = this.baoCaoBoPhanRepo.create({
+      maBaoCao,
+      boPhan: dto.boPhan.trim(),
+      tieuDe: dto.tieuDe.trim(),
+      kyBaoCao: dto.kyBaoCao?.trim() || 'Hôm nay',
+      nguoiGuiId: nv ? nv.id : userId,
+      soLieuSnapshot: dto.soLieuSnapshot || {},
+      noiDung: dto.noiDung?.trim() || '',
+      kienNghi: dto.kienNghi?.trim() || '',
+      trangThai: 'cho_xem',
+    });
+
+    const saved = await this.baoCaoBoPhanRepo.save(baoCao);
+
+    // Ghi nhật ký hệ thống
+    try {
+      const user = await this.nguoiDungRepo.findOneBy({ id: userId });
+      await this.nhatKyRepo.save(
+        this.nhatKyRepo.create({
+          nguoiDungId: userId,
+          tenNguoiDung: user?.tenDangNhap || `User#${userId}`,
+          vaiTro: 'nhan_vien',
+          hanhDong: 'GUI_BAO_CAO_BO_PHAN',
+          loaiNhatKy: LoaiNhatKy.INFO,
+          moTa: `Lập và gửi báo cáo "${dto.tieuDe}" (${dto.boPhan}) lên Ban Giám Đốc`,
+          diaChiIp: '127.0.0.1',
+        }),
+      );
+    } catch (_) {}
+
+    // Thông báo cho Ban Giám Đốc có báo cáo mới
+    try {
+      await this.thongBaoService.taoThongBaoTheoRole('ban_giam_doc', {
+        tieuDe: `📑 Báo cáo mới: ${saved.tieuDe}`,
+        noiDung: `${nv?.hoTen || 'Nhân viên'} vừa gửi báo cáo ${saved.maBaoCao} (${saved.kyBaoCao}). Vui lòng xem và chỉ đạo.`,
+        loai: 'bao_cao_bo_phan',
+        doiTuongBang: 'bao_cao_bo_phan',
+        doiTuongId: saved.id,
+      });
+    } catch (_) {}
+
+    return {
+      message: 'Gửi báo cáo lên Ban Giám Đốc thành công',
+      data: saved,
+    };
+  }
+
+  async layDanhSachBaoCaoBoPhan(boPhan?: string, trangThai?: string) {
+    const qb = this.baoCaoBoPhanRepo.createQueryBuilder('bc')
+      .leftJoin('nhan_vien', 'nv_gui', 'nv_gui.id = bc.nguoi_gui_id OR nv_gui.nguoi_dung_id = bc.nguoi_gui_id')
+      .leftJoin('nguoi_dung', 'nd_gui', 'nd_gui.id = bc.nguoi_gui_id')
+      .leftJoin('nhan_vien', 'nv_cd', 'nv_cd.id = bc.nguoi_chi_dao_id OR nv_cd.nguoi_dung_id = bc.nguoi_chi_dao_id')
+      .leftJoin('nguoi_dung', 'nd_cd', 'nd_cd.id = bc.nguoi_chi_dao_id')
+      .addSelect('COALESCE(nv_gui.ho_ten, nd_gui.ten_dang_nhap)', 'nguoi_gui_ho_ten')
+      .addSelect('nv_gui.chuc_vu', 'nguoi_gui_chuc_vu')
+      .addSelect('COALESCE(nv_cd.ho_ten, nd_cd.ten_dang_nhap)', 'nguoi_chi_dao_ho_ten')
+      .orderBy('bc.tao_luc', 'DESC');
+
+    if (boPhan && boPhan !== 'all') {
+      qb.andWhere('bc.bo_phan = :boPhan', { boPhan });
+    }
+    if (trangThai && trangThai !== 'all') {
+      qb.andWhere('bc.trang_thai = :trangThai', { trangThai });
+    }
+
+    const rows = await qb.getRawMany();
+    const result = rows.map((r) => {
+      const tenNguoiGui = r.nguoi_gui_ho_ten || `NV #${r.bc_nguoi_gui_id}`;
+      return {
+        id: r.bc_id,
+        maBaoCao: r.bc_ma_bao_cao,
+        boPhan: r.bc_bo_phan,
+        tieuDe: r.bc_tieu_de,
+        kyBaoCao: r.bc_ky_bao_cao,
+        nguoiGuiId: r.bc_nguoi_gui_id,
+        nguoiGuiHoTen: tenNguoiGui,
+        tenNguoiGui: tenNguoiGui,
+        nguoiGuiChucVu: r.nguoi_gui_chuc_vu || '',
+        ngayGui: r.bc_ngay_gui,
+        soLieuSnapshot: r.bc_so_lieu_snapshot,
+        noiDung: r.bc_noi_dung,
+        kienNghi: r.bc_kien_nghi,
+        trangThai: r.bc_trang_thai,
+        yKienGiamDoc: r.bc_y_kien_giam_doc,
+        nguoiChiDaoId: r.bc_nguoi_chi_dao_id,
+        nguoiChiDaoHoTen: r.nguoi_chi_dao_ho_ten || null,
+        ngayChiDao: r.bc_ngay_chi_dao,
+        taoLuc: r.bc_tao_luc,
+      };
+    });
+
+    return {
+      message: 'Lấy danh sách báo cáo bộ phận thành công',
+      data: result,
+    };
+  }
+
+  async layChiTietBaoCaoBoPhan(id: number) {
+    const bc = await this.baoCaoBoPhanRepo.findOneBy({ id });
+    if (!bc) throw new NotFoundException('Không tìm thấy báo cáo');
+    const nvGui = (await this.nhanVienRepo.findOneBy({ id: bc.nguoiGuiId }))
+      || (await this.nhanVienRepo.findOneBy({ nguoiDungId: bc.nguoiGuiId }));
+    const nvCd = bc.nguoiChiDaoId ? (await this.nhanVienRepo.findOneBy({ id: bc.nguoiChiDaoId }) || await this.nhanVienRepo.findOneBy({ nguoiDungId: bc.nguoiChiDaoId })) : null;
+    const ndGui = !nvGui ? await this.nguoiDungRepo.findOneBy({ id: bc.nguoiGuiId }) : null;
+
+    let snapshot = bc.soLieuSnapshot;
+    if (typeof snapshot === 'string') {
+      try { snapshot = JSON.parse(snapshot); } catch (_) {}
+    }
+
+    const tenNguoiGui = nvGui?.hoTen || ndGui?.tenDangNhap || `Nhân sự #${bc.nguoiGuiId}`;
+
+    return {
+      message: 'Lấy chi tiết báo cáo thành công',
+      data: {
+        ...bc,
+        soLieuSnapshot: snapshot,
+        nguoiGuiHoTen: tenNguoiGui,
+        tenNguoiGui,
+        nguoiGuiChucVu: nvGui?.chucVu || '',
+        nguoiChiDaoHoTen: nvCd?.hoTen || (bc.nguoiChiDaoId ? 'Ban Giám Đốc' : null),
+      },
+    };
+  }
+
+  async chiDaoBaoCaoBoPhan(id: number, giamDocUserId: number, yKien: string) {
+    const bc = await this.baoCaoBoPhanRepo.findOneBy({ id });
+    if (!bc) throw new NotFoundException('Không tìm thấy báo cáo');
+
+    const nvCd = await this.nhanVienRepo.findOneBy({ nguoiDungId: giamDocUserId });
+    bc.yKienGiamDoc = yKien?.trim() || 'Ban Giám Đốc đã xem và ghi nhận báo cáo.';
+    bc.nguoiChiDaoId = nvCd ? nvCd.id : giamDocUserId;
+    bc.ngayChiDao = new Date();
+    bc.trangThai = 'da_chi_dao';
+
+    const saved = await this.baoCaoBoPhanRepo.save(bc);
+
+    // Tự động gửi thông báo hệ thống thời gian thực đến nhân viên lập báo cáo
+    try {
+      const nvGui = (await this.nhanVienRepo.findOneBy({ id: bc.nguoiGuiId }))
+        || (await this.nhanVienRepo.findOneBy({ nguoiDungId: bc.nguoiGuiId }));
+      const nguoiNhanNguoiDungId = nvGui ? nvGui.nguoiDungId : bc.nguoiGuiId;
+
+      if (nguoiNhanNguoiDungId) {
+        await this.thongBaoService.taoThongBao({
+          nguoiNhanId: nguoiNhanNguoiDungId,
+          tieuDe: `📋 Ban Giám Đốc đã chỉ đạo báo cáo: ${bc.tieuDe}`,
+          noiDung: `Ý kiến chỉ đạo: "${bc.yKienGiamDoc}" (Mã: ${bc.maBaoCao})`,
+          loai: 'chi_dao_bao_cao',
+          doiTuongBang: 'bao_cao_bo_phan',
+          doiTuongId: bc.id,
+        });
+      }
+
+      // Ghi nhật ký hệ thống
+      const userGd = await this.nguoiDungRepo.findOneBy({ id: giamDocUserId });
+      await this.nhatKyRepo.save(
+        this.nhatKyRepo.create({
+          nguoiDungId: giamDocUserId,
+          tenNguoiDung: userGd?.tenDangNhap || 'Ban Giám Đốc',
+          vaiTro: 'ban_giam_doc',
+          hanhDong: 'CHI_DAO_BAO_CAO_BO_PHAN',
+          loaiNhatKy: LoaiNhatKy.INFO,
+          moTa: `Chỉ đạo báo cáo "${bc.tieuDe}" (${bc.maBaoCao}): "${bc.yKienGiamDoc}"`,
+          diaChiIp: '127.0.0.1',
+        }),
+      );
+    } catch (errNotification) {
+      console.error('Lỗi gửi thông báo chỉ đạo báo cáo:', errNotification);
+    }
+
+    return {
+      message: 'Đã lưu ý kiến chỉ đạo của Ban Giám Đốc thành công',
+      data: saved,
+    };
   }
 }

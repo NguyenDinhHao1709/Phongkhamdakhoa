@@ -73,7 +73,7 @@ export class NhaThuocController {
   }
 
   @Patch('don-thuoc/:id/lua-chon-mua')
-  @Roles('thu_ngan', 'tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Roles('thu_ngan', 'tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'benh_nhan')
   @ApiOperation({ summary: 'Ghi nhận bệnh nhân mua thuốc tại bệnh viện hoặc mua ngoài' })
   capNhatLuaChonMua(
     @Param('id', ParseIntPipe) id: number,
@@ -132,6 +132,18 @@ export class NhaThuocController {
     return this.nhaThuocService.getNhaCungCap();
   }
 
+  @Post('mua-hang/nha-cung-cap/:id/bang-gia')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  capNhatBangGia(@Param('id') id: string, @Body() body: any) {
+    return this.nhaThuocService.capNhatBangGiaNhaCungCap(Number(id), body);
+  }
+
+  @Delete('mua-hang/nha-cung-cap/:id/bang-gia')
+  @Roles('nhan_vien_nha_thuoc', 'nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  xoaBangGia(@Param('id') id: string) {
+    return this.nhaThuocService.xoaBangGiaNhaCungCap(Number(id));
+  }
+
   @Post('mua-hang/yeu-cau')
   @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   taoYeuCauNhap(@CurrentUser('id') userId: number, @Body() body: any) {
@@ -150,10 +162,20 @@ export class NhaThuocController {
     return this.nhaThuocService.capNhatBaoGia(id, body.chiTiet);
   }
 
+  @Patch('mua-hang/yeu-cau/:id/dat-hang')
+  @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  datHangNhaCungCap(@Param('id', ParseIntPipe) id: number) {
+    return this.nhaThuocService.datHangNhaCungCap(id);
+  }
+
   @Patch('mua-hang/yeu-cau/:id/tiep-nhan')
   @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
-  tiepNhanHang(@Param('id', ParseIntPipe) id: number, @Body() body: { chiTiet: any[] }) {
-    return this.nhaThuocService.tiepNhanHang(id, body.chiTiet);
+  tiepNhanHang(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { chiTiet: any[]; ketQuaKiemNhan?: string; bienBanTraHang?: string },
+  ) {
+    return this.nhaThuocService.tiepNhanHang(id, { ...body, nguoiKiemNhanId: userId || 1 });
   }
 
   @Patch('mua-hang/yeu-cau/:id/chi-tra')
@@ -161,7 +183,7 @@ export class NhaThuocController {
   chiTraNhaCungCap(
     @CurrentUser('id') userId: number,
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { soTien?: number; phuongThucChi?: string; soChungTuChi?: string; ghiChu?: string },
+    @Body() body: { soTien?: number; phuongThucChi?: string; soChungTuChi?: string; soHoaDonNcc?: string; ngayHoaDonNcc?: string; ghiChu?: string },
   ) {
     return this.nhaThuocService.chiTraNhaCungCap(id, body, userId || 1);
   }

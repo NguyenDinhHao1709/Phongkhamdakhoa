@@ -26,6 +26,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload) {
     return {
       id: payload.sub,
+      sub: payload.sub,
+      userId: payload.sub,
       tenDangNhap: payload.tenDangNhap,
       vaiTroId: payload.vaiTroId,
       vai_tro: payload.maVaiTro,   // field dùng trong RolesGuard

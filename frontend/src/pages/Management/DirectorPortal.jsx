@@ -7,6 +7,7 @@ import XepLichLamViecPage from './XepLichLamViecPage';
 import TraCuuTongHopPage from './TraCuuTongHopPage';
 import DuyetYeuCauPage from './DuyetYeuCauPage';
 import QuanLyChamCongPage from './QuanLyChamCongPage';
+import BaoCaoBoPhanGiamDocPage from './BaoCaoBoPhanGiamDocPage';
 import ThongTinCaNhanPage from '../Receptionist/NhanVienShared/ThongTinCaNhanPage';
 
 export default function DirectorPortal() {
@@ -34,6 +35,9 @@ export default function DirectorPortal() {
         {/* UC 22: Phê duyệt đơn / yêu cầu nhân viên */}
         <Route path="phe-duyet-don" element={<DuyetYeuCauPage />} />
         <Route path="mua-hang-thuoc" element={<Navigate to="/ban-giam-doc/phe-duyet-don" replace />} />
+
+        {/* Báo cáo chuyên môn các bộ phận & Ý kiến chỉ đạo */}
+        <Route path="bao-cao-bo-phan" element={<BaoCaoBoPhanGiamDocPage />} />
 
         {/* Thông tin cá nhân */}
         <Route path="ca-nhan" element={<ThongTinCaNhanPage />} />

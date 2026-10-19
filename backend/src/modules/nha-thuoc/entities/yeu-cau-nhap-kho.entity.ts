@@ -50,6 +50,24 @@ export class YeuCauNhapKho {
   @Column({ name: 'so_chung_tu_chi', length: 50, nullable: true })
   soChungTuChi: string;
 
+  @Column({ name: 'so_hoa_don_ncc', length: 100, nullable: true })
+  soHoaDonNcc: string;
+
+  @Column({ name: 'ngay_hoa_don_ncc', type: 'date', nullable: true })
+  ngayHoaDonNcc: Date;
+
+  @Column({ name: 'bien_ban_tra_hang', type: 'text', nullable: true })
+  bienBanTraHang: string;
+
+  @Column({ name: 'ket_qua_kiem_nhan', length: 40, nullable: true })
+  ketQuaKiemNhan: string;
+
+  @Column({ name: 'nguoi_kiem_nhan_id', nullable: true })
+  nguoiKiemNhanId: number;
+
+  @Column({ name: 'ngay_kiem_nhan', type: 'datetime', nullable: true })
+  ngayKiemNhan: Date;
+
   @Column({ name: 'ghi_chu_chi', type: 'text', nullable: true })
   ghiChuChi: string;
 

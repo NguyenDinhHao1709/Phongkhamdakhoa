@@ -1,7 +1,8 @@
-import { useRef } from 'react';
+import { useRef, Fragment } from 'react';
 import { Printer, X, FlaskConical, ExternalLink, Image as ImageIcon, FileText } from 'lucide-react';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { formatDate, formatDateTime } from '../../utils/formatDate';
+import { parseResultConfig, getFallbackServiceConfig, evaluateLabValue } from '../../utils/labConfig';
 
 const parseAttachments = (value) => {
   if (!value) return [];
@@ -265,18 +266,89 @@ export default function InKetQuaXetNghiemModal({
                     const giaTri = kq.giaTri ?? kq.gia_tri ?? 'Chờ KQ';
                     const donVi = kq.donVi ?? kq.don_vi ?? dv.donViKetQua ?? '';
                     const giaTriBinhThuong = dv.giaTriBinhThuong || 'Bình thường';
-                    const nhanXet = kq.nhanXet ?? kq.nhan_xet ?? 'Chỉ số trong giới hạn bình thường';
+                    const nhanXet = kq.nhanXet ?? kq.nhan_xet ?? '';
+
                     let chiTiet = {};
                     try {
                       const rawChiTiet = kq.ketQuaChiTiet ?? kq.ket_qua_chi_tiet;
-                      chiTiet = rawChiTiet ? JSON.parse(rawChiTiet) : {};
+                      chiTiet = typeof rawChiTiet === 'string' ? JSON.parse(rawChiTiet) : (rawChiTiet || {});
                     } catch {
                       chiTiet = {};
                     }
-                    const hienThiGiaTri =
-                      Object.keys(chiTiet).length > 0
-                        ? Object.entries(chiTiet).map(([key, value]) => `${key}: ${value}`).join('; ')
-                        : giaTri;
+
+                    const fallbackConfig = getFallbackServiceConfig(dv);
+                    const resultFields = parseResultConfig(dv?.cauHinhKetQua || dv?.cau_hinh_ket_qua);
+                    const configuredFields = resultFields.length > 0 ? resultFields : (fallbackConfig?.fields || []);
+                    const hasMultiParams = Object.keys(chiTiet).length > 0 && configuredFields.length > 1;
+
+                    if (hasMultiParams) {
+                      return (
+                        <Fragment key={c.id || i}>
+                          {/* Hàng tiêu đề dịch vụ lớn */}
+                          <tr className="bg-gray-100 font-bold">
+                            <td className="border border-gray-300 px-2 py-1.5 text-center">{i + 1}</td>
+                            <td className="border border-gray-300 px-2 py-1.5 uppercase text-gray-900" colSpan={2}>
+                              {dv.tenDichVu || 'Xét nghiệm'}
+                              {dv.maDichVu && (
+                                <span className="ml-1 text-[10px] text-gray-600 font-mono font-normal">
+                                  ({dv.maDichVu})
+                                </span>
+                              )}
+                            </td>
+                            <td className="border border-gray-300 px-2 py-1.5 text-center text-gray-500 italic" colSpan={3}>
+                              (Chi tiết {configuredFields.length} thông số đo đạc bên dưới)
+                            </td>
+                          </tr>
+
+                          {/* Từng thông số chi tiết */}
+                          {configuredFields.map((field, fIdx) => {
+                            const val = chiTiet[field.key];
+                            if (val === undefined || val === null || val === '') return null;
+                            const evalResult = evaluateLabValue(val, field.reference);
+                            const evalText = evalResult === 'high' ? 'Cao [H]' : evalResult === 'low' ? 'Thấp [L]' : 'Bình thường';
+                            const evalClass = evalResult === 'high' ? 'text-red-600 font-bold' : evalResult === 'low' ? 'text-amber-600 font-bold' : 'text-gray-800';
+
+                            return (
+                              <tr key={field.key} className="hover:bg-gray-50/50">
+                                <td className="border border-gray-300 px-2 py-1.5 text-center text-gray-500 text-[10px]">
+                                  {i + 1}.{fIdx + 1}
+                                </td>
+                                <td className="border border-gray-300 px-2 py-1.5 pl-4 text-gray-800">
+                                  {field.label}
+                                </td>
+                                <td className={`border border-gray-300 px-2 py-1.5 text-center font-bold ${evalClass}`}>
+                                  {val} {evalResult === 'high' ? '↑' : evalResult === 'low' ? '↓' : ''}
+                                </td>
+                                <td className="border border-gray-300 px-2 py-1.5 text-center text-gray-600 font-mono">
+                                  {field.unit || '—'}
+                                </td>
+                                <td className="border border-gray-300 px-2 py-1.5 text-center text-gray-600">
+                                  {field.reference || '—'}
+                                </td>
+                                <td className={`border border-gray-300 px-2 py-1.5 text-center ${evalClass}`}>
+                                  {evalText}
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {/* Nhận xét KTV nếu có */}
+                          {nhanXet && (
+                            <tr className="bg-amber-50/40">
+                              <td className="border border-gray-300 px-2 py-1 text-center text-gray-400 text-[10px]">•</td>
+                              <td className="border border-gray-300 px-2 py-1 italic text-gray-700" colSpan={5}>
+                                💬 <strong>Nhận xét KTV:</strong> {nhanXet}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    }
+
+                    // Dịch vụ đơn lẻ
+                    const evalResult = evaluateLabValue(giaTri, giaTriBinhThuong);
+                    const evalText = evalResult === 'high' ? 'Cao [H]' : evalResult === 'low' ? 'Thấp [L]' : nhanXet || 'Bình thường';
+                    const evalClass = evalResult === 'high' ? 'text-red-600 font-bold' : evalResult === 'low' ? 'text-amber-600 font-bold' : 'text-gray-800';
 
                     return (
                       <tr key={c.id || i} className="hover:bg-gray-50/50">
@@ -289,17 +361,17 @@ export default function InKetQuaXetNghiemModal({
                             </span>
                           )}
                         </td>
-                        <td className="border border-gray-300 px-2 py-2 text-center font-extrabold text-sm text-purple-900">
-                          {hienThiGiaTri}
+                        <td className={`border border-gray-300 px-2 py-2 text-center font-extrabold text-sm ${evalClass}`}>
+                          {giaTri} {evalResult === 'high' ? '↑' : evalResult === 'low' ? '↓' : ''}
                         </td>
                         <td className="border border-gray-300 px-2 py-2 text-center text-gray-700">
-                          {donVi}
+                          {donVi || '—'}
                         </td>
                         <td className="border border-gray-300 px-2 py-2 text-center text-gray-600 italic">
                           {giaTriBinhThuong}
                         </td>
-                        <td className="border border-gray-300 px-2 py-2 text-gray-800">
-                          {nhanXet}
+                        <td className={`border border-gray-300 px-2 py-2 ${evalClass}`}>
+                          {evalText}
                         </td>
                       </tr>
                     );

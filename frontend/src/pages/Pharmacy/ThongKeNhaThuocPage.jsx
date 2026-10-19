@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import { formatCurrency } from '../../utils/formatCurrency';
-import { formatDateTime } from '../../utils/formatDate';
+import { formatDateTime, formatDate } from '../../utils/formatDate';
 import {
   BarChart3,
   AlertTriangle,
@@ -49,10 +49,16 @@ import {
   Legend,
 } from 'recharts';
 import NhapKhoModal from './NhapKhoModal';
+import InBaoCaoDuocPhamModal from './InBaoCaoDuocPhamModal';
+import GuiBaoCaoModal from '../../components/Report/GuiBaoCaoModal';
+import LichSuBaoCaoModal from '../../components/Report/LichSuBaoCaoModal';
 
 export default function ThongKeNhaThuocPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isGuiBaoCaoOpen, setIsGuiBaoCaoOpen] = useState(false);
+  const [isLichSuBaoCaoOpen, setIsLichSuBaoCaoOpen] = useState(false);
   const { user } = useAuthStore();
 
   const tabParam = searchParams.get('tab');
@@ -115,20 +121,19 @@ export default function ThongKeNhaThuocPage() {
 
   const handleOpenNhapKhoForForecast = (item) => {
     const fullThuoc = (stats.listThuoc || []).find((t) => t.id === item.id || t.maThuoc === item.maThuoc) || {};
-    setSelectedForecastThuoc({
-      id: item.id,
-      maThuoc: item.maThuoc,
-      tenThuoc: item.tenThuoc,
-      tenHoatChat: fullThuoc.tenHoatChat || '',
-      donViTinh: item.donViTinh || fullThuoc.donViTinh || 'Hộp',
-      giaBan: fullThuoc.giaBan || 0,
-      tonKhoHienTai: item.tonKhoHienTai,
-      tieuThuTrungBinhNgay: item.tieuThuTrungBinhNgay,
-      soNgayConLai: item.soNgayConLai,
-      soLuongDeXuatNhap: item.soLuongDeXuatNhap > 0 ? item.soLuongDeXuatNhap : Math.round((item.tieuThuTrungBinhNgay || 5) * 14),
-      ghiChu: `[AI Dự Báo Nhu Cầu] Tốc độ xuất ~${item.tieuThuTrungBinhNgay}/ngày. Tồn kho còn ~${item.soNgayConLai} ngày. Đề xuất nhập bổ sung.`,
+    const defaultQty = item.soLuongDeXuatNhap > 0 ? item.soLuongDeXuatNhap : Math.round((item.tieuThuTrungBinhNgay || 5) * 14);
+    navigate('/nha-thuoc/mua-hang', {
+      state: {
+        createPrFromForecast: {
+          id: item.id || fullThuoc.id,
+          maThuoc: item.maThuoc || fullThuoc.maThuoc,
+          tenThuoc: item.tenThuoc || fullThuoc.tenThuoc,
+          donViTinh: item.donViTinh || fullThuoc.donViTinh || 'Hộp',
+          soLuongDat: defaultQty,
+          ghiChu: `[AI Dự Báo Nhu Cầu] Tốc độ xuất ~${item.tieuThuTrungBinhNgay}/ngày. Tồn kho còn ~${item.soNgayConLai} ngày. Đề xuất lập phiếu yêu cầu mua (PR).`,
+        },
+      },
     });
-    setIsNhapKhoOpen(true);
   };
 
   const forecastMetrics = useMemo(() => {
@@ -205,6 +210,8 @@ export default function ThongKeNhaThuocPage() {
           ? t.tonKhoTong <= 0
           : statusFilter === 'con_hang'
           ? t.tonKhoTong > 20
+          : statusFilter === 'can_date'
+          ? Boolean(t.coLoCanDate)
           : true;
 
       const matchRoute =
@@ -220,11 +227,13 @@ export default function ThongKeNhaThuocPage() {
   const filteredCanhBao = useMemo(() => {
     if (statusFilter === 'all') return stats.canhBaoRuiRo || [];
     if (statusFilter === 'het_hang')
-      return (stats.canhBaoRuiRo || []).filter((r) => r.mucDo === 'nguy_cap');
+      return (stats.canhBaoRuiRo || []).filter((r) => r.mucDo === 'nguy_cap' && (r.loaiRuiRo.includes('Hết hàng') || r.tonKho <= 0));
     if (statusFilter === 'canh_bao')
       return (stats.canhBaoRuiRo || []).filter((r) => r.loaiRuiRo.includes('Tồn kho nguy cấp'));
     if (statusFilter === 'can_date')
-      return (stats.canhBaoRuiRo || []).filter((r) => r.loaiRuiRo.includes('Cận hạn'));
+      return (stats.canhBaoRuiRo || []).filter(
+        (r) => r.loaiRuiRo.includes('Cận hạn') || r.loaiRuiRo.includes('hạn sử dụng') || r.soNgayConLai !== undefined
+      );
     return stats.canhBaoRuiRo || [];
   }, [stats.canhBaoRuiRo, statusFilter]);
 
@@ -245,6 +254,16 @@ export default function ThongKeNhaThuocPage() {
     statusFilter !== 'all' ||
     routeFilter !== 'all' ||
     Boolean(search.trim());
+
+  const getKyBaoCaoLabel = () => {
+    if (fromDate && toDate) return `Từ ${formatDate(fromDate)} đến ${formatDate(toDate)}`;
+    if (fromDate) return `Từ ngày ${formatDate(fromDate)}`;
+    if (timeFilter === 'today') return `Hôm nay (${formatDate(new Date())})`;
+    if (timeFilter === '7days') return '7 ngày qua';
+    if (timeFilter === 'month') return `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
+    if (timeFilter === 'quarter') return `Quý ${Math.floor(new Date().getMonth() / 3) + 1}/${new Date().getFullYear()}`;
+    return 'Toàn thời gian';
+  };
 
   // Xuất file CSV báo cáo kho thuốc đã lọc
   const handleExportCSV = () => {
@@ -334,11 +353,28 @@ export default function ThongKeNhaThuocPage() {
           </button>
 
           <button
-            onClick={() => window.print()}
+            onClick={() => setIsPrintModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all shadow-xs active:scale-95 cursor-pointer"
           >
             <Printer className="h-3.5 w-3.5 text-gray-600" />
             <span>In Báo Cáo</span>
+          </button>
+
+          <button
+            onClick={() => setIsGuiBaoCaoOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
+          >
+            <span>📤</span>
+            <span>Gửi Báo Cáo Giám Đốc</span>
+          </button>
+
+          <button
+            onClick={() => setIsLichSuBaoCaoOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
+            title="Xem lịch sử báo cáo & ý kiến chỉ đạo từ Ban Giám Đốc"
+          >
+            <span>📋</span>
+            <span>Lịch Sử & Chỉ Đạo</span>
           </button>
 
           <button
@@ -852,7 +888,7 @@ export default function ThongKeNhaThuocPage() {
                               className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[10px] font-bold shadow-xs transition-all active:scale-95 cursor-pointer whitespace-nowrap"
                             >
                               <PackagePlus className="h-3 w-3" />
-                              <span>Nhập ngay</span>
+                              <span>Lập PR</span>
                             </button>
                           ) : (
                             <button
@@ -860,7 +896,7 @@ export default function ThongKeNhaThuocPage() {
                               className="inline-flex items-center gap-1 px-2 py-1 text-gray-400 hover:text-purple-700 hover:bg-purple-50 rounded-lg text-[10px] font-medium transition-colors cursor-pointer"
                             >
                               <PlusCircle className="h-3 w-3" />
-                              <span>Tạo đơn</span>
+                              <span>Lập PR</span>
                             </button>
                           )}
                         </td>
@@ -964,7 +1000,7 @@ export default function ThongKeNhaThuocPage() {
               </div>
             </div>
             <p className="text-xs text-purple-900/80 leading-relaxed">
-              Mô hình học máy phân tích lịch sử tiêu thụ 30 ngày qua trên từng mã thuốc và tính toán tốc độ xuất bình quân mỗi ngày. Khi số ngày tồn khả dụng (Runway) giảm dưới 7 ngày hoặc thấp hơn định mức an toàn, hệ thống sẽ đề xuất số lượng cần nhập bù đắp. Bấm <strong>"Lập Phiếu Nhập"</strong> để hệ thống tự điền dữ liệu và gửi Ban Giám Đốc duyệt chi mua thuốc.
+              Mô hình học máy phân tích lịch sử tiêu thụ 30 ngày qua trên từng mã thuốc và tính toán tốc độ xuất bình quân mỗi ngày. Khi số ngày tồn khả dụng (Runway) giảm dưới 7 ngày hoặc thấp hơn định mức an toàn, hệ thống sẽ đề xuất số lượng cần nhập bù đắp. Bấm <strong>"Lập Phiếu Yêu Cầu (PR)"</strong> để chuyển sang quy trình mua thuốc ERP và gửi Ban Giám Đốc duyệt.
             </p>
           </div>
 
@@ -1062,7 +1098,7 @@ export default function ThongKeNhaThuocPage() {
                       : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
                   }`}
                 >
-                  ⚡ Cần Lập Phiếu Nhập ({forecastMetrics.canNhapCount})
+                  ⚡ Cần Lập Phiếu PR ({forecastMetrics.canNhapCount})
                 </button>
                 <button
                   onClick={() => setForecastStatusFilter('nguy_cap')}
@@ -1202,7 +1238,7 @@ export default function ThongKeNhaThuocPage() {
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs shadow-purple-600/20 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
                             >
                               <PackagePlus className="h-3.5 w-3.5" />
-                              <span>Lập Phiếu Nhập</span>
+                              <span>Lập Phiếu PR</span>
                             </button>
                           </td>
                         </tr>
@@ -1239,42 +1275,88 @@ export default function ThongKeNhaThuocPage() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-rose-50/50 text-[11px] font-bold text-rose-900 uppercase tracking-wider border-b border-rose-100">
-                    <th className="py-3 px-4">Mã Thuốc</th>
-                    <th className="py-3 px-4">Tên Thuốc / Hoạt Chất</th>
-                    <th className="py-3 px-4">Loại Rủi Ro</th>
+                    <th className="py-3 px-4">Mã Thuốc & Lô</th>
+                    <th className="py-3 px-4">Tên Thuốc / Quy Cách</th>
+                    <th className="py-3 px-4">Loại Cảnh Báo</th>
                     <th className="py-3 px-4 text-center">Số Lượng Tồn</th>
                     <th className="py-3 px-4 text-center">Hạn Sử Dụng</th>
-                    <th className="py-3 px-4 text-right">Hành Động Đề Xuất</th>
+                    <th className="py-3 px-4 text-right">Đề Xuất Xử Lý</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-gray-700">
                   {filteredCanhBao.map((item) => (
                     <tr key={item.id} className="hover:bg-rose-50/30 transition-colors">
-                      <td className="py-3.5 px-4 font-mono font-bold text-gray-800">{item.maThuoc}</td>
-                      <td className="py-3.5 px-4 font-bold text-gray-900">{item.tenThuoc}</td>
+                      <td className="py-3.5 px-4 font-mono font-bold text-gray-800">
+                        <span className="text-primary-700 font-bold block">{item.maThuoc}</span>
+                        {item.maLo && (
+                          <span className="inline-flex items-center gap-1 mt-1 font-mono text-[11px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200">
+                            Lô: {item.maLo}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 font-bold text-gray-900">
+                        <span>{item.tenThuoc}</span>
+                        {item.moTa && (
+                          <p className="text-[11px] font-normal text-gray-500 mt-0.5 max-w-sm">
+                            {item.moTa}
+                          </p>
+                        )}
+                      </td>
                       <td className="py-3.5 px-4">
                         <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
                             item.mucDo === 'nguy_cap'
                               ? 'bg-rose-100 text-rose-700 border border-rose-200'
                               : 'bg-amber-100 text-amber-800 border border-amber-200'
                           }`}
                         >
-                          <AlertTriangle className="h-3 w-3" /> {item.loaiRuiRo}
+                          <AlertTriangle className="h-3 w-3 shrink-0" /> {item.loaiRuiRo}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-center font-extrabold text-gray-900">
-                        {item.tonKho ?? item.soLuong ?? 0} {item.donViTinh || 'đơn vị'}
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="font-extrabold text-gray-900 text-sm">
+                          {item.tonKhoLo ?? item.tonKho ?? item.soLuong ?? 0} {item.donViTinh || 'đơn vị'}
+                        </div>
+                        {item.tongTonKhoThuoc && item.tongTonKhoThuoc !== (item.tonKhoLo ?? item.tonKho) && (
+                          <div className="text-[10px] text-gray-500 font-medium mt-0.5 whitespace-nowrap">
+                            (Tổng kho: <strong>{item.tongTonKhoThuoc}</strong> {item.donViTinh})
+                          </div>
+                        )}
                       </td>
-                      <td className="py-3.5 px-4 text-center text-xs font-mono font-medium text-gray-600">
-                        {item.hanDung || item.ngayHetHan || '---'}
+                      <td className="py-3.5 px-4 text-center text-xs font-mono">
+                        <div className="font-bold text-gray-900">
+                          {item.hanDung ? formatDate(item.hanDung) : item.ngayHetHan ? formatDate(item.ngayHetHan) : '---'}
+                        </div>
+                        {item.soNgayConLai !== undefined && (
+                          <div
+                            className={`text-[10px] font-semibold mt-0.5 ${
+                              item.soNgayConLai <= 0
+                                ? 'text-rose-600 font-bold'
+                                : item.soNgayConLai <= 15
+                                ? 'text-rose-500 font-bold'
+                                : 'text-amber-600'
+                            }`}
+                          >
+                            {item.soNgayConLai <= 0 ? '🚨 Đã hết hạn' : `⏳ Còn ~${item.soNgayConLai} ngày`}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <button
-                          onClick={() => navigate('/nha-thuoc/kho-thuoc')}
-                          className="inline-flex items-center gap-1 text-xs font-bold text-primary-700 bg-primary-50 hover:bg-primary-100 px-3 py-1 rounded-xl transition-colors cursor-pointer"
+                          onClick={() => {
+                            if (item.soNgayConLai !== undefined) {
+                              navigate('/nha-thuoc/kho-thuoc');
+                            } else {
+                              navigate('/nha-thuoc/mua-hang');
+                            }
+                          }}
+                          className={`inline-flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-xl transition-all cursor-pointer shadow-2xs ${
+                            item.mucDo === 'nguy_cap'
+                              ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                              : 'bg-primary-50 hover:bg-primary-100 text-primary-700 border border-primary-200'
+                          }`}
                         >
-                          <span>{item.hanhDong || 'Nhập kho bổ sung'}</span>
+                          <span>{item.hanhDong || (item.soNgayConLai !== undefined ? 'Ưu tiên xuất FEFO' : 'Lập phiếu mua')}</span>
                           <ArrowUpRight className="h-3.5 w-3.5" />
                         </button>
                       </td>
@@ -1423,6 +1505,46 @@ export default function ThongKeNhaThuocPage() {
           }}
         />
       )}
+
+      {/* Modal In Báo Cáo Dược Phẩm Khổ A4 */}
+      {isPrintModalOpen && (
+        <InBaoCaoDuocPhamModal
+          stats={stats}
+          listThuoc={stats.listThuoc || []}
+          filterInfo={{
+            timeFilter,
+            fromDate,
+            toDate,
+          }}
+          onClose={() => setIsPrintModalOpen(false)}
+        />
+      )}
+
+      {/* Modal Gửi Báo Cáo lên Ban Giám Đốc */}
+      <GuiBaoCaoModal
+        isOpen={isGuiBaoCaoOpen}
+        onClose={() => setIsGuiBaoCaoOpen(false)}
+        boPhan="nha_thuoc"
+        tenBoPhan="Nhà thuốc & Kho Dược"
+        kyBaoCaoMacDinh={getKyBaoCaoLabel()}
+        tieuDeMacDinh={`Báo cáo hoạt động Nhà thuốc & Tồn kho FEFO - ${getKyBaoCaoLabel()}`}
+        soLieuSnapshot={{
+          kyBaoCao: getKyBaoCaoLabel(),
+          tongMatHang: stats?.tongSoThuoc || stats?.listThuoc?.length || 0,
+          tongGiaTriTonKho: stats?.tongGiaTriKho || 0,
+          thuocSapHetHang: stats?.sapHetHang || 0,
+          thuocCanDateFEFO: stats?.sapHetHanCount || 0,
+          donXuatTrongNgay: stats?.donXuatTrongNgay || 0,
+        }}
+      />
+
+      {/* Modal Xem Lịch Sử Báo Cáo & Ý Kiến Chỉ Đạo */}
+      <LichSuBaoCaoModal
+        isOpen={isLichSuBaoCaoOpen}
+        onClose={() => setIsLichSuBaoCaoOpen(false)}
+        boPhan="nha_thuoc"
+        tenBoPhan="Nhà thuốc & Kho Dược"
+      />
     </div>
   );
 }

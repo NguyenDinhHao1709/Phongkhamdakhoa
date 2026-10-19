@@ -1,16 +1,59 @@
-import { useState } from 'react';
-import { User, Key, CheckCircle, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { User, Key, CheckCircle, AlertCircle, Stethoscope, Loader2 } from 'lucide-react';
 import useAuthStore from '../../../store/authStore';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { VAI_TRO_LABEL } from '../../../utils/constants';
-import { apiPost } from '../../../services/api';
+import { apiGet, apiPost } from '../../../services/api';
+
+const formatDateVN = (val) => {
+  if (!val) return 'Chưa cập nhật';
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val.trim())) {
+    const [y, m, d] = val.trim().split('-');
+    return `${d}/${m}/${y}`;
+  }
+  const date = new Date(val);
+  if (isNaN(date.getTime())) return 'Chưa cập nhật';
+  return date.toLocaleDateString('vi-VN');
+};
 
 export default function ThongTinCaNhanPage() {
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
+  const [profile, setProfile] = useState(null);
+  const [fetchingProfile, setFetchingProfile] = useState(true);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [passData, setPassData] = useState({ oldPass: '', newPass: '', confirmPass: '' });
+
+  useEffect(() => {
+    let mounted = true;
+    const loadProfile = async () => {
+      setFetchingProfile(true);
+      try {
+        const res = await apiGet('/auth/me');
+        const data = res?.data || res;
+        if (mounted && data) {
+          setProfile(data);
+          if (user) {
+            setUser({
+              ...user,
+              hoTen: data.hoTen || user.hoTen,
+              anhDaiDien: data.anhDaiDien ?? user.anhDaiDien,
+              chucVu: data.chucVu || user.chucVu,
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Lỗi tải hồ sơ cá nhân:', err);
+      } finally {
+        if (mounted) setFetchingProfile(false);
+      }
+    };
+    loadProfile();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
@@ -43,6 +86,30 @@ export default function ThongTinCaNhanPage() {
     }
   };
 
+  const nv = profile?.nhanVien || {};
+  const bs = profile?.bacSi || {};
+  const ktv = profile?.kyThuatVien || {};
+  const vaiTro = profile?.vaiTro || user?.vaiTro;
+  const tenDangNhap = profile?.tenDangNhap || user?.tenDangNhap || '';
+  const safeUserHoTen =
+    user?.hoTen && !(user.hoTen.toLowerCase() === 'admin' && tenDangNhap.toLowerCase() !== 'admin')
+      ? user.hoTen
+      : '';
+  const hoTen =
+    nv?.hoTen ||
+    profile?.hoTen ||
+    safeUserHoTen ||
+    (vaiTro === 'giam_doc' ? 'Ban Giám đốc' : tenDangNhap);
+  const rawAvatar = nv?.anhDaiDien || profile?.anhDaiDien || user?.anhDaiDien || '';
+  const avatarUrl = rawAvatar
+    ? rawAvatar.startsWith('http')
+      ? rawAvatar
+      : `http://localhost:5000${rawAvatar}`
+    : '';
+  const maNhanVien =
+    profile?.maNhanVien ||
+    (nv?.id ? `NV${String(nv.id).padStart(5, '0')}` : user?.nhanVienId ? `NV${String(user.nhanVienId).padStart(5, '0')}` : 'Chưa cấp mã');
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
@@ -66,67 +133,135 @@ export default function ThongTinCaNhanPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Card Avatar & Role */}
-        <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200 text-center space-y-4">
-          <div className="h-24 w-24 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center mx-auto text-3xl font-extrabold shadow-inner">
-            {user?.tenDangNhap?.[0]?.toUpperCase() || 'NV'}
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">{user?.tenDangNhap}</h2>
-            <p className="text-xs font-medium text-primary-700 bg-primary-50 px-3 py-1 rounded-full inline-block mt-1 border border-primary-200">
-              {VAI_TRO_LABEL[user?.vaiTro] || user?.vaiTro || 'Nhân viên y tế'}
-            </p>
-          </div>
-          <div className="text-xs text-gray-500 pt-3 border-t border-gray-100 space-y-1">
-            <p>Mã định danh: <strong>NV2026001</strong></p>
-            <p>Trạng thái: <span className="text-emerald-600 font-bold">● Đang làm việc</span></p>
-          </div>
+      {fetchingProfile ? (
+        <div className="rounded-2xl bg-white p-12 shadow-sm border border-gray-200 flex flex-col items-center justify-center gap-3 text-gray-500">
+          <Loader2 className="h-7 w-7 animate-spin text-primary-600" />
+          <span className="text-sm font-medium">Đang tải thông tin hồ sơ nhân sự từ hệ thống...</span>
         </div>
-
-        {/* Thông tin Chi tiết & Đổi mật khẩu */}
-        <div className="md:col-span-2 space-y-6">
-          <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200 space-y-4">
-            <h3 className="text-base font-bold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
-              <User className="h-5 w-5 text-primary-600" /> Thông tin Hành chính Nhân sự
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-xs text-gray-500">Tên đăng nhập</p>
-                <p className="font-semibold text-gray-900">{user?.tenDangNhap}</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Card Avatar & Role */}
+          <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200 text-center space-y-4">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={hoTen}
+                className="h-28 w-28 rounded-full object-cover mx-auto border-2 border-primary-200 shadow-sm bg-gray-50"
+              />
+            ) : (
+              <div className="h-24 w-24 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center mx-auto text-3xl font-extrabold shadow-inner">
+                {hoTen?.[0]?.toUpperCase() || tenDangNhap?.[0]?.toUpperCase() || 'NV'}
               </div>
-              <div>
-                <p className="text-xs text-gray-500">Loại tài khoản</p>
-                <p className="font-semibold text-gray-900">{user?.loaiTaiKhoan || 'Nhân viên hệ thống'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Email công vụ</p>
-                <p className="font-semibold text-gray-900">{user?.tenDangNhap}@phongkham.vn</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">Phòng ban / Bộ phận</p>
-                <p className="font-semibold text-gray-900">
-                  {user?.vaiTro === 'bac_si' ? 'Khoa Khám Bệnh & Lâm Sàng' : user?.vaiTro === 'ky_thuat_vien' ? 'Khoa Cận Lâm Sàng & Xét Nghiệm' : user?.vaiTro === 'nhan_vien_nha_thuoc' ? 'Khoa Dược & Nhà Thuốc' : 'Quầy Tiếp Tân & Điều Phối'}
-                </p>
-              </div>
-              {user?.vaiTro === 'bac_si' && (
-                <>
-                  <div>
-                    <p className="text-xs text-gray-500">Học hàm / Học vị</p>
-                    <p className="font-semibold text-primary-700">Thạc sĩ, Bác sĩ CKI</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Chứng chỉ hành nghề (CCHN)</p>
-                    <p className="font-semibold text-gray-900">008924 / BYT - CCHN</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Chuyên khoa đăng ký</p>
-                    <p className="font-semibold text-gray-900">Nội tổng quát & Đa khoa</p>
-                  </div>
-                </>
+            )}
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">{hoTen}</h2>
+              {tenDangNhap && tenDangNhap !== hoTen && (
+                <p className="text-xs text-gray-500 mt-0.5">@{tenDangNhap}</p>
               )}
+              <p className="text-xs font-medium text-primary-700 bg-primary-50 px-3 py-1 rounded-full inline-block mt-2 border border-primary-200">
+                {VAI_TRO_LABEL[nv?.chucVu] || VAI_TRO_LABEL[vaiTro] || nv?.chucVu || profile?.tenVaiTro || 'Nhân viên y tế'}
+              </p>
+            </div>
+            <div className="text-xs text-gray-500 pt-3 border-t border-gray-100 space-y-1.5">
+              <p>
+                Mã định danh: <strong className="text-gray-800">{maNhanVien}</strong>
+              </p>
+              <p>
+                Trạng thái:{' '}
+                {profile?.trangThai === 'khoa' ? (
+                  <span className="text-red-600 font-bold">● Đang tạm khóa</span>
+                ) : (
+                  <span className="text-emerald-600 font-bold">● Đang làm việc</span>
+                )}
+              </p>
             </div>
           </div>
+
+          {/* Thông tin Chi tiết & Đổi mật khẩu */}
+          <div className="md:col-span-2 space-y-6">
+            <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200 space-y-4">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+                <User className="h-5 w-5 text-primary-600" /> Thông tin Hành chính Nhân sự
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-gray-500">Họ và tên</p>
+                  <p className="font-semibold text-gray-900">{hoTen}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Tên đăng nhập</p>
+                  <p className="font-semibold text-gray-900">{tenDangNhap}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Email công vụ</p>
+                  <p className="font-semibold text-gray-900">{nv?.email || 'Chưa cập nhật'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Số điện thoại</p>
+                  <p className="font-semibold text-gray-900">{nv?.soDienThoai || 'Chưa cập nhật'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Ngày sinh</p>
+                  <p className="font-semibold text-gray-900">{formatDateVN(nv?.ngaySinh)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Giới tính</p>
+                  <p className="font-semibold text-gray-900">
+                    {nv?.gioiTinh === 'nam' ? 'Nam' : nv?.gioiTinh === 'nu' ? 'Nữ' : nv?.gioiTinh || 'Chưa cập nhật'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Số CMND / CCCD</p>
+                  <p className="font-semibold text-gray-900">{nv?.soCmnd || 'Chưa cập nhật'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Ngày vào làm</p>
+                  <p className="font-semibold text-gray-900">{formatDateVN(nv?.ngayVaoLam)}</p>
+                </div>
+              </div>
+            </div>
+
+            {vaiTro === 'bac_si' && (
+              <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200 space-y-4">
+                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+                  <Stethoscope className="h-5 w-5 text-primary-600" /> Hồ sơ Chuyên môn Bác sĩ
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-xs text-gray-500">Chuyên khoa đăng ký</p>
+                    <p className="font-semibold text-primary-700">{bs?.chuyenKhoa || 'Chưa cập nhật'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Học hàm / Học vị (Bằng cấp)</p>
+                    <p className="font-semibold text-gray-900">{bs?.bangCap || 'Chưa cập nhật'}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-gray-500">Số Chứng chỉ hành nghề (CCHN)</p>
+                    <p className="font-semibold text-gray-900">{bs?.soChungChiHanhNghe || 'Chưa cập nhật'}</p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-gray-500">Mô tả giới thiệu chuyên môn</p>
+                    <p className="font-medium text-gray-800 whitespace-pre-line">
+                      {bs?.moTa || 'Chưa cập nhật mô tả giới thiệu'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {vaiTro === 'ky_thuat_vien' && (
+              <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200 space-y-4">
+                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+                  <Stethoscope className="h-5 w-5 text-primary-600" /> Hồ sơ Chuyên môn Kỹ thuật viên
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-gray-500">Chuyên môn / Bộ phận</p>
+                    <p className="font-semibold text-primary-700">{ktv?.chuyenMon || 'Chưa cập nhật'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
 
           {/* Form Đổi mật khẩu */}
@@ -185,6 +320,7 @@ export default function ThongTinCaNhanPage() {
           </form>
         </div>
       </div>
+      )}
     </div>
   );
 }

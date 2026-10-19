@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet } from '../../services/api';
 import { formatDateTime, formatDate } from '../../utils/formatDate';
 import { formatCurrency } from '../../utils/formatCurrency';
@@ -12,12 +12,18 @@ import { parseAttachmentUrls, toAttachmentUrl } from '../../utils/fileAttachment
 import InPhieuKhamModal from '../../components/Print/InPhieuKhamModal';
 import InDonThuocModal from '../../components/Print/InDonThuocModal';
 import InKetQuaXetNghiemModal from '../../components/Print/InKetQuaXetNghiemModal';
+import InHoaDonModal from '../Cashier/InHoaDonModal';
 import DanhGiaCaKhamModal from '../../components/Appointment/DanhGiaCaKhamModal';
+import ChiTietKetQuaXetNghiemRenderer from '../../components/Lab/ChiTietKetQuaXetNghiemRenderer';
+import ThanhToanVienPhiModal from '../../components/Payment/ThanhToanVienPhiModal';
 
 export default function HoSoYTeBenhNhanPage() {
+  const queryClient = useQueryClient();
   const [printPhieuKham, setPrintPhieuKham] = useState({ open: false, record: null });
   const [printDonThuoc, setPrintDonThuoc] = useState({ open: false, donThuoc: null, record: null });
   const [printXetNghiem, setPrintXetNghiem] = useState({ open: false, items: [], record: null });
+  const [printHoaDon, setPrintHoaDon] = useState({ open: false, hoaDon: null });
+  const [payModalData, setPayModalData] = useState({ isOpen: false, hoaDon: null, benhNhan: null });
   const [reviewModalData, setReviewModalData] = useState({ isOpen: false, appointment: null });
   const [previewFile, setPreviewFile] = useState(null);
 
@@ -416,104 +422,117 @@ export default function HoSoYTeBenhNhanPage() {
                 : 'border-gray-200 hover:border-gray-300 hover:shadow-xs'
             }`}
           >
-            {/* Header lần khám gọn gàng */}
+            {/* Header lần khám gọn gàng, chia tầng rõ ràng */}
             <div className="p-4 sm:p-5">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
-                {/* Thông tin chính tóm tắt */}
-                <div className="flex items-start gap-3.5 flex-1 min-w-0">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 font-bold text-sm border border-blue-100">
-                    #{records.length - idx}
-                  </div>
-                  <div className="min-w-0 flex-1 space-y-1">
+              {/* Tầng 1: Thông tin tổng quan ca khám (chiếm trọn 100% chiều rộng) */}
+              <div className="flex items-start gap-3.5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-700 font-bold text-sm border border-blue-100/80 shadow-xs">
+                  #{records.length - idx}
+                </div>
+                <div className="min-w-0 flex-1 space-y-2">
+                  {/* Tiêu đề & Badges trạng thái */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-bold text-gray-900 text-sm sm:text-base">
+                      <h3 className="font-bold text-gray-900 text-sm sm:text-base tracking-tight">
                         {ba.hinhThucKham === 'truc_tuyen'
                           ? `Tư vấn trực tuyến ngày ${formatDateTime(ba.ngayKham || ba.taoLuc)}`
                           : `Lần khám ngày ${formatDateTime(ba.ngayKham || ba.taoLuc)}`}
                       </h3>
                       {ba.hinhThucKham === 'truc_tuyen' && (
-                        <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full border text-purple-700 bg-purple-50 border-purple-200 flex items-center gap-1">
+                        <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full border text-purple-700 bg-purple-50 border-purple-200 flex items-center gap-1 whitespace-nowrap">
                           <Video className="h-3 w-3 text-purple-600" /> Khám trực tuyến Telehealth
                         </span>
                       )}
-                      <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border whitespace-nowrap ${
                         ba.trangThai === 'da_hoan_thanh'
-                          ? 'text-green-700 bg-green-50 border-green-200'
+                          ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
                           : 'text-amber-700 bg-amber-50 border-amber-200'
                       }`}>
                         {ba.trangThai === 'da_hoan_thanh' ? '✓ Đã hoàn thành' : '⏳ Đang khám'}
                       </span>
                     </div>
+                  </div>
 
-                    <p className="text-xs text-gray-500 flex items-center gap-1.5 flex-wrap">
-                      <span className="flex items-center gap-1 font-medium text-gray-700">
-                        <Stethoscope className="h-3.5 w-3.5 text-blue-600" /> {bacSiTen}
+                  {/* Thông tin bác sĩ & mã ca khám */}
+                  <div className="text-xs text-gray-600 flex items-center gap-2 flex-wrap">
+                    <span className="flex items-center gap-1.5 font-semibold text-gray-800">
+                      <Stethoscope className="h-3.5 w-3.5 text-blue-600" /> Bác sĩ: {bacSiTen}
+                    </span>
+                    {ba.luotTiepNhanId ? (
+                      <span className="text-gray-500 font-mono bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
+                        Mã lượt khám #{ba.luotTiepNhanId}
                       </span>
-                      {ba.luotTiepNhanId ? (
-                        <span className="text-gray-400 font-mono">· Mã lượt khám #{ba.luotTiepNhanId}</span>
-                      ) : (
-                        item.lichHenId && <span className="text-purple-600 font-mono">· Ca tư vấn #{item.lichHenId}</span>
-                      )}
-                    </p>
-
-                    {/* Tóm tắt chẩn đoán */}
-                    {(ba.chanDoanXacDinh || ba.chanDoanSoBo) && (
-                      <div className="text-xs text-gray-700 pt-0.5 flex items-center gap-1.5 flex-wrap">
-                        <span className="font-semibold text-gray-500">Chẩn đoán:</span>
-                        <span className="font-medium text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 line-clamp-1">
-                          {ba.chanDoanXacDinh || ba.chanDoanSoBo}
+                    ) : (
+                      item.lichHenId && (
+                        <span className="text-purple-700 font-mono bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                          Ca tư vấn #{item.lichHenId}
                         </span>
-                      </div>
+                      )
                     )}
+                  </div>
 
-                    {/* Mini tags tóm tắt nhanh số lượng thuốc, XN, viện phí */}
-                    <div className="flex items-center gap-2 pt-1 flex-wrap text-[11px]">
-                      {donThuoc && donThuoc.length > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
-                          <Pill className="h-3 w-3 text-emerald-600" /> {tongThuoc} loại thuốc
-                        </span>
-                      )}
-                      {canLamSang && canLamSang.length > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 font-medium">
-                          <FlaskConical className="h-3 w-3 text-purple-600" /> {canLamSang.length} xét nghiệm & CĐHA
-                        </span>
-                      )}
-                      {item.hoaDon && (
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border font-medium ${
-                          item.hoaDon.trangThai === 'da_thanh_toan'
-                            ? 'bg-blue-50 text-blue-700 border-blue-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}>
-                          <CreditCard className="h-3 w-3" />
-                          {item.hoaDon.trangThai === 'da_thanh_toan'
-                            ? `Đã thanh toán ${formatCurrency(item.hoaDon.thucThu)}`
-                            : 'Chờ thanh toán viện phí'}
-                        </span>
-                      )}
+                  {/* Tóm tắt chẩn đoán */}
+                  {(ba.chanDoanXacDinh || ba.chanDoanSoBo) && (
+                    <div className="text-xs text-gray-700 flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-gray-500 whitespace-nowrap">Chẩn đoán:</span>
+                      <span className="font-medium text-blue-900 bg-blue-50/80 px-2.5 py-1 rounded-md border border-blue-100 line-clamp-1">
+                        {ba.chanDoanXacDinh || ba.chanDoanSoBo}
+                      </span>
                     </div>
+                  )}
+
+                  {/* Mini tags tóm tắt nhanh số lượng thuốc, XN, viện phí */}
+                  <div className="flex items-center gap-2 pt-0.5 flex-wrap text-[11px]">
+                    {donThuoc && donThuoc.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium whitespace-nowrap">
+                        <Pill className="h-3 w-3 text-emerald-600" /> {tongThuoc} loại thuốc
+                      </span>
+                    )}
+                    {canLamSang && canLamSang.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 font-medium whitespace-nowrap">
+                        <FlaskConical className="h-3 w-3 text-purple-600" /> {canLamSang.length} chỉ định xét nghiệm & CĐHA
+                      </span>
+                    )}
+                    {item.hoaDon && (
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md border font-medium whitespace-nowrap ${
+                        item.hoaDon.trangThai === 'da_thanh_toan'
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                          : 'bg-amber-50 text-amber-800 border-amber-200'
+                      }`}>
+                        <CreditCard className="h-3 w-3" />
+                        {item.hoaDon.trangThai === 'da_thanh_toan'
+                          ? `Đã thanh toán ${formatCurrency(item.hoaDon.thucThu)}`
+                          : `Chờ thanh toán viện phí (${formatCurrency(item.hoaDon.conLai ?? item.hoaDon.tongTien)})`}
+                      </span>
+                    )}
                   </div>
                 </div>
+              </div>
 
-                {/* Các nút in nhanh & Nút Xem chi tiết */}
-                <div className="flex items-center gap-2 self-start lg:self-center flex-wrap pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100 w-full lg:w-auto justify-end">
+              {/* Tầng 2: Thanh tác vụ (Action Bar) chuyên nghiệp, tách biệt rõ ràng */}
+              <div className="mt-3.5 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2.5">
+                {/* Nhóm tác vụ phụ trợ bên trái: In ấn & Đánh giá */}
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setPrintPhieuKham({ open: true, record: item });
                     }}
-                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border flex items-center gap-1 transition cursor-pointer ${
+                    className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 transition cursor-pointer ${
                       ba.hinhThucKham === 'truc_tuyen'
                         ? 'border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100'
                         : 'border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100'
                     }`}
                     title={ba.hinhThucKham === 'truc_tuyen' ? 'In phiếu tư vấn khám trực tuyến' : 'In phiếu khám bệnh'}
                   >
-                    <Printer className="h-3.5 w-3.5" />{' '}
-                    <span className="hidden sm:inline">
-                      {ba.hinhThucKham === 'truc_tuyen' ? 'In phiếu tư vấn' : 'In phiếu khám'}
-                    </span>
+                    <Printer className="h-3.5 w-3.5" />
+                    <span>{ba.hinhThucKham === 'truc_tuyen' ? 'In phiếu tư vấn' : 'In phiếu khám'}</span>
                   </button>
+
                   {donThuoc && donThuoc.length > 0 && (
                     <button
                       type="button"
@@ -521,12 +540,14 @@ export default function HoSoYTeBenhNhanPage() {
                         e.stopPropagation();
                         setPrintDonThuoc({ open: true, donThuoc: donThuoc[0], record: item });
                       }}
-                      className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-green-200 text-green-700 bg-green-50 hover:bg-green-100 flex items-center gap-1 transition cursor-pointer"
+                      className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 flex items-center gap-1.5 transition cursor-pointer"
                       title="In đơn thuốc"
                     >
-                      <Printer className="h-3.5 w-3.5" /> <span className="hidden sm:inline">In đơn thuốc</span>
+                      <Printer className="h-3.5 w-3.5" />
+                      <span>In đơn thuốc</span>
                     </button>
                   )}
+
                   {canLamSang && canLamSang.length > 0 && (
                     <button
                       type="button"
@@ -534,10 +555,11 @@ export default function HoSoYTeBenhNhanPage() {
                         e.stopPropagation();
                         setPrintXetNghiem({ open: true, items: canLamSang, record: item });
                       }}
-                      className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 flex items-center gap-1 transition cursor-pointer"
+                      className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 flex items-center gap-1.5 transition cursor-pointer"
                       title="In kết quả xét nghiệm"
                     >
-                      <FlaskConical className="h-3.5 w-3.5" /> <span className="hidden sm:inline">In kết quả ({canLamSang.length})</span>
+                      <FlaskConical className="h-3.5 w-3.5" />
+                      <span>In kết quả ({canLamSang.length})</span>
                     </button>
                   )}
 
@@ -559,17 +581,40 @@ export default function HoSoYTeBenhNhanPage() {
                           },
                         });
                       }}
-                      className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-50 to-orange-50 text-amber-800 border border-amber-200 hover:border-amber-300 hover:from-amber-100 hover:to-orange-100 flex items-center gap-1 transition cursor-pointer"
-                      title="Đánh giá ca khám này"
+                      className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-50 to-orange-50 text-amber-800 border border-amber-200 hover:border-amber-300 hover:from-amber-100 hover:to-orange-100 flex items-center gap-1.5 transition cursor-pointer"
+                      title="Đánh giá chất lượng ca khám"
                     >
-                      <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" /> <span className="hidden sm:inline">Đánh giá</span>
+                      <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                      <span>Đánh giá</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Nhóm tác vụ chính bên phải: Thanh toán viện phí & Xem chi tiết */}
+                <div className="flex items-center gap-2 ml-auto">
+                  {item.hoaDon && item.hoaDon.trangThai !== 'da_thanh_toan' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPayModalData({
+                          isOpen: true,
+                          hoaDon: item.hoaDon,
+                          benhNhan: latestBenhNhan || item.benhNhan,
+                        });
+                      }}
+                      className="text-xs font-bold px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white flex items-center gap-1.5 transition cursor-pointer shadow-xs shadow-emerald-200"
+                      title="Thanh toán viện phí (Chuyển khoản VietQR hoặc Tiền mặt tại quầy)"
+                    >
+                      <CreditCard className="h-3.5 w-3.5" />
+                      <span>Thanh toán viện phí</span>
                     </button>
                   )}
 
                   <button
                     type="button"
                     onClick={() => toggleExpand(recordId)}
-                    className={`text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${
+                    className={`text-xs font-bold px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${
                       isExpanded
                         ? 'bg-blue-600 text-white hover:bg-blue-700 ring-2 ring-blue-200'
                         : 'bg-gray-900 text-white hover:bg-gray-800'
@@ -734,94 +779,13 @@ export default function HoSoYTeBenhNhanPage() {
                         {/* Hiển thị chi tiết kết quả */}
                         {isCoKetQua && kq ? (
                           <div className="space-y-3">
-                            {/* Grid chỉ số */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs">
-                              <div className="space-y-0.5">
-                                <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">
-                                  Kết quả đo đạc:
-                                </span>
-                                <div className="flex items-baseline gap-1">
-                                  <span className="text-lg font-semibold text-blue-700">{giaTri || '—'}</span>
-                                  {donVi && <span className="text-xs font-medium text-blue-600">{donVi}</span>}
-                                </div>
-                              </div>
-
-                              <div className="space-y-0.5">
-                                <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">
-                                  Tham chiếu chuẩn:
-                                </span>
-                                <span className="text-sm font-medium text-gray-700">{thamChieu}</span>
-                              </div>
-
-                              <div className="space-y-0.5">
-                                <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">
-                                  Thời gian hoàn thành:
-                                </span>
-                                <span className="text-xs text-gray-600">
-                                  {formatDateTime(kq.thoiGianNhap || c.thoiGianCoKetQua || new Date())}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Nhận xét chuyên môn */}
-                            {nhanXet && (
-                              <div className="rounded-lg bg-gray-50 p-2.5 border border-gray-200 text-xs text-gray-800 space-y-1">
-                                <span className="font-semibold text-gray-700 flex items-center gap-1">
-                                  💬 Đánh giá & Nhận xét của Kỹ thuật viên:
-                                </span>
-                                <p className="italic text-gray-600 pl-2 border-l-2 border-blue-300">
-                                  "{nhanXet}"
-                                </p>
-                              </div>
-                            )}
-
-                            {/* Tệp đính kèm */}
-                            {fileUrls.length > 0 && (
-                              <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-2">
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="font-semibold text-gray-800 flex items-center gap-1.5">
-                                    📎 Tệp kết quả đính kèm (Ảnh chẩn đoán / File PDF)
-                                  </span>
-                                  <span className="text-xs text-gray-500">{fileUrls.length} tệp</span>
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                  {fileUrls.map((file, fileIndex) => {
-                                    const fileUrl = toAttachmentUrl(file);
-                                    const isImage = /\.(jpeg|jpg|gif|png|webp)$/i.test(file);
-                                    return isImage ? (
-                                      <button
-                                        key={file}
-                                        type="button"
-                                        onClick={() => setPreviewFile({
-                                          url: fileUrl,
-                                          name: `Ảnh kết quả ${fileIndex + 1}`,
-                                          files: fileUrls.map(toAttachmentUrl),
-                                          index: fileIndex,
-                                        })}
-                                        className="text-left"
-                                      >
-                                        <img src={fileUrl} alt={`Ảnh kết quả ${fileIndex + 1}`} className="h-24 w-full object-cover rounded-lg border border-gray-200" />
-                                      </button>
-                                    ) : (
-                                      <button
-                                        key={file}
-                                        type="button"
-                                        onClick={() => setPreviewFile({
-                                          url: fileUrl,
-                                          name: `Tài liệu y khoa ${fileIndex + 1}`,
-                                          files: fileUrls.map(toAttachmentUrl),
-                                          index: fileIndex,
-                                        })}
-                                        className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-lg border border-gray-200 text-xs font-semibold text-blue-600 text-left"
-                                      >
-                                        <FileText className="h-5 w-5" /> Tài liệu y khoa {fileIndex + 1}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
+                            <ChiTietKetQuaXetNghiemRenderer
+                              chiDinh={c}
+                              ketQua={kq}
+                              onPreviewFile={setPreviewFile}
+                              title="KẾT QUẢ ĐẦY ĐỦ TỪ PHÒNG XÉT NGHIỆM & CLS"
+                              theme="emerald"
+                            />
 
                             {/* Nút in chi tiết */}
                             <div className="pt-1 flex justify-end">
@@ -889,17 +853,54 @@ export default function HoSoYTeBenhNhanPage() {
             {/* Hóa đơn viện phí & Biên lai thanh toán */}
             {item.hoaDon && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
                     <CreditCard className="h-4 w-4 text-emerald-600" /> Hóa đơn viện phí & Thanh toán
                   </h4>
-                  <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
-                    item.hoaDon.trangThai === 'da_thanh_toan'
-                      ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                      : 'text-amber-700 bg-amber-50 border-amber-200'
-                  }`}>
-                    {item.hoaDon.trangThai === 'da_thanh_toan' ? '✓ Đã thanh toán viện phí' : 'Chờ thanh toán tại quầy'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPrintHoaDon({
+                          open: true,
+                          hoaDon: {
+                            ...item.hoaDon,
+                            benhNhan: latestBenhNhan || item.benhNhan,
+                          },
+                        });
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition cursor-pointer shadow-2xs"
+                      title="In hóa đơn / biên lai viện phí điện tử"
+                    >
+                      <Printer className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>In biên lai</span>
+                    </button>
+                    {item.hoaDon.trangThai !== 'da_thanh_toan' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPayModalData({
+                            isOpen: true,
+                            hoaDon: item.hoaDon,
+                            benhNhan: latestBenhNhan || item.benhNhan,
+                          });
+                        }}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer shadow-xs"
+                      >
+                        <CreditCard className="h-3.5 w-3.5" />
+                        <span>Thanh toán ngay (QR / Tiền mặt)</span>
+                      </button>
+                    )}
+                    <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
+                      item.hoaDon.trangThai === 'da_thanh_toan'
+                        ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                        : 'text-amber-700 bg-amber-50 border-amber-200'
+                    }`}>
+                      {item.hoaDon.trangThai === 'da_thanh_toan' ? '✓ Đã thanh toán viện phí' : 'Chờ thanh toán viện phí'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 text-xs space-y-3">
@@ -1106,6 +1107,34 @@ export default function HoSoYTeBenhNhanPage() {
         isOpen={reviewModalData.isOpen}
         appointment={reviewModalData.appointment}
         onClose={() => setReviewModalData({ isOpen: false, appointment: null })}
+      />
+
+      {/* Modal In Hóa Đơn / Biên Lai Viện Phí Điện Tử */}
+      {printHoaDon.open && printHoaDon.hoaDon && (
+        <InHoaDonModal
+          hoaDon={printHoaDon.hoaDon}
+          onClose={() => setPrintHoaDon({ open: false, hoaDon: null })}
+        />
+      )}
+
+      {/* Modal Thanh Toán Viện Phí Đa Phương Thức (VietQR / Tiền mặt) */}
+      <ThanhToanVienPhiModal
+        isOpen={payModalData.isOpen}
+        hoaDon={payModalData.hoaDon}
+        benhNhan={payModalData.benhNhan}
+        onClose={() => setPayModalData({ isOpen: false, hoaDon: null, benhNhan: null })}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['emr-cua-toi'] });
+        }}
+        onPrintHoaDon={(hd) => {
+          setPrintHoaDon({
+            open: true,
+            hoaDon: {
+              ...hd,
+              benhNhan: latestBenhNhan || hd.benhNhan,
+            },
+          });
+        }}
       />
     </div>
   );

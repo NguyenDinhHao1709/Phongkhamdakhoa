@@ -22,32 +22,69 @@ export default function InHoaDonModal({ hoaDon, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden my-8">
-        {/* Modal Actions Bar (hidden when printing) */}
-        <div className="flex items-center justify-between border-b px-6 py-4 bg-gray-50 print:hidden">
-          <div className="flex items-center gap-2 text-sm font-bold text-gray-800">
-            <Printer className="h-5 w-5 text-primary-600" />
-            <span>Phiếu Thu Viện Phí / Hóa Đơn Điện Tử</span>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-xs overflow-hidden">
+      <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-fade-in border border-gray-200">
+        {/* Modal Actions Bar - CỐ ĐỊNH Ở TRÊN CÙNG, KHÔNG BỊ CUỘN MẤT */}
+        <div className="flex items-center justify-between px-5 py-3.5 bg-gray-50 border-b border-gray-200 shrink-0 no-print">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-blue-100 text-blue-700">
+              <Printer className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">
+                Phiếu Thu Viện Phí / Hóa Đơn Điện Tử
+              </h3>
+              <p className="text-xs text-gray-500">Mã hóa đơn: {hoaDon.maHoaDon}</p>
+            </div>
           </div>
+
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+              type="button"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer"
             >
-              <Printer className="h-4 w-4" /> In Phiếu Thu (Ctrl+P)
+              <Printer className="h-4 w-4" />
+              <span>In Phiếu Thu (Ctrl+P)</span>
             </button>
             <button
               onClick={onClose}
-              className="p-2 text-gray-400 hover:bg-gray-200 rounded-xl transition-colors"
+              type="button"
+              className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
+              title="Đóng cửa sổ (Esc)"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
         </div>
 
-        {/* PRINTABLE INVOICE CONTENT */}
-        <div ref={printRef} className="p-8 text-gray-900 font-sans text-xs space-y-6 print:p-0">
+        {/* Khung cuộn nội bộ */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-100/70 flex justify-center">
+          {/* PRINTABLE INVOICE CONTENT CÓ ID PRINT-SECTION */}
+          <div
+            id="print-section"
+            ref={printRef}
+            className="w-full max-w-[210mm] bg-white p-8 sm:p-10 shadow-sm border border-gray-200 text-gray-900 font-sans text-xs space-y-6"
+          >
+            {/* Scoped CSS để in không bị trang trắng */}
+            <style>{`
+              @media print {
+                body { visibility: hidden !important; background: white !important; margin: 0 !important; }
+                #print-section, #print-section * { visibility: visible !important; }
+                #print-section {
+                  position: absolute !important;
+                  left: 0 !important;
+                  top: 0 !important;
+                  width: 100% !important;
+                  max-width: 100% !important;
+                  box-shadow: none !important;
+                  border: none !important;
+                  padding: 15mm 20mm !important;
+                  margin: 0 !important;
+                }
+                .no-print { display: none !important; }
+              }
+            `}</style>
           {/* Header Phòng Khám */}
           <div className="flex justify-between items-start border-b border-gray-300 pb-4">
             <div>
@@ -162,6 +199,7 @@ export default function InHoaDonModal({ hoaDon, onClose }) {
         </div>
       </div>
     </div>
+  </div>
   );
 }
 

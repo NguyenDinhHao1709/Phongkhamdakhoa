@@ -4,6 +4,9 @@ import { useAuthStore } from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { formatDateTime, formatDate } from '../../utils/formatDate';
+import GuiBaoCaoModal from '../../components/Report/GuiBaoCaoModal';
+import LichSuBaoCaoModal from '../../components/Report/LichSuBaoCaoModal';
+import InBaoCaoXetNghiemModal from './InBaoCaoXetNghiemModal';
 import {
   FlaskConical,
   CheckCircle2,
@@ -11,6 +14,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Download,
+  Printer,
+  Send,
   BarChart3,
   PieChart as PieChartIcon,
   Activity,
@@ -61,6 +66,10 @@ export default function ThongKeXetNghiemPage() {
   const [tuNgay, setTuNgay] = useState('');
   const [denNgay, setDenNgay] = useState('');
   const [scope, setScope] = useState('all'); // 'all' (toàn khoa) | 'ca_nhan' (chuyên môn cá nhân)
+  const [isGuiBaoCaoOpen, setIsGuiBaoCaoOpen] = useState(false);
+  const [isLichSuBaoCaoOpen, setIsLichSuBaoCaoOpen] = useState(false);
+  const [openBaoCaoModal, setOpenBaoCaoModal] = useState(false);
+  const [justRefreshed, setJustRefreshed] = useState(false);
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['thong-ke-xet-nghiem', user?.id, timeRange, tuNgay, denNgay, scope],
@@ -80,6 +89,12 @@ export default function ThongKeXetNghiemPage() {
   });
 
   const stats = data?.data;
+
+  const handleRefresh = async () => {
+    await refetch();
+    setJustRefreshed(true);
+    setTimeout(() => setJustRefreshed(false), 2000);
+  };
 
   const handleExportCSV = () => {
     const list = stats?.danhSachMoiNhat || [];
@@ -122,102 +137,163 @@ export default function ThongKeXetNghiemPage() {
 
   const todayStr = new Date().toISOString().split('T')[0];
 
+  const getKyBaoCaoLabel = () => {
+    if (tuNgay && denNgay) return `Từ ${formatDate(tuNgay)} đến ${formatDate(denNgay)}`;
+    if (tuNgay) return `Từ ngày ${formatDate(tuNgay)}`;
+    if (timeRange === 'hom_nay') return `Hôm nay (${formatDate(new Date())})`;
+    if (timeRange === 'tuan_nay') return 'Tuần này (7 ngày qua)';
+    if (timeRange === 'thang_nay') return `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
+    if (timeRange === 'quy_nay') return `Quý ${Math.floor(new Date().getMonth() / 3) + 1}/${new Date().getFullYear()}`;
+    if (timeRange === 'tat_ca') return 'Toàn thời gian';
+    return `Kỳ ${timeRange || 'thống kê'}`;
+  };
+
   return (
     <div className="space-y-5 animate-fade-in pb-12">
-      {/* 1. Header Tinh gọn & Phân quyền */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-xs">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
-              <FlaskConical className="h-6 w-6 text-primary-600" />
+      {/* ─── 1. HEADER BÁO CÁO HOẠT ĐỘNG XÉT NGHIỆM & CLS ─── */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-xs">
+        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-800 border border-blue-100">
+              <FlaskConical className="h-3.5 w-3.5 text-blue-600" /> KHOA XÉT NGHIỆM & CẬN LÂM SÀNG (LAB & CLS)
+            </div>
+            <h1 className="mt-2 text-xl sm:text-2xl font-bold tracking-tight text-gray-900 flex items-center gap-2">
               Thống Kê Báo Cáo Xét Nghiệm & CLS
             </h1>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-              {stats?.tenKtv || user?.hoTen || 'Kỹ thuật viên'} • {stats?.chuyenMon || 'Khoa Xét nghiệm & CĐHA'}
-            </span>
-          </div>
-          <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Theo dõi tổng quan tiến độ xử lý cận lâm sàng, cơ cấu dịch vụ và công suất làm việc của bộ phận.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Scope switch (Cá nhân vs Toàn khoa) */}
-          <div className="flex bg-gray-100 p-1 rounded-xl text-xs font-semibold">
-            <button
-              onClick={() => setScope('all')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                scope === 'all'
-                  ? 'bg-white text-primary-700 shadow-xs'
-                  : 'text-gray-500 hover:text-gray-800'
-              }`}
-            >
-              Toàn bộ khoa
-            </button>
-            <button
-              onClick={() => setScope('ca_nhan')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                scope === 'ca_nhan'
-                  ? 'bg-white text-primary-700 shadow-xs'
-                  : 'text-gray-500 hover:text-gray-800'
-              }`}
-            >
-              Chuyên môn của tôi
-            </button>
+            <p className="mt-1 text-xs sm:text-sm text-gray-500 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-blue-700 font-medium">
+                <UserRound className="h-3.5 w-3.5 text-blue-500" />
+                Phụ trách: <strong className="font-bold text-blue-800">{stats?.tenKtv || user?.hoTen || 'Kỹ thuật viên'}</strong> • {stats?.chuyenMon || 'Khoa Xét nghiệm & CĐHA'}
+              </span>
+            </p>
           </div>
 
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-xs active:scale-95 cursor-pointer"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 text-gray-500 ${isFetching ? 'animate-spin' : ''}`} />
-            <span>Làm mới</span>
-          </button>
-
-          <button
-            onClick={handleExportCSV}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs shadow-emerald-600/20 transition-all active:scale-95 cursor-pointer"
-          >
-            <Download className="h-4 w-4" />
-            <span>Xuất CSV</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. Bộ lọc Thời gian Thông minh */}
-      <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-gray-400 font-medium">Khoảng thời gian:</span>
-          <div className="flex items-center gap-1">
-            {[
-              { key: 'hom_nay', label: 'Hôm nay' },
-              { key: 'tuan_nay', label: 'Tuần này (7 ngày)' },
-              { key: 'thang_nay', label: 'Tháng này' },
-            ].map((tab) => (
+          <div className="flex flex-col items-start xl:items-end gap-2.5 shrink-0">
+            {/* Cụm 1: Nghiệp vụ Báo cáo Ban Giám Đốc */}
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                key={tab.key}
-                onClick={() => {
-                  setTimeRange(tab.key);
-                  setTuNgay('');
-                  setDenNgay('');
-                }}
-                className={`px-3 py-1.5 rounded-xl font-semibold transition-all ${
-                  timeRange === tab.key && !tuNgay
-                    ? 'bg-primary-600 text-white shadow-xs'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                type="button"
+                onClick={() => setIsGuiBaoCaoOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition active:scale-95 cursor-pointer whitespace-nowrap"
+                title="Gửi báo cáo hoạt động xét nghiệm lên Ban Giám Đốc"
+              >
+                <Send className="h-3.5 w-3.5" />
+                <span>Gửi Báo Cáo BGĐ</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsLichSuBaoCaoOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 px-3 py-2 text-xs font-semibold text-indigo-700 shadow-2xs transition active:scale-95 cursor-pointer whitespace-nowrap"
+                title="Xem lịch sử báo cáo & ý kiến chỉ đạo từ Ban Giám Đốc"
+              >
+                <FileText className="h-3.5 w-3.5 text-indigo-600" />
+                <span>Lịch Sử & Chỉ Đạo</span>
+              </button>
+            </div>
+
+            {/* Cụm 2: Nhóm tiện ích kết xuất dữ liệu (Làm mới • In Báo Cáo • Xuất CSV) */}
+            <div className="inline-flex items-center rounded-xl border border-gray-200 bg-gray-50/80 p-0.5 shadow-2xs">
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={isFetching}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white hover:shadow-2xs transition active:scale-95 disabled:opacity-75 cursor-pointer whitespace-nowrap"
+                title="Đồng bộ lại số liệu mới nhất từ CSDL"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 text-blue-600 ${isFetching ? 'animate-spin' : ''}`} />
+                <span>{isFetching ? 'Đang nạp...' : justRefreshed ? 'Đã làm mới!' : 'Làm mới'}</span>
+              </button>
+              <div className="h-3.5 w-px bg-gray-200" />
+              <button
+                type="button"
+                onClick={() => setOpenBaoCaoModal(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-white hover:shadow-2xs transition active:scale-95 cursor-pointer whitespace-nowrap"
+                title="In phiếu báo cáo thống kê xét nghiệm & CLS khổ A4"
+              >
+                <Printer className="h-3.5 w-3.5 text-blue-600" />
+                <span>In Báo Cáo</span>
+              </button>
+              <div className="h-3.5 w-px bg-gray-200" />
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-white hover:shadow-2xs transition active:scale-95 cursor-pointer whitespace-nowrap"
+                title="Xuất dữ liệu định dạng file Excel / CSV"
+              >
+                <Download className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Xuất CSV</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ─── THANH ĐIỀU KHIỂN & BỘ LỌC TÍCH HỢP (UNIFIED CONTROL BAR) ─── */}
+        <div className="mt-4 rounded-2xl bg-slate-50/80 p-3 border border-slate-200/80 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* 1. Phạm vi thống kê */}
+            <div className="inline-flex rounded-xl bg-white p-1 shadow-2xs border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setScope('all')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  scope === 'all'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }`}
               >
-                {tab.label}
+                <Layers className="h-3.5 w-3.5" />
+                <span>Toàn bộ khoa</span>
               </button>
-            ))}
-          </div>
-        </div>
+              <button
+                type="button"
+                onClick={() => setScope('ca_nhan')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  scope === 'ca_nhan'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                <UserRound className="h-3.5 w-3.5" />
+                <span>Chuyên môn của tôi</span>
+              </button>
+            </div>
 
-        {/* Date picker range */}
-        <div className="flex items-center gap-2">
-          <span className="text-gray-400 font-medium">Tùy chọn:</span>
-          <div className="flex items-center gap-1.5 bg-gray-50/90 p-1 rounded-xl border border-gray-200">
+            <div className="h-5 w-px bg-gray-300 hidden md:block" />
+
+            {/* 2. Chu kỳ thời gian */}
+            <div className="inline-flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
+              {[
+                { key: 'hom_nay', label: 'Hôm nay' },
+                { key: 'tuan_nay', label: 'Tuần này (7 ngày)' },
+                { key: 'thang_nay', label: 'Tháng này' },
+                { key: 'quy_nay', label: 'Quý này' },
+                { key: 'tat_ca', label: 'Toàn thời gian' },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => {
+                    setTimeRange(tab.key);
+                    setTuNgay('');
+                    setDenNgay('');
+                  }}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-bold transition cursor-pointer ${
+                    timeRange === tab.key && !tuNgay && !denNgay
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. Khoảng ngày tùy chọn */}
+          <div className="flex items-center gap-1.5 text-xs bg-white px-2.5 py-1.5 rounded-xl border border-gray-200 shadow-2xs self-start xl:self-auto">
+            <Calendar className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            <span className="text-gray-500 font-medium whitespace-nowrap">Từ</span>
             <input
               type="date"
               value={tuNgay}
@@ -225,10 +301,9 @@ export default function ThongKeXetNghiemPage() {
                 setTuNgay(e.target.value);
                 setTimeRange('');
               }}
-              className="bg-transparent border-0 text-xs text-gray-700 focus:outline-none p-1"
-              placeholder="Từ ngày"
+              className="bg-transparent text-xs text-gray-800 font-medium focus:outline-none"
             />
-            <span className="text-gray-400">→</span>
+            <span className="text-gray-400 font-bold">➔</span>
             <input
               type="date"
               value={denNgay}
@@ -236,18 +311,18 @@ export default function ThongKeXetNghiemPage() {
                 setDenNgay(e.target.value);
                 setTimeRange('');
               }}
-              className="bg-transparent border-0 text-xs text-gray-700 focus:outline-none p-1"
-              placeholder="Đến ngày"
+              className="bg-transparent text-xs text-gray-800 font-medium focus:outline-none"
             />
             {(tuNgay || denNgay) && (
               <button
+                type="button"
                 onClick={() => {
                   setTuNgay('');
                   setDenNgay('');
                   setTimeRange('thang_nay');
                 }}
-                className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                title="Xóa khoảng ngày"
+                className="ml-1 text-gray-400 hover:text-rose-600 cursor-pointer p-0.5 rounded transition"
+                title="Xóa lọc ngày và quay về Tháng này"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -767,6 +842,43 @@ export default function ThongKeXetNghiemPage() {
           </table>
         </div>
       </div>
+
+      {/* Modal Gửi Báo Cáo lên Ban Giám Đốc */}
+      <GuiBaoCaoModal
+        isOpen={isGuiBaoCaoOpen}
+        onClose={() => setIsGuiBaoCaoOpen(false)}
+        boPhan="xet_nghiem"
+        tenBoPhan="Phòng Xét Nghiệm & Chẩn Đoán Cận Lâm Sàng"
+        kyBaoCaoMacDinh={getKyBaoCaoLabel()}
+        tieuDeMacDinh={`Báo cáo công suất xét nghiệm & trả kết quả - ${getKyBaoCaoLabel()}`}
+        soLieuSnapshot={{
+          kyBaoCao: getKyBaoCaoLabel(),
+          phamVi: scope === 'all' ? 'Toàn bộ khoa' : 'Chuyên môn cá nhân',
+          tongSoChiDinh: stats?.tongChiDinh || 0,
+          choLayMau: stats?.choLayMau || 0,
+          dangLayMau: stats?.dangLayMau || 0,
+          dangXuLy: stats?.dangXuLy || 0,
+          daCoKetQua: stats?.daHoanThanh ?? stats?.coKetQua ?? 0,
+          daHuy: stats?.daHuy || 0,
+        }}
+      />
+
+      {/* Modal Xem Lịch Sử Báo Cáo & Ý Kiến Chỉ Đạo */}
+      <LichSuBaoCaoModal
+        isOpen={isLichSuBaoCaoOpen}
+        onClose={() => setIsLichSuBaoCaoOpen(false)}
+        boPhan="xet_nghiem"
+        tenBoPhan="Phòng Xét Nghiệm & Chẩn Đoán Cận Lâm Sàng"
+      />
+
+      {/* Modal In Báo Cáo Hoạt Động Xét Nghiệm & CLS (Khổ A4) */}
+      {openBaoCaoModal && (
+        <InBaoCaoXetNghiemModal
+          stats={stats}
+          filterInfo={{ scope, timeRange, tuNgay, denNgay }}
+          onClose={() => setOpenBaoCaoModal(false)}
+        />
+      )}
     </div>
   );
 }

@@ -17,7 +17,7 @@ function useHangDoi() {
   return useQuery({
     queryKey: ['tiep-nhan', 'hang-doi'],
     queryFn: () => apiGet('/tiep-nhan/hang-doi'),
-    refetchInterval: 30000, // refresh mỗi 30s
+    refetchInterval: 2500, // Tự động làm mới mỗi 2.5s (dưới 3s)
   });
 }
 

@@ -378,12 +378,41 @@ export class XetNghiemService {
     return { message: 'Đã hủy và xóa chỉ định cận lâm sàng thành công' };
   }
 
-  // ─── GỬI KẾT QUẢ CHO BÁC SĨ (đánh dấu) ──────────────────
+  // ─── GỬI KẾT QUẢ CHO BÁC SĨ (đánh dấu & bắn thông báo) ──────────
   async guiKetQuaChoBacSi(chiDinhId: number) {
     const kq = await this.kqRepo.findOne({ where: { chiDinhId } });
     if (!kq) throw new NotFoundException({ code: 'CHUA_CO_KET_QUA', message: 'Chưa có kết quả để gửi' });
     kq.daGuiBacSi = true;
     await this.kqRepo.save(kq);
+
+    try {
+      const cd = await this.cdRepo.findOne({
+        where: { id: chiDinhId },
+        relations: ['dichVu', 'benhAnKham', 'benhAnKham.hoSoBenhAn', 'benhAnKham.hoSoBenhAn.benhNhan'],
+      });
+      if (cd && cd.bacSiChiDinhId) {
+        const bacSi = await this.cdRepo.manager.getRepository(BacSi).findOne({
+          where: { id: cd.bacSiChiDinhId },
+          relations: ['nhanVien'],
+        });
+        const nguoiNhanId = bacSi?.nhanVien?.nguoiDungId;
+        if (nguoiNhanId) {
+          const tenDv = cd.dichVu?.tenDichVu || 'Cận lâm sàng';
+          const tenBn = cd.benhAnKham?.hoSoBenhAn?.benhNhan?.hoTen || 'Bệnh nhân';
+          await this.thongBaoService.taoThongBao({
+            nguoiNhanId,
+            tieuDe: `Đã có kết quả: ${tenDv}`,
+            noiDung: `Kỹ thuật viên đã gửi đầy đủ thông số kết quả xét nghiệm ${tenDv} của bệnh nhân ${tenBn}. Bác sĩ vui lòng vào xem chi tiết.`,
+            loai: 'ket_qua_xet_nghiem_moi',
+            doiTuongBang: 'chi_dinh_can_lam_sang',
+            doiTuongId: chiDinhId,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[guiKetQuaChoBacSi] Lỗi gửi thông báo cho bác sĩ:', e);
+    }
+
     return { data: kq, message: 'Đã gửi kết quả cho bác sĩ' };
   }
 

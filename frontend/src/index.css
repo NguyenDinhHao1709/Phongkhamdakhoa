@@ -269,13 +269,15 @@
   }
 
   /* Reset body and hide web layout */
-  html, body {
+  html, body, #root {
     background: white !important;
     color: black !important;
     font-family: "Times New Roman", Times, serif !important;
     margin: 0 !important;
     padding: 0 !important;
     height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
     overflow: visible !important;
   }
 
@@ -312,6 +314,8 @@
   }
 
   .no-print,
+  .print-hidden,
+  .print\:hidden,
   nav,
   aside,
   header,

@@ -29,6 +29,9 @@ export class HoaDon {
   @JoinColumn({ name: 'luot_tiep_nhan_id' })
   luotTiepNhan: LuotTiepNhan;
 
+  @Column({ name: 'lich_hen_id', nullable: true })
+  lichHenId: number;
+
   @Column({ name: 'thu_ngan_id', nullable: true })
   thuNganId: number;
 
@@ -63,6 +66,6 @@ export class HoaDon {
   @Column({ name: 'ngay_thanh_toan', type: 'datetime', nullable: true })
   ngayThanhToan: Date;
 
-  @OneToMany(() => HoaDonChiTiet, (ct) => ct.hoaDon, { cascade: true })
+  @OneToMany(() => HoaDonChiTiet, (ct) => ct.hoaDon)
   chiTiet: HoaDonChiTiet[];
 }

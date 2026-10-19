@@ -84,15 +84,17 @@ export default function DuyetYeuCauPage() {
     return () => clearTimeout(timer);
   }, [searchKeyword]);
 
-  // Query tất cả danh sách đơn từ (để tính toán stats và lọc tức thì mượt mà)
+  // Query tất cả danh sách đơn từ (tự động làm mới mỗi 2.5s dưới 3s)
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['danh-sach-don-tu'],
     queryFn: () => apiGet('/quan-ly/don-tu?trangThai=all'),
+    refetchInterval: 2500,
   });
 
   const { data: purchaseData } = useQuery({
     queryKey: ['giam-doc-phe-duyet-mua-thuoc'],
     queryFn: () => apiGet('/nha-thuoc/mua-hang?trangThai=all'),
+    refetchInterval: 2500,
   });
 
   const rawList = Array.isArray(data?.data)

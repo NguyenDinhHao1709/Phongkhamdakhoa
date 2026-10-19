@@ -61,4 +61,7 @@ export class YeuCauNhapKhoChiTiet {
 
   @Column({ name: 'ghi_chu', type: 'text', nullable: true })
   ghiChu: string;
+
+  @Column({ name: 'ly_do_hong_loi', length: 255, nullable: true })
+  lyDoHongLoi: string;
 }

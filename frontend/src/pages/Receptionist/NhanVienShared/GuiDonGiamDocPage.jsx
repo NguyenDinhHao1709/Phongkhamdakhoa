@@ -19,6 +19,7 @@ export default function GuiDonGiamDocPage() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['danh-sach-don-tu-nhan-vien'],
     queryFn: () => apiGet('/nhan-vien/don-tu/danh-sach'),
+    refetchInterval: 2500,
   });
 
   const donList = Array.isArray(data?.data)

@@ -82,12 +82,24 @@ export class LichHenController {
 
   @Patch(':id/huy')
   @Roles('benh_nhan', 'tiep_tan', 'quan_tri_vien', 'bac_si')
-  @ApiOperation({ summary: 'Bệnh nhân hủy lịch hẹn (Có kiểm tra ranh giới 2 tiếng & Hoàn cọc 1/5)' })
+  @ApiOperation({ summary: 'Bệnh nhân hủy lịch hẹn (Kiểm tra ranh giới 24h & Gửi thông tin STK nhận hoàn cọc 1/5)' })
   huyLichHen(
     @Param('id', ParseIntPipe) id: number,
+    @Body() body: { phuongThucNhan?: 'chuyen_khoan' | 'tien_mat'; nganHang?: string; soTaiKhoan?: string; chuTaiKhoan?: string; lyDoHuy?: string },
     @CurrentUser() user: any,
   ) {
-    return this.service.huyLichHenBoiBenhNhan(id, user.id);
+    return this.service.huyLichHenBoiBenhNhan(id, user.id, body);
+  }
+
+  @Patch(':id/cap-nhat-tk-hoan-coc')
+  @Roles('benh_nhan', 'tiep_tan', 'quan_tri_vien')
+  @ApiOperation({ summary: 'Bệnh nhân cập nhật thông tin tài khoản ngân hàng nhận hoàn cọc cho lịch hẹn đã hủy' })
+  capNhatTkHoanCoc(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { phuongThucNhan?: 'chuyen_khoan' | 'tien_mat'; nganHang?: string; soTaiKhoan?: string; chuTaiKhoan?: string },
+    @CurrentUser() user: any,
+  ) {
+    return this.service.capNhatThongTinHoanCoc(id, user.id, body);
   }
 
   @Patch(':id/chinh-sua')

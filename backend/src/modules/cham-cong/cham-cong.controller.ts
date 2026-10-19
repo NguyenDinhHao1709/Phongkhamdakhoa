@@ -65,10 +65,18 @@ export class ChamCongController {
   // ─── 5. Lấy IP hiện tại của client ──────────────────────────────────────────
   @Get('ip-hien-tai')
   getIpHienTai(@Request() req) {
-    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+    const rawIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
       || req.socket.remoteAddress
-      || req.ip;
-    return { ip };
+      || req.ip || '127.0.0.1';
+    const lanIp = this.chamCongService.getLanIp();
+    const isLocalhost = rawIp === '::1' || rawIp === '127.0.0.1' || rawIp === '::ffff:127.0.0.1';
+    const displayIp = isLocalhost && lanIp ? lanIp : (rawIp.startsWith('::ffff:') ? rawIp.slice(7) : (rawIp === '::1' ? '127.0.0.1' : rawIp));
+    return {
+      ip: displayIp,
+      rawIp,
+      lanIp,
+      isLocalhost,
+    };
   }
 
   // ─── 6. Cấu hình WiFi (Admin only) ─────────────────────────────────────────

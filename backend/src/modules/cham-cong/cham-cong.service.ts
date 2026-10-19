@@ -7,6 +7,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { ChamCong } from './entities/cham-cong.entity';
 import { CaiDatHeThong } from './entities/cai-dat-he-thong.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
@@ -105,6 +106,18 @@ export class ChamCongService {
 
   // ─── Kiểm tra IP mạng hợp lệ ──────────────────────────────────────────────
 
+  getLanIp(): string {
+    const ifaces = os.networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+      for (const net of ifaces[name] || []) {
+        if (net.family === 'IPv4' && !net.internal) {
+          return net.address;
+        }
+      }
+    }
+    return '127.0.0.1';
+  }
+
   private normalizeIp(ip: string): string {
     if (!ip) return '';
     let res = ip.trim();
@@ -117,18 +130,21 @@ export class ChamCongService {
     const cfg = await this.layCauHinhChamCong();
     const rawIp = clientIp || '127.0.0.1';
     const normClient = this.normalizeIp(rawIp);
+    const lanIp = this.getLanIp();
+    const isLocal = normClient === '127.0.0.1' || rawIp === '::1';
+    const clientDisplayIp = isLocal && lanIp ? lanIp : normClient;
 
     if (!cfg.bat_buoc_wifi) {
-      return { hopLe: true, ip: rawIp };
+      return { hopLe: true, ip: clientDisplayIp };
     }
 
     const whitelist = (cfg.danh_sach_ip || []).map((x: string) => this.normalizeIp(x));
-    const hopLe = whitelist.includes(normClient) || whitelist.includes(rawIp);
+    const hopLe = whitelist.includes(normClient) || whitelist.includes(rawIp) || (isLocal && (whitelist.includes('127.0.0.1') || (lanIp && whitelist.includes(lanIp))));
 
     return {
       hopLe,
-      ip: rawIp,
-      lyDo: hopLe ? undefined : `IP [${rawIp}] không thuộc danh sách WiFi phòng khám được phép chấm công`,
+      ip: clientDisplayIp,
+      lyDo: hopLe ? undefined : `IP [${clientDisplayIp}] không thuộc danh sách WiFi phòng khám được phép chấm công`,
     };
   }
 
@@ -379,11 +395,16 @@ export class ChamCongService {
     const qb = this.chamCongRepo.createQueryBuilder('cc')
       .leftJoinAndSelect('cc.caLamViec', 'ca')
       .where('cc.nhan_vien_id = :id', { id: nv.id })
-      .orderBy('cc.ngay_cham', 'DESC')
-      .limit(30);
+      .orderBy('cc.ngay_cham', 'DESC');
 
     if (tuNgay) qb.andWhere('cc.ngay_cham >= :tuNgay', { tuNgay });
     if (denNgay) qb.andWhere('cc.ngay_cham <= :denNgay', { denNgay });
+
+    if (tuNgay || denNgay) {
+      qb.limit(100);
+    } else {
+      qb.limit(30);
+    }
 
     return qb.getMany();
   }

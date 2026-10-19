@@ -67,9 +67,9 @@ const MENU_CONFIG = {
     { to: '/nha-thuoc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   thu_ngan: [
-    { to: '/thu-ngan/hoa-don', icon: Receipt, label: 'Quản lý viện phí & Hóa đơn' },
-    { to: '/thu-ngan/chi-tra-nha-cung-cap', icon: DollarSign, label: 'Chi trả nhà cung cấp' },
-    { to: '/thu-ngan/thong-ke', icon: BarChart3, label: 'Báo cáo thống kê' },
+    { to: '/thu-ngan/hoa-don', icon: Receipt, label: 'Thu viện phí & Biên lai (AR)' },
+    { to: '/thu-ngan/chi-tra-nha-cung-cap', icon: DollarSign, label: 'Sổ chi trả & Chi phí (AP/OPEX)' },
+    { to: '/thu-ngan/thong-ke', icon: BarChart3, label: 'Báo cáo sổ quỹ & Chốt ca' },
     { to: '/thu-ngan/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
     { to: '/thu-ngan/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/thu-ngan/gui-don', icon: Send, label: 'Gửi yêu cầu' },
@@ -98,6 +98,7 @@ const MENU_CONFIG = {
   ban_giam_doc: [
     { to: '/ban-giam-doc/thong-ke', icon: BarChart3, label: 'Dashboard điều hành' },
     { to: '/ban-giam-doc/tai-chinh', icon: FileText, label: 'Báo cáo toàn diện BV' },
+    { to: '/ban-giam-doc/bao-cao-bo-phan', icon: ClipboardList, label: 'Báo cáo bộ phận & Chỉ đạo' },
     { to: '/ban-giam-doc/du-bao-luong', icon: TrendingUp, label: 'Dự báo lưu lượng' },
     { to: '/ban-giam-doc/xep-lich', icon: Calendar, label: 'Phân ca làm việc' },
     { to: '/ban-giam-doc/quan-ly-cham-cong', icon: ScanFace, label: 'Quản lý chấm công' },
@@ -147,11 +148,11 @@ export function DashboardLayout({ children }) {
   };
 
   return (
-    <div className="flex h-screen bg-medical-bg overflow-hidden relative">
+    <div className="flex h-screen bg-medical-bg overflow-hidden relative print:h-auto print:overflow-visible print:bg-white">
       {/* ─── MOBILE BACKDROP ──────────────────────────────────────── */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 md:hidden transition-opacity"
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 md:hidden transition-opacity print:hidden"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -159,7 +160,7 @@ export function DashboardLayout({ children }) {
       {/* ─── MOBILE DRAWER (Điện thoại & Tablet nhỏ < 768px) ──────── */}
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 w-64 bg-white z-50 md:hidden flex flex-col shadow-2xl transition-transform duration-300 ease-in-out',
+          'fixed inset-y-0 left-0 w-64 bg-white z-50 md:hidden flex flex-col shadow-2xl transition-transform duration-300 ease-in-out print:hidden',
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -210,7 +211,7 @@ export function DashboardLayout({ children }) {
             className="px-3 py-2 mb-2 rounded-xl bg-white border border-gray-200/80 hover:border-primary-300 cursor-pointer transition-colors shadow-2xs"
             title="Xem thông tin cá nhân"
           >
-            <p className="text-xs font-semibold text-gray-800 truncate">{user?.tenDangNhap}</p>
+            <p className="text-xs font-semibold text-gray-800 truncate">{user?.hoTen || user?.tenDangNhap}</p>
             <p className="text-[11px] text-gray-500">{VAI_TRO_LABEL[user?.vaiTro] || user?.vaiTro}</p>
           </div>
           <button
@@ -226,7 +227,7 @@ export function DashboardLayout({ children }) {
       {/* ─── DESKTOP / TABLET SIDEBAR (≥ 768px) ────────────────────── */}
       <aside
         className={clsx(
-          'hidden md:flex flex-col bg-white border-r border-gray-200 shadow-sidebar transition-all duration-200 flex-shrink-0',
+          'hidden md:flex flex-col bg-white border-r border-gray-200 shadow-sidebar transition-all duration-200 flex-shrink-0 print:hidden',
           collapsed ? 'w-16' : 'w-56',
         )}
       >
@@ -275,7 +276,7 @@ export function DashboardLayout({ children }) {
               className="px-3 py-2 mb-1 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors"
               title="Xem thông tin cá nhân"
             >
-              <p className="text-xs font-semibold text-gray-800 truncate hover:text-primary-600">{user?.tenDangNhap}</p>
+              <p className="text-xs font-semibold text-gray-800 truncate hover:text-primary-600">{user?.hoTen || user?.tenDangNhap}</p>
               <p className="text-xs text-gray-500">{VAI_TRO_LABEL[user?.vaiTro] || user?.vaiTro}</p>
             </div>
           )}
@@ -294,9 +295,9 @@ export function DashboardLayout({ children }) {
       </aside>
 
       {/* ─── MAIN CONTENT ─────────────────────────────────────────── */}
-      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
+      <div className="flex flex-1 flex-col min-w-0 overflow-hidden print:overflow-visible print:h-auto">
         {/* Header */}
-        <header className="flex items-center justify-between h-16 bg-white border-b border-gray-200 px-3 sm:px-6 flex-shrink-0">
+        <header className="flex items-center justify-between h-16 bg-white border-b border-gray-200 px-3 sm:px-6 flex-shrink-0 print:hidden">
           <div className="flex items-center gap-2">
             {/* Nút Hamburger trên điện thoại (< 768px) */}
             <button
@@ -329,17 +330,25 @@ export function DashboardLayout({ children }) {
             {/* Icon Người - Bấm để chuyển vào xem và chỉnh sửa thông tin cá nhân */}
             <button
               onClick={() => navigate(getProfileRoute())}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-100 text-primary-700 hover:bg-primary-200 transition-colors shadow-2xs"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-100 text-primary-700 hover:bg-primary-200 transition-colors shadow-2xs overflow-hidden"
               title="Xem thông tin cá nhân"
               data-testid="btn-header-profile"
             >
-              <User className="h-4 w-4" />
+              {user?.anhDaiDien ? (
+                <img
+                  src={user.anhDaiDien.startsWith('http') ? user.anhDaiDien : `http://localhost:5000${user.anhDaiDien}`}
+                  alt={user?.hoTen || user?.tenDangNhap}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <User className="h-4 w-4" />
+              )}
             </button>
           </div>
         </header>
 
         {/* Page Content với padding linh hoạt tương thích điện thoại & máy tính */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 print:p-0 print:overflow-visible print:h-auto">
           {children}
         </main>
       </div>

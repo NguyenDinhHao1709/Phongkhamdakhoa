@@ -20,6 +20,7 @@ import {
   ArrowUpDown,
   Coins,
   Wallet,
+  RotateCcw,
 } from 'lucide-react';
 import { apiGet } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
@@ -28,6 +29,7 @@ import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDateTime, formatDate } from '../../utils/formatDate';
 import ThanhToanModal from './ThanhToanModal';
 import InHoaDonModal from './InHoaDonModal';
+import HuyHoaDonModal from './HuyHoaDonModal';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -36,7 +38,7 @@ export default function HoaDonListPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'cho_thanh_toan' | 'da_thanh_toan'
+  const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'cho_thanh_toan' | 'da_thanh_toan' | 'huy'
   const [filterPriceRange, setFilterPriceRange] = useState('all');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
@@ -44,6 +46,7 @@ export default function HoaDonListPage() {
 
   const [selectedHoaDonId, setSelectedHoaDonId] = useState(null);
   const [printInvoiceData, setPrintInvoiceData] = useState(null);
+  const [cancellingInvoice, setCancellingInvoice] = useState(null);
 
   // Debounce search
   useEffect(() => {
@@ -104,14 +107,25 @@ export default function HoaDonListPage() {
     return colors[hash % colors.length];
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const toLocalDateStr = (d = new Date()) => {
+    const dt = d instanceof Date ? d : new Date(d);
+    if (isNaN(dt.getTime())) return '';
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  const todayStr = toLocalDateStr(new Date());
 
   // Lọc đa điều kiện
   const filteredList = useMemo(() => {
     let result = list;
 
     // 1. Trạng thái
-    if (filterStatus !== 'all') {
+    if (filterStatus === 'cho_hoan_coc') {
+      result = result.filter((item) => Boolean(item.choHoanCoc));
+    } else if (filterStatus !== 'all') {
       result = result.filter((item) => item.trangThai === filterStatus);
     }
 
@@ -130,7 +144,7 @@ export default function HoaDonListPage() {
     if (filterDateFrom || filterDateTo) {
       result = result.filter((item) => {
         if (!item.ngayTao) return false;
-        const dStr = typeof item.ngayTao === 'string' ? item.ngayTao.substring(0, 10) : new Date(item.ngayTao).toISOString().substring(0, 10);
+        const dStr = toLocalDateStr(item.ngayTao);
         if (filterDateFrom && dStr < filterDateFrom) return false;
         if (filterDateTo && dStr > filterDateTo) return false;
         return true;
@@ -142,11 +156,15 @@ export default function HoaDonListPage() {
       const term = normalizeText(debouncedSearch);
       result = result.filter((item) => {
         const maHd = normalizeText(item.maHoaDon);
+        const maLh = normalizeText(item.maLichHen);
+        const ghiChu = normalizeText(item.ghiChu);
         const name = normalizeText(item.benhNhan?.hoTen);
         const phone = normalizeText(item.benhNhan?.soDienThoai);
         const maBn = normalizeText(item.benhNhan?.maBenhNhan);
         return (
           maHd.includes(term) ||
+          maLh.includes(term) ||
+          ghiChu.includes(term) ||
           name.includes(term) ||
           phone.includes(term) ||
           maBn.includes(term)
@@ -172,9 +190,13 @@ export default function HoaDonListPage() {
     const paidCount = paidList.length;
     const paidAmount = paidList.reduce((sum, i) => sum + Number(i.thucThu || i.tongTien || 0), 0);
 
-    const todayList = list.filter((i) => i.ngayTao && i.ngayTao.startsWith(todayStr));
+    const todayList = list.filter((i) => i.ngayTao && toLocalDateStr(i.ngayTao) === todayStr);
     const todayCount = todayList.length;
     const todayAmount = todayList.reduce((sum, i) => sum + Number(i.thucThu || i.tongTien || 0), 0);
+
+    const pendingRefundList = list.filter((i) => Boolean(i.choHoanCoc));
+    const pendingRefundCount = pendingRefundList.length;
+    const pendingRefundAmount = pendingRefundList.reduce((sum, i) => sum + Number(i.thucThu || i.tongTien || 40000), 0);
 
     return {
       totalCount,
@@ -185,6 +207,8 @@ export default function HoaDonListPage() {
       paidAmount,
       todayCount,
       todayAmount,
+      pendingRefundCount,
+      pendingRefundAmount,
     };
   }, [list, todayStr]);
 
@@ -198,19 +222,19 @@ export default function HoaDonListPage() {
   const handleQuickDate = (daysAgo) => {
     const now = new Date();
     if (daysAgo === 0) {
-      const today = now.toISOString().split('T')[0];
+      const today = toLocalDateStr(now);
       setFilterDateFrom(today);
       setFilterDateTo(today);
     } else if (daysAgo === 7) {
       const past = new Date();
       past.setDate(past.getDate() - 7);
-      setFilterDateFrom(past.toISOString().split('T')[0]);
-      setFilterDateTo(now.toISOString().split('T')[0]);
+      setFilterDateFrom(toLocalDateStr(past));
+      setFilterDateTo(toLocalDateStr(now));
     } else if (daysAgo === 30) {
       const past = new Date();
       past.setDate(1);
-      setFilterDateFrom(past.toISOString().split('T')[0]);
-      setFilterDateTo(now.toISOString().split('T')[0]);
+      setFilterDateFrom(toLocalDateStr(past));
+      setFilterDateTo(toLocalDateStr(now));
     } else {
       setFilterDateFrom('');
       setFilterDateTo('');
@@ -234,7 +258,7 @@ export default function HoaDonListPage() {
             </span>
           </div>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Theo dõi dòng tiền, thu viện phí khám chữa bệnh và in phiếu thu cho bệnh nhân.
+            Theo dõi dòng tiền, thu viện phí khám chữa bệnh, quản lý tạm ứng đặt lịch và hoàn trả cọc cho bệnh nhân.
           </p>
         </div>
 
@@ -249,6 +273,32 @@ export default function HoaDonListPage() {
           </button>
         </div>
       </div>
+
+      {/* Cảnh báo có phiếu tạm ứng đặt lịch đang chờ Thu ngân hoàn cọc */}
+      {stats.pendingRefundCount > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-2xl bg-rose-50/90 border border-rose-200 text-rose-900 shadow-xs">
+          <div className="flex items-start sm:items-center gap-2.5 text-xs sm:text-sm">
+            <RotateCcw className="h-5 w-5 text-rose-600 shrink-0 mt-0.5 sm:mt-0" />
+            <div>
+              <span className="font-bold">
+                Có {stats.pendingRefundCount} phiếu tạm ứng đặt lịch ({formatCurrency(stats.pendingRefundAmount)}) đang chờ Thu ngân hoàn cọc
+              </span>
+              <p className="text-[11px] text-rose-700 mt-0.5">
+                Lịch hẹn đã hủy hợp lệ trước &ge; 24 tiếng hoặc do Bác sĩ hủy ca. Bấm "Hoàn cọc" trên từng phiếu để xem Số tài khoản / mã QR của bệnh nhân và xác nhận giải ngân.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setFilterStatus(filterStatus === 'cho_hoan_coc' ? 'all' : 'cho_hoan_coc');
+              setCurrentPage(1);
+            }}
+            className="shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white transition cursor-pointer"
+          >
+            {filterStatus === 'cho_hoan_coc' ? 'Xem tất cả hóa đơn' : `Lọc ${stats.pendingRefundCount} phiếu chờ hoàn cọc`}
+          </button>
+        </div>
+      )}
 
       {/* 2. Thẻ Thống kê nhanh (Interactive Quick-Filter Cards) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -373,7 +423,9 @@ export default function HoaDonListPage() {
             >
               <option value="all">💳 Tất cả trạng thái</option>
               <option value="cho_thanh_toan">⏳ Chờ thanh toán</option>
+              <option value="cho_hoan_coc">🔔 Chờ hoàn cọc đặt lịch (40k)</option>
               <option value="da_thanh_toan">✅ Đã thanh toán</option>
+              <option value="huy">❌ Đã hủy / Hoàn tiền</option>
             </select>
           </div>
 
@@ -543,8 +595,14 @@ export default function HoaDonListPage() {
                   const patientName = hd.benhNhan?.hoTen || 'Bệnh nhân';
                   const initials = getInitials(patientName);
                   const avatarBg = getAvatarBg(patientName);
-                  const isToday = hd.ngayTao && hd.ngayTao.startsWith(todayStr);
+                  const isToday = hd.ngayTao && toLocalDateStr(hd.ngayTao) === todayStr;
                   const isPaid = hd.trangThai === 'da_thanh_toan';
+                  const isTamUng =
+                    hd.loaiHoaDon === 'tam_ung_dat_lich' ||
+                    hd.maHoaDon?.startsWith('HDT') ||
+                    hd.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]');
+                  const isDeductedDeposit =
+                    !isTamUng && hd.ghiChu && hd.ghiChu.includes('khấu trừ');
 
                   return (
                     <tr
@@ -553,9 +611,27 @@ export default function HoaDonListPage() {
                     >
                       {/* Mã Hóa đơn */}
                       <td className="py-3.5 px-4">
-                        <span className="inline-block font-mono text-[11px] font-bold px-2.5 py-1 rounded-lg bg-blue-50/80 text-blue-700 border border-blue-200/80 group-hover:bg-blue-100 transition-colors">
-                          {hd.maHoaDon || `#${hd.id}`}
-                        </span>
+                        <div className="flex flex-col items-start gap-1">
+                          <span
+                            className={`inline-block font-mono text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-colors ${
+                              isTamUng
+                                ? 'bg-indigo-50/90 text-indigo-700 border-indigo-200 group-hover:bg-indigo-100'
+                                : 'bg-blue-50/80 text-blue-700 border-blue-200/80 group-hover:bg-blue-100'
+                            }`}
+                          >
+                            {hd.maHoaDon || `#${hd.id}`}
+                          </span>
+                          {isTamUng && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 border border-violet-200">
+                              📌 Tạm ứng 1/5{hd.maLichHen ? ` • ${hd.maLichHen}` : ''}
+                            </span>
+                          )}
+                          {isDeductedDeposit && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200">
+                              ✓ Đã trừ cọc 40.000 đ
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Bệnh nhân */}
@@ -607,7 +683,42 @@ export default function HoaDonListPage() {
 
                       {/* Trạng thái */}
                       <td className="py-3.5 px-4">
-                        {isPaid ? (
+                        {hd.trangThai === 'huy' ? (
+                          <div>
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                              <RotateCcw className="h-3 w-3 text-rose-600" />
+                              Đã hủy / Hoàn tiền
+                            </span>
+                            {hd.ghiChu && (
+                              <p className="text-[10px] text-gray-500 mt-0.5 truncate max-w-[160px]" title={hd.ghiChu}>
+                                {hd.ghiChu}
+                              </p>
+                            )}
+                          </div>
+                        ) : hd.choHoanCoc ? (
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-orange-50 text-orange-800 border border-orange-300">
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-600 animate-ping" />
+                              Chờ hoàn cọc 40k
+                            </span>
+                            {hd.thongTinHoanCoc?.soTaiKhoan ? (
+                              <p
+                                className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 truncate max-w-[180px]"
+                                title={`${hd.thongTinHoanCoc.nganHang} - STK: ${hd.thongTinHoanCoc.soTaiKhoan} (${hd.thongTinHoanCoc.chuTaiKhoan})`}
+                              >
+                                CK: {hd.thongTinHoanCoc.nganHang} • {hd.thongTinHoanCoc.soTaiKhoan}
+                              </p>
+                            ) : hd.thongTinHoanCoc?.phuongThucNhan === 'tien_mat' ? (
+                              <p className="text-[10px] font-semibold text-amber-700">
+                                Nhận tiền mặt tại quầy
+                              </p>
+                            ) : (
+                              <p className="text-[10px] text-gray-500">
+                                Chờ BN cung cấp STK / Nhận tại quầy
+                              </p>
+                            )}
+                          </div>
+                        ) : isPaid ? (
                           <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                             Đã thanh toán
@@ -635,7 +746,20 @@ export default function HoaDonListPage() {
                       {/* Thao tác */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {isPaid ? (
+                          {hd.trangThai === 'huy' ? (
+                            <>
+                              <button
+                                onClick={() => setSelectedHoaDonId(hd.id)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-colors cursor-pointer"
+                              >
+                                <Eye className="h-3.5 w-3.5 text-gray-500" />
+                                <span>Chi tiết</span>
+                              </button>
+                              <span className="text-[11px] font-medium text-rose-600 bg-rose-50 px-2 py-1 rounded-lg border border-rose-100">
+                                Đã hoàn quỹ
+                              </span>
+                            </>
+                          ) : isPaid ? (
                             <>
                               <button
                                 onClick={() => setSelectedHoaDonId(hd.id)}
@@ -654,6 +778,25 @@ export default function HoaDonListPage() {
                                 title="In phiếu thu viện phí"
                               >
                                 <Printer className="h-4 w-4" />
+                              </button>
+
+                              <button
+                                onClick={() => setCancellingInvoice(hd)}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
+                                  hd.choHoanCoc
+                                    ? 'text-white bg-rose-600 hover:bg-rose-700 shadow-xs'
+                                    : 'text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200'
+                                }`}
+                                title={
+                                  hd.choHoanCoc
+                                    ? 'Xem STK / Mã QR của bệnh nhân và xác nhận hoàn cọc 40.000đ'
+                                    : 'Hủy hóa đơn & Hoàn tiền viện phí'
+                                }
+                              >
+                                <RotateCcw className={`h-3.5 w-3.5 ${hd.choHoanCoc ? 'text-white' : 'text-rose-600'}`} />
+                                <span className="hidden sm:inline">
+                                  {hd.choHoanCoc ? 'Hoàn cọc (40k)' : 'Hủy / Hoàn'}
+                                </span>
                               </button>
                             </>
                           ) : (
@@ -723,6 +866,15 @@ export default function HoaDonListPage() {
         <InHoaDonModal
           hoaDon={printInvoiceData}
           onClose={() => setPrintInvoiceData(null)}
+        />
+      )}
+
+      {/* Modal Hủy Hóa Đơn & Hoàn Tiền */}
+      {cancellingInvoice && (
+        <HuyHoaDonModal
+          hoaDon={cancellingInvoice}
+          onClose={() => setCancellingInvoice(null)}
+          onSuccess={fetchData}
         />
       )}
     </div>

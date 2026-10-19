@@ -114,8 +114,8 @@ export default function CaiDatChamCongPage() {
           <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
             <Wifi className="h-4 w-4 text-blue-500 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-blue-500">IP của bạn hiện tại</p>
-              <p className="text-sm font-mono font-medium text-blue-800 truncate">{ipHienTai}</p>
+              <p className="text-xs text-blue-600 font-medium">IP của bạn hiện tại (Wi-Fi phòng khám / LAN)</p>
+              <p className="text-sm font-mono font-bold text-blue-900 truncate">{ipHienTai}</p>
             </div>
             <button
               onClick={() => addIp(ipHienTai)}

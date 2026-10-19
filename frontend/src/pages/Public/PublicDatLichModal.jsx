@@ -506,17 +506,30 @@ export default function PublicDatLichModal({
                 ></textarea>
               </div>
 
-              {/* Ràng buộc tạm ứng */}
-              <div className="rounded-2xl bg-primary-50/70 p-4 border border-primary-200 text-xs text-gray-700 space-y-1.5">
-                <div className="flex items-center justify-between font-bold text-gray-900 border-b border-primary-200/80 pb-1.5">
-                  <span className="flex items-center gap-1.5">
-                    <CreditCard className="h-4 w-4 text-primary-600" /> Tạm ứng phí giữ lịch khám (1/5):
-                  </span>
-                  <span className="text-primary-700 font-extrabold text-sm">40.000 đ</span>
+              {/* Ràng buộc chi phí */}
+              {hinhThuc === 'truc_tuyen' ? (
+                <div className="rounded-2xl bg-purple-50/70 p-4 border border-purple-200 text-xs text-gray-700 space-y-1.5">
+                  <div className="flex items-center justify-between font-bold text-gray-900 border-b border-purple-200/80 pb-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <CreditCard className="h-4 w-4 text-purple-600" /> Phí tư vấn trực tuyến (Telehealth):
+                    </span>
+                    <span className="text-purple-700 font-extrabold text-sm">200.000 đ</span>
+                  </div>
+                  <p>• Phí tư vấn online: <strong>200.000 đ</strong> (thanh toán 100% để bắt đầu buổi khám từ xa).</p>
+                  <p>• <strong>Hủy lịch trước &gt; 24 tiếng:</strong> Hoàn trả 100% phí tư vấn qua chuyển khoản.</p>
                 </div>
-                <p>• Phí khám niêm yết: <strong>200.000 đ</strong>. Tạm ứng <strong>40.000 đ</strong> để xác nhận lịch hẹn.</p>
-                <p>• <strong>Hủy lịch trước &gt; 2 tiếng:</strong> Tự động hoàn lại 100% tiền cọc (40.000đ). Hủy dưới 2 tiếng hoặc không đến khám sẽ không được hoàn cọc.</p>
-              </div>
+              ) : (
+                <div className="rounded-2xl bg-primary-50/70 p-4 border border-primary-200 text-xs text-gray-700 space-y-1.5">
+                  <div className="flex items-center justify-between font-bold text-gray-900 border-b border-primary-200/80 pb-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <CreditCard className="h-4 w-4 text-primary-600" /> Tạm ứng phí giữ lịch khám (1/5):
+                    </span>
+                    <span className="text-primary-700 font-extrabold text-sm">40.000 đ</span>
+                  </div>
+                  <p>• Phí khám niêm yết: <strong>200.000 đ</strong>. Tạm ứng <strong>40.000 đ</strong> để xác nhận lịch hẹn.</p>
+                  <p>• <strong>Hủy lịch trước &gt; 2 tiếng:</strong> Tự động hoàn lại 100% tiền cọc (40.000đ). Hủy dưới 2 tiếng hoặc không đến khám sẽ không được hoàn cọc.</p>
+                </div>
+              )}
 
               {errorMsg && (
                 <div className="flex items-center gap-2 rounded-xl bg-danger-50 p-3 text-xs text-danger-700 border border-danger-200 animate-fade-in">

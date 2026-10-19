@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Pill, CheckCircle, X, AlertTriangle, PackageCheck } from 'lucide-react';
+import { Pill, CheckCircle, X, AlertTriangle, PackageCheck, Printer } from 'lucide-react';
 import { apiGet, apiPost } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
+import InDonThuocModal from './InDonThuocModal';
 
 export default function CapPhatThuocModal({ donThuocId, onClose, onSuccess }) {
   const [donThuoc, setDonThuoc] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isPrintOpen, setIsPrintOpen] = useState(false);
 
   useEffect(() => {
     fetchDetail();
@@ -197,9 +199,20 @@ export default function CapPhatThuocModal({ donThuocId, onClose, onSuccess }) {
 
         {/* Footer Actions */}
         <div className="flex items-center justify-between border-t px-6 py-4 bg-gray-50 rounded-b-2xl">
-          <MedButton variant="secondary" onClick={onClose}>
-            Đóng
-          </MedButton>
+          <div className="flex items-center gap-2">
+            <MedButton variant="secondary" onClick={onClose}>
+              Đóng
+            </MedButton>
+            <button
+              type="button"
+              onClick={() => setIsPrintOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100 transition-all shadow-xs active:scale-95 cursor-pointer"
+            >
+              <Printer className="h-4 w-4 text-primary-600" />
+              <span>In Toa Thuốc</span>
+            </button>
+          </div>
+
           {donThuoc?.trangThai !== 'da_cap_phat' && (
             <div className="flex items-center gap-3">
               {donThuoc?.luaChonMua === 'mua_ngoai' && (
@@ -225,6 +238,14 @@ export default function CapPhatThuocModal({ donThuocId, onClose, onSuccess }) {
           )}
         </div>
       </div>
+
+      {/* Modal In Toa Thuốc Khổ A4 */}
+      {isPrintOpen && (
+        <InDonThuocModal
+          donThuoc={donThuoc}
+          onClose={() => setIsPrintOpen(false)}
+        />
+      )}
     </div>
   );
 }

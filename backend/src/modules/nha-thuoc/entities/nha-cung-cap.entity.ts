@@ -29,6 +29,23 @@ export class NhaCungCap {
   @Column({ name: 'dieu_khoan_thanh_toan', length: 200, nullable: true })
   dieuKhoanThanhToan: string;
 
+  @Column({ name: 'file_bang_gia_ten', length: 255, nullable: true })
+  fileBangGiaTen: string;
+
+  @Column({ name: 'ngay_cap_nhat_bang_gia', type: 'datetime', nullable: true })
+  ngayCapNhatBangGia: Date;
+
+  @Column({ name: 'bang_gia_data', type: 'json', nullable: true })
+  bangGiaData: Array<{
+    maThuoc?: string;
+    tenThuoc: string;
+    hoatChat?: string;
+    donViTinh?: string;
+    donGia: number;
+    hanDungCamKet?: string;
+    ghiChu?: string;
+  }>;
+
   @Column({ name: 'trang_thai', length: 30, default: 'dang_hop_tac' })
   trangThai: string;
 

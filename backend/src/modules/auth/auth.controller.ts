@@ -77,7 +77,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Lấy thông tin người dùng hiện tại' })
   async getMe(@CurrentUser() user: any) {
-    const data = await this.authService.getMe(user.userId || user.sub);
+    const data = await this.authService.getMe(user.id || user.userId || user.sub);
     return { data, message: 'Lấy thông tin thành công' };
   }
 
@@ -87,6 +87,6 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Đổi mật khẩu tài khoản người dùng' })
   changePassword(@CurrentUser() user: any, @Body() dto: DoiMatKhauDto) {
-    return this.authService.changePassword(user.userId || user.sub, dto);
+    return this.authService.changePassword(user.id || user.userId || user.sub, dto);
   }
 }

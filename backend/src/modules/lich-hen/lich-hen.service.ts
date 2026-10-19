@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, ConflictException, BadRequestException, OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, Between, In } from 'typeorm';
+import { Repository, DataSource, Between, In, Not } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { LichHen, TrangThaiLichHen, CHO_PHAN_CONG_MARKER } from './entities/lich-hen.entity';
@@ -54,6 +54,11 @@ export class LichHenService implements OnModuleInit {
   }
 
   onModuleInit() {
+    // Tự động đồng bộ phiếu thu tạm ứng cho các lịch hẹn đã xác nhận thanh toán
+    this.dongBoTatCaTamUngLichHen().catch((err) =>
+      console.warn('[LichHenDepositSync] Lỗi đồng bộ tạm ứng:', err?.message)
+    );
+
     // Tự động quét và hủy các lịch hẹn đã quá giờ khám ngay khi khởi động
     this.tuDongHuyLichQuaGio().catch(() => {});
 
@@ -68,6 +73,164 @@ export class LichHenService implements OnModuleInit {
         console.error('[LichHenScheduler] Lỗi tự động nhắc lịch:', err.message)
       );
     }, 30 * 60 * 1000);
+  }
+
+  // ─── CHUẨN ERP Y TẾ: TẠO & ĐỒNG BỘ HÓA ĐƠN TẠM ỨNG ĐẶT LỊCH (40.000đ) ───
+  async dongBoTatCaTamUngLichHen() {
+    try {
+      await this.dataSource.query(
+        `ALTER TABLE hoa_don_chi_tiet MODIFY COLUMN loai_phi VARCHAR(50) NOT NULL DEFAULT 'kham_benh'`
+      ).catch(() => {});
+      await this.dataSource.query(
+        `ALTER TABLE don_thuoc MODIFY COLUMN trang_thai VARCHAR(50) NOT NULL DEFAULT 'cho_duyet'`
+      ).catch(() => {});
+
+      const list = await this.repo.find({
+        where: {
+          nguonDat: In(['benh_nhan_tu_dat', 'bac_si_dat']),
+          trangThai: In([
+            TrangThaiLichHen.DA_XAC_NHAN,
+            TrangThaiLichHen.DANG_KHAM,
+            TrangThaiLichHen.HOAN_THANH,
+            TrangThaiLichHen.CHO_DUYET_HUY,
+            TrangThaiLichHen.DA_HUY,
+          ]),
+        },
+        order: { id: 'ASC' },
+      });
+
+      for (const lh of list) {
+        const note = (lh.ghiChu || '').toLowerCase();
+        // Nếu bị hủy do hết thời gian đếm ngược mà chưa đóng cọc thì bỏ qua
+        if (
+          lh.trangThai === TrangThaiLichHen.DA_HUY &&
+          !note.includes('hoàn tiền') &&
+          !note.includes('[stt:')
+        ) {
+          continue;
+        }
+        await this.dongBoHoaDonTamUng(lh, false);
+      }
+    } catch (err: any) {
+      console.warn('[LichHenDepositSync] Lỗi quét tạm ứng lịch hẹn:', err.message);
+    }
+  }
+
+  async dongBoHoaDonTamUng(lh: LichHen, isNewPayment = false) {
+    if (!lh || !lh.maLichHen || !lh.benhNhanId) return null;
+
+    const maHoaDonTamUng = `HDT${lh.maLichHen.replace(/^LH/i, '')}`.slice(0, 20);
+    const marker = `[MÃ_LỊCH_HẸN: ${lh.maLichHen}]`;
+    const isOnline = lh.hinhThuc === 'truc_tuyen';
+    const soTienCoc = isOnline ? 200000 : 40000;
+    const soTienCocText = `${soTienCoc.toLocaleString('vi-VN')}đ`;
+
+    const existingRows: any[] = await this.dataSource.query(
+      `SELECT id, trang_thai, thu_ngan_id, ghi_chu FROM hoa_don WHERE ma_hoa_don = ? OR ghi_chu LIKE ? LIMIT 1`,
+      [maHoaDonTamUng, `%${marker}%`]
+    );
+
+    const noteLower = (lh.ghiChu || '').toLowerCase();
+    const isCanceledEligibleRefund =
+      lh.trangThai === TrangThaiLichHen.DA_HUY &&
+      (noteLower.includes('hoàn tiền') || noteLower.includes('hoàn cọc') || noteLower.includes('chờ hoàn cọc'));
+    const tkMatchFromLh = lh.ghiChu?.match(/\[TK_HOÀN_TIỀN:[^\]]+\]/i);
+    const tkTag = tkMatchFromLh
+      ? tkMatchFromLh[0]
+      : `[TK_HOÀN_TIỀN: chua_cung_cap|Chờ bệnh nhân cung cấp STK hoặc nhận tại quầy||]`;
+
+    if (existingRows.length > 0) {
+      const existing = existingRows[0];
+      const existingNote = String(existing.ghi_chu || '');
+      const cashierConfirmedRefund =
+        existing.trang_thai === 'huy' &&
+        (existing.thu_ngan_id != null || existingNote.includes('[ĐÃ HOÀN CỌC THÀNH CÔNG]') || existingNote.includes('bởi '));
+
+      // Nếu lịch hẹn đã hủy hợp lệ nhưng Thu ngân chưa xác nhận giải ngân hoàn tiền -> Đưa về trạng thái chờ Thu ngân hoàn cọc
+      if (isCanceledEligibleRefund && !cashierConfirmedRefund) {
+        if (!existingNote.includes(`[CHỜ HOÀN CỌC ${soTienCocText}]`) || existing.trang_thai === 'huy') {
+          const hinhThucText = isOnline ? 'Tư vấn Online' : 'Khám tại PK';
+          const pendingRefundNote = `[CHỜ HOÀN CỌC ${soTienCocText}] [${isOnline ? 'PHÍ TƯ VẤN ONLINE' : 'TẠM ỨNG ĐẶT LỊCH'}] ${marker} ${tkTag} Lịch hẹn ${lh.maLichHen} (${hinhThucText}) đã hủy hợp lệ - Chờ Thu ngân chuyển hoàn ${soTienCoc.toLocaleString('vi-VN')} đ.`;
+          await this.dataSource.query(
+            `UPDATE hoa_don SET trang_thai = 'da_thanh_toan', ghi_chu = ? WHERE id = ?`,
+            [pendingRefundNote, existing.id]
+          );
+        }
+      }
+      return existing.id;
+    }
+
+    const ngayGiaoDich = isNewPayment ? new Date() : (lh.capNhatLuc || lh.taoLuc || new Date());
+    const hinhThucText = isOnline ? 'Tư vấn Online' : 'Khám tại PK';
+    const ghiChuHd = isCanceledEligibleRefund
+      ? `[CHỜ HOÀN CỌC ${soTienCocText}] [${isOnline ? 'PHÍ TƯ VẤN ONLINE' : 'TẠM ỨNG ĐẶT LỊCH'}] ${marker} ${tkTag} Lịch hẹn ${lh.maLichHen} (${hinhThucText}) đã hủy hợp lệ - Chờ Thu ngân chuyển hoàn ${soTienCoc.toLocaleString('vi-VN')} đ.`
+      : `[${isOnline ? 'PHÍ TƯ VẤN ONLINE' : 'TẠM ỨNG ĐẶT LỊCH'}] ${marker} Thu ${isOnline ? 'phí tư vấn online' : 'tạm ứng 1/5 phí khám giữ chỗ'} qua PayOS/Chuyển khoản (${hinhThucText} - Ngày hẹn: ${lh.ngayHen} ${lh.gioHen})`;
+
+    const insertRes: any = await this.dataSource.query(
+      `INSERT INTO hoa_don (ma_hoa_don, benh_nhan_id, luot_tiep_nhan_id, thu_ngan_id, tong_tien, so_tien_giam, thuc_thu, phuong_thuc_thanh_toan, trang_thai, ghi_chu, ngay_tao, ngay_thanh_toan)
+       VALUES (?, ?, NULL, NULL, ?, 0, ?, 'chuyen_khoan', 'da_thanh_toan', ?, ?, ?)`,
+      [
+        maHoaDonTamUng,
+        lh.benhNhanId,
+        soTienCoc,
+        soTienCoc,
+        ghiChuHd,
+        ngayGiaoDich,
+        ngayGiaoDich,
+      ]
+    );
+
+    const hoaDonId = insertRes?.insertId;
+    if (hoaDonId) {
+      await this.dataSource.query(
+        `INSERT INTO hoa_don_chi_tiet (hoa_don_id, loai_phi, mo_ta, so_luong, don_gia, thanh_tien)
+         VALUES (?, ?, ?, 1, ?, ?)`,
+        [
+          hoaDonId,
+          isOnline ? 'kham_benh' : 'tam_ung',
+          isOnline ? `Phí tư vấn trực tuyến (Telehealth) lịch hẹn ${lh.maLichHen}` : `Tạm ứng 1/5 phí khám giữ chỗ lịch hẹn ${lh.maLichHen} (${hinhThucText})`,
+          soTienCoc,
+          soTienCoc,
+        ]
+      );
+    }
+
+    return hoaDonId;
+  }
+
+  async yeuCauHoanCocHoaDonTamUng(
+    lh: LichHen,
+    lyDo: string,
+    refundInfo?: {
+      phuongThucNhan?: 'chuyen_khoan' | 'tien_mat';
+      nganHang?: string;
+      soTaiKhoan?: string;
+      chuTaiKhoan?: string;
+    },
+  ) {
+    if (!lh || !lh.maLichHen) return;
+    await this.dongBoHoaDonTamUng(lh, false);
+    const maHoaDonTamUng = `HDT${lh.maLichHen.replace(/^LH/i, '')}`.slice(0, 20);
+    const marker = `[MÃ_LỊCH_HẸN: ${lh.maLichHen}]`;
+    const isOnline = lh.hinhThuc === 'truc_tuyen';
+    const soTienHoan = isOnline ? 200000 : 40000;
+    const soTienHoanText = `${soTienHoan.toLocaleString('vi-VN')}đ`;
+
+    let tkTag = `[TK_HOÀN_TIỀN: chua_cung_cap|Chờ bệnh nhân cung cấp STK hoặc nhận tại quầy||${lh.benhNhan?.hoTen || ''}]`;
+    if (refundInfo?.phuongThucNhan === 'tien_mat') {
+      tkTag = `[TK_HOÀN_TIỀN: tien_mat|Nhận tiền mặt tại Quầy Thu Ngân||${(refundInfo.chuTaiKhoan || lh.benhNhan?.hoTen || '').trim()}]`;
+    } else if (refundInfo?.soTaiKhoan?.trim()) {
+      const bank = (refundInfo.nganHang || 'Ngân hàng').replace(/[|\[\]]/g, '').trim();
+      const stk = refundInfo.soTaiKhoan.replace(/[|\[\]]/g, '').trim();
+      const chuTk = (refundInfo.chuTaiKhoan || lh.benhNhan?.hoTen || '').replace(/[|\[\]]/g, '').trim();
+      tkTag = `[TK_HOÀN_TIỀN: chuyen_khoan|${bank}|${stk}|${chuTk}]`;
+    }
+
+    const pendingRefundNote = `[CHỜ HOÀN CỌC ${soTienHoanText}] [${isOnline ? 'PHÍ TƯ VẤN ONLINE' : 'TẠM ỨNG ĐẶT LỊCH'}] ${marker} ${tkTag} [LÝ_DO_HỦY: ${lyDo}] Yêu cầu hoàn trả 100% tiền tạm ứng ${soTienHoan.toLocaleString('vi-VN')} đ.`;
+    await this.dataSource.query(
+      `UPDATE hoa_don SET trang_thai = 'da_thanh_toan', ghi_chu = ? WHERE ma_hoa_don = ? OR ghi_chu LIKE ?`,
+      [pendingRefundNote, maHoaDonTamUng, `%${marker}%`]
+    );
   }
 
   // ─── TỰ ĐỘNG HỦY LỊCH HẸN ĐÃ QUA GIỜ KHÁM (NO-SHOW / HẾT HẠN) ───
@@ -202,15 +365,54 @@ export class LichHenService implements OnModuleInit {
 
     const items = await qb.getMany();
     const allRooms: any[] = await this.dataSource.query('SELECT id, ten_phong, vi_tri, chuyen_khoa FROM phong_kham');
+    const depositInvoices: any[] = await this.dataSource.query(
+      `SELECT ma_hoa_don, trang_thai, thu_ngan_id, ghi_chu FROM hoa_don WHERE ma_hoa_don LIKE 'HDT%'`
+    ).catch(() => []);
 
     const mappedItems = items.map((item) => {
       const sttMatch = item.ghiChu?.match(/\[STT:\s*([^\]]+)\]/);
       const soThuTu = sttMatch ? sttMatch[1] : `A${String((item.id % 900) + 100)}`;
       const phong = allRooms.find((r) => r.id === item.phongKhamId) || null;
+
+      const maHdTamUng = `HDT${(item.maLichHen || '').replace(/^LH/i, '')}`.slice(0, 20);
+      const hdCoc = depositInvoices.find((h) => h.ma_hoa_don === maHdTamUng);
+      const noteCombined = `${item.ghiChu || ''} ${hdCoc?.ghi_chu || ''}`;
+      const noteLower = noteCombined.toLowerCase();
+
+      const tkMatch = noteCombined.match(/\[TK_HOÀN_TIỀN:\s*([^\]]+)\]/i);
+      let thongTinHoanCoc: any = null;
+      if (tkMatch) {
+        const parts = tkMatch[1].split('|').map((s) => s.trim());
+        thongTinHoanCoc = {
+          phuongThucNhan: parts[0] || 'chuyen_khoan',
+          nganHang: parts[1] || '',
+          soTaiKhoan: parts[2] || '',
+          chuTaiKhoan: parts[3] || item.benhNhan?.hoTen || '',
+        };
+      }
+
+      let trangThaiHoanCoc: 'da_hoan_coc' | 'cho_hoan_coc' | null = null;
+      if (item.trangThai === TrangThaiLichHen.DA_HUY) {
+        if (
+          hdCoc?.trang_thai === 'huy' &&
+          (hdCoc?.thu_ngan_id != null || noteCombined.includes('[ĐÃ HOÀN CỌC THÀNH CÔNG]') || noteCombined.includes('bởi '))
+        ) {
+          trangThaiHoanCoc = 'da_hoan_coc';
+        } else if (
+          noteLower.includes('hoàn tiền') ||
+          noteLower.includes('hoàn cọc') ||
+          noteLower.includes('chờ hoàn cọc')
+        ) {
+          trangThaiHoanCoc = 'cho_hoan_coc';
+        }
+      }
+
       return {
         ...item,
         soThuTu,
         phongKham: phong,
+        trangThaiHoanCoc,
+        thongTinHoanCoc,
         qrCodeValue: `${item.maLichHen}|STT:${soThuTu}|DATE:${item.ngayHen}|TIME:${item.gioHen}`,
       };
     });
@@ -550,9 +752,10 @@ export class LichHenService implements OnModuleInit {
           bacSiId: dto.bacSiId,
           ngayHen: dto.ngayHen,
           gioHen: dto.gioHen,
+          trangThai: Not(In([TrangThaiLichHen.DA_HUY, TrangThaiLichHen.HOAN_THANH])),
         },
       });
-      if (trung && ![TrangThaiLichHen.DA_HUY, TrangThaiLichHen.HOAN_THANH].includes(trung.trangThai)) {
+      if (trung) {
         throw new ConflictException({
           code: 'LICH_HEN_TRUNG_GIO',
           message: `Bác sĩ đã có lịch hẹn vào khung giờ ${gioHenShort} ngày ${dto.ngayHen}. Vui lòng chọn khung giờ khác.`,
@@ -586,19 +789,8 @@ export class LichHenService implements OnModuleInit {
     const isNeedDeposit = nguoiDatVaiTro === 'benh_nhan' || nguonDat === 'bac_si_dat';
     let hanThanhToan: Date | null = null;
     if (isNeedDeposit) {
-      const [h, m] = (dto.gioHen || '08:00').split(':').map(Number);
-      const [y, mon, d] = (dto.ngayHen || '').split('-').map(Number);
-      const apptDate = new Date(y, (mon || 1) - 1, d || 1, h || 8, m || 0, 0);
-      
-      const twentyFourHoursFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-      const twentyFourHoursBeforeAppt = new Date(apptDate.getTime() - 24 * 60 * 60 * 1000);
-
-      if (twentyFourHoursBeforeAppt.getTime() > now.getTime()) {
-        hanThanhToan = new Date(Math.min(twentyFourHoursFromNow.getTime(), twentyFourHoursBeforeAppt.getTime()));
-      } else {
-        // Đặt sát ngày hẹn (< 24h) -> cho hạn thanh toán là 15 phút từ lúc đặt
-        hanThanhToan = new Date(now.getTime() + 15 * 60 * 1000);
-      }
+      // Chuẩn thời gian giữ chỗ thanh toán tạm ứng là 15 phút từ lúc đặt
+      hanThanhToan = new Date(now.getTime() + 15 * 60 * 1000);
     }
 
     const lh = this.repo.create({
@@ -754,6 +946,11 @@ export class LichHenService implements OnModuleInit {
 
     const saved = await this.repo.save(appointment);
 
+    // Chuẩn ERP Y tế: Tự động sinh Phiếu thu Tạm ứng 40.000đ bên Thu ngân ngay khi xác nhận thanh toán
+    await this.dongBoHoaDonTamUng(saved, true).catch((err) =>
+      console.warn('[LichHenDeposit] Lỗi tạo hóa đơn tạm ứng:', err?.message)
+    );
+
     const fullAppointment = await this.repo.findOne({
       where: { id: saved.id },
       relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
@@ -828,7 +1025,17 @@ export class LichHenService implements OnModuleInit {
   }
 
   // ─── HỦY LỊCH HẸN BỆNH NHÂN (Phải trước ngày khám ít nhất 1 ngày / 24 tiếng) ───
-  async huyLichHenBoiBenhNhan(id: number, userId: number) {
+  async huyLichHenBoiBenhNhan(
+    id: number,
+    userId: number,
+    refundDto?: {
+      phuongThucNhan?: 'chuyen_khoan' | 'tien_mat';
+      nganHang?: string;
+      soTaiKhoan?: string;
+      chuTaiKhoan?: string;
+      lyDoHuy?: string;
+    },
+  ) {
     const lh = await this.repo.findOne({
       where: { id },
       relations: ['benhNhan'],
@@ -838,28 +1045,133 @@ export class LichHenService implements OnModuleInit {
       throw new NotFoundException({ code: 'LICH_HEN_KHONG_TON_TAI', message: 'Không tìm thấy lịch hẹn' });
     }
 
-    const now = new Date();
-    const ngayGioStr = `${lh.ngayHen}T${lh.gioHen}`;
-    const gioHenFull = new Date(ngayGioStr);
+    const wasPaid = lh.trangThai !== TrangThaiLichHen.CHO_THANH_TOAN;
 
-    const diffHours = (gioHenFull.getTime() - now.getTime()) / (1000 * 60 * 60);
+    if (wasPaid) {
+      const now = new Date();
+      const ngayGioStr = `${lh.ngayHen}T${lh.gioHen}`;
+      const gioHenFull = new Date(ngayGioStr);
 
-    if (diffHours < 24) {
+      const diffHours = (gioHenFull.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+      if (diffHours < 24) {
+        throw new BadRequestException({
+          code: 'KHONG_THE_HUY_DUOI_24_TIENG',
+          message: 'Theo quy định, lịch hẹn chỉ có thể hủy trước ngày khám ít nhất 1 ngày (trước 24 tiếng). Khi hủy dưới 24 tiếng, hệ thống không thể xử lý hủy trực tuyến và không được hoàn tiền tạm ứng.',
+        });
+      }
+
+      const isOnline = lh.hinhThuc === 'truc_tuyen';
+      const soTienHoan = isOnline ? 200000 : 40000;
+      const soTienHoanText = `${soTienHoan.toLocaleString('vi-VN')}đ`;
+
+      const phuongThucNhan = refundDto?.phuongThucNhan || 'chuyen_khoan';
+      if (phuongThucNhan === 'chuyen_khoan' && (!refundDto?.nganHang?.trim() || !refundDto?.soTaiKhoan?.trim())) {
+        throw new BadRequestException({
+          code: 'THIEU_THONG_TIN_TAI_KHOAN_HOAN_TIEN',
+          message: `Vui lòng cung cấp Ngân hàng và Số tài khoản nhận tiền để bộ phận Thu ngân chuyển hoàn 100% tiền (${soTienHoanText}).`,
+        });
+      }
+
+      const bank = (refundDto?.nganHang || 'Ngân hàng').replace(/[|\[\]]/g, '').trim();
+      const stk = (refundDto?.soTaiKhoan || '').replace(/[|\[\]]/g, '').trim();
+      const chuTk = (refundDto?.chuTaiKhoan || lh.benhNhan?.hoTen || '').replace(/[|\[\]]/g, '').trim();
+      const lyDoHuy = (refundDto?.lyDoHuy || 'Bệnh nhân chủ động hủy lịch trước 24 tiếng').replace(/[\[\]]/g, '').trim();
+
+      const tkMarker =
+        phuongThucNhan === 'tien_mat'
+          ? `[TK_HOÀN_TIỀN: tien_mat|Nhận tiền mặt tại Quầy Thu Ngân||${chuTk}]`
+          : `[TK_HOÀN_TIỀN: chuyen_khoan|${bank}|${stk}|${chuTk}]`;
+
+      const moTaHoan =
+        phuongThucNhan === 'tien_mat'
+          ? `Nhận hoàn tiền ${soTienHoanText} trực tiếp tại Quầy Thu Ngân`
+          : `Hoàn tiền ${soTienHoanText} qua CK: ${bank} - STK: ${stk} (${chuTk})`;
+
+      lh.trangThai = TrangThaiLichHen.DA_HUY;
+      lh.ghiChu = `${(lh.ghiChu || '').replace(/\[TK_HOÀN_TIỀN:[^\]]+\]/gi, '').trim()} [CHỜ HOÀN CỌC ${soTienHoanText}] ${tkMarker} [Hủy bởi Bệnh nhân trước >= 24h (${lyDoHuy}) - ${moTaHoan}]`.trim();
+      lh.capNhatLuc = new Date();
+
+      const saved = await this.repo.save(lh);
+      await this.yeuCauHoanCocHoaDonTamUng(saved, lyDoHuy, {
+        phuongThucNhan,
+        nganHang: bank,
+        soTaiKhoan: stk,
+        chuTaiKhoan: chuTk,
+      }).catch(() => {});
+
+      return {
+        data: saved,
+        message:
+          phuongThucNhan === 'tien_mat'
+            ? `Đã hủy lịch hẹn thành công! Yêu cầu nhận lại ${soTienHoanText} tại Quầy Thu Ngân đã được ghi nhận.`
+            : `Đã hủy lịch hẹn thành công! Yêu cầu hoàn tiền ${soTienHoanText} về tài khoản ${bank} - ${stk} (${chuTk}) đã được chuyển sang bộ phận Thu ngân để giải ngân.`,
+      };
+    } else {
+      lh.trangThai = TrangThaiLichHen.DA_HUY;
+      lh.ghiChu = (lh.ghiChu || '') + ' [Đã hủy khi chưa thanh toán tạm ứng]';
+      lh.capNhatLuc = new Date();
+      const saved = await this.repo.save(lh);
+      return {
+        data: saved,
+        message: 'Đã hủy lịch hẹn chưa thanh toán.',
+      };
+    }
+  }
+
+  // ─── BỆNH NHÂN CẬP NHẬT THÔNG TIN TÀI KHOẢN NHẬN HOÀN CỌC (Khi Bác sĩ/BGĐ hủy ca hoặc đổi STK nhận hoàn) ───
+  async capNhatThongTinHoanCoc(
+    id: number,
+    userId: number,
+    dto: {
+      phuongThucNhan?: 'chuyen_khoan' | 'tien_mat';
+      nganHang?: string;
+      soTaiKhoan?: string;
+      chuTaiKhoan?: string;
+    },
+  ) {
+    const lh = await this.repo.findOne({
+      where: { id },
+      relations: ['benhNhan'],
+    });
+    if (!lh) {
+      throw new NotFoundException({ code: 'LICH_HEN_KHONG_TON_TAI', message: 'Không tìm thấy lịch hẹn' });
+    }
+
+    const phuongThucNhan = dto?.phuongThucNhan || 'chuyen_khoan';
+    if (phuongThucNhan === 'chuyen_khoan' && (!dto?.nganHang?.trim() || !dto?.soTaiKhoan?.trim())) {
       throw new BadRequestException({
-        code: 'KHONG_THE_HUY_DUOI_24_TIENG',
-        message: 'Theo quy định, lịch hẹn chỉ có thể hủy trước ngày khám ít nhất 1 ngày (trước 24 tiếng). Khi hủy dưới 24 tiếng, hệ thống không thể xử lý hủy trực tuyến và không được hoàn tiền tạm ứng.',
+        code: 'THIEU_THONG_TIN_TAI_KHOAN_HOAN_TIEN',
+        message: 'Vui lòng nhập đầy đủ Tên ngân hàng và Số tài khoản nhận hoàn tiền.',
       });
     }
 
-    lh.trangThai = TrangThaiLichHen.DA_HUY;
-    lh.ghiChu = (lh.ghiChu || '') + ' [Hủy bởi Bệnh nhân trước ngày khám >= 1 ngày (24 tiếng) - Đã gọi API hoàn tiền 100% khoản tạm ứng 40.000đ qua VNPay/MoMo]';
-    lh.capNhatLuc = new Date();
+    const bank = (dto?.nganHang || 'Ngân hàng').replace(/[|\[\]]/g, '').trim();
+    const stk = (dto?.soTaiKhoan || '').replace(/[|\[\]]/g, '').trim();
+    const chuTk = (dto?.chuTaiKhoan || lh.benhNhan?.hoTen || '').replace(/[|\[\]]/g, '').trim();
 
+    const tkMarker =
+      phuongThucNhan === 'tien_mat'
+        ? `[TK_HOÀN_TIỀN: tien_mat|Nhận tiền mặt tại Quầy Thu Ngân||${chuTk}]`
+        : `[TK_HOÀN_TIỀN: chuyen_khoan|${bank}|${stk}|${chuTk}]`;
+
+    lh.ghiChu = `${(lh.ghiChu || '').replace(/\[TK_HOÀN_TIỀN:[^\]]+\]/gi, '').trim()} ${tkMarker}`.trim();
+    lh.capNhatLuc = new Date();
     const saved = await this.repo.save(lh);
+
+    await this.yeuCauHoanCocHoaDonTamUng(saved, 'Cập nhật thông tin tài khoản nhận hoàn cọc', {
+      phuongThucNhan,
+      nganHang: bank,
+      soTaiKhoan: stk,
+      chuTaiKhoan: chuTk,
+    }).catch(() => {});
 
     return {
       data: saved,
-      message: 'Hủy lịch hẹn thành công! Yêu cầu hoàn tiền tạm ứng 40.000đ (1/5 phí khám) qua VNPay/MoMo đã được xử lý tự động.',
+      message:
+        phuongThucNhan === 'tien_mat'
+          ? 'Đã cập nhật phương thức nhận hoàn cọc tiền mặt tại Quầy Thu Ngân.'
+          : `Đã cập nhật tài khoản nhận hoàn cọc: ${bank} - ${stk} (${chuTk}). Bộ phận Thu ngân sẽ đối soát và chuyển hoàn 40.000đ.`,
     };
   }
 
@@ -999,10 +1311,12 @@ export class LichHenService implements OnModuleInit {
           bacSiId: targetBacSiId,
           ngayHen: dto.ngayHen,
           gioHen: dto.gioHen,
+          id: Not(lh.id),
+          trangThai: Not(In([TrangThaiLichHen.DA_HUY, TrangThaiLichHen.HOAN_THANH])),
         },
       });
 
-      if (trungSlot && trungSlot.id !== lh.id && ![TrangThaiLichHen.DA_HUY, TrangThaiLichHen.HOAN_THANH].includes(trungSlot.trangThai)) {
+      if (trungSlot) {
         throw new ConflictException({
           code: 'LICH_HEN_TRUNG_GIO',
           message: `Bác sĩ đã có bệnh nhân khác đặt vào khung giờ ${gioHenShort} ngày ${dto.ngayHen}. Vui lòng chọn khung giờ khác.`,

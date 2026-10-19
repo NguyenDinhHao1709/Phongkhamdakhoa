@@ -11,7 +11,7 @@ import {
   AlertTriangle, Send, X, Filter, CalendarDays, Activity, Check
 } from 'lucide-react';
 import {
-  BarChart, Bar, PieChart, Pie, Cell, Tooltip, XAxis, YAxis,
+  ComposedChart, Bar, Line, PieChart, Pie, Cell, Tooltip, XAxis, YAxis,
   CartesianGrid, ResponsiveContainer, Legend
 } from 'recharts';
 
@@ -29,6 +29,7 @@ export default function DashboardGiamDocPage() {
 
   // State bộ lọc thời gian
   const [timeRange, setTimeRange] = useState('7_ngay');
+  const [chartViewMode, setChartViewMode] = useState('all'); // 'all' | 'kham' | 'doanh_thu'
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
@@ -151,7 +152,7 @@ export default function DashboardGiamDocPage() {
       {/* ─── HEADER ĐIỀU HÀNH BAN GIÁM ĐỐC ─────────────────────────────── */}
       <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 rounded-3xl p-6 md:p-8 text-white shadow-xl border border-slate-800">
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 rounded-full bg-blue-500/10 blur-3xl pointer-events-none"></div>
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-300/20 text-amber-300 text-xs font-bold uppercase tracking-wider">
               <ShieldCheck className="h-4 w-4" /> Ban Giám Đốc • Trung Tâm Điều Hành Toàn Viện
@@ -164,11 +165,11 @@ export default function DashboardGiamDocPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
             <button
               onClick={() => { refetch(); refetchCsat(); }}
               disabled={isFetching}
-              className="flex items-center gap-2 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs font-bold backdrop-blur-md transition-all border border-white/15 shadow-sm"
+              className="flex items-center gap-2 px-3.5 py-2 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs font-bold backdrop-blur-md transition-all border border-white/15 shadow-sm whitespace-nowrap shrink-0"
               title="Cập nhật dữ liệu mới nhất từ CSDL"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin text-amber-300' : ''}`} />
@@ -177,7 +178,7 @@ export default function DashboardGiamDocPage() {
 
             <button
               onClick={() => navigate('/ban-giam-doc/tai-chinh')}
-              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-900/20 transition-all"
+              className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-900/20 transition-all whitespace-nowrap shrink-0"
             >
               <FileText className="h-3.5 w-3.5" />
               <span>Báo Cáo Toàn Diện</span>
@@ -185,7 +186,7 @@ export default function DashboardGiamDocPage() {
 
             <button
               onClick={() => navigate('/ban-giam-doc/du-bao-luong')}
-              className="flex items-center gap-2 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 rounded-xl text-xs font-extrabold shadow-md shadow-amber-950/20 transition-all"
+              className="flex items-center gap-2 px-3.5 py-2 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 rounded-xl text-xs font-extrabold shadow-md shadow-amber-950/20 transition-all whitespace-nowrap shrink-0"
             >
               <Sparkles className="h-3.5 w-3.5" />
               <span>Dự Báo Lưu Lượng</span>
@@ -304,7 +305,7 @@ export default function DashboardGiamDocPage() {
             </div>
           </div>
           <p className="text-2xl font-black text-emerald-700 mt-3 tracking-tight">
-            {isLoading ? '...' : formatCurrency(kpis.doanhThuTrongKy || kpis.tongDoanhThu || 0)}
+            {isLoading ? '...' : formatCurrency(kpis.doanhThuTrongKy ?? kpis.tongDoanhThu ?? 0)}
           </p>
           <div className="flex items-center justify-between text-[11px] text-gray-500 mt-2 pt-2 border-t border-gray-100">
             <span>Hôm nay: <strong className="text-emerald-800">{formatCurrency(kpis.doanhThuHomNay || 0)}</strong></span>
@@ -394,12 +395,46 @@ export default function DashboardGiamDocPage() {
             title={`📊 Xu Hướng Khám Chữa Bệnh & Doanh Thu (${getRangeLabel()})`}
             subtitle="Số lượt bệnh nhân tiếp nhận và tổng doanh thu thu được theo ngày trong kỳ"
             action={
-              <button
-                onClick={() => navigate('/ban-giam-doc/tai-chinh')}
-                className="text-xs text-primary-600 hover:text-primary-700 font-bold flex items-center gap-1"
-              >
-                Báo cáo chi tiết <ArrowRight className="h-3 w-3" />
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 text-[11px] font-semibold border border-slate-200 dark:border-slate-700">
+                  <button
+                    onClick={() => setChartViewMode('all')}
+                    className={`px-2 py-1 rounded-md transition-colors ${
+                      chartViewMode === 'all'
+                        ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-xs'
+                        : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                    }`}
+                  >
+                    Tất cả
+                  </button>
+                  <button
+                    onClick={() => setChartViewMode('kham')}
+                    className={`px-2 py-1 rounded-md transition-colors ${
+                      chartViewMode === 'kham'
+                        ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-xs'
+                        : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                    }`}
+                  >
+                    Lượt khám
+                  </button>
+                  <button
+                    onClick={() => setChartViewMode('doanh_thu')}
+                    className={`px-2 py-1 rounded-md transition-colors ${
+                      chartViewMode === 'doanh_thu'
+                        ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                        : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                    }`}
+                  >
+                    Doanh thu
+                  </button>
+                </div>
+                <button
+                  onClick={() => navigate('/ban-giam-doc/tai-chinh')}
+                  className="text-xs text-primary-600 hover:text-primary-700 font-bold flex items-center gap-1 ml-1"
+                >
+                  Báo cáo chi tiết <ArrowRight className="h-3 w-3" />
+                </button>
+              </div>
             }
           >
             <div className="h-72 w-full pt-2">
@@ -409,19 +444,75 @@ export default function DashboardGiamDocPage() {
                 <div className="h-full flex items-center justify-center text-sm text-gray-400">Không có dữ liệu trong kỳ này</div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={stats?.chart7Days || []} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+                  <ComposedChart data={stats?.chart7Days || []} margin={{ top: 10, right: 15, left: -5, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" opacity={0.6} />
                     <XAxis dataKey="ngay" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
+                    
+                    {/* Trục Y trái: Số ca khám */}
+                    {(chartViewMode === 'all' || chartViewMode === 'kham') && (
+                      <YAxis
+                        yAxisId="left"
+                        tick={{ fontSize: 11 }}
+                        allowDecimals={false}
+                        domain={[0, 'auto']}
+                        tickFormatter={(val) => `${val} ca`}
+                      />
+                    )}
+
+                    {/* Trục Y phải: Doanh thu */}
+                    {(chartViewMode === 'all' || chartViewMode === 'doanh_thu') && (
+                      <YAxis
+                        yAxisId="right"
+                        orientation={chartViewMode === 'doanh_thu' ? 'left' : 'right'}
+                        tick={{ fontSize: 11 }}
+                        domain={[0, 'auto']}
+                        tickFormatter={(val) => (val >= 1000000 ? `${(val / 1000000).toFixed(1)}Tr` : val > 0 ? `${Math.round(val / 1000)}k` : '0')}
+                      />
+                    )}
+
                     <Tooltip
                       formatter={(val, name) => [
                         name === 'Số ca khám' ? `${val} ca khám` : formatCurrency(val),
                         name,
                       ]}
+                      contentStyle={{
+                        backgroundColor: '#1E293B',
+                        borderRadius: '12px',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        fontSize: '12px',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2)',
+                      }}
+                      itemStyle={{ color: '#F8FAFC' }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12, paddingTop: 10 }} />
-                    <Bar dataKey="soLuotKham" fill="#2563EB" radius={[6, 6, 0, 0]} name="Số ca khám" />
-                  </BarChart>
+
+                    {/* Cột Số ca khám: maxBarSize={32} để không bị chiếm toàn bộ bề ngang */}
+                    {(chartViewMode === 'all' || chartViewMode === 'kham') && (
+                      <Bar
+                        yAxisId="left"
+                        dataKey="soLuotKham"
+                        fill="#2563EB"
+                        maxBarSize={32}
+                        radius={[6, 6, 0, 0]}
+                        name="Số ca khám"
+                      />
+                    )}
+
+                    {/* Đường Doanh thu */}
+                    {(chartViewMode === 'all' || chartViewMode === 'doanh_thu') && (
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="doanhThu"
+                        stroke="#10B981"
+                        strokeWidth={3}
+                        dot={{ r: 4, fill: '#10B981', strokeWidth: 2, stroke: '#FFFFFF' }}
+                        activeDot={{ r: 6, fill: '#059669' }}
+                        name="Doanh thu"
+                      />
+                    )}
+                  </ComposedChart>
                 </ResponsiveContainer>
               )}
             </div>

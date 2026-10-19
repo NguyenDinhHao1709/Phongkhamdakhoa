@@ -11,7 +11,10 @@ import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { ChiDinhCanLamSang, TrangThaiChiDinh } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHenService } from '../lich-hen/lich-hen.service';
+import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { YeuCauNhapKho } from '../nha-thuoc/entities/yeu-cau-nhap-kho.entity';
+import { PhieuChiHoatDong } from './entities/phieu-chi-hoat-dong.entity';
+import { ChotCaThuNgan } from './entities/chot-ca-thu-ngan.entity';
 
 @Injectable()
 export class ThanhToanService {
@@ -32,13 +35,21 @@ export class ThanhToanService {
     private readonly donThuocRepo: Repository<DonThuoc>,
     @InjectRepository(YeuCauNhapKho)
     private readonly yeuCauNhapKhoRepo: Repository<YeuCauNhapKho>,
+    @InjectRepository(PhieuChiHoatDong)
+    private readonly phieuChiHoatDongRepo: Repository<PhieuChiHoatDong>,
+    @InjectRepository(ChotCaThuNgan)
+    private readonly chotCaRepo: Repository<ChotCaThuNgan>,
     private readonly lichHenService: LichHenService,
+    private readonly thongBaoService: ThongBaoService,
   ) {}
 
   /**
    * Lấy danh sách hóa đơn (tìm kiếm, lọc theo trạng thái)
    */
   async getDanhSachHoaDon(query: { trangThai?: string; search?: string }) {
+    // Tự động đồng bộ các phiếu thu tạm ứng đặt lịch hẹn đã xác nhận thanh toán
+    await this.lichHenService.dongBoTatCaTamUngLichHen().catch(() => {});
+
     const qb = this.hoaDonRepo
       .createQueryBuilder('hd')
       .leftJoinAndSelect('hd.benhNhan', 'bn')
@@ -53,7 +64,7 @@ export class ThanhToanService {
     if (query.search) {
       const keyword = `%${query.search.trim()}%`;
       qb.andWhere(
-        '(hd.maHoaDon LIKE :keyword OR bn.hoTen LIKE :keyword OR bn.soDienThoai LIKE :keyword)',
+        '(hd.maHoaDon LIKE :keyword OR bn.hoTen LIKE :keyword OR bn.soDienThoai LIKE :keyword OR hd.ghiChu LIKE :keyword)',
         { keyword },
       );
     }
@@ -62,30 +73,74 @@ export class ThanhToanService {
 
     return {
       message: 'Lấy danh sách hóa đơn thành công',
-      data: list.map((hd) => ({
-        id: hd.id,
-        maHoaDon: hd.maHoaDon,
-        benhNhan: {
-          id: hd.benhNhan?.id,
-          maBenhNhan: hd.benhNhan?.maBenhNhan,
-          hoTen: hd.benhNhan?.hoTen,
-          soDienThoai: hd.benhNhan?.soDienThoai,
-          gioiTinh: hd.benhNhan?.gioiTinh,
-        },
-        luotTiepNhanId: hd.luotTiepNhanId,
-        thuNgan: hd.thuNgan ? hd.thuNgan.hoTen : null,
-        tongTien: Number(hd.tongTien),
-        soTienGiam: Number(hd.soTienGiam),
-        thucThu: Number(hd.thucThu),
-        phuongThucThanhToan: hd.phuongThucThanhToan,
-        trangThai: hd.trangThai,
-        ngayTao: hd.ngayTao,
-        ngayThanhToan: hd.ngayThanhToan,
-        soLuongItem: hd.chiTiet ? hd.chiTiet.length : 0,
-      })),
+      data: list.map((hd) => {
+        const isTamUng = Boolean(
+          hd.maHoaDon?.startsWith('HDT') ||
+          hd.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]') ||
+          (hd.chiTiet && hd.chiTiet.some((c) => c.loaiPhi === 'tam_ung'))
+        );
+        const matchMaLh = hd.ghiChu?.match(/\[MÃ_LỊCH_HẸN:\s*([^\]]+)\]/i);
+        const maLichHen = matchMaLh
+          ? matchMaLh[1].trim()
+          : hd.maHoaDon?.startsWith('HDT')
+          ? `LH${hd.maHoaDon.slice(3)}`
+          : null;
+
+        const choHoanCoc =
+          hd.trangThai === 'da_thanh_toan' &&
+          Boolean(hd.ghiChu?.includes('[CHỜ HOÀN CỌC'));
+
+        const tkMatch = hd.ghiChu?.match(/\[TK_HOÀN_TIỀN:\s*([^\]]+)\]/i);
+        const lyDoMatch = hd.ghiChu?.match(/\[LÝ_DO_HỦY:\s*([^\]]+)\]/i);
+        let thongTinHoanCoc: any = null;
+        if (tkMatch || choHoanCoc) {
+          const parts = tkMatch ? tkMatch[1].split('|').map((s) => s.trim()) : [];
+          thongTinHoanCoc = {
+            phuongThucNhan: parts[0] || 'chua_cung_cap',
+            nganHang: parts[1] || '',
+            soTaiKhoan: parts[2] || '',
+            chuTaiKhoan: parts[3] || hd.benhNhan?.hoTen || '',
+            lyDoHuy: lyDoMatch ? lyDoMatch[1].trim() : 'Lịch hẹn đã hủy hợp lệ trước >= 24 tiếng',
+          };
+        }
+
+        return {
+          id: hd.id,
+          maHoaDon: hd.maHoaDon,
+          loaiHoaDon: isTamUng ? 'tam_ung_dat_lich' : 'vien_phi',
+          maLichHen,
+          choHoanCoc,
+          thongTinHoanCoc,
+          ghiChu: hd.ghiChu || null,
+          benhNhan: {
+            id: hd.benhNhan?.id,
+            maBenhNhan: hd.benhNhan?.maBenhNhan,
+            hoTen: hd.benhNhan?.hoTen,
+            soDienThoai: hd.benhNhan?.soDienThoai,
+            gioiTinh: hd.benhNhan?.gioiTinh,
+          },
+          luotTiepNhanId: hd.luotTiepNhanId,
+          thuNgan: hd.thuNgan
+            ? hd.thuNgan.hoTen
+            : isTamUng
+            ? 'Cổng VNPay/MoMo (Tự động)'
+            : null,
+          tongTien: Number(hd.tongTien),
+          soTienGiam: Number(hd.soTienGiam),
+          thucThu: Number(hd.thucThu),
+          phuongThucThanhToan: hd.phuongThucThanhToan,
+          trangThai: hd.trangThai,
+          ngayTao: hd.ngayTao,
+          ngayThanhToan: hd.ngayThanhToan,
+          soLuongItem: hd.chiTiet ? hd.chiTiet.length : 0,
+        };
+      }),
     };
   }
 
+  /**
+   * Chi tiết hóa đơn
+   */
   /**
    * Chi tiết hóa đơn
    */
@@ -109,6 +164,22 @@ export class ThanhToanService {
         })
       : [];
 
+    let tienCocDaThu = 0;
+    let maLichHenCoc: string | null = null;
+    const tamUngItem = (hd.chiTiet || []).find((c) => c.loaiPhi === 'tam_ung');
+    if (tamUngItem) {
+      tienCocDaThu = Math.abs(Number(tamUngItem.thanhTien));
+      const match = tamUngItem.moTa?.match(/\(([^)]+)\)/);
+      maLichHenCoc = match ? match[1] : null;
+    } else if (hd.ghiChu?.includes('tiền cọc')) {
+      const matchCoc = hd.ghiChu.match(/khấu trừ\s*([\d.]+)\s*đ/i);
+      if (matchCoc) {
+        tienCocDaThu = Number(matchCoc[1].replace(/\./g, ''));
+      }
+      const matchLh = hd.ghiChu.match(/\((LH\d+)\)/i);
+      if (matchLh) maLichHenCoc = matchLh[1];
+    }
+
     return {
       message: 'Lấy chi tiết hóa đơn thành công',
       data: {
@@ -116,7 +187,9 @@ export class ThanhToanService {
         tongTien: Number(hd.tongTien),
         soTienGiam: Number(hd.soTienGiam),
         thucThu: Number(hd.thucThu),
-        chiTiet: hd.chiTiet.map((ct) => ({
+        tienCocDaThu,
+        maLichHenCoc,
+        chiTiet: (hd.chiTiet || []).map((ct) => ({
           ...ct,
           donGia: Number(ct.donGia),
           thanhTien: Number(ct.thanhTien),
@@ -152,10 +225,9 @@ export class ThanhToanService {
       throw new NotFoundException('Không tìm thấy lượt tiếp nhận');
     }
 
-    // 1. Kiểm tra hóa đơn đã có chưa
+    // 1. Kiểm tra hóa đơn đã có chưa (KHÔNG load relation chiTiet để tránh cascade duplicate)
     let hd = await this.hoaDonRepo.findOne({
       where: { luotTiepNhanId },
-      relations: ['chiTiet'],
     });
 
     const count = await this.hoaDonRepo.count();
@@ -170,7 +242,6 @@ export class ThanhToanService {
         tongTien: 0,
         soTienGiam: 0,
         thucThu: 0,
-        chiTiet: [],
       });
     }
 
@@ -231,24 +302,75 @@ export class ThanhToanService {
       });
     }
 
-    const tongTien = items.reduce((acc, cur) => acc + (cur.thanhTien || 0), 0);
+    // Tổng tiền các dịch vụ phát sinh thực tế
+    const tongTienDichVu = items.reduce((acc, cur) => acc + (cur.thanhTien || 0), 0);
 
-    // 3. Tính toán BHYT: Mức hưởng 80% chuẩn BHYT Việt Nam
+    // 3. Kiểm tra tiền tạm ứng cọc giữ chỗ: CHỈ áp dụng khi ca khám này xuất phát từ LỊCH HẸN ĐẶT TRƯỚC
+    let tienCocDaThu = 0;
+    let maLichHenCoc: string | null = null;
+
+    if (luot.lichHenId) {
+      const lhRows = await this.hoaDonRepo.manager.query(
+        `SELECT id, ma_lich_hen, nguon_dat, hinh_thuc, trang_thai FROM lich_hen WHERE id = ? LIMIT 1`,
+        [luot.lichHenId],
+      );
+      if (lhRows.length > 0) {
+        const lh = lhRows[0];
+        const maHdTamUng = `HDT${String(lh.ma_lich_hen || '').replace(/^LH/i, '')}`;
+        const hdTamUng = await this.hoaDonRepo.findOne({
+          where: { maHoaDon: maHdTamUng, trangThai: 'da_thanh_toan' },
+        });
+        if (hdTamUng) {
+          tienCocDaThu = Number(hdTamUng.thucThu);
+          maLichHenCoc = lh.ma_lich_hen;
+        } else if (['benh_nhan_tu_dat', 'bac_si_dat'].includes(lh.nguon_dat)) {
+          // Nếu đã xác nhận đặt lịch hẹn trước nhưng chưa tạo mã HDT riêng
+          tienCocDaThu = lh.hinh_thuc === 'truc_tuyen' ? 200000 : 40000;
+          maLichHenCoc = lh.ma_lich_hen;
+        }
+      }
+    }
+
+    // 4. Nếu có tiền cọc, thêm dòng khấu trừ rõ ràng vào Bảng kê chi phí
+    if (tienCocDaThu > 0) {
+      items.push({
+        loaiPhi: 'tam_ung',
+        moTa: `Khấu trừ tiền cọc đặt lịch hẹn (${maLichHenCoc || 'Đã thanh toán trước'})`,
+        soLuong: 1,
+        donGia: -tienCocDaThu,
+        thanhTien: -tienCocDaThu,
+      });
+    }
+
+    // 5. Tính toán BHYT & Thực thu
     const coBhyt = apDungBhyt ?? (Boolean(luot.benhNhan?.soCmnd) || (luot.ghiChu || '').toLowerCase().includes('bhyt'));
-    const soTienGiam = coBhyt ? Math.round(tongTien * 0.8) : Number(hd.soTienGiam || 0);
-    const thucThu = Math.max(0, tongTien - soTienGiam);
+    const giamBhyt = coBhyt ? Math.round(tongTienDichVu * 0.8) : 0;
+    const soTienGiam = giamBhyt;
+    const thucThu = Math.max(0, tongTienDichVu - giamBhyt - tienCocDaThu);
 
-    hd.tongTien = tongTien;
+    hd.tongTien = tongTienDichVu;
     hd.soTienGiam = soTienGiam;
     hd.thucThu = thucThu;
-    hd.ghiChu = coBhyt
-      ? `BHYT chi trả 80% danh mục viện phí (Giảm ${soTienGiam.toLocaleString('vi-VN')} đ)`
-      : (hd.ghiChu || 'Khám dịch vụ tự chi trả');
+
+    const ghiChuParts: string[] = [];
+    if (coBhyt) {
+      ghiChuParts.push(`BHYT chi trả 80% danh mục viện phí (Giảm ${giamBhyt.toLocaleString('vi-VN')} đ)`);
+    }
+    if (tienCocDaThu > 0) {
+      ghiChuParts.push(
+        `Đã khấu trừ ${tienCocDaThu.toLocaleString('vi-VN')} đ tiền cọc đặt lịch${maLichHenCoc ? ` (${maLichHenCoc})` : ''}`,
+      );
+    }
+    hd.ghiChu =
+      ghiChuParts.length > 0
+        ? ghiChuParts.join(' • ')
+        : hd.ghiChu || 'Khám dịch vụ tự chi trả';
 
     // Xóa chi tiết cũ nếu đã lưu
     if (hd.id) {
       await this.hoaDonChiTietRepo.delete({ hoaDonId: hd.id });
     }
+    delete (hd as any).chiTiet;
 
     const saved = await this.hoaDonRepo.save(hd);
 
@@ -260,15 +382,7 @@ export class ThanhToanService {
     );
     await this.hoaDonChiTietRepo.save(chiTietEntities);
 
-    const fullHd = await this.hoaDonRepo.findOne({
-      where: { id: saved.id },
-      relations: ['benhNhan', 'chiTiet'],
-    });
-
-    return {
-      message: 'Tạo hóa đơn tổng hợp viện phí thành công',
-      data: fullHd,
-    };
+    return this.getChiTietHoaDon(saved.id);
   }
 
   async capNhatLuaChonThuocHoaDon(
@@ -325,6 +439,14 @@ export class ThanhToanService {
     const tongTien = Number(hd.tongTien);
     let soTienGiam = Number(dto.soTienGiam);
 
+    // Tìm xem hóa đơn này có khoản cọc đặt lịch nào không
+    let tienCocDaThu = 0;
+    const chiTiet = await this.hoaDonChiTietRepo.find({ where: { hoaDonId: hd.id } });
+    const tamUngItem = chiTiet.find((c) => c.loaiPhi === 'tam_ung');
+    if (tamUngItem) {
+      tienCocDaThu = Math.abs(Number(tamUngItem.thanhTien));
+    }
+
     // Nếu chọn thanh toán hình thức BHYT hoặc gắn cờ apDungBhyt mà chưa nhập soTienGiam
     if ((dto.phuongThucThanhToan === 'bao_hiem' || dto.apDungBhyt) && (isNaN(soTienGiam) || soTienGiam === 0)) {
       soTienGiam = Math.round(tongTien * 0.8);
@@ -332,7 +454,7 @@ export class ThanhToanService {
       soTienGiam = Number(hd.soTienGiam || 0);
     }
 
-    const thucThu = Math.max(0, tongTien - soTienGiam);
+    const thucThu = Math.max(0, tongTien - soTienGiam - tienCocDaThu);
 
     hd.trangThai = 'da_thanh_toan';
     hd.phuongThucThanhToan = dto.phuongThucThanhToan || 'tien_mat';
@@ -343,7 +465,7 @@ export class ThanhToanService {
     if (dto.ghiChu) {
       hd.ghiChu = dto.ghiChu;
     } else if (dto.phuongThucThanhToan === 'bao_hiem' || dto.apDungBhyt) {
-      hd.ghiChu = `Đã khấu trừ BHYT 80% (~${soTienGiam.toLocaleString('vi-VN')} đ). Thu thực tế: ${thucThu.toLocaleString('vi-VN')} đ`;
+      hd.ghiChu = `Đã khấu trừ BHYT 80% (~${soTienGiam.toLocaleString('vi-VN')} đ)${tienCocDaThu > 0 ? ` & cọc ${tienCocDaThu.toLocaleString('vi-VN')} đ` : ''}. Thu thực tế: ${thucThu.toLocaleString('vi-VN')} đ`;
     }
 
     const updated = await this.hoaDonRepo.save(hd);
@@ -371,9 +493,84 @@ export class ThanhToanService {
   }
 
   /**
+   * UC-EXT: Hủy hóa đơn & Hoàn tiền viện phí (Refund / Void Invoice)
+   */
+  async huyHoaDon(id: number, userId: number, dto: { lyDoHuy: string; ghiChu?: string }) {
+    const hd = await this.hoaDonRepo.findOne({
+      where: { id },
+      relations: ['benhNhan', 'thuNgan', 'chiTiet'],
+    });
+    if (!hd) {
+      throw new NotFoundException('Không tìm thấy hóa đơn cần hủy / hoàn tiền');
+    }
+    if (hd.trangThai === 'huy') {
+      throw new BadRequestException('Hóa đơn này đã được hủy trước đó');
+    }
+
+    const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
+    const ngayHuy = new Date();
+    const lyDo = dto.lyDoHuy?.trim() || 'Bệnh nhân yêu cầu hủy và hoàn lại viện phí';
+    const nguoiThucHien = nv?.hoTen || 'Thu ngân';
+    const isTamUng = Boolean(
+      hd.maHoaDon?.startsWith('HDT') || hd.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]')
+    );
+
+    if (nv?.id && !hd.thuNganId) {
+      hd.thuNganId = nv.id;
+    }
+
+    hd.trangThai = 'huy' as any;
+    hd.ghiChu = `[ĐÃ HỦY / HOÀN TIỀN] ${isTamUng ? '[ĐÃ HOÀN CỌC THÀNH CÔNG] ' : ''}Lúc ${ngayHuy.toLocaleString('vi-VN')} bởi ${nguoiThucHien}. Lý do: ${lyDo}${dto.ghiChu ? ` - Chứng từ: ${dto.ghiChu}` : ''}. ${hd.ghiChu ? `(Cũ: ${hd.ghiChu.replace(/\[CHỜ HOÀN CỌC[^\]]*\]/gi, '').trim()})` : ''}`;
+
+    const updated = await this.hoaDonRepo.save(hd);
+
+    if (isTamUng) {
+      const matchMaLh = hd.ghiChu?.match(/\[MÃ_LỊCH_HẸN:\s*([^\]]+)\]/i);
+      const maLichHen = matchMaLh
+        ? matchMaLh[1].trim()
+        : hd.maHoaDon?.startsWith('HDT')
+        ? `LH${hd.maHoaDon.slice(3)}`
+        : null;
+
+      if (maLichHen) {
+        await this.hoaDonRepo.manager.query(
+          `UPDATE lich_hen
+           SET ghi_chu = CONCAT(COALESCE(ghi_chu, ''), ' [ĐÃ HOÀN CỌC THÀNH CÔNG bởi ', ?, ' lúc ', ?, ']')
+           WHERE ma_lich_hen = ?`,
+          [nguoiThucHien, ngayHuy.toLocaleString('vi-VN'), maLichHen],
+        ).catch(() => {});
+      }
+
+      if (hd.benhNhan?.nguoiDungId) {
+        await this.thongBaoService.taoThongBao({
+          nguoiNhanId: hd.benhNhan.nguoiDungId,
+          tieuDe: `Đã hoàn trả 40.000đ tiền tạm ứng đặt lịch ${maLichHen || hd.maHoaDon}`,
+          noiDung: `Quầy Thu Ngân (${nguoiThucHien}) đã hoàn trả thành công 100% tiền tạm ứng đặt lịch (40.000 đ) của phiếu ${hd.maHoaDon}.${dto.ghiChu ? ` Nội dung chứng từ: ${dto.ghiChu}.` : ''}`,
+          loai: 'thanh_toan',
+          doiTuongBang: 'hoa_don',
+          doiTuongId: hd.id,
+        }).catch(() => {});
+      }
+    }
+
+    return {
+      success: true,
+      message: isTamUng
+        ? 'Xác nhận đã chuyển hoàn tiền cọc đặt lịch (40.000 đ) cho bệnh nhân thành công!'
+        : 'Hủy hóa đơn và ghi nhận hoàn tiền viện phí thành công',
+      data: updated,
+    };
+  }
+
+  /**
    * UC 56: Báo cáo Thống kê Doanh thu Thu ngân (Chỉ thống kê ca trực/giao dịch của thu ngân đó)
    */
-  async getThongKeThuNgan(user: any, query: { range?: string; tuNgay?: string; denNgay?: string }) {
+  async getThongKeThuNgan(user: any, query: { range?: string; tuNgay?: string; denNgay?: string; phamVi?: string }) {
+    // Tự động đồng bộ các phiếu thu tạm ứng đặt lịch hẹn trước khi thống kê
+    await this.lichHenService.dongBoTatCaTamUngLichHen().catch(() => {});
+
+    const phamVi = query.phamVi || 'toan_vien'; // Mặc định hiển thị toàn phòng khám (khớp với trang Quản lý viện phí)
+
     const qb = this.hoaDonRepo.createQueryBuilder('hd')
       .leftJoinAndSelect('hd.benhNhan', 'bn')
       .leftJoinAndSelect('hd.thuNgan', 'tn')
@@ -386,35 +583,101 @@ export class ThanhToanService {
       isThuNgan = true;
       if (user?.id) {
         nvThuNgan = await this.nhanVienRepo.findOne({ where: { nguoiDungId: user.id } });
-        if (nvThuNgan) {
-          qb.andWhere('hd.thuNganId = :myThuNganId', { myThuNganId: nvThuNgan.id });
+      }
+    }
+
+    // Chỉ lọc theo thu ngân cá nhân khi chọn phạm vi 'ca_nhan'
+    if (phamVi === 'ca_nhan' && nvThuNgan) {
+      qb.andWhere('hd.thuNganId = :myThuNganId', { myThuNganId: nvThuNgan.id });
+    }
+
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const d = now.getDate();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const formatDateStr = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+    // Helper tính chu kỳ ngày chuẩn
+    let rangeStart: string | null = null;
+    let rangeEnd: string | null = null;
+
+    if (query.range && query.range !== 'tat_ca') {
+      switch (query.range) {
+        case 'hom_nay': {
+          const todayStr = `${y}-${pad(m + 1)}-${pad(d)}`;
+          rangeStart = `${todayStr} 00:00:00`;
+          rangeEnd = `${todayStr} 23:59:59`;
+          break;
+        }
+        case 'tuan_nay': {
+          const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
+          const monday = new Date(y, m, d - dayOfWeek + 1);
+          const sunday = new Date(y, m, d - dayOfWeek + 7);
+          rangeStart = `${formatDateStr(monday)} 00:00:00`;
+          rangeEnd = `${formatDateStr(sunday)} 23:59:59`;
+          break;
+        }
+        case 'thang_nay': {
+          const firstDay = new Date(y, m, 1);
+          const lastDay = new Date(y, m + 1, 0);
+          rangeStart = `${formatDateStr(firstDay)} 00:00:00`;
+          rangeEnd = `${formatDateStr(lastDay)} 23:59:59`;
+          break;
+        }
+        case 'ca_hien_tai': {
+          let shiftStart: Date | null = null;
+          if (nvThuNgan) {
+            const lastShift = await this.chotCaRepo.createQueryBuilder('cc')
+              .where('(cc.nguoiNhanCaId = :myId AND cc.trangThai = :stNhan) OR (cc.thuNganId = :myId AND cc.trangThai = :stNhan)', {
+                myId: nvThuNgan.id,
+                stNhan: 'da_nhan_ca',
+              })
+              .orderBy('cc.taoLuc', 'DESC')
+              .getOne();
+            if (lastShift?.thoiGianNhanCa) {
+              shiftStart = new Date(lastShift.thoiGianNhanCa);
+            }
+          }
+          if (shiftStart) {
+            const sY = shiftStart.getFullYear();
+            const sM = pad(shiftStart.getMonth() + 1);
+            const sD = pad(shiftStart.getDate());
+            const sH = pad(shiftStart.getHours());
+            const sMin = pad(shiftStart.getMinutes());
+            const sS = pad(shiftStart.getSeconds());
+            rangeStart = `${sY}-${sM}-${sD} ${sH}:${sMin}:${sS}`;
+          } else {
+            const todayStr = `${y}-${pad(m + 1)}-${pad(d)}`;
+            rangeStart = `${todayStr} 00:00:00`;
+          }
+          const todayEndStr = `${y}-${pad(m + 1)}-${pad(d)}`;
+          rangeEnd = `${todayEndStr} 23:59:59`;
+          break;
+        }
+        case 'quy_nay': {
+          const currentQuarter = Math.floor(m / 3);
+          const firstDay = new Date(y, currentQuarter * 3, 1);
+          const lastDay = new Date(y, (currentQuarter + 1) * 3, 0);
+          rangeStart = `${formatDateStr(firstDay)} 00:00:00`;
+          rangeEnd = `${formatDateStr(lastDay)} 23:59:59`;
+          break;
         }
       }
     }
 
-    const now = new Date();
-
-    if (query.tuNgay && query.denNgay) {
-      qb.andWhere('hd.ngayThanhToan >= :tuNgay AND hd.ngayThanhToan <= :denNgay', {
-        tuNgay: query.tuNgay + ' 00:00:00',
-        denNgay: query.denNgay + ' 23:59:59',
-      });
-    } else {
-      let startDate: Date;
-      switch (query.range) {
-        case 'tuan_nay':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() + 1);
-          break;
-        case 'thang_nay':
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
-        case 'hom_nay':
-        default:
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          break;
+    // 1. Áp dụng điều kiện thời gian cho Hóa đơn Thu
+    if (query.tuNgay || query.denNgay) {
+      if (query.tuNgay) {
+        qb.andWhere('hd.ngayThanhToan >= :tuNgay', { tuNgay: `${query.tuNgay} 00:00:00` });
       }
-      qb.andWhere('hd.ngayThanhToan >= :startDate', { startDate });
+      if (query.denNgay) {
+        qb.andWhere('hd.ngayThanhToan <= :denNgay', { denNgay: `${query.denNgay} 23:59:59` });
+      }
+    } else if (rangeStart && rangeEnd) {
+      qb.andWhere('hd.ngayThanhToan >= :rangeStart AND hd.ngayThanhToan <= :rangeEnd', { rangeStart, rangeEnd });
     }
+    // Nếu query.range === 'tat_ca' thì không áp dụng điều kiện ngày -> lấy toàn thời gian!
 
     const allInvoices = await qb.getMany();
 
@@ -438,7 +701,7 @@ export class ThanhToanService {
       .where('hd.trangThai = :st', { st: 'da_thanh_toan' })
       .andWhere('DATE(hd.ngayThanhToan) = CURDATE()');
 
-    if (isThuNgan && nvThuNgan) {
+    if (phamVi === 'ca_nhan' && nvThuNgan) {
       rawHourlyQb.andWhere('hd.thuNganId = :myThuNganId', { myThuNganId: nvThuNgan.id });
     }
 
@@ -453,37 +716,84 @@ export class ThanhToanService {
       };
     });
 
+    // 2. Áp dụng điều kiện thời gian cho Phiếu Chi mua thuốc
     const chiQuery = this.yeuCauNhapKhoRepo.createQueryBuilder('yc')
       .where('yc.trang_thai_chi_tra = :daChi', { daChi: 'da_chi' })
       .orderBy('yc.ngay_chi_tra', 'DESC');
-    if (query.tuNgay && query.denNgay) {
-      chiQuery.andWhere('yc.ngay_chi_tra >= :chiTu AND yc.ngay_chi_tra <= :chiDen', {
-        chiTu: `${query.tuNgay} 00:00:00`,
-        chiDen: `${query.denNgay} 23:59:59`,
+
+    if (query.tuNgay || query.denNgay) {
+      if (query.tuNgay) {
+        chiQuery.andWhere('yc.ngay_chi_tra >= :chiTu', { chiTu: `${query.tuNgay} 00:00:00` });
+      }
+      if (query.denNgay) {
+        chiQuery.andWhere('yc.ngay_chi_tra <= :chiDen', { chiDen: `${query.denNgay} 23:59:59` });
+      }
+    } else if (rangeStart && rangeEnd) {
+      chiQuery.andWhere('yc.ngay_chi_tra >= :chiRangeStart AND yc.ngay_chi_tra <= :chiRangeEnd', {
+        chiRangeStart: rangeStart,
+        chiRangeEnd: rangeEnd,
       });
-    } else {
-      const start = query.range === 'thang_nay'
-        ? new Date(now.getFullYear(), now.getMonth(), 1)
-        : query.range === 'tuan_nay'
-          ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() + 1)
-          : new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      chiQuery.andWhere('yc.ngay_chi_tra >= :chiStart', { chiStart: start });
     }
-    const phieuChi = await chiQuery.getMany();
-    const tongPhieuChi = phieuChi.reduce((sum, item) => sum + Number(item.soTienChiTra || 0), 0);
-    const phieuThu = daThanhToan.map((h) => ({
-      loai: 'phieu_thu',
-      soChungTu: h.maHoaDon,
-      doiTuong: h.benhNhan?.hoTen || 'Bệnh nhân',
-      dienGiai: 'Thu viện phí khám chữa bệnh',
-      soTien: Number(h.thucThu),
-      phuongThuc: h.phuongThucThanhToan || 'tien_mat',
-      ngayLap: h.ngayThanhToan,
-      nguoiLap: h.thuNgan?.hoTen || null,
-      hoaDonId: h.id,
-    }));
-    const danhSachPhieuChi = phieuChi.map((item) => ({
+    const phieuChiThuoc = await chiQuery.getMany();
+    const tongChiThuoc = phieuChiThuoc.reduce((sum, item) => sum + Number(item.soTienChiTra || 0), 0);
+
+    // 3. Áp dụng điều kiện thời gian cho Phiếu Chi Hoạt Động (OPEX)
+    const opexQuery = this.phieuChiHoatDongRepo.createQueryBuilder('pc')
+      .leftJoinAndSelect('pc.nguoiLap', 'nl')
+      .orderBy('pc.ngayChi', 'DESC');
+
+    if (phamVi === 'ca_nhan' && nvThuNgan) {
+      opexQuery.andWhere('pc.nguoiLapId = :myNguoiLapId', { myNguoiLapId: nvThuNgan.id });
+    }
+
+    if (query.tuNgay || query.denNgay) {
+      if (query.tuNgay) opexQuery.andWhere('pc.ngayChi >= :opexTu', { opexTu: `${query.tuNgay} 00:00:00` });
+      if (query.denNgay) opexQuery.andWhere('pc.ngayChi <= :opexDen', { opexDen: `${query.denNgay} 23:59:59` });
+    } else if (rangeStart && rangeEnd) {
+      opexQuery.andWhere('pc.ngayChi >= :opexRangeStart AND pc.ngayChi <= :opexRangeEnd', {
+        opexRangeStart: rangeStart,
+        opexRangeEnd: rangeEnd,
+      });
+    }
+    const phieuChiOpex = await opexQuery.getMany();
+    const tongChiOpex = phieuChiOpex.reduce((sum, item) => sum + Number(item.soTien || 0), 0);
+
+    const tongPhieuChi = tongChiThuoc + tongChiOpex;
+
+    const phieuThu = daThanhToan.map((h) => {
+      const isTamUng = Boolean(
+        h.maHoaDon?.startsWith('HDT') ||
+        h.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]') ||
+        (h.chiTiet && h.chiTiet.some((c) => c.loaiPhi === 'tam_ung'))
+      );
+      const matchMaLh = h.ghiChu?.match(/\[MÃ_LỊCH_HẸN:\s*([^\]]+)\]/i);
+      const maLh = matchMaLh
+        ? matchMaLh[1].trim()
+        : h.maHoaDon?.startsWith('HDT')
+        ? `LH${h.maHoaDon.slice(3)}`
+        : null;
+
+      return {
+        loai: 'phieu_thu',
+        loaiChiTiet: isTamUng ? 'tam_ung_dat_lich' : 'thu_vien_phi',
+        soChungTu: h.maHoaDon,
+        doiTuong: h.benhNhan?.hoTen || 'Bệnh nhân',
+        dienGiai: isTamUng
+          ? `Thu tạm ứng 1/5 phí khám giữ chỗ lịch hẹn${maLh ? ` (${maLh})` : ''}`
+          : h.ghiChu?.includes('khấu trừ')
+          ? `Thu viện phí khám chữa bệnh (${h.ghiChu})`
+          : 'Thu viện phí khám chữa bệnh',
+        soTien: Number(h.thucThu),
+        phuongThuc: h.phuongThucThanhToan || 'tien_mat',
+        ngayLap: h.ngayThanhToan,
+        nguoiLap: h.thuNgan?.hoTen || (isTamUng ? 'Cổng VNPay/MoMo (Tự động)' : null),
+        hoaDonId: h.id,
+      };
+    });
+
+    const danhSachPhieuChiThuoc = phieuChiThuoc.map((item) => ({
       loai: 'phieu_chi',
+      loaiChiTiet: 'chi_tien_thuoc',
       soChungTu: item.soChungTuChi || item.maYeuCau,
       doiTuong: 'Nhà cung cấp thuốc',
       dienGiai: `Chi tiền mua thuốc theo ${item.maYeuCau}`,
@@ -494,13 +804,54 @@ export class ThanhToanService {
       yeuCauId: item.id,
     }));
 
+    const danhSachPhieuChiOpex = phieuChiOpex.map((item) => ({
+      loai: 'phieu_chi',
+      loaiChiTiet: 'chi_hoat_dong',
+      soChungTu: item.maPhieuChi,
+      doiTuong: item.nguoiNhan,
+      dienGiai: `[Chi vận hành] ${item.khoanChi}`,
+      soTien: Number(item.soTien || 0),
+      phuongThuc: item.phuongThucChi || 'tien_mat',
+      ngayLap: item.ngayChi,
+      nguoiLap: item.nguoiLap?.hoTen || null,
+      phieuChiId: item.id,
+    }));
+
+    const danhSachHoaDonHuy = allInvoices.filter(h => h.trangThai === 'huy').map(h => {
+      const isTamUng = Boolean(
+        h.maHoaDon?.startsWith('HDT') ||
+        h.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]')
+      );
+      return {
+        loai: 'phieu_huy',
+        loaiChiTiet: isTamUng ? 'hoan_coc_dat_lich' : 'hoan_vien_phi',
+        soChungTu: h.maHoaDon,
+        doiTuong: h.benhNhan?.hoTen || 'Bệnh nhân',
+        dienGiai: isTamUng
+          ? `Hoàn tiền tạm ứng đặt lịch hẹn 100% (${h.ghiChu || 'Đã hoàn cọc'})`
+          : `Hủy / Hoàn tiền viện phí (${h.ghiChu || 'Đã hoàn tiền'})`,
+        soTien: Number(h.thucThu || 0),
+        phuongThuc: h.phuongThucThanhToan || 'tien_mat',
+        ngayLap: h.ngayThanhToan || h.ngayTao,
+        nguoiLap: h.thuNgan?.hoTen || (isTamUng ? 'Hệ thống tự động hoàn cọc' : null),
+        hoaDonId: h.id,
+      };
+    });
+
+    const danhSachPhieuChi = [...danhSachPhieuChiThuoc, ...danhSachPhieuChiOpex];
+
     return {
-      isCaNhan: isThuNgan,
+      phamVi,
+      isCaNhan: phamVi === 'ca_nhan',
       tenThuNgan: nvThuNgan?.hoTen || null,
+      soHoaDonCaNhan: nvThuNgan ? await this.hoaDonRepo.count({ where: { thuNganId: nvThuNgan.id, trangThai: 'da_thanh_toan' } }) : 0,
+      soHoaDonToanVien: await this.hoaDonRepo.count({ where: { trangThai: 'da_thanh_toan' } }),
       tongThucThu,
       tongTienGiam,
       soHoaDonDaThu: daThanhToan.length,
       soHoaDonChoThu: choThanhToanCount,
+      soHoaDonDaHuy: danhSachHoaDonHuy.length,
+      tongTienHoanHuy: danhSachHoaDonHuy.reduce((s, h) => s + h.soTien, 0),
       byPhuongThuc,
       chartTheoGio,
       giaoDichGanNhat: daThanhToan.slice(0, 10).map(h => ({
@@ -514,14 +865,337 @@ export class ThanhToanService {
         thuNganTen: h.thuNgan?.hoTen,
       })),
       tongPhieuThu: tongThucThu,
+      tongThu: tongThucThu,
       tongPhieuChi,
+      tongChi: tongPhieuChi,
+      tongChiThuoc,
+      tongChiOpex,
       soPhieuThu: daThanhToan.length,
       soPhieuChi: danhSachPhieuChi.length,
       soDuDongTien: tongThucThu - tongPhieuChi,
+      soDuQuyRong: tongThucThu - tongPhieuChi,
       soPhieuChoChi: await this.yeuCauNhapKhoRepo.count({ where: { trangThaiChiTra: 'cho_chi' } }),
-      danhSachChungTu: [...phieuThu, ...danhSachPhieuChi]
+      danhSachChungTu: [...phieuThu, ...danhSachPhieuChi, ...danhSachHoaDonHuy]
         .sort((a, b) => new Date(b.ngayLap || 0).getTime() - new Date(a.ngayLap || 0).getTime()),
     };
+  }
+
+  /**
+   * Lấy danh sách Phiếu chi hoạt động ngoài thuốc (OPEX)
+   */
+  async getDanhSachPhieuChiHoatDong(query: { tuNgay?: string; denNgay?: string; loaiChi?: string; search?: string }) {
+    const qb = this.phieuChiHoatDongRepo.createQueryBuilder('pc')
+      .leftJoinAndSelect('pc.nguoiLap', 'nl')
+      .orderBy('pc.ngayChi', 'DESC');
+
+    if (query.loaiChi && query.loaiChi !== 'all') {
+      qb.andWhere('pc.loaiChi = :loaiChi', { loaiChi: query.loaiChi });
+    }
+    if (query.tuNgay) {
+      qb.andWhere('pc.ngayChi >= :tuNgay', { tuNgay: `${query.tuNgay} 00:00:00` });
+    }
+    if (query.denNgay) {
+      qb.andWhere('pc.ngayChi <= :denNgay', { denNgay: `${query.denNgay} 23:59:59` });
+    }
+    if (query.search) {
+      const kw = `%${query.search.trim()}%`;
+      qb.andWhere('(pc.maPhieuChi LIKE :kw OR pc.khoanChi LIKE :kw OR pc.nguoiNhan LIKE :kw)', { kw });
+    }
+
+    const list = await qb.getMany();
+    const tongTien = list.reduce((sum, item) => sum + Number(item.soTien || 0), 0);
+
+    return {
+      total: list.length,
+      tongTien,
+      data: list,
+    };
+  }
+
+  /**
+   * Lập phiếu chi hoạt động mới (OPEX)
+   */
+  async taoPhieuChiHoatDong(userId: number, dto: {
+    loaiChi: string;
+    khoanChi: string;
+    nguoiNhan: string;
+    soTien: number;
+    phuongThucChi?: string;
+    chungTuGoc?: string;
+    ghiChu?: string;
+  }) {
+    if (!dto.khoanChi?.trim()) throw new BadRequestException('Vui lòng nhập nội dung / khoản chi');
+    if (!dto.nguoiNhan?.trim()) throw new BadRequestException('Vui lòng nhập người / đơn vị nhận tiền');
+    if (!dto.soTien || Number(dto.soTien) <= 0) throw new BadRequestException('Số tiền chi phải lớn hơn 0 đ');
+
+    const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
+    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const countToday = await this.phieuChiHoatDongRepo.count();
+    const maPhieuChi = `PC-HD-${todayStr}-${String(countToday + 1).padStart(4, '0')}`;
+
+    const pc = this.phieuChiHoatDongRepo.create({
+      maPhieuChi,
+      loaiChi: (dto.loaiChi as any) || 'khac',
+      khoanChi: dto.khoanChi.trim(),
+      nguoiNhan: dto.nguoiNhan.trim(),
+      soTien: Number(dto.soTien),
+      phuongThucChi: (dto.phuongThucChi as any) || 'tien_mat',
+      ngayChi: new Date(),
+      nguoiLapId: nv?.id || null,
+      chungTuGoc: dto.chungTuGoc?.trim() || null,
+      ghiChu: dto.ghiChu?.trim() || null,
+    });
+
+    const saved = await this.phieuChiHoatDongRepo.save(pc);
+    return {
+      success: true,
+      message: 'Lập phiếu chi hoạt động thành công',
+      data: saved,
+    };
+  }
+
+  /**
+   * Thực hiện chốt ca làm việc & đối soát két tiền mặt
+   */
+  async thucHienChotCa(userId: number, dto: {
+    thoiGianBatDau: string;
+    thoiGianKetThuc: string;
+    tienMatThucTe: number;
+    chiTietMenhGia?: any;
+    nguoiNhanCaId?: number;
+    ghiChu?: string;
+  }) {
+    const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
+    if (!nv) throw new BadRequestException('Không tìm thấy thông tin nhân viên thu ngân');
+
+    const tu = `${dto.thoiGianBatDau}:00`;
+    const den = `${dto.thoiGianKetThuc}:59`;
+
+    // 1. Quét hóa đơn đã thu của thu ngân này trong ca
+    const hoaDonList = await this.hoaDonRepo.createQueryBuilder('hd')
+      .where('hd.thuNganId = :myId', { myId: nv.id })
+      .andWhere('hd.trangThai = :st', { st: 'da_thanh_toan' })
+      .andWhere('hd.ngayThanhToan >= :tu AND hd.ngayThanhToan <= :den', { tu, den })
+      .getMany();
+
+    const thuTienMat = hoaDonList
+      .filter(h => (h.phuongThucThanhToan || 'tien_mat') === 'tien_mat')
+      .reduce((s, h) => s + Number(h.thucThu || 0), 0);
+
+    const thuChuyenKhoan = hoaDonList
+      .filter(h => (h.phuongThucThanhToan || 'tien_mat') !== 'tien_mat')
+      .reduce((s, h) => s + Number(h.thucThu || 0), 0);
+
+    const tongThucThu = thuTienMat + thuChuyenKhoan;
+
+    // 2. Quét phiếu chi hoạt động do thu ngân chi trong ca
+    const opexList = await this.phieuChiHoatDongRepo.createQueryBuilder('pc')
+      .where('pc.nguoiLapId = :myId', { myId: nv.id })
+      .andWhere('pc.ngayChi >= :tu AND pc.ngayChi <= :den', { tu, den })
+      .getMany();
+
+    const chiTienMat = opexList
+      .filter(pc => (pc.phuongThucChi || 'tien_mat') === 'tien_mat')
+      .reduce((s, pc) => s + Number(pc.soTien || 0), 0);
+
+    const tongThucChi = opexList.reduce((s, pc) => s + Number(pc.soTien || 0), 0);
+
+    // 3. Tiền mặt hệ thống = Thu tiền mặt - Chi tiền mặt
+    const tienMatHeThong = thuTienMat - chiTienMat;
+    const tienMatThucTe = Number(dto.tienMatThucTe || 0);
+    const chenhLech = tienMatThucTe - tienMatHeThong;
+
+    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const countChot = await this.chotCaRepo.count();
+    const maChotCa = `CC-${todayStr}-${String(countChot + 1).padStart(4, '0')}`;
+
+    const chotCa = this.chotCaRepo.create({
+      maChotCa,
+      thuNganId: nv.id,
+      nguoiNhanCaId: dto.nguoiNhanCaId || null,
+      thoiGianBatDau: new Date(tu),
+      thoiGianKetThuc: new Date(den),
+      tienMatHeThong,
+      tienMatThucTe,
+      chenhLech,
+      chiTietMenhGia: dto.chiTietMenhGia || null,
+      tongThuChuyenKhoan: thuChuyenKhoan,
+      tongChiTienMat: chiTienMat,
+      tongThucThu,
+      tongThucChi,
+      soLuongPhieuThu: hoaDonList.length,
+      soLuongPhieuChi: opexList.length,
+      ghiChu: dto.ghiChu || null,
+      trangThai: dto.nguoiNhanCaId ? 'da_ban_giao' : 'da_chot',
+    });
+
+    const saved = await this.chotCaRepo.save(chotCa);
+
+    // Gửi thông báo tức thời cho nhân viên nhận ca
+    if (dto.nguoiNhanCaId) {
+      try {
+        const nvNhan = await this.nhanVienRepo.findOne({ where: { id: dto.nguoiNhanCaId } });
+        if (nvNhan?.nguoiDungId) {
+          await this.thongBaoService.taoThongBao({
+            nguoiNhanId: nvNhan.nguoiDungId,
+            tieuDe: `🔔 Bàn giao ca trực & Két tiền từ ${nv.hoTen}`,
+            noiDung: `Thu ngân ${nv.hoTen} đã chốt ca và bàn giao két tiền với số thực kiểm kê: ${tienMatThucTe.toLocaleString('vi-VN')} đ (Mã BB: ${maChotCa}). Vui lòng kiểm tra két và bấm Xác nhận nhận ca.`,
+            loai: 'ban_giao_ca',
+            doiTuongBang: 'chot_ca_thu_ngan',
+            doiTuongId: saved.id,
+          });
+        }
+      } catch (notifyErr) {
+        console.error('Lỗi gửi thông báo bàn giao ca:', notifyErr);
+      }
+    }
+
+    return {
+      success: true,
+      message: 'Chốt ca làm việc và ghi nhận kiểm kê két tiền thành công',
+      data: saved,
+    };
+  }
+
+  /**
+   * Lấy thông tin ca trực hiện tại và phiên bàn giao ca đang chờ tiếp nhận
+   */
+  async getCaTrucHienTai(userId: number) {
+    const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
+    if (!nv) {
+      return {
+        nhanVien: null,
+        banGiaoChoNhan: null,
+        caHienTai: null,
+      };
+    }
+
+    // 1. Kiểm tra có biên bản bàn giao ca nào đang chờ nhân viên này tiếp nhận không
+    const banGiaoChoNhan = await this.chotCaRepo.createQueryBuilder('cc')
+      .leftJoinAndSelect('cc.thuNgan', 'tn')
+      .leftJoinAndSelect('cc.nguoiNhanCa', 'nn')
+      .where('cc.nguoiNhanCaId = :myId', { myId: nv.id })
+      .andWhere('cc.trangThai = :st', { st: 'da_ban_giao' })
+      .orderBy('cc.taoLuc', 'DESC')
+      .getOne();
+
+    // 2. Lấy phiên nhận ca gần nhất của nhân viên này để làm mốc bắt đầu ca hiện tại
+    const caHienTai = await this.chotCaRepo.createQueryBuilder('cc')
+      .leftJoinAndSelect('cc.thuNgan', 'tn')
+      .leftJoinAndSelect('cc.nguoiNhanCa', 'nn')
+      .where('(cc.nguoiNhanCaId = :myId AND cc.trangThai = :stNhan) OR (cc.thuNganId = :myId AND cc.trangThai = :stNhan)', {
+        myId: nv.id,
+        stNhan: 'da_nhan_ca',
+      })
+      .orderBy('cc.taoLuc', 'DESC')
+      .getOne();
+
+    return {
+      nhanVien: { id: nv.id, hoTen: nv.hoTen },
+      banGiaoChoNhan: banGiaoChoNhan || null,
+      caHienTai: caHienTai || null,
+    };
+  }
+
+  /**
+   * Thu ngân ca sau xác nhận nhận bàn giao ca và nhận két tiền
+   */
+  async xacNhanNhanCa(chotCaId: number, userId: number) {
+    const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
+    if (!nv) throw new BadRequestException('Không tìm thấy thông tin nhân viên thu ngân');
+
+    const cc = await this.chotCaRepo.findOne({
+      where: { id: chotCaId },
+      relations: ['thuNgan', 'nguoiNhanCa'],
+    });
+
+    if (!cc) throw new NotFoundException('Không tìm thấy biên bản chốt ca');
+    if (cc.nguoiNhanCaId !== nv.id) {
+      throw new BadRequestException('Bạn không phải nhân viên được chỉ định tiếp nhận phiên bàn giao ca này');
+    }
+    if (cc.trangThai === 'da_nhan_ca') {
+      return { success: true, message: 'Ca trực này đã được xác nhận tiếp nhận trước đó', data: cc };
+    }
+
+    cc.trangThai = 'da_nhan_ca';
+    cc.thoiGianNhanCa = new Date();
+    const updated = await this.chotCaRepo.save(cc);
+
+    // Gửi thông báo xác nhận ngược lại cho thu ngân ca trước
+    if (cc.thuNgan?.nguoiDungId) {
+      try {
+        await this.thongBaoService.taoThongBao({
+          nguoiNhanId: cc.thuNgan.nguoiDungId,
+          tieuDe: `✅ Thu ngân ${nv.hoTen} đã nhận ca thành công`,
+          noiDung: `Biên bản bàn giao ca ${cc.maChotCa} (Số tiền: ${Number(cc.tienMatThucTe).toLocaleString('vi-VN')} đ) đã được thu ngân ca sau tiếp nhận lúc ${new Date().toLocaleTimeString('vi-VN')}.`,
+          loai: 'xac_nhan_nhan_ca',
+          doiTuongBang: 'chot_ca_thu_ngan',
+          doiTuongId: cc.id,
+        });
+      } catch (notifyErr) {
+        console.error('Lỗi gửi thông báo xác nhận nhận ca:', notifyErr);
+      }
+    }
+
+    return {
+      success: true,
+      message: 'Tiếp nhận bàn giao ca và mở ca trực thành công',
+      data: updated,
+    };
+  }
+
+  /**
+   * Xem lịch sử các lần chốt ca
+   */
+  async getLichSuChotCa() {
+    const list = await this.chotCaRepo.createQueryBuilder('cc')
+      .leftJoinAndSelect('cc.thuNgan', 'tn')
+      .leftJoinAndSelect('cc.nguoiNhanCa', 'nn')
+      .orderBy('cc.taoLuc', 'DESC')
+      .take(50)
+      .getMany();
+
+    return {
+      success: true,
+      data: list,
+    };
+  }
+
+  /**
+   * Chi tiết chốt ca để in Biên bản bàn giao
+   */
+  async getChiTietChotCa(id: number) {
+    const cc = await this.chotCaRepo.findOne({
+      where: { id },
+      relations: ['thuNgan', 'nguoiNhanCa'],
+    });
+    if (!cc) throw new NotFoundException('Không tìm thấy thông tin chốt ca');
+    return {
+      success: true,
+      data: cc,
+    };
+  }
+
+  /**
+   * Lấy danh sách nhân viên thu ngân phục vụ bàn giao ca (loại trừ chính mình)
+   */
+  async getDanhSachThuNgan(currentUserId?: number) {
+    const qb = this.nhanVienRepo.createQueryBuilder('nv')
+      .leftJoin('nv.nguoiDung', 'nd')
+      .leftJoin('nd.vaiTro', 'vt')
+      .where('(vt.maVaiTro = :vt OR LOWER(nv.chucVu) LIKE :cv OR LOWER(nv.hoTen) LIKE :ht)', {
+        vt: 'thu_ngan',
+        cv: '%thu%ngan%',
+        ht: '%thu%ngan%',
+      })
+      .orderBy('nv.hoTen', 'ASC');
+
+    if (currentUserId) {
+      qb.andWhere('nv.nguoiDungId != :currentUserId', { currentUserId });
+    }
+
+    const list = await qb.getMany();
+    return list;
   }
 
   /**

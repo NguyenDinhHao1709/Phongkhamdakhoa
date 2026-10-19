@@ -12,17 +12,23 @@ import { useNavigate } from 'react-router-dom';
 export default function DashboardAdminPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const navigate = useNavigate();
 
-  const fetchOverview = async () => {
-    setLoading(true);
+  const fetchOverview = async (isBackground = false) => {
+    if (isBackground) {
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const res = await apiGet('/quan-ly/system-overview');
       setData(res?.data || res);
     } catch (err) {
       console.error('Lỗi nạp tổng quan hệ thống:', err);
     } finally {
-      setLoading(false);
+      if (isBackground) setIsRefreshing(false);
+      else setLoading(false);
     }
   };
 
@@ -78,11 +84,14 @@ export default function DashboardAdminPage() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={fetchOverview}
-            className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-sm transition-all"
+            type="button"
+            onClick={() => fetchOverview(true)}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-sm transition-all disabled:opacity-75 cursor-pointer"
+            title="Đồng bộ lại thông số kỹ thuật mới nhất"
           >
-            <RefreshCw className="w-4 h-4 text-gray-500" />
-            Làm mới
+            <RefreshCw className={`w-4 h-4 text-blue-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'Đang làm mới...' : 'Làm mới'}</span>
           </button>
           <button
             onClick={() => navigate('/quan-tri/nhan-vien')}

@@ -18,6 +18,7 @@ import { ThongBaoModule } from './modules/thong-bao/thong-bao.module';
 import { DanhGiaModule } from './modules/danh-gia/danh-gia.module';
 import { KioskModule } from './modules/kiosk/kiosk.module';
 import { ChamCongModule } from './modules/cham-cong/cham-cong.module';
+import { PayosModule } from './modules/payos/payos.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { ChamCongModule } from './modules/cham-cong/cham-cong.module';
     DanhGiaModule,      // Đánh giá chất lượng ca khám & CSAT
     KioskModule,        // Kiosk Tiếp nhận tự động
     ChamCongModule,     // Chấm công khuôn mặt
+    PayosModule,        // Cổng thanh toán VietQR ngân hàng phòng khám PayOS
   ],
 })
 export class AppModule {}

@@ -17,16 +17,19 @@ import {
   FileText,
   Check,
   Sparkles,
+  Printer,
 } from 'lucide-react';
 import { apiGet } from '../../services/api';
 import { formatDateTime } from '../../utils/formatDate';
 import CapPhatThuocModal from './CapPhatThuocModal';
+import InDonThuocModal from './InDonThuocModal';
 
 export default function DonThuocListPage() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedDonThuocId, setSelectedDonThuocId] = useState(null);
+  const [printDonThuocData, setPrintDonThuocData] = useState(null);
 
   // Filters State
   const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'cho_cap_phat' | 'da_cap_phat'
@@ -638,35 +641,46 @@ export default function DonThuocListPage() {
 
                       {/* 8. Thao tác */}
                       <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => setSelectedDonThuocId(dt.id)}
-                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs active:scale-95 cursor-pointer ${
-                            isDispensed
-                              ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200'
-                              : isOutsidePurchase
-                              ? 'bg-gray-100 text-gray-500 border border-gray-200'
-                              : isPaid
-                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
-                              : 'bg-primary-600 hover:bg-primary-700 text-white shadow-primary-600/20'
-                          }`}
-                        >
-                          {isDispensed ? (
-                            <>
-                              <Eye className="h-3.5 w-3.5" />
-                              <span>Chi tiết</span>
-                            </>
-                          ) : isOutsidePurchase ? (
-                            <>
-                              <Eye className="h-3.5 w-3.5" />
-                              <span>Mua ngoài</span>
-                            </>
-                          ) : (
-                            <>
-                              <Pill className="h-3.5 w-3.5" />
-                              <span>Cấp phát</span>
-                            </>
-                          )}
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => setSelectedDonThuocId(dt.id)}
+                            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs active:scale-95 cursor-pointer ${
+                              isDispensed
+                                ? 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200'
+                                : isOutsidePurchase
+                                ? 'bg-gray-100 text-gray-500 border border-gray-200'
+                                : isPaid
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                                : 'bg-primary-600 hover:bg-primary-700 text-white shadow-primary-600/20'
+                            }`}
+                          >
+                            {isDispensed ? (
+                              <>
+                                <Eye className="h-3.5 w-3.5" />
+                                <span>Chi tiết</span>
+                              </>
+                            ) : isOutsidePurchase ? (
+                              <>
+                                <Eye className="h-3.5 w-3.5" />
+                                <span>Mua ngoài</span>
+                              </>
+                            ) : (
+                              <>
+                                <Pill className="h-3.5 w-3.5" />
+                                <span>Cấp phát</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => setPrintDonThuocData(dt)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100 border border-gray-200 shadow-2xs active:scale-95 cursor-pointer"
+                            title="In toa thuốc chuẩn Bộ Y Tế"
+                          >
+                            <Printer className="h-3.5 w-3.5 text-primary-600" />
+                            <span className="hidden xl:inline">In toa</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -683,6 +697,14 @@ export default function DonThuocListPage() {
           donThuocId={selectedDonThuocId}
           onClose={() => setSelectedDonThuocId(null)}
           onSuccess={fetchData}
+        />
+      )}
+
+      {/* 6. Modal In Toa Thuốc Chuẩn Bộ Y Tế */}
+      {printDonThuocData && (
+        <InDonThuocModal
+          donThuoc={printDonThuocData}
+          onClose={() => setPrintDonThuocData(null)}
         />
       )}
     </div>

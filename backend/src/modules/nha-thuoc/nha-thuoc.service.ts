@@ -43,6 +43,14 @@ export class NhaThuocService {
       .leftJoinAndSelect(YeuCauNhapKhoChiTiet, 'ct', 'ct.yeu_cau_id = yc.id')
       .leftJoinAndSelect(Thuoc, 't', 't.id = ct.thuoc_id')
       .leftJoinAndSelect(NhaCungCap, 'ncc', 'ncc.id = ct.nha_cung_cap_id')
+      .leftJoin('nguoi_dung', 'nd_duyet', 'nd_duyet.id = yc.nguoi_duyet_id')
+      .leftJoin('nhan_vien', 'nv_duyet', 'nv_duyet.nguoi_dung_id = nd_duyet.id')
+      .leftJoin('nguoi_dung', 'nd_lap', 'nd_lap.id = yc.nguoi_lap_id')
+      .leftJoin('nhan_vien', 'nv_lap', 'nv_lap.nguoi_dung_id = nd_lap.id')
+      .addSelect('COALESCE(nv_duyet.ho_ten, nd_duyet.ten_dang_nhap)', 'ten_nguoi_duyet')
+      .addSelect('COALESCE(nv_lap.ho_ten, nd_lap.ten_dang_nhap)', 'ten_nguoi_lap')
+      .addSelect('t.gia_ban', 't_gia_ban')
+      .addSelect('(SELECT lt.gia_nhap FROM lo_thuoc lt WHERE lt.thuoc_id = ct.thuoc_id AND lt.gia_nhap > 0 ORDER BY lt.tao_luc DESC LIMIT 1)', 'gia_nhap_gan_nhat')
       .orderBy('yc.tao_luc', 'DESC');
     if (trangThai && trangThai !== 'all') yeuCauQb.where('yc.trang_thai = :trangThai', { trangThai });
     if (trangThaiChiTra && trangThaiChiTra !== 'all') {
@@ -57,6 +65,7 @@ export class NhaThuocService {
           id,
           maYeuCau: row.yc_ma_yeu_cau,
           nguoiLapId: row.yc_nguoi_lap_id,
+          nguoiLap: row.ten_nguoi_lap ? { hoTen: row.ten_nguoi_lap } : null,
           trangThai: row.yc_trang_thai,
           tongDuToan: Number(row.yc_tong_du_toan || 0),
           tongThucTe: Number(row.yc_tong_thuc_te || 0),
@@ -64,8 +73,19 @@ export class NhaThuocService {
           soTienChiTra: Number(row.yc_so_tien_chi_tra || 0),
           phuongThucChi: row.yc_phuong_thuc_chi,
           soChungTuChi: row.yc_so_chung_tu_chi,
+          soHoaDonNcc: row.yc_so_hoa_don_ncc,
+          ngayHoaDonNcc: row.yc_ngay_hoa_don_ncc,
+          bienBanTraHang: row.yc_bien_ban_tra_hang,
+          ketQuaKiemNhan: row.yc_ket_qua_kiem_nhan,
+          nguoiKiemNhanId: row.yc_nguoi_kiem_nhan_id,
+          ngayKiemNhan: row.yc_ngay_kiem_nhan,
+          nguoiDuyetId: row.yc_nguoi_duyet_id,
+          nguoiDuyet: row.ten_nguoi_duyet ? { hoTen: row.ten_nguoi_duyet } : null,
+          ngayDuyet: row.yc_ngay_duyet,
+          lyDoTuChoi: row.yc_ly_do_tu_choi,
           ghiChuChi: row.yc_ghi_chu_chi,
           ghiChu: row.yc_ghi_chu,
+          ngayTao: row.yc_tao_luc,
           taoLuc: row.yc_tao_luc,
           chiTiet: [],
         });
@@ -74,7 +94,11 @@ export class NhaThuocService {
         grouped.get(id).chiTiet.push({
           id: Number(row.ct_id),
           thuocId: row.ct_thuoc_id,
+          maThuoc: row.t_ma_thuoc,
           tenThuoc: row.t_ten_thuoc,
+          donViTinh: row.t_don_vi_tinh,
+          giaBan: Number(row.t_gia_ban || 0),
+          giaNhapGanNhat: Number(row.gia_nhap_gan_nhat || 0),
           nhaCungCapId: row.ct_nha_cung_cap_id,
           tenNhaCungCap: row.ncc_ten_nha_cung_cap,
           soLuongDat: Number(row.ct_so_luong_dat || 0),
@@ -87,6 +111,7 @@ export class NhaThuocService {
           baoGiaSoSanh: row.ct_bao_gia_so_sanh || [],
           maLo: row.ct_ma_lo,
           ngayHetHan: row.ct_ngay_het_han,
+          lyDoHongLoi: row.ct_ly_do_hong_loi,
           ghiChu: row.ct_ghi_chu,
         });
       }
@@ -136,6 +161,32 @@ export class NhaThuocService {
 
   async getNhaCungCap() {
     return { data: await this.nhaCungCapRepo.find({ where: { trangThai: 'dang_hop_tac' }, order: { tenNhaCungCap: 'ASC' } }) };
+  }
+
+  async capNhatBangGiaNhaCungCap(id: number, data: { fileBangGiaTen: string; bangGiaData: any[] }) {
+    const ncc = await this.nhaCungCapRepo.findOne({ where: { id } });
+    if (!ncc) throw new NotFoundException('Không tìm thấy nhà cung cấp');
+    if (!Array.isArray(data.bangGiaData) || data.bangGiaData.length === 0) {
+      throw new BadRequestException('Bảng giá không có dữ liệu thuốc hợp lệ');
+    }
+    ncc.fileBangGiaTen = data.fileBangGiaTen || 'Banggia_Excel.xlsx';
+    ncc.ngayCapNhatBangGia = new Date();
+    ncc.bangGiaData = data.bangGiaData;
+    const saved = await this.nhaCungCapRepo.save(ncc);
+    return {
+      message: `Đã cập nhật bảng giá (${data.bangGiaData.length} mặt hàng) cho nhà cung cấp ${ncc.tenNhaCungCap}`,
+      data: saved,
+    };
+  }
+
+  async xoaBangGiaNhaCungCap(id: number) {
+    const ncc = await this.nhaCungCapRepo.findOne({ where: { id } });
+    if (!ncc) throw new NotFoundException('Không tìm thấy nhà cung cấp');
+    ncc.fileBangGiaTen = null as any;
+    ncc.ngayCapNhatBangGia = null as any;
+    ncc.bangGiaData = null as any;
+    await this.nhaCungCapRepo.save(ncc);
+    return { message: `Đã xóa bảng giá của nhà cung cấp ${ncc.tenNhaCungCap}` };
   }
 
   async taoYeuCauNhap(data: any) {
@@ -239,13 +290,58 @@ export class NhaThuocService {
     return { message: 'Đã lưu báo giá và lựa chọn nhà cung cấp', data: await this.yeuCauNhapRepo.save(yc) };
   }
 
-  async tiepNhanHang(id: number, chiTiet: any[]) {
+  async datHangNhaCungCap(id: number) {
     const yc = await this.yeuCauNhapRepo.findOne({ where: { id } });
-    if (!yc || !['da_duyet', 'da_chon_nha_cung_cap', 'dang_giao'].includes(yc.trangThai)) {
+    if (!yc) throw new NotFoundException('Không tìm thấy yêu cầu nhập kho');
+    if (!['da_duyet', 'da_chon_nha_cung_cap'].includes(yc.trangThai)) {
+      throw new BadRequestException('Yêu cầu phải được duyệt và chọn nhà cung cấp trước khi đặt hàng PO');
+    }
+    yc.trangThai = 'dang_giao';
+    return { message: 'Đã phát hành Đơn đặt hàng thuốc (PO) và chuyển trạng thái chờ nhà cung cấp giao hàng', data: await this.yeuCauNhapRepo.save(yc) };
+  }
+
+  async tiepNhanHang(
+    id: number,
+    data: {
+      chiTiet: any[];
+      ketQuaKiemNhan?: string;
+      bienBanTraHang?: string;
+      nguoiKiemNhanId?: number;
+    },
+  ) {
+    const yc = await this.yeuCauNhapRepo.findOne({ where: { id } });
+    if (!yc || !['da_duyet', 'da_chon_nha_cung_cap', 'dang_giao', 'giao_mot_phan'].includes(yc.trangThai)) {
       throw new BadRequestException('Yêu cầu chưa sẵn sàng để tiếp nhận hàng');
     }
     const details = await this.yeuCauNhapChiTietRepo.find({ where: { yeuCauId: id } });
-    for (const item of chiTiet || []) {
+    const chiTiet = Array.isArray(data.chiTiet) ? data.chiTiet : [];
+
+    // Nhánh 4: Từ chối nhận toàn bộ lô hàng (Không phù hợp tiêu chuẩn y tế / cảm quan hỏng toàn bộ)
+    if (data.ketQuaKiemNhan === 'tu_choi_nhan') {
+      for (const item of chiTiet) {
+        const detail = details.find((row) => row.id === Number(item.id));
+        if (!detail) continue;
+        const giao = Number(item.soLuongGiao || detail.soLuongDat || 0);
+        detail.soLuongGiao = giao;
+        detail.soLuongDatChatLuong = 0;
+        detail.soLuongHong = giao;
+        detail.soLuongThieu = Number(detail.soLuongDat || 0);
+        detail.lyDoHongLoi = item.lyDoHongLoi || 'Lô hàng không đạt tiêu chuẩn y tế, từ chối nhận';
+        detail.ghiChu = item.ghiChu || detail.ghiChu;
+        await this.yeuCauNhapChiTietRepo.save(detail);
+      }
+      yc.tongThucTe = 0;
+      yc.trangThai = 'tu_choi_nhan';
+      yc.ketQuaKiemNhan = 'tu_choi_nhan';
+      yc.bienBanTraHang = data.bienBanTraHang || 'Từ chối tiếp nhận toàn bộ lô hàng do không đạt tiêu chuẩn y tế & bảo quản.';
+      yc.trangThaiChiTra = 'khong_chi';
+      yc.ngayKiemNhan = new Date();
+      yc.nguoiKiemNhanId = data.nguoiKiemNhanId || 1;
+      return { message: 'Đã lập biên bản từ chối nhận toàn bộ lô hàng và hủy công nợ chi trả', data: await this.yeuCauNhapRepo.save(yc) };
+    }
+
+    // Nhánh 1, 2, 3: Đạt đủ 100%, Đạt một phần (thiếu), hoặc Có hàng hỏng/lỗi cần lập biên bản trả
+    for (const item of chiTiet) {
       const detail = details.find((row) => row.id === Number(item.id));
       if (!detail) continue;
       const acceptedBefore = Number(detail.soLuongDatChatLuong || 0);
@@ -271,53 +367,57 @@ export class NhaThuocService {
       detail.soLuongThieu = Math.max(0, Number(detail.soLuongDat) - giao);
       detail.maLo = item.maLo || detail.maLo;
       detail.ngayHetHan = item.ngayHetHan || detail.ngayHetHan;
+      detail.lyDoHongLoi = item.lyDoHongLoi || null;
       detail.ghiChu = item.ghiChu || detail.ghiChu;
       await this.yeuCauNhapChiTietRepo.save(detail);
-
-      const acceptedDelta = dat - acceptedBefore;
-      if (acceptedDelta > 0 && detail.thuocId) {
-        const thuoc = await this.thuocRepo.findOne({ where: { id: detail.thuocId } });
-        if (!thuoc) throw new NotFoundException(`Không tìm thấy thuốc ID ${detail.thuocId}`);
-        let lo = detail.maLo
-          ? await this.loThuocRepo.findOne({ where: { thuocId: detail.thuocId, maLo: detail.maLo } })
-          : null;
-        if (!lo) {
-          lo = this.loThuocRepo.create({
-            thuocId: detail.thuocId,
-            maLo: detail.maLo || `LO-${id}-${detail.id}`,
-            ngaySanXuat: null,
-            ngayHetHan: detail.ngayHetHan,
-            soLuongNhap: acceptedDelta,
-            soLuongTon: acceptedDelta,
-            giaNhap: Number(detail.donGiaChon || 0),
-            nhaCungCap: detail.nhaCungCapId ? String(detail.nhaCungCapId) : null,
-            trangThai: 'con_hang',
-          });
-        } else {
-          lo.soLuongNhap = Number(lo.soLuongNhap || 0) + acceptedDelta;
-          lo.soLuongTon = Number(lo.soLuongTon || 0) + acceptedDelta;
-          lo.giaNhap = Number(detail.donGiaChon || lo.giaNhap || 0);
-        }
-        await this.loThuocRepo.save(lo);
-        thuoc.tonKhoTong = Number(thuoc.tonKhoTong || 0) + acceptedDelta;
-        thuoc.trangThai = 'con_hang';
-        await this.thuocRepo.save(thuoc);
-      }
+      // LƯU Ý CHUẨN ERP Y TẾ:
+      // Ở bước kiểm nhận của Dược sĩ, chưa nạp thuốc vào kho và chưa cộng tồn kho.
+      // Thuốc chỉ được chính thức nạp vào kho sau khi Thu ngân đối chiếu 3 bên và thanh toán phiếu chi thành công!
     }
+
     yc.tongThucTe = details.reduce((sum, item) => sum + Number(item.soLuongDatChatLuong) * Number(item.donGiaChon), 0);
-    yc.trangThai = details.some((item) => item.soLuongHong > 0 || item.soLuongThieu > 0) ? 'giao_mot_phan' : 'da_nhap_kho';
-    if (yc.trangThai === 'da_nhap_kho') yc.trangThaiChiTra = 'cho_chi';
-    return { message: 'Đã kiểm nhận hàng; chỉ số lượng đạt được nhập kho', data: await this.yeuCauNhapRepo.save(yc) };
+    const coHong = details.some((item) => item.soLuongHong > 0);
+    const coThieu = details.some((item) => item.soLuongThieu > 0);
+
+    if (coHong) {
+      yc.ketQuaKiemNhan = 'co_hang_hong';
+      yc.trangThai = 'giao_mot_phan';
+    } else if (coThieu) {
+      yc.ketQuaKiemNhan = 'dat_mot_phan';
+      yc.trangThai = 'giao_mot_phan';
+    } else {
+      yc.ketQuaKiemNhan = 'dat_du';
+      yc.trangThai = 'da_kiem_nhan';
+    }
+
+    yc.bienBanTraHang = data.bienBanTraHang || null;
+    yc.nguoiKiemNhanId = data.nguoiKiemNhanId || 1;
+    yc.ngayKiemNhan = new Date();
+    if (yc.tongThucTe > 0) yc.trangThaiChiTra = 'cho_chi';
+
+    return {
+      message: 'Kiểm nhận y tế hoàn tất (Đã chuyển hồ sơ sang Thu ngân để đối chiếu 3 bên & thanh toán trước khi nạp kho)',
+      data: await this.yeuCauNhapRepo.save(yc),
+    };
   }
 
   async chiTraNhaCungCap(
     id: number,
-    data: { soTien?: number; phuongThucChi?: string; soChungTuChi?: string; ghiChu?: string },
+    data: {
+      soTien?: number;
+      phuongThucChi?: string;
+      soChungTuChi?: string;
+      soHoaDonNcc?: string;
+      ngayHoaDonNcc?: string;
+      ghiChu?: string;
+    },
     nguoiChiTraId = 1,
   ) {
     const yc = await this.yeuCauNhapRepo.findOne({ where: { id } });
     if (!yc) throw new NotFoundException('Không tìm thấy yêu cầu nhập kho');
-    if (yc.trangThai !== 'da_nhap_kho') throw new BadRequestException('Chỉ được chi trả sau khi hoàn tất kiểm nhận và nhập đủ hàng');
+    if (!['da_nhap_kho', 'giao_mot_phan', 'da_kiem_nhan'].includes(yc.trangThai) || Number(yc.tongThucTe) <= 0) {
+      throw new BadRequestException('Chỉ được chi trả sau khi hoàn tất kiểm nhận y tế và có thuốc đạt chất lượng');
+    }
     if (yc.trangThaiChiTra === 'da_chi') throw new BadRequestException('Yêu cầu đã được chi trả');
     const soTien = Number(data.soTien ?? yc.tongThucTe);
     if (!Number.isFinite(soTien) || soTien <= 0) throw new BadRequestException('Số tiền chi trả phải lớn hơn 0');
@@ -329,15 +429,58 @@ export class NhaThuocService {
       const duplicate = await this.yeuCauNhapRepo.findOne({ where: { soChungTuChi: data.soChungTuChi } });
       if (duplicate && duplicate.id !== id) throw new BadRequestException('Số chứng từ chi đã được sử dụng');
     }
+
+    // ── CHÍNH THỨC NẠP THUỐC VÀO KHO SAU KHI THU NGÂN XÁC NHẬN THANH TOÁN THÀNH CÔNG ──
+    const details = await this.yeuCauNhapChiTietRepo.find({ where: { yeuCauId: id } });
+    for (const detail of details) {
+      const dat = Number(detail.soLuongDatChatLuong || 0);
+      if (dat > 0 && detail.thuocId) {
+        const thuoc = await this.thuocRepo.findOne({ where: { id: detail.thuocId } });
+        if (!thuoc) continue;
+        let lo = detail.maLo
+          ? await this.loThuocRepo.findOne({ where: { thuocId: detail.thuocId, maLo: detail.maLo } })
+          : null;
+        if (!lo) {
+          lo = this.loThuocRepo.create({
+            thuocId: detail.thuocId,
+            maLo: detail.maLo || `LO-${id}-${detail.id}`,
+            ngaySanXuat: null,
+            ngayHetHan: detail.ngayHetHan,
+            soLuongNhap: dat,
+            soLuongTon: dat,
+            giaNhap: Number(detail.donGiaChon || 0),
+            nhaCungCap: detail.nhaCungCapId ? String(detail.nhaCungCapId) : null,
+            trangThai: 'con_hang',
+          });
+        } else {
+          lo.soLuongNhap = Number(lo.soLuongNhap || 0) + dat;
+          lo.soLuongTon = Number(lo.soLuongTon || 0) + dat;
+          lo.giaNhap = Number(detail.donGiaChon || lo.giaNhap || 0);
+        }
+        await this.loThuocRepo.save(lo);
+        thuoc.tonKhoTong = Number(thuoc.tonKhoTong || 0) + dat;
+        thuoc.trangThai = 'con_hang';
+        await this.thuocRepo.save(thuoc);
+      }
+    }
+
+    yc.trangThai = 'da_nhap_kho';
     yc.trangThaiChiTra = 'da_chi';
     yc.soTienChiTra = soTien;
     yc.phuongThucChi = data.phuongThucChi || 'chuyen_khoan';
     yc.soChungTuChi = data.soChungTuChi || `PC-${yc.maYeuCau}`;
+    yc.soHoaDonNcc = data.soHoaDonNcc || yc.soHoaDonNcc || null;
+    if (data.ngayHoaDonNcc) {
+      yc.ngayHoaDonNcc = new Date(data.ngayHoaDonNcc);
+    }
     yc.ghiChuChi = data.ghiChu || null;
     yc.nguoiChiTraId = nguoiChiTraId;
     yc.ngayChiTra = new Date();
     yc.ghiChu = data.ghiChu ? `${yc.ghiChu || ''}\nChi trả: ${data.ghiChu}`.trim() : yc.ghiChu;
-    return { message: 'Thu ngân đã ghi nhận chi trả nhà cung cấp', data: await this.yeuCauNhapRepo.save(yc) };
+    return {
+      message: 'Thu ngân đã xác nhận thanh toán phiếu chi thành công · Thuốc đạt chuẩn đã được nạp chính thức vào kho!',
+      data: await this.yeuCauNhapRepo.save(yc)
+    };
   }
 
   /**
@@ -357,11 +500,23 @@ export class NhaThuocService {
     return {
       message: 'Lấy danh sách thuốc thành công',
       data: list.map((item) => {
-        // Tìm lô còn hạn và còn tồn kho, hoặc lấy lô đầu tiên
+        // Tìm lô còn tồn kho theo FEFO (hạn dùng gần nhất) hoặc lấy lô đầu tiên
         const activeLo =
           item.loThuocList && item.loThuocList.length > 0
             ? item.loThuocList.find((l) => Number(l.soLuongTon) > 0) || item.loThuocList[0]
             : null;
+
+        const diffDays = activeLo?.ngayHetHan
+          ? Math.ceil((new Date(activeLo.ngayHetHan).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+          : null;
+
+        const coLoCanDate = (item.loThuocList || []).some(
+          (l) => Number(l.soLuongTon) > 0 && l.ngayHetHan && Math.ceil((new Date(l.ngayHetHan).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) <= 60
+        );
+
+        const coLoHetHan = (item.loThuocList || []).some(
+          (l) => Number(l.soLuongTon) > 0 && l.ngayHetHan && Math.ceil((new Date(l.ngayHetHan).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) <= 0
+        );
 
         return {
           id: item.id,
@@ -376,8 +531,19 @@ export class NhaThuocService {
           moTa: item.moTa,
           trangThai: item.trangThai,
           maLo: activeLo?.maLo || null,
+          soLuongTonLo: activeLo ? Number(activeLo.soLuongTon) : 0,
           ngaySanXuat: activeLo?.ngaySanXuat ? String(activeLo.ngaySanXuat).substring(0, 10) : null,
           ngayHetHan: activeLo?.ngayHetHan ? String(activeLo.ngayHetHan).substring(0, 10) : null,
+          soNgayConLai: diffDays,
+          coLoCanDate,
+          coLoHetHan,
+          tongSoLo: (item.loThuocList || []).filter((l) => Number(l.soLuongTon) > 0).length,
+          danhSachLo: (item.loThuocList || []).map((l) => ({
+            id: l.id,
+            maLo: l.maLo,
+            soLuongTon: Number(l.soLuongTon),
+            ngayHetHan: l.ngayHetHan ? String(l.ngayHetHan).substring(0, 10) : null,
+          })),
           nhaCungCap: activeLo?.nhaCungCap || null,
         };
       }),
@@ -877,8 +1043,14 @@ export class NhaThuocService {
       order: { tenThuoc: 'ASC' },
     });
 
+    // 1. Danh sách thuốc tồn kho tổng
     const listThuoc = listThuocRaw.map((t) => {
       const activeLo = t.loThuocList && t.loThuocList.length > 0 ? t.loThuocList[0] : null;
+      const coLoCanDate = (t.loThuocList || []).some((lo) => {
+        if (!lo.soLuongTon || Number(lo.soLuongTon) <= 0 || !lo.ngayHetHan) return false;
+        const diffDays = Math.ceil((new Date(lo.ngayHetHan).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        return diffDays <= 60;
+      });
       return {
         id: t.id,
         maThuoc: t.maThuoc,
@@ -891,6 +1063,7 @@ export class NhaThuocService {
         thanhTien: Number(t.tonKhoTong) * Number(t.giaBan),
         maLo: activeLo?.maLo || null,
         ngayHetHan: activeLo?.ngayHetHan ? String(activeLo.ngayHetHan) : null,
+        coLoCanDate,
         trangThai: Number(t.tonKhoTong) > 20 ? 'con_hang' : Number(t.tonKhoTong) > 0 ? 'canh_bao' : 'het_hang',
       };
     });
@@ -907,28 +1080,84 @@ export class NhaThuocService {
       .andWhere('DATE(dt.ngayKe) = CURRENT_DATE()')
       .getCount();
 
-    // Cảnh báo rủi ro
+    // 2. Truy vấn danh sách các lô cận hạn sử dụng (<= 60 ngày) hoặc đã hết hạn
+    const loCanDateList = await this.loThuocRepo
+      .createQueryBuilder('lo')
+      .leftJoinAndSelect('lo.thuoc', 't')
+      .where('lo.soLuongTon > 0')
+      .andWhere('lo.ngayHetHan <= DATE_ADD(CURRENT_DATE(), INTERVAL 60 DAY)')
+      .orderBy('lo.ngayHetHan', 'ASC')
+      .getMany();
+
+    const sapHetHanCount = loCanDateList.length;
+
+    // 3. Cảnh báo rủi ro (Bao gồm Cận hạn sử dụng FEFO + Hết hàng + Dưới định mức)
     const canhBaoRuiRo: any[] = [];
+
+    // 3.1. Đưa các lô thuốc cận date vào bảng cảnh báo FEFO
+    loCanDateList.forEach((lo) => {
+      const diffTime = new Date(lo.ngayHetHan).getTime() - Date.now();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const isExpired = diffDays <= 0;
+      const ngayHetHanStr = new Date(lo.ngayHetHan).toISOString().slice(0, 10);
+      canhBaoRuiRo.push({
+        id: `lo_${lo.id}`,
+        thuocId: lo.thuocId,
+        maThuoc: lo.thuoc?.maThuoc || 'N/A',
+        tenThuoc: lo.thuoc?.tenThuoc || 'Thuốc',
+        donViTinh: lo.thuoc?.donViTinh || 'đơn vị',
+        maLo: lo.maLo || 'Lô mặc định',
+        loaiRuiRo: isExpired
+          ? 'Đã hết hạn sử dụng'
+          : `Cận hạn sử dụng (Còn ${diffDays} ngày)`,
+        mucDo: isExpired || diffDays <= 15 ? 'nguy_cap' : 'canh_bao',
+        moTa: `Lô ${lo.maLo} còn tồn ${lo.soLuongTon} ${lo.thuoc?.donViTinh || 'đơn vị'} (trên tổng số ${lo.thuoc?.tonKhoTong || lo.soLuongTon} của thuốc). Hạn dùng ${ngayHetHanStr}. ${isExpired ? 'Cần cách ly và tiêu hủy theo chuẩn GPP.' : 'Ưu tiên xuất trước theo nguyên tắc FEFO.'}`,
+        tonKho: Number(lo.soLuongTon),
+        soLuong: Number(lo.soLuongTon),
+        tonKhoLo: Number(lo.soLuongTon),
+        tongTonKhoThuoc: Number(lo.thuoc?.tonKhoTong || lo.soLuongTon),
+        hanDung: ngayHetHanStr,
+        ngayHetHan: ngayHetHanStr,
+        hanhDong: isExpired ? 'Tiêu hủy' : 'Ưu tiên xuất FEFO',
+        soNgayConLai: diffDays,
+      });
+    });
+
+    // 3.2. Đưa các loại thuốc cạn kho hoặc dưới định mức an toàn vào cảnh báo
     listThuoc.forEach((t) => {
       if (t.tonKhoTong <= 0) {
         canhBaoRuiRo.push({
           id: `het_${t.id}`,
+          thuocId: t.id,
           tenThuoc: t.tenThuoc,
           maThuoc: t.maThuoc,
+          donViTinh: t.donViTinh,
+          maLo: t.maLo,
           loaiRuiRo: 'Hết hàng trong kho',
           mucDo: 'nguy_cap',
           moTa: `Thuốc ${t.tenThuoc} đã hết hoàn toàn tồn kho. Cần nhập bổ sung khẩn cấp.`,
           tonKho: 0,
+          soLuong: 0,
+          hanDung: t.ngayHetHan || '---',
+          ngayHetHan: t.ngayHetHan || '---',
+          hanhDong: 'Lập phiếu nhập gấp',
         });
       } else if (t.tonKhoTong <= 20) {
         canhBaoRuiRo.push({
           id: `cb_${t.id}`,
+          thuocId: t.id,
           tenThuoc: t.tenThuoc,
           maThuoc: t.maThuoc,
+          donViTinh: t.donViTinh,
+          maLo: t.maLo,
           loaiRuiRo: 'Tồn kho nguy cấp (dưới 20 đơn vị)',
           mucDo: 'canh_bao',
           moTa: `Tồn kho chỉ còn ${t.tonKhoTong} ${t.donViTinh}. Đề xuất lập dự trù nhập kho.`,
           tonKho: t.tonKhoTong,
+          soLuong: t.tonKhoTong,
+          hanDung: t.ngayHetHan || '---',
+          ngayHetHan: t.ngayHetHan || '---',
+          hanhDong: 'Lập phiếu mua',
         });
       }
     });
@@ -939,6 +1168,8 @@ export class NhaThuocService {
       .leftJoinAndSelect('ct.thuoc', 'th')
       .select('th.tenThuoc', 'tenThuoc')
       .addSelect('th.maThuoc', 'maThuoc')
+      .addSelect('th.donViTinh', 'donViTinh')
+      .addSelect('th.tonKhoTong', 'tonKhoTong')
       .addSelect('SUM(ct.soLuong)', 'tongSoLuong')
       .groupBy('th.id')
       .orderBy('tongSoLuong', 'DESC')
@@ -948,14 +1179,12 @@ export class NhaThuocService {
     const top10Thuoc = topChiTiet.map((item) => ({
       tenThuoc: item.tenThuoc,
       maThuoc: item.maThuoc,
-      soLuongKe: Number(item.tongSoLuong),
+      donViTinh: item.donViTinh || 'Hộp',
+      tonKhoTong: Number(item.tonKhoTong || 0),
+      tonKho: Number(item.tonKhoTong || 0),
+      soLuongKe: Number(item.tongSoLuong || 0),
+      soLuongXuat: Number(item.tongSoLuong || 0),
     }));
-
-    const sapHetHanCount = await this.loThuocRepo.createQueryBuilder('lo')
-      .where('lo.soLuongTon > 0')
-      .andWhere('lo.ngayHetHan >= CURRENT_DATE()')
-      .andWhere('lo.ngayHetHan <= DATE_ADD(CURRENT_DATE(), INTERVAL 60 DAY)')
-      .getCount();
 
     // 4. Tính toán Lưu lượng Xuất / Nhập kho theo từng ngày
     // Xác định khoảng ngày lọc

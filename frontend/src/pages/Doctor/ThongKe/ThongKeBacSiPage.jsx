@@ -5,7 +5,10 @@ import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import InBaoCaoModal from '../../../components/Print/InBaoCaoModal';
+import GuiBaoCaoModal from '../../../components/Report/GuiBaoCaoModal';
+import LichSuBaoCaoModal from '../../../components/Report/LichSuBaoCaoModal';
 import { apiGet } from '../../../services/api';
+import { formatDate } from '../../../utils/formatDate';
 import {
   Users, Pill, FlaskConical, BarChart3, TrendingUp, CheckCircle2,
   Clock, Sparkles, HeartHandshake, Star, Calendar,
@@ -28,6 +31,8 @@ export default function ThongKeBacSiPage() {
 
   // State modal in và tìm kiếm ca khám
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [isGuiBaoCaoOpen, setIsGuiBaoCaoOpen] = useState(false);
+  const [isLichSuBaoCaoOpen, setIsLichSuBaoCaoOpen] = useState(false);
   const [searchCaKham, setSearchCaKham] = useState('');
   const [filterReviewStar, setFilterReviewStar] = useState('all'); // 'all' | 5 | 4 | 3 | 2 | 1
   const [searchReview, setSearchReview] = useState('');
@@ -117,12 +122,13 @@ export default function ThongKeBacSiPage() {
 
   const timeRangeLabel = useMemo(() => {
     switch (timeRange) {
-      case 'hom_nay': return 'Hôm nay';
-      case 'tuan_nay': return 'Tuần này (7 ngày gần nhất)';
-      case 'thang_nay': return 'Tháng này';
-      case 'quy_nay': return 'Quý này';
-      case 'custom': return fromDate && toDate ? `Từ ${fromDate} đến ${toDate}` : 'Tùy chỉnh ngày';
-      default: return 'Tháng này';
+      case 'hom_nay': return `Hôm nay (${formatDate(new Date())})`;
+      case 'tuan_nay': return '7 ngày qua';
+      case 'thang_nay': return `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
+      case 'quy_nay': return `Quý ${Math.floor(new Date().getMonth() / 3) + 1}/${new Date().getFullYear()}`;
+      case 'tat_ca': return 'Toàn thời gian';
+      case 'custom': return fromDate && toDate ? `Từ ${formatDate(fromDate)} đến ${formatDate(toDate)}` : (fromDate ? `Từ ngày ${formatDate(fromDate)}` : 'Tùy chỉnh ngày');
+      default: return `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
     }
   }, [timeRange, fromDate, toDate]);
 
@@ -266,6 +272,21 @@ export default function ThongKeBacSiPage() {
           >
             In Báo Cáo
           </MedButton>
+          <button
+            onClick={() => setIsGuiBaoCaoOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
+          >
+            <span>📤</span>
+            <span>Gửi Báo Cáo Giám Đốc</span>
+          </button>
+          <button
+            onClick={() => setIsLichSuBaoCaoOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
+            title="Xem lịch sử báo cáo & ý kiến chỉ đạo từ Ban Giám Đốc"
+          >
+            <span>📋</span>
+            <span>Lịch Sử & Chỉ Đạo</span>
+          </button>
           <MedButton
             variant="primary"
             size="sm"
@@ -1077,6 +1098,35 @@ export default function ThongKeBacSiPage() {
         stats={stats}
         timeRangeLabel={timeRangeLabel}
         hinhThucLabel={hinhThucLabel}
+      />
+
+      {/* Modal Gửi Báo Cáo lên Ban Giám Đốc */}
+      <GuiBaoCaoModal
+        isOpen={isGuiBaoCaoOpen}
+        onClose={() => setIsGuiBaoCaoOpen(false)}
+        boPhan="bac_si"
+        tenBoPhan={`Khoa Khám Bệnh - Bác sĩ (${stats?.thongTinBacSi?.hoTen || user?.hoTen || 'Lâm sàng'})`}
+        kyBaoCaoMacDinh={timeRangeLabel}
+        tieuDeMacDinh={`Báo cáo hiệu suất khám chữa bệnh - ${stats?.thongTinBacSi?.hoTen || user?.hoTen || 'Bác sĩ'} (${stats?.thongTinBacSi?.chuyenKhoa || 'Lâm sàng'}) - ${timeRangeLabel}`}
+        soLieuSnapshot={{
+          kyBaoCao: timeRangeLabel,
+          bacSi: stats?.thongTinBacSi?.hoTen || user?.hoTen,
+          chuyenKhoa: stats?.thongTinBacSi?.chuyenKhoa,
+          tongBenhNhanDaKham: stats?.tongBenhNhanDaKham || 0,
+          dangChoKham: stats?.dangChoKham || 0,
+          tongDonThuocKe: stats?.tongDonThuocKe || 0,
+          tongChiDinhCLS: stats?.tongChiDinhCLS || 0,
+          tyLeHoanThanh: stats?.tyLeHoanThanh || '100%',
+          diemHaiLongCSAT: stats?.diemHaiLongCSAT || '5.0/5.0',
+        }}
+      />
+
+      {/* Modal Xem Lịch Sử Báo Cáo & Ý Kiến Chỉ Đạo */}
+      <LichSuBaoCaoModal
+        isOpen={isLichSuBaoCaoOpen}
+        onClose={() => setIsLichSuBaoCaoOpen(false)}
+        boPhan="bac_si"
+        tenBoPhan={`Khoa Khám Bệnh - Bác sĩ (${stats?.thongTinBacSi?.hoTen || user?.hoTen || 'Lâm sàng'})`}
       />
     </div>
   );

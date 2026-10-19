@@ -1,10 +1,20 @@
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { Printer, X, FileText, CheckCircle2 } from 'lucide-react';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { formatDate } from '../../utils/formatDate';
 
 export default function InPhieuKhamModal({ isOpen, onClose, benhAn, benhNhan, bacSi, sinhHieu, dsXetNghiem }) {
   const printRef = useRef(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose?.();
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -15,22 +25,23 @@ export default function InPhieuKhamModal({ isOpen, onClose, benhAn, benhNhan, ba
   const today = new Date();
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-hidden">
       {/* Container hiển thị trên màn hình */}
-      <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Thanh công cụ Modal (ẩn khi in) */}
-        <div className="px-6 py-3.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between no-print">
+      <div className="bg-white rounded-2xl w-full max-w-4xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[92vh] animate-fade-in">
+        {/* Thanh công cụ Modal - CỐ ĐỊNH Ở TRÊN CÙNG, KHÔNG BỊ CUỘN MẤT */}
+        <div className="px-6 py-3.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between no-print shrink-0">
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-primary-600" />
             <span className="font-bold text-gray-800 text-sm">Xem trước bản in Phiếu Khám Bệnh (Bộ Y Tế)</span>
           </div>
           <div className="flex items-center gap-2">
             <MedButton variant="primary" size="sm" onClick={handlePrint} leftIcon={<Printer className="h-4 w-4" />}>
-              In phiếu / Xuất PDF
+              In phiếu / Xuất PDF (Ctrl+P)
             </MedButton>
             <button
               onClick={onClose}
-              className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-200 transition"
+              className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-200 transition cursor-pointer"
+              title="Đóng cửa sổ (Esc)"
             >
               <X className="h-5 w-5" />
             </button>

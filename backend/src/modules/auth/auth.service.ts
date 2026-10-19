@@ -12,6 +12,8 @@ import { VaiTro } from './entities/vai-tro.entity';
 import { MaXacThucOtp, LoaiOtp } from './entities/ma-xac-thuc-otp.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
+import { BacSi } from '../nhan-vien/entities/bac-si.entity';
+import { KyThuatVien } from '../nhan-vien/entities/ky-thuat-vien.entity';
 import { comparePassword, hashPassword } from '../../common/utils/hash.util';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 import {
@@ -141,6 +143,8 @@ export class AuthService {
     let benhNhanId = null;
     let nhanVienId = null;
     let hoTen = nguoiDung.tenDangNhap;
+    let anhDaiDien = null;
+    let chucVu = null;
 
     if (nguoiDung.vaiTro?.maVaiTro === 'benh_nhan' || nguoiDung.loaiTaiKhoan === LoaiTaiKhoan.BENH_NHAN) {
       let bn = await this.benhNhanRepo.findOne({ where: { nguoiDungId: nguoiDung.id } });
@@ -156,6 +160,8 @@ export class AuthService {
       if (nv) {
         nhanVienId = nv.id;
         if (nv.hoTen) hoTen = nv.hoTen;
+        anhDaiDien = nv.anhDaiDien || null;
+        chucVu = nv.chucVu || null;
       }
     }
 
@@ -167,6 +173,8 @@ export class AuthService {
           id: nguoiDung.id,
           tenDangNhap: nguoiDung.tenDangNhap,
           hoTen,
+          anhDaiDien,
+          chucVu,
           vaiTro: nguoiDung.vaiTro?.maVaiTro,
           tenVaiTro: nguoiDung.vaiTro?.tenVaiTro,
           loaiTaiKhoan: nguoiDung.loaiTaiKhoan,
@@ -456,6 +464,11 @@ export class AuthService {
     let nhanVienId = null;
     let chucVu = null;
     let hoTen = nguoiDung.tenDangNhap;
+    let anhDaiDien = null;
+    let maNhanVien = null;
+    let nhanVienInfo = null;
+    let bacSiInfo = null;
+    let kyThuatVienInfo = null;
 
     if (nguoiDung.vaiTro?.maVaiTro === 'benh_nhan' || nguoiDung.loaiTaiKhoan === LoaiTaiKhoan.BENH_NHAN) {
       let bn = await this.benhNhanRepo.findOne({ where: { nguoiDungId: nguoiDung.id } });
@@ -472,6 +485,15 @@ export class AuthService {
         nhanVienId = nv.id;
         chucVu = nv.chucVu;
         if (nv.hoTen) hoTen = nv.hoTen;
+        anhDaiDien = nv.anhDaiDien || null;
+        maNhanVien = `NV${String(nv.id).padStart(5, '0')}`;
+        nhanVienInfo = nv;
+
+        if (nguoiDung.vaiTro?.maVaiTro === 'bac_si') {
+          bacSiInfo = await this.dataSource.getRepository(BacSi).findOne({ where: { nhanVienId: nv.id } });
+        } else if (nguoiDung.vaiTro?.maVaiTro === 'ky_thuat_vien') {
+          kyThuatVienInfo = await this.dataSource.getRepository(KyThuatVien).findOne({ where: { nhanVienId: nv.id } });
+        }
       }
     }
 
@@ -479,12 +501,18 @@ export class AuthService {
       id: nguoiDung.id,
       tenDangNhap: nguoiDung.tenDangNhap,
       hoTen,
+      anhDaiDien,
+      maNhanVien,
       vaiTro: nguoiDung.vaiTro?.maVaiTro,
       tenVaiTro: nguoiDung.vaiTro?.tenVaiTro,
       loaiTaiKhoan: nguoiDung.loaiTaiKhoan,
+      trangThai: nguoiDung.trangThai,
       benhNhanId,
       nhanVienId,
       chucVu,
+      nhanVien: nhanVienInfo,
+      bacSi: bacSiInfo,
+      kyThuatVien: kyThuatVienInfo,
     };
   }
 

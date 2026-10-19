@@ -310,4 +310,48 @@ export class QuanLyController {
   ) {
     return this.quanLyService.capNhatPhanQuyen(+vaiTroId, quyenHanIds);
   }
+
+  // ─── BÁO CÁO CÁC BỘ PHẬN GỬI BAN GIÁM ĐỐC ─────────────────────
+  @Post('bao-cao-bo-phan')
+  @ApiOperation({ summary: 'Nhân viên, Bác sĩ lập và gửi báo cáo chuyên môn lên Ban Giám Đốc' })
+  taoBaoCaoBoPhan(
+    @CurrentUser('id') userId: number,
+    @Body() body: {
+      boPhan: string;
+      tieuDe: string;
+      kyBaoCao?: string;
+      soLieuSnapshot?: any;
+      noiDung?: string;
+      kienNghi?: string;
+    },
+  ) {
+    return this.quanLyService.taoBaoCaoBoPhan(userId, body);
+  }
+
+  @Get('bao-cao-bo-phan')
+  @ApiOperation({ summary: 'Lấy danh sách báo cáo các bộ phận gửi Ban Giám Đốc' })
+  layDanhSachBaoCaoBoPhan(
+    @Query('boPhan') boPhan?: string,
+    @Query('trangThai') trangThai?: string,
+  ) {
+    return this.quanLyService.layDanhSachBaoCaoBoPhan(boPhan, trangThai);
+  }
+
+  @Get('bao-cao-bo-phan/:id')
+  @ApiOperation({ summary: 'Xem chi tiết 1 báo cáo bộ phận' })
+  layChiTietBaoCaoBoPhan(@Param('id', ParseIntPipe) id: number) {
+    return this.quanLyService.layChiTietBaoCaoBoPhan(id);
+  }
+
+  @Patch('bao-cao-bo-phan/:id/chi-dao')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Ban Giám Đốc ghi nhận và nhập ý kiến chỉ đạo báo cáo' })
+  chiDaoBaoCaoBoPhan(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { yKien?: string; yKienGiamDoc?: string },
+  ) {
+    const yKien = body.yKien || body.yKienGiamDoc || '';
+    return this.quanLyService.chiDaoBaoCaoBoPhan(id, userId, yKien);
+  }
 }

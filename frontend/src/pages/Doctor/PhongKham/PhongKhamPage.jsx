@@ -1,5 +1,8 @@
+
+
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
@@ -10,18 +13,20 @@ import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
 import {
   Stethoscope, AlertTriangle, FileText, ClipboardList, FlaskConical,
-  CheckCircle2, ChevronRight, Activity, Plus, X, HeartPulse, Pill, Calendar, Clock, Search, Sparkles, Printer, Trash2, Volume2, Tv, Compass
+  CheckCircle2, ChevronRight, Activity, Plus, X, HeartPulse, Pill, Calendar, Clock, Search, Sparkles, Printer, Trash2, Volume2, Tv, Compass, MessageSquare
 } from 'lucide-react';
 import { parseAttachmentUrls, toAttachmentUrl } from '../../../utils/fileAttachments';
+import { getFallbackServiceConfig, parseResultConfig, evaluateLabValue } from '../../../utils/labConfig';
 import InPhieuKhamModal from '../../../components/Print/InPhieuKhamModal';
 import InDonThuocModal from '../../../components/Print/InDonThuocModal';
+import ChiTietKetQuaXetNghiemRenderer from '../../../components/Lab/ChiTietKetQuaXetNghiemRenderer';
 
 
 function useHangDoi() {
   return useQuery({
     queryKey: ['tiep-nhan', 'hang-doi'],
     queryFn: () => apiGet('/tiep-nhan/hang-doi'),
-    refetchInterval: 10000,
+    refetchInterval: 2500, // Tự động cập nhật mỗi 2.5s (dưới 3s)
   });
 }
 
@@ -302,11 +307,26 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
     queryFn: () => apiGet(`/xet-nghiem/benh-an-kham/${benhAnId}`),
     enabled: !!benhAnId,
   });
-  const currentDsXn = (xnPrintData?.data || []).map((x) => ({
-    tenDichVu: x.chiDinh?.dichVu?.tenDichVu,
-    ketQua: x.ketQua ? `${x.ketQua.giaTri} ${x.ketQua.donVi || ''}` : 'Chờ KQ',
-    ghiChuKetQua: x.ketQua?.nhanXet || '',
-  }));
+  const currentDsXn = (xnPrintData?.data || []).map((x) => {
+    let ketQuaText = 'Chờ KQ';
+    if (x.ketQua) {
+      let chiTiet = {};
+      try {
+        const raw = x.ketQua.ketQuaChiTiet || x.ketQua.ket_qua_chi_tiet;
+        chiTiet = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+      } catch {}
+      if (Object.keys(chiTiet).length > 0) {
+        ketQuaText = Object.entries(chiTiet).map(([k, v]) => `${k}: ${v}`).join('; ');
+      } else {
+        ketQuaText = `${x.ketQua.giaTri || ''} ${x.ketQua.donVi || ''}`.trim() || 'Đã có KQ';
+      }
+    }
+    return {
+      tenDichVu: x.chiDinh?.dichVu?.tenDichVu,
+      ketQua: ketQuaText,
+      ghiChuKetQua: x.ketQua?.nhanXet || '',
+    };
+  });
 
   // Tạo phiếu khám
   const createMut = useMutation({
@@ -1630,6 +1650,8 @@ function DynamicQueuePanel({ benhAnKhamId }) {
   );
 }
 
+/* ChiTietKetQuaXetNghiemRenderer được dùng chung từ components/Lab/ChiTietKetQuaXetNghiemRenderer */
+
 /* ──── TAB XÉT NGHIỆM (XEM KẾT QUẢ TỪ CSDL & TẠO CHỈ ĐỊNH) ──── */
 function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
   const qc = useQueryClient();
@@ -1716,51 +1738,11 @@ function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
                 )}
 
                 {ketQua ? (
-                  <div className="mt-2 rounded-xl bg-emerald-50/60 border border-emerald-200 p-3 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-emerald-800">KẾT QUẢ TỪ PHÒNG XÉT NGHIỆM</span>
-                      <span className="text-[10px] text-emerald-600">{formatDateTime(ketQua.thoiGianNhap || ketQua.taoLuc || new Date())}</span>
-                    </div>
-                    <p className="text-base font-bold text-emerald-900">
-                      {ketQua.giaTri} <span className="text-xs font-normal text-emerald-700">{ketQua.donVi}</span>
-                    </p>
-                    {ketQua.nhanXet && (
-                      <p className="text-xs text-emerald-800 font-medium">Nhận xét: {ketQua.nhanXet}</p>
-                    )}
-                    {parseAttachmentUrls(ketQua.fileDinhKem).length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-emerald-200/60 flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {parseAttachmentUrls(ketQua.fileDinhKem).map((file, fileIndex) => {
-                            const fileUrl = toAttachmentUrl(file);
-                            return /\.(jpeg|jpg|gif|png|webp)$/i.test(file) ? (
-                              <button
-                                key={file}
-                                type="button"
-                                onClick={() => setPreviewFile({ url: fileUrl, name: `Hình ảnh kết quả ${fileIndex + 1}`, files: parseAttachmentUrls(ketQua.fileDinhKem).map(toAttachmentUrl), index: fileIndex })}
-                                className="rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                                title="Xem ảnh ngay trên trang"
-                              >
-                                <img src={fileUrl} alt={`Hình ảnh kết quả ${fileIndex + 1}`} className="h-12 w-12 object-cover rounded-lg border border-emerald-300 shadow-2xs cursor-pointer hover:scale-105 transition-transform" />
-                              </button>
-                            ) : (
-                              <button
-                                key={file}
-                                type="button"
-                                onClick={() => setPreviewFile({ url: fileUrl, name: `Tệp kết quả ${fileIndex + 1}`, files: parseAttachmentUrls(ketQua.fileDinhKem).map(toAttachmentUrl), index: fileIndex })}
-                                className="text-xs text-emerald-700 underline"
-                              >
-                                Tệp {fileIndex + 1} (xem tại đây)
-                              </button>
-                            );
-                          })}
-                          <div>
-                            <p className="text-xs font-bold text-emerald-900">📎 Có tệp đính kèm kết quả (X-Quang / Siêu âm / PDF)</p>
-                            <span className="text-[10px] text-emerald-700 font-mono block">{parseAttachmentUrls(ketQua.fileDinhKem).length} tệp</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <ChiTietKetQuaXetNghiemRenderer
+                    chiDinh={chiDinh}
+                    ketQua={ketQua}
+                    onPreviewFile={setPreviewFile}
+                  />
                 ) : (
                   <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded">
                     ⏳ Đang chờ Kỹ thuật viên xử lý và nhập kết quả...

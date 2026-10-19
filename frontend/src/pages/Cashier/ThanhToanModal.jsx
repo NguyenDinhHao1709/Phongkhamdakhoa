@@ -85,7 +85,8 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
   }
 
   const tongTien = hoaDon?.tongTien || 0;
-  const thucThu = Math.max(0, tongTien - Number(soTienGiam));
+  const tienCocDaThu = Number(hoaDon?.tienCocDaThu || 0);
+  const thucThu = Math.max(0, tongTien - Number(soTienGiam) - tienCocDaThu);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
@@ -168,14 +169,29 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-gray-700">
-                  {hoaDon?.chiTiet?.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50/50">
-                      <td className="px-4 py-3 font-medium text-gray-900">{item.moTa || item.loaiPhi}</td>
-                      <td className="px-4 py-3 text-center">{item.soLuong}</td>
-                      <td className="px-4 py-3 text-right">{formatCurrency(item.donGia)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(item.thanhTien)}</td>
-                    </tr>
-                  ))}
+                  {hoaDon?.chiTiet?.map((item, idx) => {
+                    const isTamUng = item.loaiPhi === 'tam_ung' || Number(item.thanhTien) < 0;
+                    return (
+                      <tr key={idx} className={isTamUng ? 'bg-blue-50/70 font-medium text-blue-900' : 'hover:bg-gray-50/50'}>
+                        <td className="px-4 py-3">
+                          {isTamUng ? (
+                            <span className="flex items-center gap-1.5 font-bold text-blue-800">
+                              ✓ {item.moTa || item.loaiPhi}
+                            </span>
+                          ) : (
+                            <span className="font-medium text-gray-900">{item.moTa || item.loaiPhi}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center">{item.soLuong}</td>
+                        <td className={`px-4 py-3 text-right ${isTamUng ? 'text-blue-700 font-semibold font-mono' : ''}`}>
+                          {Number(item.donGia) < 0 ? `- ${formatCurrency(Math.abs(item.donGia))}` : formatCurrency(item.donGia)}
+                        </td>
+                        <td className={`px-4 py-3 text-right font-bold ${isTamUng ? 'text-blue-700 font-mono' : 'text-gray-900'}`}>
+                          {Number(item.thanhTien) < 0 ? `- ${formatCurrency(Math.abs(item.thanhTien))}` : formatCurrency(item.thanhTien)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -247,6 +263,17 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
                 <span>Tổng viện phí dịch vụ:</span>
                 <span className="font-semibold text-gray-900">{formatCurrency(tongTien)}</span>
               </div>
+
+              {tienCocDaThu > 0 && (
+                <div className="flex items-center justify-between text-xs text-blue-700 bg-blue-50/80 px-2.5 py-1.5 rounded-lg border border-blue-200">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <span className="h-2 w-2 rounded-full bg-blue-600 inline-block"></span>
+                    Đã cọc đặt lịch hẹn ({hoaDon?.maLichHenCoc || 'Đã thanh toán trước'}):
+                  </span>
+                  <span className="font-bold text-blue-800 font-mono">- {formatCurrency(tienCocDaThu)}</span>
+                </div>
+              )}
+
               <div className="flex items-center justify-between text-sm text-emerald-700">
                 <span>Khấu trừ BHYT / Giảm giá:</span>
                 <input

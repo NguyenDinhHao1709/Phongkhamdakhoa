@@ -17,28 +17,56 @@ export function EditNhanVienModal({ isOpen, onClose, onSubmit, nhanVienId }) {
     enabled: !!nhanVienId && isOpen,
   });
 
+  const toLocalDateInput = (val) => {
+    if (!val) return '';
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val.trim())) return val.trim();
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const DEFAULT_CHUYEN_KHOA = [
+    'Nội tổng quát',
+    'Nội tổng quát & Tim mạch',
+    'Ngoại khoa',
+    'Nhi khoa',
+    'Tai Mũi Họng',
+    'Tim mạch',
+    'Cơ Xương Khớp',
+    'Răng Hàm Mặt',
+    'Mắt',
+    'Sản Phụ khoa',
+    'Da liễu',
+    'Chẩn đoán hình ảnh & Xét nghiệm',
+    'Khác',
+  ];
+
   useEffect(() => {
     if (isSuccess && nvData?.data) {
+      const d = nvData.data;
+      const bs = d.bacSi || {};
+      const ktv = d.kyThuatVien || {};
       reset({
-        hoTen: nvData.data.hoTen,
-        email: nvData.data.email,
-        soDienThoai: nvData.data.soDienThoai,
-        ngaySinh: nvData.data.ngaySinh ? new Date(nvData.data.ngaySinh).toISOString().split('T')[0] : '',
-        gioiTinh: nvData.data.gioiTinh,
-        soCmnd: nvData.data.soCmnd,
-        ngayVaoLam: nvData.data.ngayVaoLam ? new Date(nvData.data.ngayVaoLam).toISOString().split('T')[0] : '',
-        anhDaiDien: nvData.data.anhDaiDien,
-        chuyenKhoa: nvData.data.chuyenKhoa,
-        bangCap: nvData.data.bangCap,
-        soChungChiHanhNghe: nvData.data.soChungChiHanhNghe,
-        moTaBacSi: nvData.data.moTa,
-        chuyenMon: nvData.data.chuyenMon,
+        hoTen: d.hoTen || '',
+        email: d.email || '',
+        soDienThoai: d.soDienThoai || '',
+        ngaySinh: toLocalDateInput(d.ngaySinh),
+        gioiTinh: d.gioiTinh || '',
+        soCmnd: d.soCmnd || '',
+        ngayVaoLam: toLocalDateInput(d.ngayVaoLam),
+        anhDaiDien: d.anhDaiDien || '',
+        chuyenKhoa: bs.chuyenKhoa || d.chuyenKhoa || '',
+        bangCap: bs.bangCap || d.bangCap || '',
+        soChungChiHanhNghe: bs.soChungChiHanhNghe || d.soChungChiHanhNghe || '',
+        moTaBacSi: bs.moTa || d.moTa || '',
+        chuyenMon: ktv.chuyenMon || d.chuyenMon || '',
       });
       setAvatarMsg(null);
     }
   }, [isSuccess, nvData, reset]);
 
   const maVaiTro = nvData?.data?.nguoiDung?.vaiTro?.maVaiTro;
+  const currentChuyenKhoa = nvData?.data?.bacSi?.chuyenKhoa || nvData?.data?.chuyenKhoa || '';
 
   if (!isOpen) return null;
 
@@ -232,16 +260,12 @@ export function EditNhanVienModal({ isOpen, onClose, onSubmit, nhanVienId }) {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Chuyên khoa *</label>
                     <select {...register('chuyenKhoa', { required: true })} className="w-full rounded-md border-gray-300 p-2 border">
                       <option value="">-- Chọn Chuyên khoa --</option>
-                      <option value="Nội tổng quát">Nội tổng quát</option>
-                      <option value="Ngoại khoa">Ngoại khoa</option>
-                      <option value="Nhi khoa">Nhi khoa</option>
-                      <option value="Tai Mũi Họng">Tai Mũi Họng</option>
-                      <option value="Tim mạch">Tim mạch</option>
-                      <option value="Cơ Xương Khớp">Cơ Xương Khớp</option>
-                      <option value="Răng Hàm Mặt">Răng Hàm Mặt</option>
-                      <option value="Mắt">Mắt</option>
-                      <option value="Chẩn đoán hình ảnh & Xét nghiệm">Chẩn đoán hình ảnh & Xét nghiệm</option>
-                      <option value="Khác">Khác</option>
+                      {currentChuyenKhoa && !DEFAULT_CHUYEN_KHOA.includes(currentChuyenKhoa) && (
+                        <option value={currentChuyenKhoa}>{currentChuyenKhoa}</option>
+                      )}
+                      {DEFAULT_CHUYEN_KHOA.map((ck) => (
+                        <option key={ck} value={ck}>{ck}</option>
+                      ))}
                     </select>
                   </div>
                   <div>

@@ -20,6 +20,7 @@ import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHen } from '../lich-hen/entities/lich-hen.entity';
 import { NhatKyHeThong } from './entities/nhat-ky-he-thong.entity';
+import { BaoCaoBoPhan } from './entities/bao-cao-bo-phan.entity';
 import { QuanLyController } from './quan-ly.controller';
 import { QuanLyService } from './quan-ly.service';
 import { ThongBaoModule } from '../thong-bao/thong-bao.module';
@@ -46,6 +47,7 @@ import { ThongBaoModule } from '../thong-bao/thong-bao.module';
       DonThuoc,
       NhatKyHeThong,
       LichHen,
+      BaoCaoBoPhan,
     ]),
     ThongBaoModule,
     HttpModule,

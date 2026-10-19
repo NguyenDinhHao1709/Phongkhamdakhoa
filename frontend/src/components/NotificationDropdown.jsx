@@ -1,13 +1,27 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Bell, FlaskConical, FileText, CheckCheck, Inbox, Clock } from 'lucide-react';
+import { Bell, FlaskConical, FileText, CheckCheck, Inbox, Clock, ClipboardList, Wallet, X } from 'lucide-react';
 import api from '../services/api';
 import { timeAgo } from '../utils/formatDate';
 import useAuthStore from '../store/authStore';
 
+// Tiền tố route theo vai trò (dùng để chuyển hướng khi bấm thông báo)
+const ROLE_PREFIX = {
+  tiep_tan: 'tiep-tan',
+  bac_si: 'bac-si',
+  ky_thuat_vien: 'ky-thuat-vien',
+  nhan_vien_nha_thuoc: 'nha-thuoc',
+  nha_thuoc: 'nha-thuoc',
+  thu_ngan: 'thu-ngan',
+};
+
 export function NotificationDropdown() {
   const [isOpen, setIsOpen] = useState(false);
+  const [toast, setToast] = useState(null); // Thông báo mới vừa đến (popup góc màn hình)
+  const [ringing, setRinging] = useState(false); // Hiệu ứng rung chuông
+  const seenIdsRef = useRef(null); // null = chưa tải lần đầu
+  const baseTitleRef = useRef(document.title.replace(/^\(\d+\+?\)\s*/, ''));
   const dropdownRef = useRef(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -24,7 +38,7 @@ export function NotificationDropdown() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Polling thông báo mỗi 4s theo đúng user ID đang đăng nhập
+  // Polling thông báo siêu tốc dưới 3s (2.5s) theo đúng user ID đang đăng nhập
   const { data } = useQuery({
     queryKey: ['thong-bao', user?.id],
     queryFn: async () => {
@@ -33,7 +47,7 @@ export function NotificationDropdown() {
       if (res?.items) return res;
       return res?.data || { items: [], unreadCount: 0 };
     },
-    refetchInterval: 4000,
+    refetchInterval: 2500,
     enabled: !!user?.id,
   });
 
@@ -41,6 +55,50 @@ export function NotificationDropdown() {
   const unreadCount = typeof data?.unreadCount === 'number'
     ? data.unreadCount
     : (typeof data?.data?.unreadCount === 'number' ? data.data.unreadCount : 0);
+
+  // Hiệu ứng phát hiện thông báo MỚI đến qua Polling -> Rung chuông & hiện Toast nổi
+  useEffect(() => {
+    if (!notifications) return;
+
+    // Lần đầu tải trang: ghi nhận các ID đã có để không spam toast
+    if (seenIdsRef.current === null) {
+      seenIdsRef.current = new Set(notifications.map((n) => n.id));
+      return;
+    }
+
+    // Các lần refetch sau: tìm thông báo chưa đọc mới xuất hiện
+    const newItems = notifications.filter(
+      (item) => !item.daDoc && !seenIdsRef.current.has(item.id),
+    );
+
+    if (newItems.length > 0) {
+      // Thêm vào danh sách đã thấy
+      newItems.forEach((item) => seenIdsRef.current.add(item.id));
+      const latest = newItems[0];
+      setToast(latest);
+      setRinging(true);
+
+      // Tự tắt rung chuông sau 1.2s
+      const ringTimer = setTimeout(() => setRinging(false), 1200);
+      // Tự đóng toast sau 6s
+      const toastTimer = setTimeout(() => setToast(null), 6000);
+
+      return () => {
+        clearTimeout(ringTimer);
+        clearTimeout(toastTimer);
+      };
+    }
+  }, [notifications]);
+
+  // Cập nhật tiêu đề tab trình duyệt với số lượng chưa đọc (vd: (3) Phòng khám đa khoa)
+  useEffect(() => {
+    const base = baseTitleRef.current || 'Phòng Khám';
+    if (unreadCount > 0) {
+      document.title = `(${unreadCount > 9 ? '9+' : unreadCount}) ${base}`;
+    } else {
+      document.title = base;
+    }
+  }, [unreadCount]);
 
   // Đánh dấu 1 thông báo đã đọc
   const markReadMutation = useMutation({
@@ -63,9 +121,10 @@ export function NotificationDropdown() {
       markReadMutation.mutate(item.id);
     }
     setIsOpen(false);
+    setToast(null);
 
     // Chuyển hướng thông minh theo ngữ cảnh và loại đối tượng
-    if (item.loai === 'xet_nghiem') {
+    if (item.loai === 'xet_nghiem' || item.loai === 'ket_qua_xet_nghiem_hieu_chinh') {
       const chiDinhId = item.doiTuongId;
       if (user?.vaiTro === 'ky_thuat_vien') {
         // KTV: mở thẳng chỉ định xét nghiệm đó để tiến hành lấy mẫu / nhập kết quả
@@ -80,16 +139,23 @@ export function NotificationDropdown() {
         // Giám đốc: mở trang duyệt đơn và chọn ngay đơn đó
         navigate(donId ? `/ban-giam-doc/phe-duyet-don?donId=${donId}` : '/ban-giam-doc/phe-duyet-don');
       } else {
-        const rolePrefixMap = {
-          tiep_tan: 'tiep-tan',
-          bac_si: 'bac-si',
-          ky_thuat_vien: 'ky-thuat-vien',
-          nhan_vien_nha_thuoc: 'nha-thuoc',
-          thu_ngan: 'thu-ngan',
-        };
-        const prefix = rolePrefixMap[user?.vaiTro] || 'tiep-tan';
+        const prefix = ROLE_PREFIX[user?.vaiTro] || 'tiep-tan';
         navigate(`/${prefix}/gui-don`);
       }
+    } else if (item.loai === 'chi_dao_bao_cao') {
+      // Nhân viên / bác sĩ nhận chỉ đạo của Giám đốc -> chuyển đến trang thống kê / báo cáo của bộ phận mình
+      const prefix = ROLE_PREFIX[user?.vaiTro] || 'tiep-tan';
+      navigate(`/${prefix}/thong-ke`);
+    } else if (item.loai === 'bao_cao_bo_phan') {
+      // Giám đốc nhận báo cáo từ các bộ phận gửi lên
+      if (user?.vaiTro === 'ban_giam_doc') {
+        navigate('/ban-giam-doc/bao-cao-bo-phan');
+      } else {
+        const prefix = ROLE_PREFIX[user?.vaiTro] || 'tiep-tan';
+        navigate(`/${prefix}/thong-ke`);
+      }
+    } else if (item.loai === 'ban_giao_ca' || item.loai === 'xac_nhan_nhan_ca') {
+      navigate('/thu-ngan/thong-ke');
     } else if (item.loai === 'lich_kham' || item.loai === 'lich_hen') {
       if (user?.vaiTro === 'bac_si') {
         navigate('/bac-si/phong-kham');
@@ -102,9 +168,17 @@ export function NotificationDropdown() {
   const getIcon = (loai) => {
     switch (loai) {
       case 'xet_nghiem':
+      case 'ket_qua_xet_nghiem_hieu_chinh':
         return <FlaskConical className="w-4 h-4 text-blue-600" />;
       case 'don_tu':
+      case 'phe_duyet':
         return <FileText className="w-4 h-4 text-amber-600" />;
+      case 'chi_dao_bao_cao':
+      case 'bao_cao_bo_phan':
+        return <ClipboardList className="w-4 h-4 text-emerald-600" />;
+      case 'ban_giao_ca':
+      case 'xac_nhan_nhan_ca':
+        return <Wallet className="w-4 h-4 text-purple-600" />;
       default:
         return <Bell className="w-4 h-4 text-primary-600" />;
     }
@@ -113,9 +187,17 @@ export function NotificationDropdown() {
   const getIconBg = (loai) => {
     switch (loai) {
       case 'xet_nghiem':
+      case 'ket_qua_xet_nghiem_hieu_chinh':
         return 'bg-blue-100';
       case 'don_tu':
+      case 'phe_duyet':
         return 'bg-amber-100';
+      case 'chi_dao_bao_cao':
+      case 'bao_cao_bo_phan':
+        return 'bg-emerald-100';
+      case 'ban_giao_ca':
+      case 'xac_nhan_nhan_ca':
+        return 'bg-purple-100';
       default:
         return 'bg-primary-100';
     }
@@ -123,14 +205,57 @@ export function NotificationDropdown() {
 
   return (
     <div className="relative" ref={dropdownRef}>
+      {/* Toast thông báo nổi khi có tin mới */}
+      {toast && (
+        <div
+          className="fixed top-4 right-4 z-[9999] max-w-sm w-full bg-white border border-blue-200 rounded-2xl shadow-2xl p-4 flex items-start gap-3 transition-all duration-300 animate-slide-in hover:shadow-blue-100"
+          role="alert"
+        >
+          <div className={`p-2.5 rounded-xl shrink-0 ${getIconBg(toast.loai)}`}>
+            {getIcon(toast.loai)}
+          </div>
+          <div
+            className="flex-1 min-w-0 cursor-pointer"
+            onClick={() => handleNotificationClick(toast)}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-blue-600 uppercase tracking-wide">
+                Thông báo mới
+              </span>
+              <span className="text-[10px] text-gray-400">Vừa xong</span>
+            </div>
+            <p className="text-sm font-semibold text-gray-900 truncate mt-0.5">
+              {toast.tieuDe}
+            </p>
+            {toast.noiDung && (
+              <p className="text-xs text-gray-600 line-clamp-2 mt-0.5 leading-relaxed">
+                {toast.noiDung}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setToast(null);
+            }}
+            className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors"
+            title="Đóng"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Nút quả chuông */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors focus:outline-none"
+        className={`relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-all focus:outline-none ${
+          ringing ? 'animate-bounce text-red-500 bg-red-50' : ''
+        }`}
         title="Thông báo"
         data-testid="btn-notification-bell"
       >
-        <Bell className="h-5 w-5" />
+        <Bell className={`h-5 w-5 ${ringing ? 'text-red-500' : ''}`} />
         {unreadCount > 0 && (
           <span
             className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white animate-pulse"

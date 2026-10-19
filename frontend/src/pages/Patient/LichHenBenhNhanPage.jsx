@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, RefreshCw, Stethoscope, AlertTriangle, ShieldAlert, XCircle, CheckCircle2, Video, Building2, Users, QrCode, Star, CreditCard, CalendarClock } from 'lucide-react';
+import { Calendar, Clock, RefreshCw, Stethoscope, AlertTriangle, ShieldAlert, XCircle, CheckCircle2, Video, Building2, Users, QrCode, Star, CreditCard, CalendarClock, Landmark, Banknote, RotateCcw, X } from 'lucide-react';
 import { apiGet, apiPost, apiPatch } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../design-system/components/Badge/StatusBadge';
@@ -10,10 +10,31 @@ import DanhGiaCaKhamModal from '../../components/Appointment/DanhGiaCaKhamModal'
 import PaymentCountdownModal from '../../components/Appointment/PaymentCountdownModal';
 import RescheduleAppointmentModal from '../../components/Appointment/RescheduleAppointmentModal';
 
+const DANH_SACH_NGAN_HANG = [
+  'Vietcombank (VCB)',
+  'MBBank (MB)',
+  'Techcombank (TCB)',
+  'BIDV',
+  'VietinBank (CTG)',
+  'Agribank',
+  'ACB',
+  'VPBank',
+  'TPBank',
+  'Sacombank',
+  'HDBank',
+  'VIB',
+  'Ví MoMo',
+  'Ví VNPay',
+];
+
 // Loại bỏ các log hệ thống như [ĐÃ_NHẮC_LỊCH: ...] khỏi giao diện bệnh nhân
 const cleanGhiChu = (note) => {
   if (!note) return '';
-  return note.replace(/\[ĐÃ_NHẮC_LỊCH:[^\]]*\]/gi, '').trim();
+  return note
+    .replace(/\[ĐÃ_NHẮC_LỊCH:[^\]]*\]/gi, '')
+    .replace(/\[TK_HOÀN_TIỀN:[^\]]*\]/gi, '')
+    .replace(/\[CHỜ HOÀN CỌC[^\]]*\]/gi, '')
+    .trim();
 };
 
 export default function LichHenBenhNhanPage() {
@@ -26,6 +47,20 @@ export default function LichHenBenhNhanPage() {
   const [ticketModalData, setTicketModalData] = useState({ isOpen: false, appointment: null });
   const [reviewModalData, setReviewModalData] = useState({ isOpen: false, appointment: null });
   const [rescheduleModalData, setRescheduleModalData] = useState({ isOpen: false, appointment: null });
+  const [refundModalData, setRefundModalData] = useState({
+    isOpen: false,
+    mode: 'cancel', // 'cancel' | 'update_bank'
+    appointment: null,
+  });
+  const [refundForm, setRefundForm] = useState({
+    phuongThucNhan: 'chuyen_khoan',
+    nganHang: DANH_SACH_NGAN_HANG[0],
+    soTaiKhoan: '',
+    chuTaiKhoan: '',
+    lyDoHuy: 'Bận việc đột xuất / Thay đổi kế hoạch cá nhân',
+  });
+  const [submittingRefund, setSubmittingRefund] = useState(false);
+  const [refundError, setRefundError] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -45,7 +80,42 @@ export default function LichHenBenhNhanPage() {
     }
   };
 
+  const openRefundModal = (lh, mode = 'cancel') => {
+    const existingInfo = lh?.thongTinHoanCoc;
+    setRefundForm({
+      phuongThucNhan:
+        existingInfo?.phuongThucNhan === 'tien_mat' ? 'tien_mat' : 'chuyen_khoan',
+      nganHang: existingInfo?.nganHang && DANH_SACH_NGAN_HANG.includes(existingInfo.nganHang)
+        ? existingInfo.nganHang
+        : DANH_SACH_NGAN_HANG[0],
+      soTaiKhoan: existingInfo?.soTaiKhoan || '',
+      chuTaiKhoan: (existingInfo?.chuTaiKhoan || lh?.benhNhan?.hoTen || '').toUpperCase(),
+      lyDoHuy: 'Bận việc đột xuất / Thay đổi kế hoạch cá nhân',
+    });
+    setRefundError('');
+    setRefundModalData({ isOpen: true, mode, appointment: lh });
+  };
+
   const handleCancelAppointment = async (lh) => {
+    // Nếu chưa thanh toán tạm ứng -> Hủy nhanh không cần STK hoàn tiền
+    if (lh.trangThai === 'cho_thanh_toan') {
+      if (!window.confirm(`Bạn có chắc chắn muốn hủy yêu cầu đặt lịch ${lh.maLichHen} (chưa thanh toán)?`)) {
+        return;
+      }
+      setCancelingId(lh.id);
+      setMsg({ type: '', text: '' });
+      try {
+        const res = await apiPatch(`/lich-hen/${lh.id}/huy`, {});
+        setMsg({ type: 'success', text: res.message || 'Đã hủy yêu cầu đặt lịch chưa thanh toán.' });
+        fetchData();
+      } catch (err) {
+        setMsg({ type: 'error', text: err?.error?.message || err?.message || 'Không thể hủy lịch hẹn' });
+      } finally {
+        setCancelingId(null);
+      }
+      return;
+    }
+
     const now = new Date();
     const bookingDateTime = new Date(`${lh.ngayHen}T${lh.gioHen}`);
     const diffHours = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -55,22 +125,54 @@ export default function LichHenBenhNhanPage() {
       return;
     }
 
-    const confirmCancel = window.confirm(
-      `XÁC NHẬN HỦY LỊCH HẸN ${lh.maLichHen}\n\nBạn đang hủy trước ngày khám >= 1 ngày (Hợp lệ).\nSố tiền tạm ứng 40.000đ (1/5 phí khám) sẽ được hoàn trả tự động 100% qua VNPay/MoMo.\n\nBạn có chắc chắn muốn hủy?`
-    );
+    // Mở Modal chuẩn ERP Y tế để bệnh nhân nhập Ngân hàng + Số tài khoản nhận lại 40.000đ tiền cọc
+    openRefundModal(lh, 'cancel');
+  };
 
-    if (!confirmCancel) return;
+  const handleSubmitRefundOrCancel = async (e) => {
+    e.preventDefault();
+    const lh = refundModalData.appointment;
+    if (!lh) return;
 
-    setCancelingId(lh.id);
-    setMsg({ type: '', text: '' });
+    if (refundForm.phuongThucNhan === 'chuyen_khoan') {
+      if (!refundForm.nganHang.trim() || !refundForm.soTaiKhoan.trim()) {
+        setRefundError('Vui lòng chọn Ngân hàng và nhập Số tài khoản để Thu ngân chuyển hoàn 40.000 đ.');
+        return;
+      }
+      if (!refundForm.chuTaiKhoan.trim()) {
+        setRefundError('Vui lòng nhập Tên chủ tài khoản thụ hưởng.');
+        return;
+      }
+    }
+
+    setSubmittingRefund(true);
+    setRefundError('');
     try {
-      const res = await apiPatch(`/lich-hen/${lh.id}/huy`);
-      setMsg({ type: 'success', text: res.message || 'Hủy lịch hẹn thành công! Đã gửi yêu cầu hoàn tiền 40.000đ qua VNPay/MoMo.' });
+      const endpoint =
+        refundModalData.mode === 'update_bank'
+          ? `/lich-hen/${lh.id}/cap-nhat-tk-hoan-coc`
+          : `/lich-hen/${lh.id}/huy`;
+
+      const res = await apiPatch(endpoint, {
+        phuongThucNhan: refundForm.phuongThucNhan,
+        nganHang: refundForm.nganHang,
+        soTaiKhoan: refundForm.soTaiKhoan.trim(),
+        chuTaiKhoan: refundForm.chuTaiKhoan.trim().toUpperCase(),
+        lyDoHuy: refundForm.lyDoHuy.trim(),
+      });
+
+      setRefundModalData({ isOpen: false, mode: 'cancel', appointment: null });
+      setMsg({
+        type: 'success',
+        text:
+          res?.message ||
+          'Đã gửi yêu cầu hủy lịch và thông tin tài khoản nhận hoàn cọc 40.000đ sang bộ phận Thu ngân!',
+      });
       fetchData();
     } catch (err) {
-      setMsg({ type: 'error', text: err?.error?.message || err?.message || 'Không thể hủy lịch hẹn' });
+      setRefundError(err?.error?.message || err?.message || 'Không thể xử lý yêu cầu. Vui lòng thử lại.');
     } finally {
-      setCancelingId(null);
+      setSubmittingRefund(false);
     }
   };
 
@@ -104,10 +206,10 @@ export default function LichHenBenhNhanPage() {
       {/* Thông tin chính sách đặt trước & hủy trước 1 ngày */}
       <div className="rounded-2xl bg-primary-50/70 p-4 border border-primary-200/80 text-xs text-primary-900 leading-relaxed">
         <p className="font-bold text-sm mb-1 flex items-center gap-1.5">
-          <ShieldAlert className="h-4 w-4 text-primary-600" /> Quy định Tạm ứng 1/5 & Ranh giới Hủy trước 1 ngày (24 giờ):
+          <ShieldAlert className="h-4 w-4 text-primary-600" /> Quy định Tạm ứng 1/5 & Quy trình Hoàn cọc chuẩn ERP Y tế:
         </p>
-        <p>• Mỗi lịch hẹn cần tạm ứng <strong>40.000 đ (1/5 phí khám 200.000đ)</strong> để xác nhận giữ chỗ.</p>
-        <p>• Hủy lịch hợp lệ <strong>trước ngày khám ít nhất 1 ngày (trước 24 tiếng)</strong>: Được <strong>hoàn trả 100% tiền tạm ứng (40.000đ)</strong> tự động qua VNPay/MoMo.</p>
+        <p>• Mỗi lịch hẹn cần tạm ứng <strong>40.000 đ (1/5 phí khám 200.000đ)</strong> để xác nhận giữ chỗ và khấu trừ trực tiếp vào hóa đơn khi đến khám.</p>
+        <p>• Hủy lịch hợp lệ <strong>trước ngày khám ít nhất 1 ngày (trước 24 tiếng)</strong> hoặc do Bác sĩ dời/hủy ca: Được <strong>hoàn trả 100% tiền tạm ứng (40.000đ)</strong>. Quý khách cung cấp <strong>Số tài khoản Ngân hàng</strong> (hoặc chọn nhận tiền mặt tại quầy) để bộ phận Thu ngân đối soát và chuyển hoàn.</p>
         <p>• Hủy lịch <strong>trong vòng 24 tiếng</strong> hoặc không đến khám (No-show): Khoản tiền tạm ứng 40.000đ sẽ không được hoàn lại theo quy định của phòng khám.</p>
       </div>
 
@@ -362,6 +464,31 @@ export default function LichHenBenhNhanPage() {
                         </>
                       )}
 
+                      {isCanceled && lh.trangThaiHoanCoc === 'cho_hoan_coc' && (
+                        <div className="col-span-3 md:col-auto flex flex-col gap-1.5">
+                          <span className="py-1 px-2.5 rounded-lg text-[11px] font-bold bg-orange-50 text-orange-800 border border-orange-200 text-center">
+                            ⏳ Chờ Thu ngân hoàn cọc 40.000 đ
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => openRefundModal(lh, 'update_bank')}
+                            className="py-1.5 px-2.5 rounded-xl text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 flex items-center justify-center gap-1 transition cursor-pointer"
+                          >
+                            <Landmark className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                            <span>
+                              {lh.thongTinHoanCoc?.soTaiKhoan ? 'Đổi STK nhận hoàn cọc' : 'Cập nhật STK hoàn cọc'}
+                            </span>
+                          </button>
+                        </div>
+                      )}
+
+                      {isCanceled && lh.trangThaiHoanCoc === 'da_hoan_coc' && (
+                        <span className="col-span-3 md:col-auto py-1.5 px-2.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center gap-1">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                          <span>Đã hoàn cọc 40.000 đ</span>
+                        </span>
+                      )}
+
                       {isCompleted && (
                         <button
                           type="button"
@@ -419,6 +546,193 @@ export default function LichHenBenhNhanPage() {
           fetchData();
         }}
       />
+
+      {/* Modal Yêu cầu Hủy lịch & Cung cấp Số tài khoản nhận hoàn cọc (Chuẩn ERP Y tế) */}
+      {refundModalData.isOpen && refundModalData.appointment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden my-8 animate-fade-in">
+            <div className="flex items-center justify-between border-b px-6 py-4 bg-rose-50/80 border-rose-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-rose-100 rounded-xl">
+                  <RotateCcw className="h-5 w-5 text-rose-700" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-rose-950">
+                    {refundModalData.mode === 'update_bank'
+                      ? 'Cập nhật Tài khoản Nhận Hoàn Cọc (40.000 đ)'
+                      : 'Xác nhận Hủy Lịch Hẹn & Nhận Hoàn Cọc (40.000 đ)'}
+                  </h3>
+                  <p className="text-xs text-rose-700">
+                    Mã lịch hẹn: <strong className="font-mono">{refundModalData.appointment.maLichHen}</strong> • Ngày khám:{' '}
+                    <strong>{formatDate(refundModalData.appointment.ngayHen)} ({refundModalData.appointment.gioHen})</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRefundModalData({ isOpen: false, mode: 'cancel', appointment: null })}
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-white rounded-xl transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitRefundOrCancel} className="p-6 space-y-4 text-xs sm:text-sm">
+              {refundError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-red-600" />
+                  <span>{refundError}</span>
+                </div>
+              )}
+
+              <div className="p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-900 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  Đủ điều kiện hoàn trả 100% tiền tạm ứng: <span className="text-sm font-black text-emerald-700">40.000 đ</span>
+                </p>
+                <p className="text-[11px] text-emerald-800">
+                  Vui lòng cung cấp thông tin nhận tiền bên dưới để bộ phận Thu ngân phòng khám đối soát và chuyển khoản hoàn trả chính xác cho quý khách.
+                </p>
+              </div>
+
+              {/* Chọn phương thức nhận hoàn cọc */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                  Phương thức nhận lại tiền cọc
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setRefundForm((f) => ({ ...f, phuongThucNhan: 'chuyen_khoan' }))}
+                    className={`p-3 rounded-xl border text-left transition flex items-center gap-2.5 cursor-pointer ${
+                      refundForm.phuongThucNhan === 'chuyen_khoan'
+                        ? 'bg-primary-50 border-primary-500 ring-2 ring-primary-500/20 text-primary-900'
+                        : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <Landmark className="h-5 w-5 text-primary-600 shrink-0" />
+                    <div>
+                      <p className="font-bold text-xs">Chuyển khoản Ngân hàng</p>
+                      <p className="text-[10px] text-gray-500">Nhận qua STK / VietQR</p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRefundForm((f) => ({ ...f, phuongThucNhan: 'tien_mat' }))}
+                    className={`p-3 rounded-xl border text-left transition flex items-center gap-2.5 cursor-pointer ${
+                      refundForm.phuongThucNhan === 'tien_mat'
+                        ? 'bg-amber-50 border-amber-500 ring-2 ring-amber-500/20 text-amber-900'
+                        : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <Banknote className="h-5 w-5 text-amber-600 shrink-0" />
+                    <div>
+                      <p className="font-bold text-xs">Tiền mặt tại Quầy</p>
+                      <p className="text-[10px] text-gray-500">Nhận tại Quầy Thu Ngân</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {refundForm.phuongThucNhan === 'chuyen_khoan' ? (
+                <div className="space-y-3 bg-gray-50/80 p-4 rounded-xl border border-gray-200">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Ngân hàng / Ví điện tử thụ hưởng <span className="text-rose-600">*</span>
+                    </label>
+                    <select
+                      value={refundForm.nganHang}
+                      onChange={(e) => setRefundForm((f) => ({ ...f, nganHang: e.target.value }))}
+                      className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                    >
+                      {DANH_SACH_NGAN_HANG.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">
+                        Số tài khoản nhận tiền <span className="text-rose-600">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={refundForm.soTaiKhoan}
+                        onChange={(e) => setRefundForm((f) => ({ ...f, soTaiKhoan: e.target.value }))}
+                        placeholder="Nhập số tài khoản..."
+                        className="w-full px-3 py-2 text-xs sm:text-sm font-mono rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">
+                        Tên chủ tài khoản <span className="text-rose-600">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={refundForm.chuTaiKhoan}
+                        onChange={(e) => setRefundForm((f) => ({ ...f, chuTaiKhoan: e.target.value.toUpperCase() }))}
+                        placeholder="VD: NGUYEN VAN AN"
+                        className="w-full px-3 py-2 text-xs sm:text-sm uppercase rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900">
+                  Quý khách vui lòng xuất trình mã lịch hẹn <strong>{refundModalData.appointment.maLichHen}</strong> hoặc Số điện thoại tại <strong>Quầy Thu Ngân (Tầng 1)</strong> để nhận lại <strong>40.000 đ</strong> tiền mặt.
+                </div>
+              )}
+
+              {refundModalData.mode === 'cancel' && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Lý do hủy lịch hẹn
+                  </label>
+                  <input
+                    type="text"
+                    value={refundForm.lyDoHuy}
+                    onChange={(e) => setRefundForm((f) => ({ ...f, lyDoHuy: e.target.value }))}
+                    placeholder="Nhập lý do hủy lịch hẹn..."
+                    className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  disabled={submittingRefund}
+                  onClick={() => setRefundModalData({ isOpen: false, mode: 'cancel', appointment: null })}
+                  className="px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 rounded-xl transition cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingRefund}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition cursor-pointer disabled:opacity-50"
+                >
+                  <RotateCcw className={`h-4 w-4 ${submittingRefund ? 'animate-spin' : ''}`} />
+                  <span>
+                    {submittingRefund
+                      ? 'Đang xử lý...'
+                      : refundModalData.mode === 'update_bank'
+                      ? 'Lưu thông tin nhận hoàn cọc'
+                      : 'Xác nhận hủy lịch & Gửi yêu cầu hoàn cọc'}
+                  </span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal Thanh Toán Phí Khám / Tiền Tạm Ứng */}
       {paymentAppointment && (

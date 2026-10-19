@@ -95,6 +95,8 @@ export default function KhoThuocPage() {
         if (isStopped || stock <= 20) return false;
       } else if (filterStockStatus === 'sap_het') {
         if (isStopped || stock <= 0 || stock > 20) return false;
+      } else if (filterStockStatus === 'can_date') {
+        if (isStopped || (!item.coLoCanDate && !item.coLoHetHan)) return false;
       } else if (filterStockStatus === 'het_hang') {
         if (isStopped || stock > 0) return false;
       } else if (filterStockStatus === 'ngung_kd') {
@@ -135,6 +137,7 @@ export default function KhoThuocPage() {
     const total = list.length;
     let ready = 0;
     let low = 0;
+    let nearExpiry = 0;
     let outOfStock = 0;
     let stopped = 0;
 
@@ -144,14 +147,19 @@ export default function KhoThuocPage() {
         stopped++;
       } else if (s <= 0) {
         outOfStock++;
-      } else if (s <= 20) {
-        low++;
       } else {
-        ready++;
+        if (i.coLoCanDate || i.coLoHetHan) {
+          nearExpiry++;
+        }
+        if (s <= 20) {
+          low++;
+        } else {
+          ready++;
+        }
       }
     });
 
-    return { total, ready, low, outOfStock, stopped };
+    return { total, ready, low, nearExpiry, outOfStock, stopped };
   }, [list]);
 
   const hasActiveFilters =
@@ -218,7 +226,7 @@ export default function KhoThuocPage() {
       </div>
 
       {/* 2. KPI Stat Cards Tương Tác & Lọc Nhanh */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
         {/* Tổng danh mục */}
         <button
           onClick={() => setFilterStockStatus('all')}
@@ -258,7 +266,28 @@ export default function KhoThuocPage() {
             </div>
           </div>
           <p className="text-2xl font-extrabold text-emerald-600 mt-2">{stats.ready}</p>
-          <p className="text-[11px] text-emerald-700 font-medium mt-0.5">Tồn kho dồi dào (&gt;20)</p>
+          <p className="text-[11px] text-emerald-700 font-medium mt-0.5">Tồn kho an toàn (&gt;20)</p>
+        </button>
+
+        {/* Lô cận date (≤ 60 ngày) */}
+        <button
+          onClick={() => setFilterStockStatus('can_date')}
+          className={`text-left p-4 rounded-2xl border transition-all cursor-pointer ${
+            filterStockStatus === 'can_date'
+              ? 'bg-amber-100/80 border-amber-400 ring-2 ring-amber-500/30 shadow-xs'
+              : 'bg-white border-gray-100 hover:border-amber-200 hover:shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-amber-800 uppercase tracking-wider">
+              Lô cận date
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+              <Clock className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="text-2xl font-extrabold text-amber-600 mt-2">{stats.nearExpiry}</p>
+          <p className="text-[11px] text-amber-700 font-medium mt-0.5">HSD ≤ 60 ngày</p>
         </button>
 
         {/* Sắp hết hàng */}
@@ -266,20 +295,20 @@ export default function KhoThuocPage() {
           onClick={() => setFilterStockStatus('sap_het')}
           className={`text-left p-4 rounded-2xl border transition-all cursor-pointer ${
             filterStockStatus === 'sap_het'
-              ? 'bg-amber-50/70 border-amber-300 ring-2 ring-amber-500/20 shadow-xs'
+              ? 'bg-orange-50/70 border-orange-300 ring-2 ring-orange-500/20 shadow-xs'
               : 'bg-white border-gray-100 hover:border-gray-200 hover:shadow-xs'
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-amber-800 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-orange-800 uppercase tracking-wider">
               Sắp hết hàng
             </span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
               <AlertTriangle className="h-4 w-4" />
             </div>
           </div>
-          <p className="text-2xl font-extrabold text-amber-600 mt-2">{stats.low}</p>
-          <p className="text-[11px] text-amber-700 font-medium mt-0.5">Cần dự trù nhập kho (≤20)</p>
+          <p className="text-2xl font-extrabold text-orange-600 mt-2">{stats.low}</p>
+          <p className="text-[11px] text-orange-700 font-medium mt-0.5">Tồn kho thấp (≤20)</p>
         </button>
 
         {/* Hết hàng */}
@@ -314,6 +343,7 @@ export default function KhoThuocPage() {
             {[
               { key: 'all', label: 'Tất cả', count: stats.total },
               { key: 'san_sang', label: 'Sẵn sàng', count: stats.ready, isSuccess: true },
+              { key: 'can_date', label: 'Lô cận date', count: stats.nearExpiry, isCanDate: true },
               { key: 'sap_het', label: 'Sắp hết', count: stats.low, isWarning: true },
               { key: 'het_hang', label: 'Hết hàng', count: stats.outOfStock, isDanger: true },
             ].map((tab) => (
@@ -324,8 +354,10 @@ export default function KhoThuocPage() {
                   filterStockStatus === tab.key
                     ? tab.isSuccess
                       ? 'bg-emerald-600 text-white shadow-xs'
-                      : tab.isWarning
+                      : tab.isCanDate
                       ? 'bg-amber-600 text-white shadow-xs'
+                      : tab.isWarning
+                      ? 'bg-orange-600 text-white shadow-xs'
                       : tab.isDanger
                       ? 'bg-rose-600 text-white shadow-xs'
                       : 'bg-primary-600 text-white shadow-xs'
@@ -511,19 +543,61 @@ export default function KhoThuocPage() {
                         </span>
                       </td>
 
-                      {/* 4. Mã lô & Hạn dùng */}
+                      {/* 4. Mã lô & Hạn dùng (FEFO) */}
                       <td className="py-3.5 px-4 text-xs">
-                        <span className="font-mono font-bold text-primary-700 bg-blue-50/80 px-1.5 py-0.5 rounded border border-blue-200/60">
-                          {t.maLo || 'LÔ-CHUNG'}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono font-bold text-primary-700 bg-blue-50/80 px-1.5 py-0.5 rounded border border-blue-200/60">
+                            {t.maLo || 'LÔ-CHUNG'}
+                          </span>
+                          {t.soLuongTonLo !== undefined && (
+                            <span className="text-[10px] text-gray-500 font-medium">
+                              ({t.soLuongTonLo} {t.donViTinh})
+                            </span>
+                          )}
+                          {t.tongSoLo > 1 && (
+                            <span
+                              className="text-[9px] px-1.5 py-0.2 rounded-full bg-gray-100 text-gray-600 border border-gray-200 font-semibold"
+                              title={`Gồm ${t.tongSoLo} lô khác nhau trong kho`}
+                            >
+                              +{t.tongSoLo - 1} lô
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[10px] text-gray-500 flex items-center gap-1 mt-1">
-                          <Clock className="h-3 w-3 text-rose-500 shrink-0" />
+                          <Clock
+                            className={`h-3 w-3 shrink-0 ${
+                              t.coLoHetHan
+                                ? 'text-rose-500 animate-pulse'
+                                : t.coLoCanDate
+                                ? 'text-amber-500 animate-pulse'
+                                : 'text-gray-400'
+                            }`}
+                          />
                           <span>HSD:</span>
-                          <span className="font-semibold text-gray-800">
+                          <span
+                            className={`font-semibold ${
+                              t.coLoHetHan
+                                ? 'text-rose-600 font-bold'
+                                : t.coLoCanDate
+                                ? 'text-amber-600 font-bold'
+                                : 'text-gray-800'
+                            }`}
+                          >
                             {t.ngayHetHan
                               ? String(t.ngayHetHan).slice(0, 10).split('-').reverse().join('/')
                               : '---'}
                           </span>
+                          {t.soNgayConLai !== undefined && t.soNgayConLai <= 60 && (
+                            <span
+                              className={`text-[9px] px-1 rounded font-bold ${
+                                t.soNgayConLai <= 0
+                                  ? 'bg-rose-100 text-rose-700'
+                                  : 'bg-amber-100 text-amber-700'
+                              }`}
+                            >
+                              {t.soNgayConLai <= 0 ? 'Hết hạn' : `Còn ${t.soNgayConLai}d`}
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -544,17 +618,27 @@ export default function KhoThuocPage() {
 
                       {/* 7. Tồn kho */}
                       <td className="py-3.5 px-4 text-center">
-                        <span
-                          className={`font-extrabold text-sm ${
-                            isOutOfStock
-                              ? 'text-rose-600'
-                              : isLow
-                              ? 'text-amber-600'
-                              : 'text-gray-900'
-                          }`}
-                        >
-                          {stock.toLocaleString()}
-                        </span>
+                        <div>
+                          <span
+                            className={`font-extrabold text-sm ${
+                              isOutOfStock
+                                ? 'text-rose-600'
+                                : isLow
+                                ? 'text-amber-600'
+                                : 'text-gray-900'
+                            }`}
+                          >
+                            {stock.toLocaleString()}
+                          </span>
+                          <span className="text-[11px] text-gray-400 ml-1 font-normal">
+                            {t.donViTinh || 'Viên'}
+                          </span>
+                        </div>
+                        {t.tongSoLo > 1 && (
+                          <p className="text-[10px] text-gray-400 mt-0.5">
+                            ({t.tongSoLo} lô hàng)
+                          </p>
+                        )}
                       </td>
 
                       {/* 8. Trạng thái */}
@@ -567,8 +651,16 @@ export default function KhoThuocPage() {
                           <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-bold text-rose-700 border border-rose-200">
                             <AlertCircle className="h-3 w-3" /> Hết hàng
                           </span>
+                        ) : t.coLoHetHan ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold text-rose-800 border border-rose-300">
+                            <AlertCircle className="h-3 w-3" /> Lô hết hạn
+                          </span>
+                        ) : t.coLoCanDate ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700 border border-amber-300">
+                            <Clock className="h-3 w-3" /> Lô cận date
+                          </span>
                         ) : isLow ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700 border border-amber-200">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700 border border-orange-200">
                             <AlertTriangle className="h-3 w-3" /> Sắp hết
                           </span>
                         ) : (

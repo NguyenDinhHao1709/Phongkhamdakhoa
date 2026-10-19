@@ -27,6 +27,7 @@ import useAuthStore from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import { formatCurrency } from '../../utils/formatCurrency';
 import DanhGiaCaKhamModal from '../../components/Appointment/DanhGiaCaKhamModal';
+import ThanhToanVienPhiModal from '../../components/Payment/ThanhToanVienPhiModal';
 
 export default function TienDoKhamPage() {
   const navigate = useNavigate();
@@ -39,6 +40,7 @@ export default function TienDoKhamPage() {
   const [isAllCompleted, setIsAllCompleted] = useState(false);
   const [completedVisit, setCompletedVisit] = useState(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [payModalData, setPayModalData] = useState({ isOpen: false, hoaDon: null, benhNhan: null });
 
   // Thông tin phiếu khám STT
   const [ticketData, setTicketData] = useState({
@@ -916,6 +918,24 @@ export default function TienDoKhamPage() {
                                       <span className="text-emerald-700 font-mono">{formatCurrency(ticketData.hoaDon.thucThu)}</span>
                                     </div>
                                   </div>
+
+                                  {ticketData.hoaDon.trangThai !== 'da_thanh_toan' && (
+                                    <div className="pt-2 border-t border-gray-100">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setPayModalData({
+                                            isOpen: true,
+                                            hoaDon: ticketData.hoaDon,
+                                            benhNhan: { hoTen: ticketData.hoTen, maBenhNhan: ticketData.maYTe },
+                                          });
+                                        }}
+                                        className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer animate-pulse"
+                                      >
+                                        <CreditCard className="h-4 w-4" /> Thanh toán viện phí ngay (VietQR / Tiền mặt)
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
                                 <p className="text-xs text-gray-500 italic">Đang tổng hợp viện phí tại quầy thu ngân.</p>
@@ -1116,6 +1136,18 @@ export default function TienDoKhamPage() {
         }
         onClose={() => setReviewModalOpen(false)}
         onSuccess={fetchQueueData}
+      />
+
+      {/* Modal Thanh Toán Viện Phí Đa Phương Thức (VietQR / Tiền mặt) */}
+      <ThanhToanVienPhiModal
+        isOpen={payModalData.isOpen}
+        hoaDon={payModalData.hoaDon}
+        benhNhan={payModalData.benhNhan}
+        onClose={() => setPayModalData({ isOpen: false, hoaDon: null, benhNhan: null })}
+        onSuccess={fetchQueueData}
+        onPrintHoaDon={() => {
+          navigate('/benh-nhan/ho-so-y-te');
+        }}
       />
     </div>
   );

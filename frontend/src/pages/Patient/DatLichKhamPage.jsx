@@ -233,8 +233,13 @@ export default function DatLichKhamPage() {
       const lichHenId = res.data?.id || res.data?.lichHenId;
       const maLichHen = res.data?.maLichHen || 'LH2026';
 
-      // Mở modal đếm ngược thanh toán
-      setPaymentModal({ lichHenId, maLichHen });
+      // Mở modal đếm ngược thanh toán (200k nếu online, 40k nếu trực tiếp)
+      setPaymentModal({
+        lichHenId,
+        maLichHen,
+        soTien: hinhThuc === 'truc_tuyen' ? 200000 : 40000,
+        isTelehealth: hinhThuc === 'truc_tuyen',
+      });
       fetchMyAppointments();
     } catch (err) {
       setErrorMsg(err?.error?.message || err?.message || 'Có lỗi xảy ra khi đặt lịch khám');
@@ -250,6 +255,13 @@ export default function DatLichKhamPage() {
         <PaymentCountdownModal
           lichHenId={paymentModal.lichHenId}
           maLichHen={paymentModal.maLichHen}
+          soTien={paymentModal.soTien || (hinhThuc === 'truc_tuyen' ? 200000 : 40000)}
+          title={
+            (paymentModal.isTelehealth ?? (hinhThuc === 'truc_tuyen'))
+              ? 'Thanh toán phí tư vấn trực tuyến (Telehealth)'
+              : 'Xác nhận thanh toán tạm ứng giữ chỗ'
+          }
+          isTelehealth={paymentModal.isTelehealth ?? (hinhThuc === 'truc_tuyen')}
           onPaid={async () => {
             const res = await apiPost(`/lich-hen/${paymentModal.lichHenId}/xac-nhan-thanh-toan`);
             setPaymentModal(null);
@@ -273,7 +285,7 @@ export default function DatLichKhamPage() {
           onPaymentError={(err) => setErrorMsg(err?.error?.message || err?.message || 'Không thể xác nhận thanh toán')}
           onCancelled={() => {
             setPaymentModal(null);
-            setCancelledMsg(`⚠ Lịch hẹn ${paymentModal.maLichHen} đã bị hủy do hết thời gian thanh toán (10 phút). Vui lòng đặt lịch lại.`);
+            setCancelledMsg(`⚠ Lịch hẹn ${paymentModal.maLichHen} đã bị hủy do hết thời gian thanh toán (15 phút). Vui lòng đặt lịch lại.`);
           }}
         />
       )}
@@ -829,35 +841,56 @@ export default function DatLichKhamPage() {
             />
           </div>
 
-          {/* ─── BẢNG QUY ĐỊNH & CHI PHÍ TẠM ỨNG ─── */}
-          <div className="rounded-xl sm:rounded-2xl bg-blue-50/80 p-3.5 sm:p-5 border border-blue-200 space-y-2 text-xs text-gray-700">
-            <div className="flex items-center justify-between border-b border-blue-200 pb-2.5">
-              <span className="font-extrabold text-gray-900 text-xs sm:text-sm flex items-center gap-1.5">
-                <CreditCard className="h-4 w-4 text-blue-600" /> Tạm ứng giữ chỗ (1/5 phí):
-              </span>
-              <span className="text-blue-700 font-black text-base sm:text-lg">40.000 đ</span>
+          {/* ─── BẢNG QUY ĐỊNH & CHI PHÍ ─── */}
+          {hinhThuc === 'truc_tuyen' ? (
+            <div className="rounded-xl sm:rounded-2xl bg-indigo-50/80 p-3.5 sm:p-5 border border-indigo-200 space-y-2 text-xs text-gray-700">
+              <div className="flex items-center justify-between border-b border-indigo-200 pb-2.5">
+                <span className="font-extrabold text-gray-900 text-xs sm:text-sm flex items-center gap-1.5">
+                  <CreditCard className="h-4 w-4 text-indigo-600" /> Phí tư vấn trực tuyến (Telehealth):
+                </span>
+                <span className="text-indigo-700 font-black text-base sm:text-lg">200.000 đ</span>
+              </div>
+              <div className="space-y-1.5 leading-relaxed text-[11px] sm:text-xs">
+                <p>• Phí tư vấn online: <strong>200.000 đ</strong> (thanh toán 100% trước khi tham gia cuộc gọi video).</p>
+                <p>• <strong>Quy định hủy lịch:</strong> Hủy <strong>trước 24 tiếng</strong> được <strong>hoàn trả 100%</strong> phí tư vấn qua chuyển khoản.</p>
+                <p className="flex items-start gap-1 text-indigo-900 font-medium">
+                  <ShieldAlert className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0 mt-0.5" />
+                  <span>Thanh toán thành công sẽ cấp ngay <strong>Phòng khám Video trực tuyến</strong> cùng Bác sĩ đúng giờ hẹn.</span>
+                </p>
+              </div>
             </div>
-            <div className="space-y-1.5 leading-relaxed text-[11px] sm:text-xs">
-              <p>• Phí khám niêm yết: <strong>200.000 đ</strong>. Tạm ứng <strong>40.000 đ</strong> để xác nhận giữ chỗ.</p>
-              <p>• <strong>Quy định hủy lịch:</strong> Hủy <strong>trước 24 tiếng</strong> được <strong>hoàn trả 100%</strong> tiền tạm ứng qua VNPay/MoMo.</p>
-              <p className="flex items-start gap-1 text-blue-900 font-medium">
-                <ShieldAlert className="h-3.5 w-3.5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <span>Thanh toán thành công sẽ cấp ngay <strong>Phiếu hẹn điện tử kèm Mã QR Code</strong> và số thứ tự khám.</span>
-              </p>
+          ) : (
+            <div className="rounded-xl sm:rounded-2xl bg-blue-50/80 p-3.5 sm:p-5 border border-blue-200 space-y-2 text-xs text-gray-700">
+              <div className="flex items-center justify-between border-b border-blue-200 pb-2.5">
+                <span className="font-extrabold text-gray-900 text-xs sm:text-sm flex items-center gap-1.5">
+                  <CreditCard className="h-4 w-4 text-blue-600" /> Tạm ứng giữ chỗ (1/5 phí):
+                </span>
+                <span className="text-blue-700 font-black text-base sm:text-lg">40.000 đ</span>
+              </div>
+              <div className="space-y-1.5 leading-relaxed text-[11px] sm:text-xs">
+                <p>• Phí khám niêm yết: <strong>200.000 đ</strong>. Tạm ứng <strong>40.000 đ</strong> để xác nhận giữ chỗ.</p>
+                <p>• <strong>Quy định hủy lịch:</strong> Hủy <strong>trước 24 tiếng</strong> được <strong>hoàn trả 100%</strong> tiền tạm ứng qua VNPay/MoMo.</p>
+                <p className="flex items-start gap-1 text-blue-900 font-medium">
+                  <ShieldAlert className="h-3.5 w-3.5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <span>Thanh toán thành công sẽ cấp ngay <strong>Phiếu hẹn điện tử kèm Mã QR Code</strong> và số thứ tự khám.</span>
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* NÚT XÁC NHẬN ĐẶT LỊCH */}
           <button
             type="submit"
             disabled={submitting || !selectedSlot}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+            className={`w-full ${hinhThuc === 'truc_tuyen' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-60 text-white py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm`}
           >
             {hinhThuc === 'truc_tuyen' ? <Video className="h-4 w-4 sm:h-5 sm:w-5" /> : <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />}
             {submitting
               ? 'Đang khởi tạo lịch hẹn...'
               : !selectedSlot
               ? 'Vui lòng chọn 1 ca khám còn trống ở trên'
+              : hinhThuc === 'truc_tuyen'
+              ? `Xác nhận & Thanh toán 200.000đ [${selectedSlot} ngày ${selectedNgayHen}]`
               : `Xác nhận & Tạm ứng 40.000đ [${selectedSlot} ngày ${selectedNgayHen}]`}
           </button>
         </form>
