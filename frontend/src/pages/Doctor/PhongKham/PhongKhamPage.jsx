@@ -43,6 +43,28 @@ export default function PhongKhamPage() {
   const dangCls = items.filter((i) => i.trangThai === 'dang_cls');
   const choKham = items.filter((i) => i.trangThai === 'cho_kham');
 
+  // Khôi phục lượt khám đang chọn từ sessionStorage khi chuyển qua lại giữa các trang trên menu
+  useEffect(() => {
+    if (!selectedLuot && items.length > 0 && !chiDinhIdParam) {
+      const savedLuotId = sessionStorage.getItem('phong_kham_selected_luot_id');
+      if (savedLuotId) {
+        const matched = items.find((i) => String(i.id) === String(savedLuotId));
+        if (matched) {
+          setSelectedLuot(matched);
+        }
+      }
+    }
+  }, [items, selectedLuot, chiDinhIdParam]);
+
+  const handleSelectLuot = (luot) => {
+    setSelectedLuot(luot);
+    if (luot?.id) {
+      sessionStorage.setItem('phong_kham_selected_luot_id', String(luot.id));
+    } else {
+      sessionStorage.removeItem('phong_kham_selected_luot_id');
+    }
+  };
+
   // Nếu chuyển sang từ Thông báo xét nghiệm (có chiDinhId)
   const { data: cdData } = useQuery({
     queryKey: ['chi-dinh-direct', chiDinhIdParam],
@@ -108,7 +130,7 @@ export default function PhongKhamPage() {
                   key={luot.id}
                   luot={luot}
                   isSelected={currentLuot?.id === luot.id}
-                  onSelect={() => setSelectedLuot(luot)}
+                  onSelect={() => handleSelectLuot(luot)}
                 />
               ))}
             </div>
@@ -125,7 +147,7 @@ export default function PhongKhamPage() {
                   key={luot.id}
                   luot={luot}
                   isSelected={currentLuot?.id === luot.id}
-                  onSelect={() => setSelectedLuot(luot)}
+                  onSelect={() => handleSelectLuot(luot)}
                 />
               ))}
             </div>
@@ -142,7 +164,7 @@ export default function PhongKhamPage() {
                   key={luot.id}
                   luot={luot}
                   isSelected={currentLuot?.id === luot.id}
-                  onSelect={() => setSelectedLuot(luot)}
+                  onSelect={() => handleSelectLuot(luot)}
                 />
               ))}
             </div>
@@ -159,7 +181,7 @@ export default function PhongKhamPage() {
                   key={luot.id}
                   luot={luot}
                   isSelected={currentLuot?.id === luot.id}
-                  onSelect={() => setSelectedLuot(luot)}
+                  onSelect={() => handleSelectLuot(luot)}
                 />
               ))}
             </div>
@@ -178,8 +200,8 @@ export default function PhongKhamPage() {
             key={currentLuot.id}
             luot={currentLuot}
             initialTab={tabParam}
-            onComplete={() => setSelectedLuot(null)}
-            onUpdateLuot={(updated) => setSelectedLuot(updated)}
+            onComplete={() => handleSelectLuot(null)}
+            onUpdateLuot={(updated) => handleSelectLuot(updated)}
           />
         ) : (
           <div className="flex h-full items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/50 p-8 text-center">
@@ -250,11 +272,29 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
   const [showInPhieuKham, setShowInPhieuKham] = useState(false);
   const [showInDonThuoc, setShowInDonThuoc] = useState(false);
 
-  const [form, setForm] = useState({
-    trieuChung: '', chanDoanSoBo: '', chanDoanXacDinh: '',
-    ketQuaKham: '', phuongPhapDieuTri: '', taiKham: '', ghiChu: '',
+  const draftStorageKey = `phong_kham_draft_luot_${luot?.id}`;
+
+  const [form, setForm] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(`phong_kham_draft_luot_${luot?.id}`);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {}
+    return {
+      trieuChung: '', chanDoanSoBo: '', chanDoanXacDinh: '',
+      ketQuaKham: '', phuongPhapDieuTri: '', taiKham: '', ghiChu: '',
+    };
   });
   const [benhAnId, setBenhAnId] = useState(null);
+
+  // Lưu tức thời mọi thay đổi trên form Khám lâm sàng vào sessionStorage để chuyển tab / chuyển trang không bao giờ bị mất
+  useEffect(() => {
+    if (!luot?.id) return;
+    try {
+      sessionStorage.setItem(draftStorageKey, JSON.stringify(form));
+    } catch {}
+  }, [form, luot?.id, draftStorageKey]);
 
   // Tự động tìm phiếu khám hiện tại của lượt tiếp nhận này
   const { data: bakData } = useQuery({
@@ -269,22 +309,40 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
       setBenhAnId(b.id);
       setForm((prev) => ({
         ...prev,
-        trieuChung: b.trieuChung || '',
-        chanDoanSoBo: b.chanDoanSoBo || '',
-        chanDoanXacDinh: b.chanDoanXacDinh || '',
-        ketQuaKham: b.ketQuaKham || '',
-        phuongPhapDieuTri: b.phuongPhapDieuTri || '',
-        taiKham: b.taiKham ? b.taiKham.split('T')[0] : '',
-        ghiChu: b.ghiChu || '',
+        // Ưu tiên giữ nguyên dữ liệu Bác sĩ đang gõ trên giao diện (prev), chỉ lấy từ server nếu ô đang trống
+        trieuChung: prev.trieuChung || b.trieuChung || '',
+        chanDoanSoBo: prev.chanDoanSoBo || b.chanDoanSoBo || '',
+        chanDoanXacDinh: prev.chanDoanXacDinh || b.chanDoanXacDinh || '',
+        ketQuaKham: prev.ketQuaKham || b.ketQuaKham || '',
+        phuongPhapDieuTri: prev.phuongPhapDieuTri || b.phuongPhapDieuTri || '',
+        taiKham: prev.taiKham || (b.taiKham ? b.taiKham.split('T')[0] : ''),
+        ghiChu: prev.ghiChu || b.ghiChu || '',
       }));
     } else {
       setBenhAnId(null);
-      setForm({
-        trieuChung: '', chanDoanSoBo: '', chanDoanXacDinh: '',
-        ketQuaKham: '', phuongPhapDieuTri: '', taiKham: '', ghiChu: '',
-      });
     }
   }, [bakData, luot?.id]);
+
+  // Tự động đồng bộ bản nháp xuống CSDL (debounced 1.2s) khi đã có benhAnId
+  useEffect(() => {
+    const activeId = benhAnId || bakData?.data?.id;
+    if (!activeId) return;
+    const hasAnyContent =
+      form.trieuChung ||
+      form.chanDoanSoBo ||
+      form.chanDoanXacDinh ||
+      form.ketQuaKham ||
+      form.phuongPhapDieuTri ||
+      form.ghiChu;
+    if (!hasAnyContent) return;
+
+    const timer = setTimeout(() => {
+      const payload = { ...form };
+      if (!payload.taiKham || !payload.taiKham.trim()) delete payload.taiKham;
+      apiPatch(`/ho-so-benh-an/benh-an-kham/${activeId}`, payload).catch(() => {});
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [form, benhAnId, bakData?.data?.id]);
 
   // Sinh hiệu
   const { data: shData, refetch: refetchSinhHieu } = useQuery({
@@ -357,6 +415,10 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
       return apiPatch(`/ho-so-benh-an/benh-an-kham/${activeId}/ket-thuc`, payload);
     },
     onSuccess: () => {
+      try {
+        sessionStorage.removeItem(draftStorageKey);
+        sessionStorage.removeItem(`phong_kham_rag_${luot?.id}`);
+      } catch {}
       qc.invalidateQueries(['tiep-nhan']);
       onComplete();
     },
@@ -620,19 +682,42 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
             ))}
           </div>
 
-          {tab === 'kham' && (
+          <div className={tab === 'kham' ? 'block' : 'hidden'}>
             <MedCard>
               <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); finishMut.mutate(); }}>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Triệu chứng</label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-sm font-semibold text-gray-700">Triệu chứng</label>
+                  </div>
                   <textarea
                     rows={3}
                     value={form.trieuChung}
                     onChange={(e) => setForm((f) => ({ ...f, trieuChung: e.target.value }))}
-                    placeholder="Mô tả triệu chứng bệnh nhân..."
+                    placeholder="Mô tả triệu chứng bệnh nhân (VD: Đau đầu, chóng mặt, huyết áp cao; hoặc đau thượng vị, ợ chua...)"
                     className="w-full rounded-lg border border-gray-300 bg-white py-2 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   />
                 </div>
+
+                {/* ─── TRỤ CỘT AI 3.1: RAG TRÊN PHÁC ĐỒ CHẨN ĐOÁN & ĐIỀU TRỊ BỘ Y TẾ ─── */}
+                <ClinicalRagAssistantPanel
+                  benhAnKhamId={activeBenhAnId}
+                  luotTiepNhanId={luot.id}
+                  trieuChung={form.trieuChung}
+                  chanDoanSoBo={form.chanDoanSoBo}
+                  chanDoanXacDinh={form.chanDoanXacDinh}
+                  sinhHieu={sinhHieu}
+                  diUng={bn.diUng}
+                  onApplyProtocol={(suggested) => {
+                    setForm((prev) => ({
+                      ...prev,
+                      chanDoanSoBo: suggested.chanDoanSoBoGoiY || prev.chanDoanSoBo,
+                      chanDoanXacDinh: suggested.chanDoanXacDinhGoiY || prev.chanDoanXacDinh,
+                      ketQuaKham: suggested.ketQuaKhamGoiY || prev.ketQuaKham,
+                      phuongPhapDieuTri: suggested.phuongPhapDieuTriGoiY || prev.phuongPhapDieuTri,
+                      ghiChu: suggested.ghiChuGoiY || prev.ghiChu,
+                    }));
+                  }}
+                />
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1.5">Chẩn đoán sơ bộ</label>
@@ -748,11 +833,29 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
                 </div>
               </form>
             </MedCard>
-          )}
+          </div>
 
-          {tab === 'xn' && <XetNghiemTab benhAnKhamId={benhAnId} onOpenModal={() => setShowChiDinhModal(true)} />}
-          {tab === 'don_thuoc' && <DonThuocTab benhAnKhamId={benhAnId} onOpenModal={() => setShowDonThuocModal(true)} />}
-          {tab === 'lich_su' && <LichSuTab benhNhanId={bn.id} />}
+          <div className={tab === 'xn' ? 'block' : 'hidden'}>
+            <XetNghiemTab
+              benhAnKhamId={activeBenhAnId}
+              onOpenModal={() => setShowChiDinhModal(true)}
+              onApplyLabConclusion={(conclusionText) => {
+                setForm((prev) => ({
+                  ...prev,
+                  ketQuaKham: prev.ketQuaKham
+                    ? `${prev.ketQuaKham}\n[CLS]: ${conclusionText}`
+                    : `[CLS]: ${conclusionText}`,
+                }));
+                setTab('kham');
+              }}
+            />
+          </div>
+          <div className={tab === 'don_thuoc' ? 'block' : 'hidden'}>
+            <DonThuocTab benhAnKhamId={activeBenhAnId} onOpenModal={() => setShowDonThuocModal(true)} />
+          </div>
+          <div className={tab === 'lich_su' ? 'block' : 'hidden'}>
+            <LichSuTab benhNhanId={bn.id} />
+          </div>
         </>
       )}
 
@@ -786,6 +889,8 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
       {showDonThuocModal && activeBenhAnId && (
         <KeDonThuocModal
           benhAnKhamId={activeBenhAnId}
+          chanDoan={form.chanDoanXacDinh || form.chanDoanSoBo}
+          diUng={bn.diUng}
           onClose={() => setShowDonThuocModal(false)}
           onSuccess={() => {
             qc.invalidateQueries(['don-thuoc-benh-an', activeBenhAnId]);
@@ -1011,26 +1116,12 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
     .map((item) => item.chiDinh?.dichVuXetNghiemId || item.chiDinh?.dichVu?.id)
     .filter(Boolean);
 
-  const listDichVu = (data?.data && data.data.length > 0) ? data.data : [
-    { id: 1, maDichVu: 'XN001', tenDichVu: 'Công thức máu toàn phần (CBC)', gia: 120000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch' },
-    { id: 2, maDichVu: 'XN002', tenDichVu: 'Sinh hóa máu (Đường huyết, Men gan, Ure, Creatinine)', gia: 250000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch' },
-    { id: 3, maDichVu: 'CD001', tenDichVu: 'X-Quang ngực thẳng', gia: 150000, loai: 'cdha', boPhanThucHien: 'Khoa Chẩn đoán hình ảnh' },
-    { id: 4, maDichVu: 'CD002', tenDichVu: 'Siêu âm ổ bụng tổng quát', gia: 200000, loai: 'cdha', boPhanThucHien: 'Khoa Chẩn đoán hình ảnh' },
-    { id: 5, maDichVu: 'XN003', tenDichVu: 'Điện tâm đồ (ECG)', gia: 100000, loai: 'xet_nghiem', boPhanThucHien: 'Phòng Thăm dò chức năng' },
-    { id: 6, maDichVu: 'XN004', tenDichVu: 'Tổng phân tích nước tiểu (10 thông số)', gia: 100000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Nước tiểu giữa dòng' },
-    { id: 7, maDichVu: 'XN005', tenDichVu: 'Mỡ máu cơ bản', gia: 180000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch' },
-    { id: 8, maDichVu: 'XN006', tenDichVu: 'HbA1c', gia: 150000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch - ống EDTA' },
-    { id: 9, maDichVu: 'XN007', tenDichVu: 'Điện giải đồ cơ bản', gia: 160000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch' },
-    { id: 10, maDichVu: 'XN008', tenDichVu: 'CRP định lượng', gia: 120000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch' },
-    { id: 11, maDichVu: 'XN009', tenDichVu: 'Đông máu cơ bản PT-INR-aPTT', gia: 220000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch - ống citrate' },
-    { id: 12, maDichVu: 'XN010', tenDichVu: 'Xét nghiệm phân cơ bản', gia: 100000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Phân tươi' },
-    { id: 13, maDichVu: 'XN011', tenDichVu: 'HBsAg', gia: 120000, loai: 'xet_nghiem', boPhanThucHien: 'Khoa Xét nghiệm', mauBenhPham: 'Máu tĩnh mạch - huyết thanh' },
-    { id: 14, maDichVu: 'CD003', tenDichVu: 'Siêu âm hệ tiết niệu', gia: 220000, loai: 'cdha', boPhanThucHien: 'Khoa Chẩn đoán hình ảnh' },
-    { id: 15, maDichVu: 'CD004', tenDichVu: 'Siêu âm tuyến giáp và hạch cổ', gia: 220000, loai: 'cdha', boPhanThucHien: 'Khoa Chẩn đoán hình ảnh' },
-    { id: 16, maDichVu: 'CD005', tenDichVu: 'Siêu âm sản-phụ khoa', gia: 250000, loai: 'cdha', boPhanThucHien: 'Khoa Chẩn đoán hình ảnh' },
-    { id: 17, maDichVu: 'CD006', tenDichVu: 'Siêu âm tuyến vú', gia: 250000, loai: 'cdha', boPhanThucHien: 'Khoa Chẩn đoán hình ảnh' },
-    { id: 18, maDichVu: 'CD007', tenDichVu: 'Siêu âm tim Doppler', gia: 350000, loai: 'cdha', boPhanThucHien: 'Phòng Thăm dò chức năng' },
-  ];
+  const rawDichVu = (data?.data && Array.isArray(data.data))
+    ? data.data
+    : (Array.isArray(data) ? data : []);
+
+  // Bác sĩ chỉ thấy và chỉ định các dịch vụ cận lâm sàng ĐANG HOẠT ĐỘNG
+  const listDichVu = rawDichVu.filter((dv) => !dv.trangThai || dv.trangThai === 'hoat_dong');
 
   const handleToggle = (id) => {
     if (existingServiceIds.includes(id)) return;
@@ -1251,12 +1342,14 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
   );
 }
 
-/* ──── MODAL KÊ ĐƠN THUỐC ĐIỆN TỬ (LẤY THUỐC TỪ CSDL KHO DƯỢC) ──── */
-function KeDonThuocModal({ benhAnKhamId, onClose, onSuccess }) {
+/* ──── MODAL KÊ ĐƠN THUỐC ĐIỆN TỬ (LẤY THUỐC TỪ CSDL KHO DƯỢC + AI DDI SAFETY) ──── */
+function KeDonThuocModal({ benhAnKhamId, chanDoan, diUng, onClose, onSuccess }) {
   const [selectedItems, setSelectedItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [ghiChu, setGhiChu] = useState('');
   const [loading, setLoading] = useState(false);
+  const [aiSafetyResult, setAiSafetyResult] = useState(null);
+  const [checkingSafety, setCheckingSafety] = useState(false);
 
   // Lấy danh mục thuốc từ CSDL Nhà Thuốc
   const { data: thuocData, isLoading } = useQuery({
@@ -1270,11 +1363,50 @@ function KeDonThuocModal({ benhAnKhamId, onClose, onSuccess }) {
     { id: 3, maThuoc: 'TH003', tenThuoc: 'Omeprazole 20mg', donViTinh: 'Viên', giaBan: 4500 },
   ];
 
+  // Tự động kiểm tra tương tác thuốc, dị ứng chéo và chức năng Gan/Thận theo thời gian thực
+  useEffect(() => {
+    if (selectedItems.length === 0) {
+      setAiSafetyResult(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setCheckingSafety(true);
+      try {
+        const res = await apiPost('/ai/check-drug-interactions', {
+          benhAnKhamId,
+          chanDoan,
+          diUng,
+          medications: selectedItems,
+        });
+        setAiSafetyResult(res?.data || null);
+      } catch (e) {
+        console.warn('Không thể kiểm tra tương tác thuốc AI:', e);
+      } finally {
+        setCheckingSafety(false);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [selectedItems, benhAnKhamId, chanDoan, diUng]);
+
   const handleAddThuoc = (thuoc) => {
     if (selectedItems.some((i) => i.thuocId === thuoc.id)) return;
+    const stock = Number(thuoc.tonKhoKhaDung ?? thuoc.tonKhoTong ?? 0);
+    if (stock <= 0 || thuoc.trangThai === 'ngung_kinh_doanh') {
+      alert(`⚠️ Thuốc "${thuoc.tenThuoc}" hiện đã hết tồn kho khả dụng tại Nhà thuốc (Còn: 0 ${thuoc.donViTinh}). Vui lòng chọn thuốc khác!`);
+      return;
+    }
+    const defaultQty = Math.min(10, stock);
     setSelectedItems((prev) => [
       ...prev,
-      { thuocId: thuoc.id, tenThuoc: thuoc.tenThuoc, donViTinh: thuoc.donViTinh, soLuong: 10, lieuDung: 'Uống 1v x 2 lần/ngày sau ăn', soNgayDung: 5 },
+      {
+        thuocId: thuoc.id,
+        tenThuoc: thuoc.tenThuoc,
+        donViTinh: thuoc.donViTinh,
+        tonKhoKhaDung: stock,
+        soLuong: defaultQty,
+        lieuDung: 'Uống 1v x 2 lần/ngày sau ăn',
+        soNgayDung: 5,
+      },
     ]);
   };
 
@@ -1288,11 +1420,37 @@ function KeDonThuocModal({ benhAnKhamId, onClose, onSuccess }) {
     );
   };
 
+  const insufficientStockItems = selectedItems.filter((item) => {
+    const reqQty = Number(item.soLuong || 0);
+    const avail = Number(item.tonKhoKhaDung ?? 999999);
+    return reqQty <= 0 || reqQty > avail;
+  });
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (selectedItems.length === 0) {
       alert('Vui lòng chọn ít nhất 1 thuốc vào đơn');
       return;
+    }
+    for (const item of selectedItems) {
+      const reqQty = Number(item.soLuong || 0);
+      const avail = Number(item.tonKhoKhaDung ?? 0);
+      if (reqQty <= 0) {
+        alert(`⚠️ Số lượng kê của thuốc "${item.tenThuoc}" phải lớn hơn 0!`);
+        return;
+      }
+      if (reqQty > avail) {
+        alert(
+          `⚠️ NHÀ THUỐC KHÔNG ĐỦ THUỐC:\nThuốc "${item.tenThuoc}" chỉ còn tồn kho khả dụng ${avail} ${item.donViTinh}, nhưng Bác sĩ đang kê ${reqQty} ${item.donViTinh}.\n\nVui lòng giảm số lượng về tối đa ${avail} ${item.donViTinh} hoặc chọn thuốc khác thay thế!`,
+        );
+        return;
+      }
+    }
+    if (aiSafetyResult?.safetyStatus === 'nguy_hiem_cao') {
+      const ok = window.confirm(
+        '⚠️ CẢNH BÁO DƯỢC LÂM SÀNG NGHIÊM TRỌNG:\nĐơn thuốc hiện tại có tương tác thuốc hoặc nguy cơ dị ứng chéo mức độ cao. Bác sĩ có chắc chắn muốn tiếp tục lưu đơn thuốc này?',
+      );
+      if (!ok) return;
     }
     setLoading(true);
     try {
@@ -1310,7 +1468,7 @@ function KeDonThuocModal({ benhAnKhamId, onClose, onSuccess }) {
       onSuccess();
     } catch (err) {
       console.error(err);
-      alert('Lỗi tạo đơn thuốc. Vui lòng thử lại.');
+      alert(err?.error?.message || err?.message || 'Lỗi tạo đơn thuốc. Vui lòng kiểm tra tồn kho Nhà thuốc và thử lại.');
     } finally {
       setLoading(false);
     }
@@ -1321,7 +1479,7 @@ function KeDonThuocModal({ benhAnKhamId, onClose, onSuccess }) {
       <div className="w-full max-w-2xl bg-white rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between border-b pb-3 flex-shrink-0">
           <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <Pill className="h-5 w-5 text-emerald-600" /> Kê Đơn Thuốc Điện Tử (CSDL Kho Dược)
+            <Pill className="h-5 w-5 text-emerald-600" /> Kê Đơn Thuốc Điện Tử (CSDL Kho Dược + AI Dược Lâm Sàng)
           </h3>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="h-5 w-5" />
@@ -1343,26 +1501,48 @@ function KeDonThuocModal({ benhAnKhamId, onClose, onSuccess }) {
               />
             </div>
 
-            <div className="max-h-36 overflow-y-auto border border-gray-200 rounded-xl divide-y divide-gray-100 bg-gray-50/50">
+            <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-xl divide-y divide-gray-100 bg-gray-50/50">
               {isLoading && <p className="text-center text-xs text-gray-400 py-3">Đang tra cứu kho thuốc CSDL...</p>}
-              {listThuoc.map((t) => (
-                <div key={t.id} className="flex items-center justify-between p-2 hover:bg-white transition-colors">
-                  <div>
-                    <span className="text-xs font-bold text-primary-700 mr-2">{t.maThuoc}</span>
-                    <span className="text-sm font-semibold text-gray-900">{t.tenThuoc}</span>
-                    <span className="text-xs text-gray-500 ml-2">({t.donViTinh})</span>
-                  </div>
-                  <MedButton
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleAddThuoc(t)}
-                    disabled={selectedItems.some((i) => i.thuocId === t.id)}
+              {listThuoc.map((t) => {
+                const stock = Number(t.tonKhoKhaDung ?? t.tonKhoTong ?? 0);
+                const isOut = stock <= 0 || t.trangThai === 'ngung_kinh_doanh';
+                const isLow = !isOut && stock <= 20;
+                const isSelected = selectedItems.some((i) => i.thuocId === t.id);
+                return (
+                  <div
+                    key={t.id}
+                    className={`flex items-center justify-between p-2 transition-colors ${
+                      isOut ? 'bg-gray-100/70 opacity-75' : 'hover:bg-white'
+                    }`}
                   >
-                    + Chọn
-                  </MedButton>
-                </div>
-              ))}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs font-bold text-primary-700">{t.maThuoc}</span>
+                      <span className="text-sm font-semibold text-gray-900">{t.tenThuoc}</span>
+                      <span className="text-xs text-gray-500">({t.donViTinh})</span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          isOut
+                            ? 'bg-red-100 text-red-700 border-red-200'
+                            : isLow
+                            ? 'bg-amber-100 text-amber-800 border-amber-200'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}
+                      >
+                        {isOut ? 'Hết thuốc (0)' : `Tồn kho: ${stock} ${t.donViTinh}`}
+                      </span>
+                    </div>
+                    <MedButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleAddThuoc(t)}
+                      disabled={isSelected || isOut}
+                    >
+                      {isOut ? 'Hết thuốc' : isSelected ? 'Đã chọn' : '+ Chọn'}
+                    </MedButton>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -1373,41 +1553,176 @@ function KeDonThuocModal({ benhAnKhamId, onClose, onSuccess }) {
               <p className="text-xs text-gray-400 py-3 text-center border border-dashed rounded-xl">Chưa chọn thuốc nào</p>
             ) : (
               <div className="space-y-2">
-                {selectedItems.map((item) => (
-                  <div key={item.thuocId} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 border rounded-xl bg-white shadow-2xs">
-                    <div className="flex-1">
-                      <p className="font-bold text-sm text-gray-900">{item.tenThuoc}</p>
-                      <input
-                        type="text"
-                        value={item.lieuDung}
-                        onChange={(e) => handleItemChange(item.thuocId, 'lieuDung', e.target.value)}
-                        placeholder="VD: Sáng 1v, Chiều 1v..."
-                        className="w-full mt-1 rounded border border-gray-300 py-1 px-2 text-xs focus:ring-1 focus:ring-primary-500"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-20">
-                        <span className="text-[10px] text-gray-500 block">Số lượng</span>
-                        <input
-                          type="number"
-                          value={item.soLuong}
-                          onChange={(e) => handleItemChange(item.thuocId, 'soLuong', e.target.value)}
-                          className="w-full rounded border border-gray-300 py-1 px-2 text-xs text-center font-bold"
-                        />
+                {selectedItems.map((item) => {
+                  const reqQty = Number(item.soLuong || 0);
+                  const avail = Number(item.tonKhoKhaDung ?? 0);
+                  const isOverStock = reqQty > avail || reqQty <= 0;
+                  return (
+                    <div
+                      key={item.thuocId}
+                      className={`flex flex-col gap-1.5 p-3 border rounded-xl shadow-2xs transition ${
+                        isOverStock ? 'border-red-400 bg-red-50/40' : 'border-gray-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                        <div className="flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-bold text-sm text-gray-900">{item.tenThuoc}</p>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                isOverStock
+                                  ? 'bg-red-100 text-red-800 border-red-300'
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              }`}
+                            >
+                              Kho Nhà thuốc còn: {avail} {item.donViTinh}
+                            </span>
+                          </div>
+                          <input
+                            type="text"
+                            value={item.lieuDung}
+                            onChange={(e) => handleItemChange(item.thuocId, 'lieuDung', e.target.value)}
+                            placeholder="VD: Sáng 1v, Chiều 1v..."
+                            className="w-full mt-1 rounded border border-gray-300 bg-white py-1 px-2 text-xs focus:ring-1 focus:ring-primary-500"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-24">
+                            <span className="text-[10px] text-gray-500 block">
+                              Số lượng (Tối đa {avail})
+                            </span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={avail}
+                              value={item.soLuong}
+                              onChange={(e) => handleItemChange(item.thuocId, 'soLuong', e.target.value)}
+                              className={`w-full rounded border py-1 px-2 text-xs text-center font-bold ${
+                                isOverStock
+                                  ? 'border-red-500 bg-red-50 text-red-700 focus:ring-red-500'
+                                  : 'border-gray-300 bg-white text-gray-900'
+                              }`}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveThuoc(item.thuocId)}
+                            className="text-red-500 hover:text-red-700 p-1"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveThuoc(item.thuocId)}
-                        className="text-red-500 hover:text-red-700 p-1"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                      {isOverStock && (
+                        <div className="text-[11px] font-semibold text-red-700 flex items-center gap-1 pt-0.5">
+                          <AlertTriangle className="h-3.5 w-3.5 text-red-600 shrink-0" />
+                          <span>
+                            {reqQty <= 0
+                              ? 'Số lượng kê phải lớn hơn 0!'
+                              : `Nhà thuốc không đủ thuốc! Tồn kho khả dụng chỉ còn ${avail} ${item.donViTinh} (bạn đang kê ${reqQty} ${item.donViTinh}).`}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
+
+          {/* ─── TRỤ CỘT AI 3.3: KIỂM DUYỆT TƯƠNG TÁC THUỐC, DỊ ỨNG & GAN THẬN THỜI GIAN THỰC ─── */}
+          {selectedItems.length > 0 && (
+            <div
+              className={`rounded-xl border p-3.5 space-y-2.5 text-xs ${
+                aiSafetyResult?.safetyStatus === 'nguy_hiem_cao'
+                  ? 'bg-red-50 border-red-300 text-gray-900'
+                  : aiSafetyResult?.safetyStatus === 'can_than_trong'
+                  ? 'bg-amber-50 border-amber-300 text-gray-900'
+                  : 'bg-emerald-50/70 border-emerald-200 text-gray-900'
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles
+                    className={`w-4 h-4 ${
+                      aiSafetyResult?.safetyStatus === 'nguy_hiem_cao'
+                        ? 'text-red-600'
+                        : aiSafetyResult?.safetyStatus === 'can_than_trong'
+                        ? 'text-amber-600'
+                        : 'text-emerald-600'
+                    }`}
+                  />
+                  <span className="font-bold text-xs">
+                    🛡️ AI Kiểm duyệt An toàn Dược lâm sàng (Tương tác thuốc • Dị ứng • Gan/Thận)
+                  </span>
+                </div>
+                {checkingSafety ? (
+                  <span className="text-[11px] text-gray-500 italic">Đang đối chiếu hồ sơ bệnh án...</span>
+                ) : aiSafetyResult ? (
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                      aiSafetyResult.safetyStatus === 'nguy_hiem_cao'
+                        ? 'bg-red-100 text-red-800 border-red-300'
+                        : aiSafetyResult.safetyStatus === 'can_than_trong'
+                        ? 'bg-amber-100 text-amber-800 border-amber-300'
+                        : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    }`}
+                  >
+                    Điểm an toàn: {aiSafetyResult.safetyScore}/100 •{' '}
+                    {aiSafetyResult.safetyStatus === 'nguy_hiem_cao'
+                      ? 'Cảnh báo Nghiêm trọng'
+                      : aiSafetyResult.safetyStatus === 'can_than_trong'
+                      ? 'Cần thận trọng'
+                      : 'Đơn thuốc An toàn'}
+                  </span>
+                ) : null}
+              </div>
+
+              {aiSafetyResult?.alerts?.length > 0 ? (
+                <div className="space-y-2">
+                  {aiSafetyResult.alerts.map((al, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-2.5 rounded-lg border bg-white ${
+                        al.mucDo === 'nghiem_trong'
+                          ? 'border-red-300'
+                          : al.mucDo === 'trung_binh'
+                          ? 'border-amber-300'
+                          : 'border-blue-200'
+                      }`}
+                    >
+                      <div className="font-bold text-gray-900">{al.tieuDe}</div>
+                      <p className="text-gray-600 mt-0.5">{al.moTaChiTiet}</p>
+                      <p className="text-emerald-700 font-semibold mt-1">
+                        💡 Khuyến nghị xử trí: {al.khuyenNghiXuTri}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                !checkingSafety && (
+                  <p className="text-emerald-800">
+                    ✓ Không phát hiện tương tác thuốc bất lợi, phản ứng dị ứng chéo hay chống chỉ định trên chức năng Gan/Thận hiện tại của bệnh nhân.
+                  </p>
+                )
+              )}
+
+              {aiSafetyResult?.recommendedDoctorNote && (
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-200/70">
+                  <span className="text-[11px] text-gray-600 truncate">
+                    Gợi ý lời dặn: {aiSafetyResult.recommendedDoctorNote}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setGhiChu(aiSafetyResult.recommendedDoctorNote)}
+                    className="shrink-0 px-2.5 py-1 rounded-lg bg-white hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-semibold text-[11px] cursor-pointer"
+                  >
+                    ✍️ Điền vào Lời dặn
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Lời dặn của Bác sĩ:</label>
@@ -1423,8 +1738,17 @@ function KeDonThuocModal({ benhAnKhamId, onClose, onSuccess }) {
 
         <div className="flex justify-end gap-2 pt-3 border-t flex-shrink-0">
           <MedButton type="button" variant="ghost" size="sm" onClick={onClose}>Hủy</MedButton>
-          <MedButton type="submit" variant="primary" size="sm" loading={loading} onClick={handleSubmit}>
-            Lưu & Gửi đơn thuốc ({selectedItems.length})
+          <MedButton
+            type="submit"
+            variant="primary"
+            size="sm"
+            loading={loading}
+            disabled={insufficientStockItems.length > 0 || selectedItems.length === 0}
+            onClick={handleSubmit}
+          >
+            {insufficientStockItems.length > 0
+              ? '⚠️ Không đủ tồn kho Nhà thuốc'
+              : `Lưu & Gửi đơn thuốc (${selectedItems.length})`}
           </MedButton>
         </div>
       </div>
@@ -1652,8 +1976,8 @@ function DynamicQueuePanel({ benhAnKhamId }) {
 
 /* ChiTietKetQuaXetNghiemRenderer được dùng chung từ components/Lab/ChiTietKetQuaXetNghiemRenderer */
 
-/* ──── TAB XÉT NGHIỆM (XEM KẾT QUẢ TỪ CSDL & TẠO CHỈ ĐỊNH) ──── */
-function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
+/* ──── TAB XÉT NGHIỆM (XEM KẾT QUẢ TỪ CSDL & TẠO CHỈ ĐỊNH + AI VISION) ──── */
+function XetNghiemTab({ benhAnKhamId, onOpenModal, onApplyLabConclusion }) {
   const qc = useQueryClient();
   const [previewFile, setPreviewFile] = useState(null);
   const { data, isLoading } = useQuery({
@@ -1682,6 +2006,15 @@ function XetNghiemTab({ benhAnKhamId, onOpenModal }) {
     <div className="space-y-4">
       {/* Dynamic Queue Routing Widget */}
       <DynamicQueuePanel benhAnKhamId={benhAnKhamId} />
+
+      {/* ─── TRỤ CỘT AI 3.2: COMPUTER VISION & PHÂN TÍCH ĐA CHỈ SỐ CẬN LÂM SÀNG ─── */}
+      {items.length > 0 && (
+        <AiLabVisionPanel
+          benhAnKhamId={benhAnKhamId}
+          items={items}
+          onApplyConclusion={onApplyLabConclusion}
+        />
+      )}
 
       <MedCard
         title="Danh sách chỉ định & Kết quả Cận lâm sàng"
@@ -1893,5 +2226,332 @@ function LichSuTab({ benhNhanId }) {
         </div>
       )}
     </MedCard>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * TRỤ CỘT AI 3.1: RAG TRÊN PHÁC ĐỒ CHẨN ĐOÁN & ĐIỀU TRỊ CHUẨN BỘ Y TẾ
+ * ═══════════════════════════════════════════════════════════════════════════════ */
+function ClinicalRagAssistantPanel({
+  benhAnKhamId,
+  luotTiepNhanId,
+  trieuChung,
+  chanDoanSoBo,
+  chanDoanXacDinh,
+  sinhHieu,
+  diUng,
+  onApplyProtocol,
+}) {
+  const ragStorageKey = `phong_kham_rag_${luotTiepNhanId || benhAnKhamId || 'default'}`;
+  const [ragData, setRagData] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(ragStorageKey);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(true);
+
+  const handleRunRag = async () => {
+    setLoading(true);
+    setExpanded(true);
+    try {
+      const res = await apiPost('/ai/clinical-protocol-rag', {
+        benhAnKhamId,
+        luotTiepNhanId,
+        trieuChung,
+        chanDoanSoBo,
+        chanDoanXacDinh,
+        sinhHieu,
+        diUng,
+      });
+      const nextData = res?.data || null;
+      setRagData(nextData);
+      if (nextData) {
+        try {
+          sessionStorage.setItem(ragStorageKey, JSON.stringify(nextData));
+        } catch {}
+      }
+    } catch (e) {
+      console.error('Lỗi truy xuất RAG Phác đồ Bộ Y tế:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const topProto = ragData?.topProtocol;
+
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-2xs">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-gray-900">
+              🧠 Trợ lý AI Tra cứu Phác đồ Bộ Y tế (Clinical RAG)
+            </h4>
+            <p className="text-[11px] text-gray-500">
+              Đối chiếu triệu chứng, sinh hiệu & tiền sử dị ứng với Kho Phác đồ Chẩn đoán và Điều trị Bộ Y tế Việt Nam
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {ragData && (
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              className="text-xs font-semibold text-gray-600 hover:text-gray-900 px-2 py-1"
+            >
+              {expanded ? 'Thu gọn' : 'Mở rộng'}
+            </button>
+          )}
+          <MedButton
+            type="button"
+            variant="primary"
+            size="sm"
+            loading={loading}
+            leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+            onClick={handleRunRag}
+          >
+            ✨ AI Tra cứu Phác đồ Bộ Y tế
+          </MedButton>
+        </div>
+      </div>
+
+      {ragData && expanded && topProto && (
+        <div className="space-y-3 pt-2 border-t border-emerald-200/70 text-xs">
+          {/* Header Phác đồ khớp nhất */}
+          <div className="p-3 rounded-xl bg-white border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-300">
+                  Độ tương đồng Vector: {Math.round((topProto.similarityScore || 0.88) * 100)}%
+                </span>
+                <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold text-[11px] border border-blue-200">
+                  {topProto.quyetDinhByt}
+                </span>
+              </div>
+              <div className="text-sm font-bold text-gray-900">
+                Mã ICD-10 gợi ý: <span className="text-emerald-700">{topProto.maIcd10}</span>
+              </div>
+              {topProto.matchedSignals?.length > 0 && (
+                <div className="text-[11px] text-gray-500">
+                  Tín hiệu lâm sàng khớp: <span className="font-semibold text-gray-700">{topProto.matchedSignals.join(', ')}</span>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onApplyProtocol?.(ragData.suggestedFields)}
+              className="shrink-0 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+            >
+              ⚡ Áp dụng Mã ICD-10 & Phác đồ vào Bệnh án
+            </button>
+          </div>
+
+          {/* Cảnh báo dị ứng cá nhân hóa nếu có */}
+          {ragData.allergyAlert && (
+            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-semibold flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+              <span>{ragData.allergyAlert}</span>
+            </div>
+          )}
+
+          {/* Chi tiết Tiêu chuẩn Chẩn đoán & CLS khuyến nghị */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="p-3 rounded-xl bg-white border border-gray-200 space-y-1.5">
+              <div className="font-bold text-gray-900">📋 Tiêu chuẩn Chẩn đoán & Cận lâm sàng Bộ Y tế:</div>
+              <ul className="list-disc list-inside text-gray-600 space-y-1">
+                {(topProto.tieuChuanChanDoan || []).map((tc, i) => (
+                  <li key={i}>{tc}</li>
+                ))}
+              </ul>
+              <div className="pt-1">
+                <span className="font-semibold text-blue-700">CLS khuyến nghị: </span>
+                <span className="text-gray-700">{(topProto.canLamSangKhuyenNghi || []).join(' • ')}</span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-white border border-gray-200 space-y-1.5">
+              <div className="font-bold text-gray-900">💊 Phác đồ Điều trị Đầu tay (Bộ Y tế):</div>
+              <p className="text-gray-600">{topProto.phacDoDieuTri?.nguyenTac}</p>
+              <div className="space-y-1 pt-1">
+                {(topProto.phacDoDieuTri?.thuocDauTay || []).map((t, i) => (
+                  <div key={i} className="p-2 rounded-lg bg-gray-50 border border-gray-200">
+                    <div className="font-bold text-emerald-700">{t.hoatChatGoiY}</div>
+                    <div className="text-[11px] text-gray-700">{t.lieuDungChuan}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * TRỤ CỘT AI 3.2: COMPUTER VISION & PHÂN TÍCH ĐA CHỈ SỐ CẬN LÂM SÀNG
+ * ═══════════════════════════════════════════════════════════════════════════════ */
+function AiLabVisionPanel({ benhAnKhamId, items, onApplyConclusion }) {
+  const labStorageKey = `phong_kham_lab_ai_${benhAnKhamId || 'default'}`;
+  const [analysis, setAnalysis] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(labStorageKey);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleAnalyzeLabs = async () => {
+    setLoading(true);
+    try {
+      const dsXetNghiem = (items || []).map(({ chiDinh, ketQua }) => ({
+        id: chiDinh?.id,
+        maDichVu: chiDinh?.dichVu?.maDichVu,
+        tenDichVu: chiDinh?.dichVu?.tenDichVu,
+        loai: chiDinh?.dichVu?.loai,
+        trangThai: chiDinh?.trangThai,
+        giaTri: ketQua?.giaTri,
+        donVi: ketQua?.donVi,
+        ketQuaChiTiet: ketQua?.ketQuaChiTiet,
+        nhanXet: ketQua?.nhanXet,
+        tepDinhKem: ketQua?.tepDinhKem,
+      }));
+      const res = await apiPost('/ai/analyze-lab-vision', {
+        benhAnKhamId,
+        dsXetNghiem,
+      });
+      const nextAnalysis = res?.data || null;
+      setAnalysis(nextAnalysis);
+      if (nextAnalysis) {
+        try {
+          sessionStorage.setItem(labStorageKey, JSON.stringify(nextAnalysis));
+        } catch {}
+      }
+    } catch (e) {
+      console.error('Lỗi phân tích AI Cận lâm sàng:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-purple-200 bg-purple-50/40 p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center shadow-2xs">
+            <FlaskConical className="w-4 h-4" />
+          </div>
+          <div>
+            <h4 className="font-bold text-sm text-gray-900">
+              🔬 AI Phân tích Đa chỉ số Cận lâm sàng & Thị giác Máy tính (Lab & Vision AI)
+            </h4>
+            <p className="text-[11px] text-gray-500">
+              Tự động đọc chỉ số bất thường, tính mức lọc cầu thận ước tính (eGFR), tỷ số AST/ALT và phân tích hình ảnh X-Quang / Siêu âm
+            </p>
+          </div>
+        </div>
+
+        <MedButton
+          type="button"
+          variant="primary"
+          size="sm"
+          loading={loading}
+          leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+          onClick={handleAnalyzeLabs}
+        >
+          🔍 AI Đọc & Biện luận Kết quả CLS
+        </MedButton>
+      </div>
+
+      {analysis && (
+        <div className="space-y-3 pt-2 border-t border-purple-200/70 text-xs">
+          {/* Bảng các chỉ số vượt ngưỡng tham chiếu */}
+          {analysis.abnormalBiomarkers?.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="font-bold text-gray-900">
+                ⚠️ Phát hiện {analysis.abnormalBiomarkers.length} chỉ số sinh học vượt ngưỡng tham chiếu:
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {analysis.abnormalBiomarkers.map((bm, i) => (
+                  <div key={i} className="p-2.5 rounded-lg bg-white border border-amber-300 flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-bold text-gray-900">
+                        {bm.chiSo}: <span className="text-red-600">{bm.giaTri}</span>
+                      </div>
+                      <div className="text-[11px] text-gray-500">Tham chiếu chuẩn: {bm.khoangThamChieu}</div>
+                      <div className="text-[11px] text-amber-800 mt-0.5">{bm.yNghiaLamSang}</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-bold text-[10px] shrink-0">
+                      {bm.mucDo === 'giam_thap' ? 'Thấp (L)' : 'Cao (H)'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Chỉ số dẫn xuất y khoa (eGFR, AST/ALT) */}
+          {analysis.derivedIndices?.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {analysis.derivedIndices.map((di, i) => (
+                <div key={i} className="p-2.5 rounded-lg bg-white border border-blue-200">
+                  <div className="font-bold text-blue-800">
+                    🧮 {di.tenChiSo}: <span className="text-gray-900">{di.giaTri}</span>
+                  </div>
+                  <div className="text-[11px] text-gray-600 mt-0.5">{di.danhGia}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Phát hiện Hình ảnh học (X-Quang / Siêu âm / ECG) */}
+          {analysis.imagingFindings?.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="font-bold text-gray-900">🖼️ Phân tích Hình ảnh học Y khoa (Computer Vision):</div>
+              {analysis.imagingFindings.map((img, i) => (
+                <div key={i} className="p-2.5 rounded-lg bg-white border border-gray-200 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-purple-700">{img.tenDichVu}</span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-700">
+                      Vùng khảo sát: {img.vungKhaoSat}
+                    </span>
+                  </div>
+                  <div className="text-gray-800 font-medium">{img.phatHien}</div>
+                  <div className="text-[11px] text-gray-500">{img.khuyenNghi}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Kết luận tổng hợp + Nút chèn vào Bệnh án */}
+          <div className="p-3 rounded-xl bg-white border border-purple-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="font-bold text-gray-900">📌 Nhận định Tổng hợp Cận lâm sàng từ AI:</div>
+              <p className="text-gray-700 mt-0.5">{analysis.clinicalConclusion}</p>
+            </div>
+            {onApplyConclusion && (
+              <button
+                type="button"
+                onClick={() => onApplyConclusion(analysis.clinicalConclusion)}
+                className="shrink-0 px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+              >
+                📋 Chèn nhận định vào Kết quả khám
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

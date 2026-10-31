@@ -11,6 +11,7 @@ import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { LichLamViec } from '../nhan-vien/entities/lich-lam-viec.entity';
 import { CaLamViec } from '../nhan-vien/entities/ca-lam-viec.entity';
+import { CauHinhTienCoc } from '../quan-ly/entities/cau-hinh-tien-coc.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { TaoLichHenDto, CapNhatTrangThaiLichHenDto, TimKiemLichHenDto, LaySlotTrongDto, ChinhSuaLichHenDto } from './dto/lich-hen.dto';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
@@ -116,13 +117,26 @@ export class LichHenService implements OnModuleInit {
     }
   }
 
+  private async getSoTienCocHienHanh(hinhThuc: string): Promise<number> {
+    try {
+      const cocRows: any[] = await this.dataSource.query(
+        'SELECT so_tien_coc FROM cau_hinh_tien_coc WHERE loai_hinh_thuc = ? LIMIT 1',
+        [hinhThuc || 'truc_tiep'],
+      );
+      if (cocRows.length > 0 && cocRows[0].so_tien_coc) {
+        return Number(cocRows[0].so_tien_coc);
+      }
+    } catch {}
+    return hinhThuc === 'truc_tuyen' ? 251000 : 40000;
+  }
+
   async dongBoHoaDonTamUng(lh: LichHen, isNewPayment = false) {
     if (!lh || !lh.maLichHen || !lh.benhNhanId) return null;
 
     const maHoaDonTamUng = `HDT${lh.maLichHen.replace(/^LH/i, '')}`.slice(0, 20);
     const marker = `[MÃ_LỊCH_HẸN: ${lh.maLichHen}]`;
     const isOnline = lh.hinhThuc === 'truc_tuyen';
-    const soTienCoc = isOnline ? 200000 : 40000;
+    const soTienCoc = await this.getSoTienCocHienHanh(lh.hinhThuc);
     const soTienCocText = `${soTienCoc.toLocaleString('vi-VN')}đ`;
 
     const existingRows: any[] = await this.dataSource.query(
@@ -213,7 +227,7 @@ export class LichHenService implements OnModuleInit {
     const maHoaDonTamUng = `HDT${lh.maLichHen.replace(/^LH/i, '')}`.slice(0, 20);
     const marker = `[MÃ_LỊCH_HẸN: ${lh.maLichHen}]`;
     const isOnline = lh.hinhThuc === 'truc_tuyen';
-    const soTienHoan = isOnline ? 200000 : 40000;
+    const soTienHoan = await this.getSoTienCocHienHanh(lh.hinhThuc);
     const soTienHoanText = `${soTienHoan.toLocaleString('vi-VN')}đ`;
 
     let tkTag = `[TK_HOÀN_TIỀN: chua_cung_cap|Chờ bệnh nhân cung cấp STK hoặc nhận tại quầy||${lh.benhNhan?.hoTen || ''}]`;
@@ -366,7 +380,7 @@ export class LichHenService implements OnModuleInit {
     const items = await qb.getMany();
     const allRooms: any[] = await this.dataSource.query('SELECT id, ten_phong, vi_tri, chuyen_khoa FROM phong_kham');
     const depositInvoices: any[] = await this.dataSource.query(
-      `SELECT ma_hoa_don, trang_thai, thu_ngan_id, ghi_chu FROM hoa_don WHERE ma_hoa_don LIKE 'HDT%'`
+      `SELECT ma_hoa_don, trang_thai, thu_ngan_id, ghi_chu, thuc_thu, tong_tien FROM hoa_don WHERE ma_hoa_don LIKE 'HDT%'`
     ).catch(() => []);
 
     const mappedItems = items.map((item) => {
@@ -378,6 +392,8 @@ export class LichHenService implements OnModuleInit {
       const hdCoc = depositInvoices.find((h) => h.ma_hoa_don === maHdTamUng);
       const noteCombined = `${item.ghiChu || ''} ${hdCoc?.ghi_chu || ''}`;
       const noteLower = noteCombined.toLowerCase();
+
+      const soTienThanhToan = Number(hdCoc?.thuc_thu || hdCoc?.tong_tien || (item.hinhThuc === 'truc_tuyen' ? 2000 : 40000));
 
       const tkMatch = noteCombined.match(/\[TK_HOÀN_TIỀN:\s*([^\]]+)\]/i);
       let thongTinHoanCoc: any = null;
@@ -411,6 +427,8 @@ export class LichHenService implements OnModuleInit {
         ...item,
         soThuTu,
         phongKham: phong,
+        soTienThanhToan,
+        soTienCoc: soTienThanhToan,
         trangThaiHoanCoc,
         thongTinHoanCoc,
         qrCodeValue: `${item.maLichHen}|STT:${soThuTu}|DATE:${item.ngayHen}|TIME:${item.gioHen}`,
@@ -438,12 +456,15 @@ export class LichHenService implements OnModuleInit {
     }
     const sttMatch = lh.ghiChu?.match(/\[STT:\s*([^\]]+)\]/);
     const soThuTu = sttMatch ? sttMatch[1] : `A${String((lh.id % 900) + 100)}`;
+    const soTienCoc = await this.getSoTienCocHienHanh(lh.hinhThuc);
 
     return {
       data: {
         ...lh,
         phongKham,
         soThuTu,
+        soTienCoc,
+        soTienThanhToan: soTienCoc,
         qrCodeValue: `${lh.maLichHen}|STT:${soThuTu}|DATE:${lh.ngayHen}|TIME:${lh.gioHen}`,
       },
       message: 'Lấy thông tin lịch hẹn thành công',
@@ -498,6 +519,10 @@ export class LichHenService implements OnModuleInit {
       { slot: '16:30', ca: 'chieu' },
     ];
 
+    const isToday = ngayKham === getLocalDateString();
+    const now = new Date();
+    const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
     const result = filteredDoctors.map((doc) => {
       // Tìm phòng khám phù hợp
       const matchedRoom = allRooms.find((r) =>
@@ -515,12 +540,14 @@ export class LichHenService implements OnModuleInit {
       const slots = STANDARD_SLOTS.map(({ slot, ca }) => {
         const inShift = (ca === 'sang' && worksMorning) || (ca === 'chieu' && worksAfternoon);
         const daDat = appointmentSet.has(`${doc.id}_${slot}`);
+        const daQuaGio = isToday && slot <= currentTimeStr;
         return {
           gio: slot,
           ca,
           inShift,
           daDat,
-          conTrong: inShift && !daDat,
+          daQuaGio,
+          conTrong: inShift && !daDat && !daQuaGio,
         };
       });
 
@@ -591,23 +618,46 @@ export class LichHenService implements OnModuleInit {
     }
 
     if (nguoiDatVaiTro === 'benh_nhan') {
+      const targetHinhThuc = dto.hinhThuc === 'truc_tuyen' ? 'truc_tuyen' : 'truc_tiep';
+      const cocConfig = await this.dataSource.getRepository(CauHinhTienCoc).findOne({
+        where: { loaiHinhThuc: targetHinhThuc },
+      });
+      const minDays = cocConfig?.choPhepDatTruocNgayMin !== undefined && cocConfig?.choPhepDatTruocNgayMin !== null
+        ? Number(cocConfig.choPhepDatTruocNgayMin) : 0;
+      const maxDays = cocConfig?.choPhepDatTruocNgayMax !== undefined && cocConfig?.choPhepDatTruocNgayMax !== null
+        ? Number(cocConfig.choPhepDatTruocNgayMax) : 30;
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const minDate = new Date(today);
-      minDate.setDate(minDate.getDate() + 2); // Tối thiểu trước 2 ngày
+      minDate.setDate(minDate.getDate() + minDays);
 
       const maxDate = new Date(today);
-      maxDate.setDate(maxDate.getDate() + 7); // Tối đa 7 ngày
+      maxDate.setDate(maxDate.getDate() + maxDays);
       maxDate.setHours(23, 59, 59, 999);
 
       const appointmentDate = new Date(dto.ngayHen + 'T00:00:00');
 
       if (appointmentDate < minDate || appointmentDate > maxDate) {
+        const hinhThucLabel = targetHinhThuc === 'truc_tuyen' ? 'tư vấn trực tuyến' : 'khám trực tiếp';
         throw new BadRequestException({
-          code: 'NGOAI_KHOANG_2_DEN_7_NGAY',
-          message: 'Theo quy định, lịch hẹn khám chỉ được phép đặt trước từ 2 đến 7 ngày tính từ ngày hiện tại.',
+          code: 'NGOAI_KHOANG_DAT_LICH',
+          message: `Theo quy định, lịch hẹn ${hinhThucLabel} chỉ được phép đặt trước từ ${minDays} đến ${maxDays} ngày tính từ ngày hiện tại.`,
         });
+      }
+
+      // Nếu đặt trong ngày hôm nay: giờ hẹn phải từ thời điểm hiện tại trở đi
+      if (dto.ngayHen === getLocalDateString()) {
+        const [h, m] = (dto.gioHen || '00:00').split(':');
+        const appointmentTime = new Date();
+        appointmentTime.setHours(Number(h) || 0, Number(m) || 0, 0, 0);
+        if (appointmentTime <= now) {
+          throw new BadRequestException({
+            code: 'GIO_KHAM_DA_QUA',
+            message: 'Khung giờ khám đã qua so với thời điểm hiện tại. Vui lòng chọn khung giờ khám từ lúc này trở đi.',
+          });
+        }
       }
     }
 
@@ -899,10 +949,14 @@ export class LichHenService implements OnModuleInit {
       throw new NotFoundException({ code: 'LICH_HEN_KHONG_TON_TAI', message: 'Không tìm thấy lịch hẹn' });
     }
     if (appointment.trangThai === TrangThaiLichHen.DA_HUY) {
-      return { data: appointment, message: 'Lịch hẹn đã bị hủy, không thể xác nhận thanh toán' };
+      // Nếu trước đó bị huỷ do hết giờ nhưng tiền đã vào thực tế: Hồi sinh lịch hẹn ngay
+      appointment.ghiChu = `${(appointment.ghiChu || '').replace('[Đã hủy khi chưa thanh toán tạm ứng]', '').trim()} [ĐÃ_THANH_TOÁN_THẬT_TỰ_ĐỘNG_HỒI_SINH]`.trim();
     }
 
     appointment.trangThai = TrangThaiLichHen.DA_XAC_NHAN;
+    if (!appointment.ghiChu?.includes('[ĐÃ_THANH_TOÁN_THÀNH_CÔNG]')) {
+      appointment.ghiChu = `${appointment.ghiChu || ''} [ĐÃ_THANH_TOÁN_THÀNH_CÔNG]`.trim();
+    }
 
     // Tự động phân công bác sĩ nếu chưa chọn bác sĩ cụ thể
     if (!appointment.bacSiId) {
@@ -967,11 +1021,15 @@ export class LichHenService implements OnModuleInit {
       chuyenKhoa: rooms[0].chuyen_khoa,
     } : null;
 
+    const soTienCoc = await this.getSoTienCocHienHanh(saved.hinhThuc);
+
     return {
       data: {
         ...fullAppointment,
         soThuTu,
         phongKham: phongKhamRow,
+        soTienCoc,
+        soTienThanhToan: soTienCoc,
         qrCodeValue: `${saved.maLichHen}|STT:${soThuTu}|DATE:${saved.ngayHen}|TIME:${saved.gioHen}`,
       },
       message: 'Đã xác nhận thanh toán thành công. Đã xuất phiếu hẹn khám!',
@@ -1062,7 +1120,7 @@ export class LichHenService implements OnModuleInit {
       }
 
       const isOnline = lh.hinhThuc === 'truc_tuyen';
-      const soTienHoan = isOnline ? 200000 : 40000;
+      const soTienHoan = await this.getSoTienCocHienHanh(lh.hinhThuc);
       const soTienHoanText = `${soTienHoan.toLocaleString('vi-VN')}đ`;
 
       const phuongThucNhan = refundDto?.phuongThucNhan || 'chuyen_khoan';
@@ -1206,30 +1264,52 @@ export class LichHenService implements OnModuleInit {
       });
     }
 
-    // 2. Kiểm tra ngày hẹn mới hợp lệ (trong khoảng từ 2 đến 7 ngày tính từ ngày hiện tại)
+    // 2. Kiểm tra ngày hẹn mới hợp lệ theo cấu hình của Giám Đốc
     const ngayGioMoiStr = `${dto.ngayHen}T${dto.gioHen}:00`;
     const gioHenMoiFull = new Date(ngayGioMoiStr);
     if (Number.isNaN(gioHenMoiFull.getTime())) {
       throw new BadRequestException({ code: 'THOI_GIAN_KHONG_HOP_LE', message: 'Ngày hoặc giờ hẹn mới không hợp lệ.' });
     }
 
+    const targetHinhThuc = lh.hinhThuc === 'truc_tuyen' ? 'truc_tuyen' : 'truc_tiep';
+    const cocConfig = await this.dataSource.getRepository(CauHinhTienCoc).findOne({
+      where: { loaiHinhThuc: targetHinhThuc },
+    });
+    const minDays = cocConfig?.choPhepDatTruocNgayMin !== undefined && cocConfig?.choPhepDatTruocNgayMin !== null
+      ? Number(cocConfig.choPhepDatTruocNgayMin) : 0;
+    const maxDays = cocConfig?.choPhepDatTruocNgayMax !== undefined && cocConfig?.choPhepDatTruocNgayMax !== null
+      ? Number(cocConfig.choPhepDatTruocNgayMax) : 30;
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const minDate = new Date(today);
-    minDate.setDate(minDate.getDate() + 2); // Tối thiểu trước 2 ngày
+    minDate.setDate(minDate.getDate() + minDays);
 
     const maxDate = new Date(today);
-    maxDate.setDate(maxDate.getDate() + 7); // Tối đa 7 ngày
+    maxDate.setDate(maxDate.getDate() + maxDays);
     maxDate.setHours(23, 59, 59, 999);
 
     const appointmentDate = new Date(dto.ngayHen + 'T00:00:00');
 
     if (appointmentDate < minDate || appointmentDate > maxDate) {
+      const hinhThucLabel = targetHinhThuc === 'truc_tuyen' ? 'tư vấn trực tuyến' : 'khám trực tiếp';
       throw new BadRequestException({
-        code: 'NGOAI_KHOANG_2_DEN_7_NGAY',
-        message: 'Theo quy định, lịch hẹn khám chỉ được phép đổi sang ngày trong khoảng từ 2 đến 7 ngày tính từ ngày hiện tại.',
+        code: 'NGOAI_KHOANG_DAT_LICH',
+        message: `Theo quy định, lịch hẹn ${hinhThucLabel} chỉ được phép đổi sang ngày trong khoảng từ ${minDays} đến ${maxDays} ngày tính từ ngày hiện tại.`,
       });
+    }
+
+    if (dto.ngayHen === getLocalDateString()) {
+      const [h, m] = (dto.gioHen || '00:00').split(':');
+      const appointmentTime = new Date();
+      appointmentTime.setHours(Number(h) || 0, Number(m) || 0, 0, 0);
+      if (appointmentTime <= new Date()) {
+        throw new BadRequestException({
+          code: 'GIO_KHAM_DA_QUA',
+          message: 'Khung giờ khám đã qua so với thời điểm hiện tại. Vui lòng chọn khung giờ khám từ lúc này trở đi.',
+        });
+      }
     }
 
     // 3. Kiểm tra trùng ca/giờ của chính bệnh nhân trong ngày mới (loại trừ chính lịch hẹn này)

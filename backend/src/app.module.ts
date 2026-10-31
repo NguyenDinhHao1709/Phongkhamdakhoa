@@ -19,10 +19,11 @@ import { DanhGiaModule } from './modules/danh-gia/danh-gia.module';
 import { KioskModule } from './modules/kiosk/kiosk.module';
 import { ChamCongModule } from './modules/cham-cong/cham-cong.module';
 import { PayosModule } from './modules/payos/payos.module';
+import { OfficeModule } from './modules/office/office.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', 'backend/.env'] }),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -71,6 +72,7 @@ import { PayosModule } from './modules/payos/payos.module';
     KioskModule,        // Kiosk Tiếp nhận tự động
     ChamCongModule,     // Chấm công khuôn mặt
     PayosModule,        // Cổng thanh toán VietQR ngân hàng phòng khám PayOS
+    OfficeModule,       // MediCare Digital Office Gateway (Microservice :5003)
   ],
 })
 export class AppModule {}

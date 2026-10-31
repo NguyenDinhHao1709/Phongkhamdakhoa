@@ -26,7 +26,7 @@ const ROLE_HOME = {
   ky_thuat_vien: '/ky-thuat-vien',
   nhan_vien_nha_thuoc: '/nha-thuoc',
   thu_ngan: '/thu-ngan',
-  benh_nhan: '/benh-nhan',
+  benh_nhan: '/',
 };
 
 export default function LoginPage() {

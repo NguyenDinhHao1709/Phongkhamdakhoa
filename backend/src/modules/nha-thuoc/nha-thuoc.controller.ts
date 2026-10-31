@@ -178,6 +178,28 @@ export class NhaThuocController {
     return this.nhaThuocService.tiepNhanHang(id, { ...body, nguoiKiemNhanId: userId || 1 });
   }
 
+  @Patch('mua-hang/yeu-cau/:id/de-nghi-chi')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Kế toán / Thu ngân gửi đề xuất chi tiền mua thuốc tới Ban Giám Đốc' })
+  deNghiChiTra(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { soHoaDonNcc: string; ngayHoaDonNcc?: string; phuongThucChi?: string; soChungTuChi: string; ghiChu?: string },
+  ) {
+    return this.nhaThuocService.deNghiChiTra(id, body, userId || 1);
+  }
+
+  @Patch('mua-hang/yeu-cau/:id/duyet-chi')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Ban Giám Đốc phê duyệt hoặc từ chối đề xuất chi tiền mua thuốc NCC' })
+  duyetChiTra(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { duyet: boolean; lyDo?: string },
+  ) {
+    return this.nhaThuocService.duyetChiTra(id, body.duyet, body.lyDo, userId || 1);
+  }
+
   @Patch('mua-hang/yeu-cau/:id/chi-tra')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   chiTraNhaCungCap(
@@ -186,6 +208,49 @@ export class NhaThuocController {
     @Body() body: { soTien?: number; phuongThucChi?: string; soChungTuChi?: string; soHoaDonNcc?: string; ngayHoaDonNcc?: string; ghiChu?: string },
   ) {
     return this.nhaThuocService.chiTraNhaCungCap(id, body, userId || 1);
+  }
+
+  @Patch('mua-hang/yeu-cau/:id/huy-chi')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thu ngân hủy đề xuất chi trả mua thuốc khi chưa xuất quỹ' })
+  huyChiTraNhaCungCap(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { lyDo?: string },
+  ) {
+    return this.nhaThuocService.huyChiTraNhaCungCap(id, body?.lyDo, userId || 1);
+  }
+
+  @Patch('mua-hang/yeu-cau/:id/yeu-cau-huy')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thu ngân lập đơn yêu cầu Giám đốc duyệt hủy chi trả mua thuốc đã xuất quỹ' })
+  yeuCauHuyChiTra(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { lyDo: string },
+  ) {
+    return this.nhaThuocService.yeuCauHuyChiTra(id, body?.lyDo, userId || 1);
+  }
+
+  @Patch('mua-hang/yeu-cau/:id/duyet-huy')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Ban Giám Đốc phê duyệt hoặc từ chối đơn yêu cầu hủy chi trả mua thuốc' })
+  duyetHuyChiTra(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { duyet: boolean; lyDo?: string },
+  ) {
+    return this.nhaThuocService.duyetHuyChiTra(id, body?.duyet, body?.lyDo, userId || 1);
+  }
+
+  @Patch('mua-hang/yeu-cau/:id/xac-nhan-hoan-quy')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thu ngân xác nhận tiền hoàn về quỹ sau khi Giám đốc đã duyệt hủy chi trả mua thuốc' })
+  xacNhanHoanQuyChiTra(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.nhaThuocService.xacNhanHoanQuyChiTra(id, userId || 1);
   }
 
   @Get('du-bao-nhu-cau')

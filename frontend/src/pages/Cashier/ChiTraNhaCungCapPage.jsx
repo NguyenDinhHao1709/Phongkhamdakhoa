@@ -3,7 +3,7 @@ import {
   Wallet, RefreshCw, Printer, Search, FileText, CheckCircle2,
   CircleCheck, X, Building2, AlertTriangle, ArrowRight, ShieldCheck,
   CreditCard, DollarSign, Calendar, Eye, Send, PackageCheck, PlusCircle,
-  Receipt
+  Receipt, RotateCcw
 } from 'lucide-react';
 import { apiGet, apiPatch } from '../../services/api';
 import useAuthStore from '../../store/authStore';
@@ -29,9 +29,11 @@ const PAYMENT_METHOD_LABELS = {
 
 const LOAI_CHI_LABELS = {
   dien_nuoc: { label: 'Điện, nước, viễn thông', badge: 'bg-blue-100 text-blue-800 border-blue-200' },
+  rac_y_te: { label: 'Rác thải y tế & MT', badge: 'bg-rose-100 text-rose-800 border-rose-200' },
   rac_thai_y_te: { label: 'Rác thải y tế & MT', badge: 'bg-rose-100 text-rose-800 border-rose-200' },
   van_phong_pham: { label: 'Văn phòng phẩm, in ấn', badge: 'bg-amber-100 text-amber-800 border-amber-200' },
   vat_tu_tieu_hao: { label: 'Vật tư y tế tiêu hao', badge: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+  sua_chua_tb: { label: 'Sửa chữa & bảo trì', badge: 'bg-purple-100 text-purple-800 border-purple-200' },
   sua_chua_bao_tri: { label: 'Sửa chữa & bảo trì', badge: 'bg-purple-100 text-purple-800 border-purple-200' },
   khac: { label: 'Chi phí vận hành khác', badge: 'bg-gray-100 text-gray-800 border-gray-200' },
 };
@@ -50,6 +52,7 @@ export default function ChiTraNhaCungCapPage() {
   // Dữ liệu OPEX Chi hoạt động
   const [opexList, setOpexList] = useState([]);
   const [opexLoading, setOpexLoading] = useState(false);
+  const [opexActiveTab, setOpexActiveTab] = useState('tat_ca'); // 'cho_xuat', 'da_xuat', 'tat_ca'
   const [opexFilterLoai, setOpexFilterLoai] = useState('all');
   const [opexSearch, setOpexSearch] = useState('');
   const [openLapOpexModal, setOpenLapOpexModal] = useState(false);
@@ -75,6 +78,11 @@ export default function ChiTraNhaCungCapPage() {
   const [printVoucher, setPrintVoucher] = useState(null);
   // Modal In Sổ Kế Toán (A4)
   const [openPrintSoKeToan, setOpenPrintSoKeToan] = useState(false);
+
+  // Modal Đề xuất Hủy Phiếu Chi đã xuất quỹ (gửi Giám Đốc)
+  const [cancelModal, setCancelModal] = useState(null); // { type: 'opex' | 'ap', item: any }
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
 
   const { user } = useAuthStore();
 
@@ -146,14 +154,14 @@ export default function ChiTraNhaCungCapPage() {
     }
 
     try {
-      await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${paymentModal.id}/chi-tra`, {
-        soTien: Number(paymentForm.soTien),
-        phuongThucChi: paymentForm.phuongThucChi,
-        soChungTuChi: paymentForm.soChungTuChi.trim(),
+      await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${paymentModal.id}/de-nghi-chi`, {
         soHoaDonNcc: paymentForm.soHoaDonNcc.trim(),
         ngayHoaDonNcc: paymentForm.ngayHoaDonNcc,
+        phuongThucChi: paymentForm.phuongThucChi,
+        soChungTuChi: paymentForm.soChungTuChi.trim(),
         ghiChu: paymentForm.ghiChu.trim(),
       });
+      alert('Đã gửi đề xuất chi tiền mua thuốc tới Ban Giám Đốc phê duyệt thành công! Khi Giám đốc duyệt xong, bạn có thể thực hiện Xuất quỹ.');
       setPaymentModal(null);
       await loadData();
     } catch (requestError) {
@@ -162,12 +170,146 @@ export default function ChiTraNhaCungCapPage() {
     }
   };
 
+  // Thu ngân xác nhận xuất tiền quỹ cho đơn mua thuốc đã được GĐ duyệt
+  const handleXacNhanXuatTienAp = async (item) => {
+    if (!window.confirm(`Xác nhận xuất tiền quỹ ${Number(item.tongThucTe || 0).toLocaleString('vi-VN')} đ cho đơn #${item.maYeuCau} và chính thức nạp thuốc vào kho dược?`)) {
+      return;
+    }
+    setLoading(true);
+    try {
+      await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${item.id}/chi-tra`, {
+        soTien: Number(item.tongThucTe),
+        phuongThucChi: item.phuongThucChi || 'chuyen_khoan',
+        soChungTuChi: item.soChungTuChi || `PC-${item.maYeuCau}`,
+        soHoaDonNcc: item.soHoaDonNcc,
+        ngayHoaDonNcc: item.ngayHoaDonNcc,
+        ghiChu: item.ghiChuChi,
+      });
+      alert('Đã xác nhận xuất tiền quỹ thành công · Thuốc đạt chuẩn đã được nạp chính thức vào kho!');
+      await loadData();
+      setPrintVoucher({
+        soChungTu: item.soChungTuChi || `PC-${item.maYeuCau}`,
+        ngayLap: new Date().toISOString(),
+        doiTuong: item.nhaCungCap?.tenNhaCungCap,
+        dienGiai: `Thanh toán tiền mua dược phẩm theo đơn #${item.maYeuCau}, HĐ GTGT ${item.soHoaDonNcc || ''}`,
+        soTien: item.tongThucTe,
+        phuongThuc: item.phuongThucChi || 'chuyen_khoan',
+        chungTuGoc: `HĐ ${item.soHoaDonNcc || '---'}, GRN #${item.maYeuCau}`,
+        nguoiLap: user?.hoTen,
+      });
+    } catch (err) {
+      alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra khi xuất tiền quỹ');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Thu ngân xác nhận xuất tiền quỹ cho phiếu chi hoạt động OPEX đã được GĐ duyệt
+  const handleXacNhanXuatTienOpex = async (item) => {
+    if (!window.confirm(`Xác nhận xuất tiền quỹ ${Number(item.soTien || 0).toLocaleString('vi-VN')} đ cho khoản chi "${item.khoanChi}"?`)) {
+      return;
+    }
+    setOpexLoading(true);
+    try {
+      await apiPatch(`/thanh-toan/phieu-chi-hoat-dong/${item.id}/xuat-tien`);
+      alert('Đã xác nhận xuất tiền quỹ OPEX thành công · Phiếu chi đã được ghi nhận vào sổ quỹ!');
+      await loadOpexData();
+      setPrintVoucher({
+        soChungTu: item.maPhieuChi,
+        ngayLap: new Date().toISOString(),
+        doiTuong: item.nguoiNhan,
+        dienGiai: item.khoanChi,
+        soTien: item.soTien,
+        phuongThuc: item.phuongThucChi,
+        chungTuGoc: item.chungTuGoc,
+        nguoiLap: user?.hoTen,
+      });
+    } catch (err) {
+      alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra khi xuất tiền quỹ');
+    } finally {
+      setOpexLoading(false);
+    }
+  };
+
+  // 1. Hủy trực tiếp khi chưa xuất quỹ
+  const handleHuyTrucTiep = async (type, item) => {
+    const ma = type === 'opex' ? item.maPhieuChi : item.maYeuCau;
+    if (!window.confirm(`Bạn có chắc chắn muốn hủy phiếu "${ma}" không?\n\n(Do phiếu chưa xuất quỹ tiền nên sẽ không ảnh hưởng đến số dư sổ quỹ)`)) {
+      return;
+    }
+    try {
+      if (type === 'opex') {
+        await apiPatch(`/thanh-toan/phieu-chi-hoat-dong/${item.id}/huy-truc-tiep`, { lyDo: 'Thu ngân hủy trước khi xuất quỹ' });
+        await loadOpexData();
+      } else {
+        await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${item.id}/huy-chi`, { lyDo: 'Thu ngân hủy trước khi xuất quỹ' });
+        await loadData();
+      }
+      alert('Đã hủy phiếu chi thành công!');
+    } catch (err) {
+      alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra khi hủy phiếu chi');
+    }
+  };
+
+  // 2. Mở modal gửi đơn đề xuất hủy phiếu đã xuất quỹ
+  const handleOpenCancelModal = (type, item) => {
+    setCancelModal({ type, item });
+    setCancelReason('');
+  };
+
+  // 3. Xác nhận gửi đơn xin hủy lên Giám Đốc
+  const handleSubmitCancelRequest = async (e) => {
+    e?.preventDefault();
+    if (!cancelReason.trim()) {
+      alert('Vui lòng nhập lý do đề xuất hủy phiếu chi và hoàn tiền!');
+      return;
+    }
+    setCancelSubmitting(true);
+    try {
+      if (cancelModal.type === 'opex') {
+        await apiPatch(`/thanh-toan/phieu-chi-hoat-dong/${cancelModal.item.id}/yeu-cau-huy`, { lyDo: cancelReason.trim() });
+        await loadOpexData();
+      } else {
+        await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${cancelModal.item.id}/yeu-cau-huy`, { lyDo: cancelReason.trim() });
+        await loadData();
+      }
+      alert('Đã gửi yêu cầu hủy phiếu chi lên Ban Giám Đốc xem xét phê duyệt thành công!');
+      setCancelModal(null);
+    } catch (err) {
+      alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra');
+    } finally {
+      setCancelSubmitting(false);
+    }
+  };
+
+  // 4. Xác nhận thu hồi tiền vào quỹ (lần xác nhận cuối cùng sau khi Giám Đốc đã duyệt)
+  const handleXacNhanHoanQuy = async (type, item) => {
+    const soTien = type === 'opex' ? item.soTien : (item.soTienChiTra || item.tongThucTe);
+    const maChungTu = type === 'opex' ? item.maPhieuChi : (item.soChungTuChi || item.maYeuCau);
+    if (!window.confirm(`XÁC NHẬN THU HỒI TIỀN VÀO QUỸ:\n\nSố tiền: ${formatMoney(soTien)}\nChứng từ: ${maChungTu}\n\nSau khi bấm Đồng ý, số tiền này sẽ tự động được thu hồi về quỹ phòng khám và ghi nhận kiểm toán hoàn tất.`)) {
+      return;
+    }
+    try {
+      if (type === 'opex') {
+        const res = await apiPatch(`/thanh-toan/phieu-chi-hoat-dong/${item.id}/xac-nhan-hoan-quy`);
+        alert(res?.message || 'Đã xác nhận thu hồi tiền vào quỹ thành công!');
+        await loadOpexData();
+      } else {
+        const res = await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${item.id}/xac-nhan-hoan-quy`);
+        alert(res?.message || 'Đã xác nhận thu hồi tiền vào quỹ thành công!');
+        await loadData();
+      }
+    } catch (err) {
+      alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra khi hoàn quỹ');
+    }
+  };
+
   // Thống kê KPIs tài chính AP Mua Thuốc
   const apStats = useMemo(() => {
     const tongGiaTriNhap = list.reduce((sum, x) => sum + Number(x.tongThucTe || 0), 0);
     const daChiList = list.filter((x) => x.trangThaiChiTra === 'da_chi');
     const tongDaChi = daChiList.reduce((sum, x) => sum + Number(x.soTienChiTra || x.tongThucTe || 0), 0);
-    const choChiList = list.filter((x) => x.trangThaiChiTra !== 'da_chi');
+    const choChiList = list.filter((x) => !['da_chi', 'da_huy', 'da_huy_hoan_quy'].includes(x.trangThaiChiTra));
     const tongChoChi = choChiList.reduce((sum, x) => sum + Number(x.tongThucTe || 0), 0);
 
     return {
@@ -181,23 +323,33 @@ export default function ChiTraNhaCungCapPage() {
 
   // Thống kê KPIs tài chính OPEX
   const opexStats = useMemo(() => {
-    const tongChi = opexList.reduce((sum, x) => sum + Number(x.soTien || 0), 0);
-    const tienMat = opexList
+    // Chỉ các phiếu ĐÃ XUẤT QUỸ (da_chi) mới được tính vào chi phí thực tế
+    const daChiList = opexList.filter((x) => x.trangThai === 'da_chi');
+    const tongChi = daChiList.reduce((sum, x) => sum + Number(x.soTien || 0), 0);
+    const tienMat = daChiList
       .filter((x) => (x.phuongThucChi || 'tien_mat') === 'tien_mat')
       .reduce((sum, x) => sum + Number(x.soTien || 0), 0);
     const chuyenKhoan = tongChi - tienMat;
+
+    // Các khoản chi đang chờ duyệt hoặc chờ xuất quỹ
+    const choXuatList = opexList.filter((x) => ['cho_duyet', 'da_duyet'].includes(x.trangThai));
+    const tongChoXuat = choXuatList.reduce((sum, x) => sum + Number(x.soTien || 0), 0);
+
     return {
       tongChi,
       tienMat,
       chuyenKhoan,
-      soPhieu: opexList.length,
+      soPhieu: daChiList.length,
+      tongChoXuat,
+      soPhieuChoXuat: choXuatList.length,
+      tongCongKhoanChi: opexList.length,
     };
   }, [opexList]);
 
   // Lọc AP Mua thuốc
   const filteredList = useMemo(() => {
     return list.filter((item) => {
-      if (activeTab === 'cho_chi' && item.trangThaiChiTra === 'da_chi') return false;
+      if (activeTab === 'cho_chi' && (item.trangThaiChiTra === 'da_chi' || ['da_huy', 'da_huy_hoan_quy'].includes(item.trangThaiChiTra))) return false;
       if (activeTab === 'da_chi' && item.trangThaiChiTra !== 'da_chi') return false;
 
       if (!searchTerm) return true;
@@ -213,6 +365,8 @@ export default function ChiTraNhaCungCapPage() {
   // Lọc OPEX Chi hoạt động
   const filteredOpex = useMemo(() => {
     return opexList.filter((item) => {
+      if (opexActiveTab === 'cho_xuat' && item.trangThai === 'da_chi') return false;
+      if (opexActiveTab === 'da_xuat' && item.trangThai !== 'da_chi') return false;
       if (opexFilterLoai !== 'all' && item.loaiChi !== opexFilterLoai) return false;
       if (!opexSearch.trim()) return true;
       const s = opexSearch.toLowerCase();
@@ -222,7 +376,7 @@ export default function ChiTraNhaCungCapPage() {
       const matchCt = item.chungTuGoc?.toLowerCase().includes(s);
       return matchMa || matchKhoan || matchNhan || matchCt;
     });
-  }, [opexList, opexFilterLoai, opexSearch]);
+  }, [opexList, opexActiveTab, opexFilterLoai, opexSearch]);
 
   return (
     <div className="space-y-6 pb-16 font-sans text-gray-800 animate-fade-in">
@@ -345,27 +499,27 @@ export default function ChiTraNhaCungCapPage() {
         ) : (
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-purple-100 bg-purple-50/50 p-4">
-              <p className="text-xs font-semibold text-purple-700">1. Tổng Chi Phí Hoạt Động (OPEX)</p>
+              <p className="text-xs font-semibold text-purple-700">1. Tổng Đã Xuất Quỹ (OPEX)</p>
               <p className="mt-1.5 text-2xl font-black text-purple-900">{formatMoney(opexStats.tongChi)}</p>
-              <p className="mt-0.5 text-[11px] text-purple-600">{opexStats.soPhieu} chứng từ phiếu chi hợp lệ</p>
+              <p className="mt-0.5 text-[11px] text-purple-600">{opexStats.soPhieu} phiếu đã xuất tiền quỹ</p>
             </div>
 
             <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
-              <p className="text-xs font-semibold text-emerald-700">2. Chi Tiền Mặt Tại Quỹ</p>
+              <p className="text-xs font-semibold text-emerald-700">2. Chi Tiền Mặt Đã Xuất</p>
               <p className="mt-1.5 text-2xl font-black text-emerald-900">{formatMoney(opexStats.tienMat)}</p>
               <p className="mt-0.5 text-[11px] text-emerald-600">Trực tiếp xuất quỹ tiền mặt phòng khám</p>
             </div>
 
             <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
-              <p className="text-xs font-semibold text-blue-700">3. Chi Chuyển Khoản Ngân Hàng</p>
+              <p className="text-xs font-semibold text-blue-700">3. Chi Chuyển Khoản Đã Xuất</p>
               <p className="mt-1.5 text-2xl font-black text-blue-900">{formatMoney(opexStats.chuyenKhoan)}</p>
               <p className="mt-0.5 text-[11px] text-blue-600">Thanh toán qua tài khoản ngân hàng</p>
             </div>
 
             <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-4">
-              <p className="text-xs font-semibold text-amber-700">4. Chứng Từ & Mẫu In Chuẩn</p>
-              <p className="mt-1.5 text-lg font-bold text-amber-900">Mẫu 02-TT / BTC</p>
-              <p className="mt-0.5 text-[11px] text-amber-600">Thông tư 200/2014 & 133/2016/TT-BTC</p>
+              <p className="text-xs font-semibold text-amber-700">4. Chờ Phê Duyệt & Xuất Quỹ</p>
+              <p className="mt-1.5 text-2xl font-black text-amber-900">{formatMoney(opexStats.tongChoXuat)}</p>
+              <p className="mt-0.5 text-[11px] text-amber-600">{opexStats.soPhieuChoXuat} phiếu chờ duyệt / chờ xuất</p>
             </div>
           </div>
         )}
@@ -488,43 +642,151 @@ export default function ChiTraNhaCungCapPage() {
                           </td>
 
                           <td className="py-3 text-center">
-                            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border ${
-                              isPaid
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-amber-50 text-amber-800 border-amber-200'
-                            }`}>
-                              {isPaid ? '✓ Đã thanh toán' : '⏳ Chờ thanh toán'}
-                            </span>
+                            {isPaid ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border bg-emerald-50 text-emerald-800 border-emerald-200">
+                                ✓ Đã xuất quỹ & Nạp kho
+                              </span>
+                            ) : item.trangThaiChiTra === 'cho_duyet_huy' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border bg-amber-50 text-amber-800 border-amber-200 animate-pulse">
+                                ⏳ Chờ GĐ duyệt hủy
+                              </span>
+                            ) : item.trangThaiChiTra === 'da_duyet_huy' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border bg-cyan-50 text-cyan-800 border-cyan-200 font-extrabold animate-pulse">
+                                ✓ GĐ đã duyệt hủy
+                              </span>
+                            ) : item.trangThaiChiTra === 'da_huy_hoan_quy' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border bg-gray-100 text-gray-700 border-gray-300">
+                                ↺ Đã hoàn tiền về quỹ
+                              </span>
+                            ) : item.trangThaiChiTra === 'da_huy' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold border bg-gray-100 text-gray-600 border-gray-200">
+                                ✕ Đã hủy
+                              </span>
+                            ) : item.trangThaiChiTra === 'da_duyet_chi' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border bg-teal-50 text-teal-800 border-teal-200 font-extrabold animate-pulse">
+                                ✓ GĐ đã duyệt chi (Sẵn sàng xuất quỹ)
+                              </span>
+                            ) : item.trangThaiChiTra === 'cho_giam_doc_duyet' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border bg-amber-50 text-amber-800 border-amber-200">
+                                ⏳ Chờ Giám Đốc duyệt
+                              </span>
+                            ) : item.trangThaiChiTra === 'tu_choi_chi' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border bg-rose-50 text-rose-800 border-rose-200" title={item.lyDoTuChoiChi}>
+                                ✕ GĐ từ chối chi
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border bg-blue-50 text-blue-800 border-blue-200">
+                                📋 Chờ lập đề xuất chi
+                              </span>
+                            )}
                           </td>
 
                           <td className="py-3 text-center pr-4">
-                            {!isPaid ? (
+                            {isPaid ? (
+                              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => setPrintVoucher({
+                                    soChungTu: item.soChungTuChi || `PC-${item.maYeuCau}`,
+                                    ngayLap: item.ngayChiTra || item.capNhatLuc,
+                                    doiTuong: item.nhaCungCap?.tenNhaCungCap,
+                                    dienGiai: `Thanh toán tiền mua dược phẩm theo đơn #${item.maYeuCau}, HĐ GTGT ${item.soHoaDonNcc || ''}`,
+                                    soTien: item.soTienChiTra || item.tongThucTe,
+                                    phuongThuc: item.phuongThucChi || 'chuyen_khoan',
+                                    chungTuGoc: `HĐ ${item.soHoaDonNcc || '---'}, GRN #${item.maYeuCau}`,
+                                    nguoiLap: user?.hoTen,
+                                  })}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 cursor-pointer"
+                                >
+                                  <Printer className="h-3.5 w-3.5" />
+                                  <span>In</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenCancelModal('ap', item)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 cursor-pointer"
+                                  title="Gửi đơn cho Giám đốc phê duyệt hủy và thu hồi tiền"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  <span>Yêu cầu hủy</span>
+                                </button>
+                              </div>
+                            ) : item.trangThaiChiTra === 'da_duyet_huy' ? (
                               <button
                                 type="button"
-                                onClick={() => openPayment(item)}
-                                className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-amber-700 cursor-pointer"
+                                onClick={() => handleXacNhanHoanQuy('ap', item)}
+                                className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-indigo-700 cursor-pointer active:scale-95 animate-pulse"
                               >
-                                <Wallet className="h-3.5 w-3.5" />
-                                <span>Đối chiếu & Lập phiếu chi</span>
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                <span>Thu hồi tiền vào quỹ</span>
                               </button>
+                            ) : item.trangThaiChiTra === 'cho_duyet_huy' ? (
+                              <span className="text-[11px] text-amber-600 font-medium italic">
+                                Đang đợi GĐ duyệt hủy...
+                              </span>
+                            ) : item.trangThaiChiTra === 'da_huy_hoan_quy' ? (
+                              <span className="text-[11px] text-gray-500 font-semibold italic">
+                                Đã hoàn quỹ
+                              </span>
+                            ) : item.trangThaiChiTra === 'da_duyet_chi' ? (
+                              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => handleXacNhanXuatTienAp(item)}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 cursor-pointer active:scale-95"
+                                >
+                                  <DollarSign className="h-3.5 w-3.5" />
+                                  <span>Xuất tiền</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleHuyTrucTiep('ap', item)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-100 cursor-pointer"
+                                  title="Hủy đề xuất chi khi chưa xuất tiền"
+                                >
+                                  <X className="h-3.5 w-3.5 text-rose-500" />
+                                  <span>Hủy</span>
+                                </button>
+                              </div>
+                            ) : item.trangThaiChiTra === 'cho_giam_doc_duyet' ? (
+                              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                <span className="text-[11px] text-amber-600 font-medium italic">
+                                  Đang đợi GĐ duyệt...
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleHuyTrucTiep('ap', item)}
+                                  className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-1 text-[11px] font-medium text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                  title="Hủy đề xuất chi"
+                                >
+                                  <X className="h-3 w-3" />
+                                  <span>Hủy</span>
+                                </button>
+                              </div>
+                            ) : item.trangThaiChiTra === 'da_huy' ? (
+                              <span className="text-[11px] text-gray-400 italic">
+                                Đã hủy hóa đơn
+                              </span>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => setPrintVoucher({
-                                  soChungTu: item.soChungTuChi || `PC-${item.maYeuCau}`,
-                                  ngayLap: item.ngayChiTra || item.capNhatLuc,
-                                  doiTuong: item.nhaCungCap?.tenNhaCungCap,
-                                  dienGiai: `Thanh toán tiền mua dược phẩm theo đơn #${item.maYeuCau}, HĐ GTGT ${item.soHoaDonNcc || ''}`,
-                                  soTien: item.soTienChiTra || item.tongThucTe,
-                                  phuongThuc: item.phuongThucChi || 'chuyen_khoan',
-                                  chungTuGoc: `HĐ ${item.soHoaDonNcc || '---'}, GRN #${item.maYeuCau}`,
-                                  nguoiLap: user?.hoTen,
-                                })}
-                                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 cursor-pointer"
-                              >
-                                <Printer className="h-3.5 w-3.5" />
-                                <span>In Phiếu Chi</span>
-                              </button>
+                              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => openPayment(item)}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-amber-700 cursor-pointer"
+                                >
+                                  <Wallet className="h-3.5 w-3.5" />
+                                  <span>{item.trangThaiChiTra === 'tu_choi_chi' ? 'Gửi lại đề xuất' : 'Đối chiếu & Đề xuất chi'}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleHuyTrucTiep('ap', item)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 cursor-pointer"
+                                  title="Hủy hóa đơn / chứng từ chưa thanh toán này"
+                                >
+                                  <X className="h-3.5 w-3.5 text-rose-600" />
+                                  <span>Hủy</span>
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -542,9 +804,32 @@ export default function ChiTraNhaCungCapPage() {
       {mainSection === 'chi_hoat_dong' && (
         <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {/* Lọc loại chi phí */}
+            {/* Tab lọc trạng thái OPEX */}
+            <div className="flex flex-wrap gap-1 rounded-xl bg-gray-100 p-1">
+              {[
+                { id: 'cho_xuat', label: 'Cần xử lý / Chờ xuất quỹ', count: opexStats.soPhieuChoXuat, badgeColor: 'bg-amber-100 text-amber-800' },
+                { id: 'da_xuat', label: 'Đã xuất quỹ', count: opexStats.soPhieu, badgeColor: 'bg-emerald-100 text-emerald-800' },
+                { id: 'tat_ca', label: 'Tất cả chứng từ', count: opexList.length, badgeColor: 'bg-gray-200 text-gray-700' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setOpexActiveTab(tab.id)}
+                  className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                    opexActiveTab === tab.id
+                      ? 'bg-white text-purple-700 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span className={`rounded-full px-2 py-0.2 text-[10px] font-bold ${tab.badgeColor}`}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Bộ lọc phân loại & Tìm kiếm OPEX */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-semibold text-gray-500">Loại chi phí:</span>
               <select
                 value={opexFilterLoai}
                 onChange={(e) => setOpexFilterLoai(e.target.value)}
@@ -552,24 +837,23 @@ export default function ChiTraNhaCungCapPage() {
               >
                 <option value="all">⚡ Tất cả phân loại chi</option>
                 <option value="dien_nuoc">Điện, nước, viễn thông</option>
-                <option value="rac_thai_y_te">Rác thải y tế & MT</option>
+                <option value="rac_y_te">Rác thải y tế & MT</option>
                 <option value="van_phong_pham">Văn phòng phẩm, in ấn</option>
                 <option value="vat_tu_tieu_hao">Vật tư y tế tiêu hao</option>
-                <option value="sua_chua_bao_tri">Sửa chữa, bảo trì máy</option>
+                <option value="sua_chua_tb">Sửa chữa, bảo trì máy</option>
                 <option value="khac">Chi phí khác</option>
               </select>
-            </div>
 
-            {/* Tìm kiếm OPEX */}
-            <div className="relative min-w-[280px]">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Tìm mã PC, tên khoản chi, người nhận..."
-                value={opexSearch}
-                onChange={(e) => setOpexSearch(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
-              />
+              <div className="relative min-w-[240px]">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Tìm mã PC, tên khoản chi, người nhận..."
+                  value={opexSearch}
+                  onChange={(e) => setOpexSearch(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+              </div>
             </div>
           </div>
 
@@ -594,9 +878,10 @@ export default function ChiTraNhaCungCapPage() {
                       <th className="py-3">Phân loại chi</th>
                       <th className="py-3">Nội dung khoản chi</th>
                       <th className="py-3">Người / Đơn vị nhận</th>
-                      <th className="py-3 text-right">Số tiền chi</th>
-                      <th className="py-3">Hình thức</th>
+                      <th className="py-3 text-right pr-6">Số tiền chi</th>
+                      <th className="py-3 pl-4">Hình thức</th>
                       <th className="py-3">Chứng từ gốc</th>
+                      <th className="py-3 text-center">Trạng thái duyệt</th>
                       <th className="py-3 text-center pr-4">Thao tác</th>
                     </tr>
                   </thead>
@@ -625,11 +910,11 @@ export default function ChiTraNhaCungCapPage() {
                             {item.nguoiNhan}
                           </td>
 
-                          <td className="py-3 text-right font-extrabold text-sm text-emerald-700">
+                          <td className="py-3 text-right font-extrabold text-sm text-emerald-700 pr-6">
                             {formatMoney(item.soTien)}
                           </td>
 
-                          <td className="py-3">
+                          <td className="py-3 pl-4">
                             <span className="text-gray-700 font-medium">
                               {item.phuongThucChi === 'tien_mat' ? '💵 Tiền mặt' : '🏦 Chuyển khoản'}
                             </span>
@@ -639,24 +924,123 @@ export default function ChiTraNhaCungCapPage() {
                             {item.chungTuGoc || '---'}
                           </td>
 
+                          <td className="py-3 text-center">
+                            {item.trangThai === 'da_chi' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border bg-emerald-50 text-emerald-800 border-emerald-200">
+                                ✓ Đã xuất quỹ
+                              </span>
+                            ) : item.trangThai === 'cho_duyet_huy' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border bg-amber-50 text-amber-800 border-amber-200 animate-pulse">
+                                ⏳ Chờ GĐ duyệt hủy
+                              </span>
+                            ) : item.trangThai === 'da_duyet_huy' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border bg-cyan-50 text-cyan-800 border-cyan-200 font-extrabold animate-pulse">
+                                ✓ GĐ đã duyệt hủy
+                              </span>
+                            ) : item.trangThai === 'da_huy_hoan_quy' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border bg-gray-100 text-gray-700 border-gray-300">
+                                ↺ Đã hoàn tiền về quỹ
+                              </span>
+                            ) : item.trangThai === 'da_huy' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border bg-gray-100 text-gray-600 border-gray-200">
+                                ✕ Đã hủy
+                              </span>
+                            ) : item.trangThai === 'da_duyet' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border bg-teal-50 text-teal-800 border-teal-200 font-extrabold animate-pulse">
+                                ✓ GĐ đã duyệt
+                              </span>
+                            ) : item.trangThai === 'tu_choi' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border bg-rose-50 text-rose-800 border-rose-200" title={item.lyDoTuChoi}>
+                                ✕ Từ chối
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border bg-amber-50 text-amber-800 border-amber-200">
+                                ⏳ Chờ GĐ duyệt
+                              </span>
+                            )}
+                          </td>
+
                           <td className="py-3 text-center pr-4">
-                            <button
-                              type="button"
-                              onClick={() => setPrintVoucher({
-                                soChungTu: item.maPhieuChi,
-                                ngayLap: item.ngayChi,
-                                doiTuong: item.nguoiNhan,
-                                dienGiai: item.khoanChi,
-                                soTien: item.soTien,
-                                phuongThuc: item.phuongThucChi,
-                                chungTuGoc: item.chungTuGoc,
-                                nguoiLap: item.nguoiLap?.hoTen || user?.hoTen,
-                              })}
-                              className="inline-flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-1.5 text-xs font-semibold text-purple-700 transition hover:bg-purple-100 cursor-pointer"
-                            >
-                              <Printer className="h-3.5 w-3.5" />
-                              <span>In Phiếu Chi</span>
-                            </button>
+                            {item.trangThai === 'da_duyet' ? (
+                              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => handleXacNhanXuatTienOpex(item)}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700 cursor-pointer active:scale-95"
+                                >
+                                  <DollarSign className="h-3.5 w-3.5" />
+                                  <span>Xuất tiền quỹ</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleHuyTrucTiep('opex', item)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-100 cursor-pointer"
+                                  title="Hủy phiếu khi chưa xuất quỹ"
+                                >
+                                  <X className="h-3.5 w-3.5 text-rose-500" />
+                                  <span>Hủy</span>
+                                </button>
+                              </div>
+                            ) : item.trangThai === 'cho_duyet' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleHuyTrucTiep('opex', item)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-100 cursor-pointer"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                                <span>Hủy phiếu</span>
+                              </button>
+                            ) : item.trangThai === 'da_chi' ? (
+                              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => setPrintVoucher({
+                                    soChungTu: item.maPhieuChi,
+                                    ngayLap: item.ngayChi,
+                                    doiTuong: item.nguoiNhan,
+                                    dienGiai: item.khoanChi,
+                                    soTien: item.soTien,
+                                    phuongThuc: item.phuongThucChi,
+                                    chungTuGoc: item.chungTuGoc,
+                                    nguoiLap: item.nguoiLap?.hoTen || user?.hoTen,
+                                  })}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 text-xs font-semibold text-purple-700 transition hover:bg-purple-100 cursor-pointer"
+                                >
+                                  <Printer className="h-3.5 w-3.5" />
+                                  <span>In</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenCancelModal('opex', item)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 cursor-pointer"
+                                  title="Gửi đơn cho Giám đốc phê duyệt hủy và hoàn tiền"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  <span>Yêu cầu hủy</span>
+                                </button>
+                              </div>
+                            ) : item.trangThai === 'da_duyet_huy' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleXacNhanHoanQuy('opex', item)}
+                                className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-indigo-700 cursor-pointer active:scale-95 animate-pulse"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                <span>Thu hồi tiền vào quỹ</span>
+                              </button>
+                            ) : item.trangThai === 'cho_duyet_huy' ? (
+                              <span className="text-[11px] text-amber-600 font-medium italic">
+                                Đang đợi GĐ duyệt hủy...
+                              </span>
+                            ) : item.trangThai === 'da_huy_hoan_quy' ? (
+                              <span className="text-[11px] text-gray-500 font-semibold italic">
+                                Đã hoàn quỹ
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-gray-400 italic">
+                                {item.trangThai === 'tu_choi' ? 'Đã từ chối' : 'Đã hủy'}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -899,9 +1283,10 @@ export default function ChiTraNhaCungCapPage() {
               </button>
               <button
                 type="submit"
-                className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 cursor-pointer"
+                className="rounded-xl bg-amber-600 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-amber-700 cursor-pointer flex items-center gap-1.5"
               >
-                Lập Phiếu Chi & Lưu Sổ Quỹ
+                <ShieldCheck className="h-4 w-4" />
+                <span>Gửi Đề Xuất Chi Tới Giám Đốc</span>
               </button>
             </div>
           </form>
@@ -938,6 +1323,103 @@ export default function ChiTraNhaCungCapPage() {
           mainSection={mainSection}
           onClose={() => setOpenPrintSoKeToan(false)}
         />
+      )}
+
+      {/* ─── MODAL 5: ĐỀ XUẤT HỦY PHIẾU CHI ĐÃ XUẤT QUỸ (GỬI GIÁM ĐỐC) ─── */}
+      {cancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                  <RotateCcw className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900">Đề Xuất Hủy Phiếu Chi Đã Xuất Quỹ</h3>
+                  <p className="text-[11px] text-gray-500">Quy trình chuẩn ERP: Giám đốc duyệt → Thu ngân xác nhận thu hồi tiền về quỹ</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCancelModal(null)}
+                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitCancelRequest} className="mt-4 space-y-4">
+              <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3 text-xs text-rose-900 space-y-1">
+                <p className="font-bold flex items-center gap-1.5 text-rose-800">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+                  Khoản chi này đã thực tế xuất tiền khỏi quỹ!
+                </p>
+                <p className="text-[11px] leading-relaxed text-rose-700">
+                  Theo chuẩn kiểm soát nội bộ, sau khi gửi đơn và được Giám Đốc phê duyệt, Thu ngân sẽ bấm xác nhận lần 2 để hệ thống tự động ghi nhận hoàn trả số tiền này về lại quỹ phòng khám.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-gray-50 p-3 text-xs space-y-2 border border-gray-100">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 font-medium">Mã chứng từ:</span>
+                  <span className="font-mono font-bold text-purple-700">
+                    {cancelModal.type === 'opex' ? cancelModal.item.maPhieuChi : (cancelModal.item.soChungTuChi || cancelModal.item.maYeuCau)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 font-medium">Khoản chi / Mục đích:</span>
+                  <span className="font-semibold text-gray-800 text-right max-w-[260px] truncate">
+                    {cancelModal.type === 'opex' ? cancelModal.item.khoanChi : `Thanh toán mua dược phẩm #${cancelModal.item.maYeuCau}`}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500 font-medium">Người nhận / NCC:</span>
+                  <span className="font-semibold text-gray-800">
+                    {cancelModal.type === 'opex' ? cancelModal.item.nguoiNhan : (cancelModal.item.nhaCungCap?.tenNhaCungCap || 'NCC')}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center border-t border-gray-200/60 pt-2">
+                  <span className="text-gray-700 font-bold">Số tiền hoàn quỹ:</span>
+                  <span className="text-base font-black text-rose-700">
+                    {formatMoney(cancelModal.type === 'opex' ? cancelModal.item.soTien : (cancelModal.item.soTienChiTra || cancelModal.item.tongThucTe))}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                  Lý do đề xuất hủy chứng từ & hoàn tiền *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="Ví dụ: Lập nhầm số tiền, nhà cung cấp hoàn tiền do thiếu hàng, chi sai đối tượng nhận..."
+                  className="w-full rounded-xl border border-gray-200 p-2.5 text-xs text-gray-900 focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-gray-100 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setCancelModal(null)}
+                  className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  disabled={cancelSubmitting}
+                  className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-rose-700 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  <span>{cancelSubmitting ? 'Đang gửi...' : 'Gửi Đơn Xin Hủy Tới Giám Đốc'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -8,6 +8,7 @@ const ThongTinCaNhanPage  = lazy(() => import('../Receptionist/NhanVienShared/Th
 const LichLamViecPage     = lazy(() => import('../Receptionist/NhanVienShared/LichLamViecPage'));
 const GuiDonGiamDocPage   = lazy(() => import('../Receptionist/NhanVienShared/GuiDonGiamDocPage'));
 const ChamCongPage        = lazy(() => import('../Receptionist/NhanVienShared/ChamCongPage'));
+const OfficeWorkspacePage = lazy(() => import('../Receptionist/NhanVienShared/OfficeWorkspacePage'));
 
 function Loader() {
   return (
@@ -29,6 +30,7 @@ export default function LabPortal() {
           <Route path="lich-lam-viec" element={<LichLamViecPage />} />
           <Route path="gui-don" element={<GuiDonGiamDocPage />} />
           <Route path="cham-cong" element={<ChamCongPage />} />
+          <Route path="office" element={<OfficeWorkspacePage />} />
           <Route path="*" element={<Navigate to="xet-nghiem" replace />} />
         </Routes>
       </Suspense>

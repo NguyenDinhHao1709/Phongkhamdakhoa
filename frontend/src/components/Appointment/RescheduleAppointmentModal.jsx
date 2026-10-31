@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Calendar, Clock, AlertCircle, Stethoscope, CheckCircle2,
   X, Building2, ChevronRight, Check, RefreshCw, AlertTriangle, Search, Video
@@ -22,16 +22,50 @@ export default function RescheduleAppointmentModal({
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [searchDoctor, setSearchDoctor] = useState('');
+  const [cauHinhTienCoc, setCauHinhTienCoc] = useState([]);
 
-  // Tính ngày min (hôm nay + 2 ngày) và max (hôm nay + 7 ngày) giống như khi đặt lịch mới
-  const today = new Date();
-  const minDateObj = new Date(today);
-  minDateObj.setDate(minDateObj.getDate() + 2); // Tối thiểu 2 ngày
-  const minDate = minDateObj.toISOString().split('T')[0];
+  // Tải cấu hình tiền cọc động do Giám đốc thiết lập
+  useEffect(() => {
+    if (!isOpen) return;
+    const fetchConfig = async () => {
+      try {
+        const res = await apiGet('/quan-ly/cau-hinh-tien-coc');
+        const raw = res?.data?.data || res?.data || res;
+        const items = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+        if (items.length > 0) {
+          setCauHinhTienCoc(items);
+        }
+      } catch (err) {
+        console.error('Lỗi tải cấu hình tiền cọc:', err);
+      }
+    };
+    fetchConfig();
+  }, [isOpen]);
 
-  const maxDateObj = new Date(today);
-  maxDateObj.setDate(maxDateObj.getDate() + 7); // Tối đa 7 ngày
-  const maxDate = maxDateObj.toISOString().split('T')[0];
+  const activeConfig = useMemo(() => {
+    const targetType = appointment?.hinhThuc || hinhThuc || 'truc_tiep';
+    return cauHinhTienCoc.find((x) => x.loaiHinhThuc === targetType) || null;
+  }, [cauHinhTienCoc, appointment, hinhThuc]);
+
+  const minDays = activeConfig?.choPhepDatTruocNgayMin !== undefined && activeConfig?.choPhepDatTruocNgayMin !== null
+    ? Number(activeConfig.choPhepDatTruocNgayMin)
+    : 0;
+
+  const maxDays = activeConfig?.choPhepDatTruocNgayMax !== undefined && activeConfig?.choPhepDatTruocNgayMax !== null
+    ? Number(activeConfig.choPhepDatTruocNgayMax)
+    : 7;
+
+  const minDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + minDays);
+    return d.toISOString().split('T')[0];
+  }, [minDays]);
+
+  const maxDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + maxDays);
+    return d.toISOString().split('T')[0];
+  }, [maxDays]);
 
   // Khởi tạo ngày và hình thức khi mở modal
   useEffect(() => {
@@ -42,7 +76,6 @@ export default function RescheduleAppointmentModal({
       setReason('');
       setSearchDoctor('');
       setHinhThuc(appointment.hinhThuc || 'truc_tiep');
-      // Gợi ý ngày hẹn cũ nếu nằm trong khung 2-7 ngày, ngược lại lấy minDate
       const oldDate = appointment.ngayHen ? String(appointment.ngayHen).substring(0, 10) : '';
       if (oldDate && oldDate >= minDate && oldDate <= maxDate) {
         setNewDate(oldDate);
@@ -50,7 +83,7 @@ export default function RescheduleAppointmentModal({
         setNewDate(minDate);
       }
     }
-  }, [isOpen, appointment]);
+  }, [isOpen, appointment, minDate, maxDate]);
 
   // Tải danh sách bác sĩ trực khi đổi ngày
   useEffect(() => {
@@ -270,7 +303,7 @@ export default function RescheduleAppointmentModal({
                   <span>2. Chọn Ngày Khám Mới *</span>
                 </span>
                 <span className="text-[11px] font-normal text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                  Từ 2 đến 7 ngày (tính từ hôm nay)
+                  {minDays === 0 ? `Từ 0 đến ${maxDays} ngày (Từ hôm nay)` : `Từ ${minDays} đến ${maxDays} ngày (tính từ hôm nay)`}
                 </span>
               </label>
               <input

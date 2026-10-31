@@ -8,6 +8,8 @@ import SaoLuuDuLieuPage from './SaoLuuDuLieuPage';
 import NhatKyHeThongPage from './NhatKyHeThongPage';
 import ThongTinCaNhanPage from '../Receptionist/NhanVienShared/ThongTinCaNhanPage';
 import CaiDatChamCongPage from './CaiDatChamCongPage';
+import QuanLyTaiKhoanBenhNhanPage from './QuanLyTaiKhoanBenhNhanPage';
+import OfficeWorkspacePage from '../Receptionist/NhanVienShared/OfficeWorkspacePage';
 
 export default function AdminPortal() {
   return (
@@ -15,9 +17,13 @@ export default function AdminPortal() {
       <Routes>
         {/* 1. Tổng quan kỹ thuật hệ thống */}
         <Route path="tong-quan" element={<DashboardAdminPage />} />
+        <Route path="office" element={<OfficeWorkspacePage />} />
 
         {/* 2. Quản lý người dùng & nhân sự */}
         <Route path="nhan-vien" element={<NhanVienPage />} />
+
+        {/* 2.1 Quản lý tài khoản bệnh nhân */}
+        <Route path="benh-nhan" element={<QuanLyTaiKhoanBenhNhanPage />} />
 
         {/* 3. Phân quyền & Vai trò */}
         <Route path="phan-quyen" element={<PhanQuyenPage />} />

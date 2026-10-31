@@ -7,12 +7,14 @@ import LichLamViecPage from '../Receptionist/NhanVienShared/LichLamViecPage';
 import GuiDonGiamDocPage from '../Receptionist/NhanVienShared/GuiDonGiamDocPage';
 import ChamCongPage from '../Receptionist/NhanVienShared/ChamCongPage';
 import ChiTraNhaCungCapPage from './ChiTraNhaCungCapPage';
+import OfficeWorkspacePage from '../Receptionist/NhanVienShared/OfficeWorkspacePage';
 
 export default function CashierPortal() {
   return (
     <DashboardLayout>
       <Routes>
         <Route path="hoa-don" element={<HoaDonListPage />} />
+        <Route path="office" element={<OfficeWorkspacePage />} />
         <Route path="chi-tra-nha-cung-cap" element={<ChiTraNhaCungCapPage />} />
         <Route path="thong-ke" element={<ThongKeThuNganPage />} />
         <Route path="ca-nhan" element={<ThongTinCaNhanPage />} />

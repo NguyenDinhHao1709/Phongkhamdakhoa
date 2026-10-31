@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import useAuthStore from "./store/authStore";
+import useHospitalStore from "./store/hospitalStore";
+import { apiGet } from "./services/api";
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -46,7 +48,7 @@ const ROLE_HOME = {
   quan_tri_vien: "/quan-tri",
   quan_tri_vien_cap_cao: "/quan-tri",
   ban_giam_doc:  "/ban-giam-doc",
-  benh_nhan:     "/benh-nhan",
+  benh_nhan:     "/",
 };
 
 function RoleRedirect() {
@@ -95,6 +97,25 @@ function PageLoader() {
    App Router
    ================================================================ */
 export default function App() {
+  const { isAuthenticated, setUser } = useAuthStore();
+
+  useEffect(() => {
+    useHospitalStore.getState().fetchHospitalInfo();
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      apiGet('/auth/me')
+        .then((res) => {
+          const freshUser = res?.data || res;
+          if (freshUser && freshUser.id) {
+            setUser(freshUser);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isAuthenticated, setUser]);
+
   return (
     <Suspense fallback={<PageLoader />}>
       <ScrollToTop />

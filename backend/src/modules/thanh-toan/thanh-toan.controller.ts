@@ -52,9 +52,10 @@ export class ThanhToanController {
     @Query('tuNgay') tuNgay?: string,
     @Query('denNgay') denNgay?: string,
     @Query('loaiChi') loaiChi?: string,
+    @Query('trangThai') trangThai?: string,
     @Query('search') search?: string,
   ) {
-    return this.thanhToanService.getDanhSachPhieuChiHoatDong({ tuNgay, denNgay, loaiChi, search });
+    return this.thanhToanService.getDanhSachPhieuChiHoatDong({ tuNgay, denNgay, loaiChi, trangThai, search });
   }
 
   @Post('phieu-chi-hoat-dong')
@@ -73,6 +74,70 @@ export class ThanhToanController {
     },
   ) {
     return this.thanhToanService.taoPhieuChiHoatDong(userId || 1, dto);
+  }
+
+  @Patch('phieu-chi-hoat-dong/:id/duyet')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Ban Giám Đốc phê duyệt hoặc từ chối phiếu chi hoạt động' })
+  duyetPhieuChiHoatDong(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { duyet: boolean; lyDo?: string },
+  ) {
+    return this.thanhToanService.duyetPhieuChiHoatDong(id, body.duyet, body.lyDo, userId || 1);
+  }
+
+  @Patch('phieu-chi-hoat-dong/:id/xuat-tien')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thu ngân xác nhận xuất tiền quỹ cho phiếu chi hoạt động đã được duyệt' })
+  xuatTienPhieuChiHoatDong(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.thanhToanService.xuatTienPhieuChiHoatDong(id, userId || 1);
+  }
+
+  @Patch('phieu-chi-hoat-dong/:id/huy-truc-tiep')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thu ngân hủy trực tiếp phiếu chi khi chưa xuất quỹ' })
+  huyTrucTiepPhieuChiHoatDong(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { lyDo?: string },
+  ) {
+    return this.thanhToanService.huyTrucTiepPhieuChiHoatDong(id, body?.lyDo, userId || 1);
+  }
+
+  @Patch('phieu-chi-hoat-dong/:id/yeu-cau-huy')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thu ngân lập đơn yêu cầu Giám đốc phê duyệt hủy phiếu chi đã xuất quỹ' })
+  yeuCauHuyPhieuChiHoatDong(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { lyDo: string },
+  ) {
+    return this.thanhToanService.yeuCauHuyPhieuChiHoatDong(id, body?.lyDo, userId || 1);
+  }
+
+  @Patch('phieu-chi-hoat-dong/:id/duyet-huy')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Ban Giám Đốc phê duyệt hoặc từ chối đơn yêu cầu hủy phiếu chi' })
+  duyetHuyPhieuChiHoatDong(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { duyet: boolean; lyDo?: string },
+  ) {
+    return this.thanhToanService.duyetHuyPhieuChiHoatDong(id, body?.duyet, body?.lyDo, userId || 1);
+  }
+
+  @Patch('phieu-chi-hoat-dong/:id/xac-nhan-hoan-quy')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thu ngân xác nhận tiền hoàn về quỹ sau khi Giám đốc đã duyệt hủy' })
+  xacNhanHoanQuyPhieuChiHoatDong(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.thanhToanService.xacNhanHoanQuyPhieuChiHoatDong(id, userId || 1);
   }
 
   @Get(':id')

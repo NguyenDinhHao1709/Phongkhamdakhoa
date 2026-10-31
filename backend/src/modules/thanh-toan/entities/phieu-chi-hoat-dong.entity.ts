@@ -13,8 +13,7 @@ export class PhieuChiHoatDong {
 
   @Column({
     name: 'loai_chi',
-    type: 'enum',
-    enum: ['dien_nuoc', 'rac_y_te', 'van_phong_pham', 'vat_tu_tieu_hao', 'sua_chua_tb', 'tiep_khach', 'khac'],
+    length: 50,
     default: 'khac',
   })
   loaiChi: string;
@@ -52,10 +51,56 @@ export class PhieuChiHoatDong {
   @Column({ name: 'ghi_chu', type: 'text', nullable: true })
   ghiChu: string;
 
+  @Column({ name: 'trang_thai', length: 30, default: 'cho_duyet' })
+  trangThai: string;
+
+  @Column({ name: 'nguoi_duyet_id', nullable: true })
+  nguoiDuyetId: number;
+
+  @ManyToOne(() => NhanVien, { nullable: true })
+  @JoinColumn({ name: 'nguoi_duyet_id' })
+  nguoiDuyet: NhanVien;
+
+  @Column({ name: 'ngay_duyet', type: 'datetime', nullable: true })
+  ngayDuyet: Date;
+
+  @Column({ name: 'ly_do_tu_choi', type: 'text', nullable: true })
+  lyDoTuChoi: string;
+
+  @Column({ name: 'nguoi_chi_id', nullable: true })
+  nguoiChiId: number;
+
+  @ManyToOne(() => NhanVien, { nullable: true })
+  @JoinColumn({ name: 'nguoi_chi_id' })
+  nguoiChi: NhanVien;
+
+  @Column({ name: 'ngay_xuat_quy', type: 'datetime', nullable: true })
+  ngayXuatQuy: Date;
+
+  @Column({ name: 'ly_do_huy', type: 'text', nullable: true })
+  lyDoHuy: string;
+
+  @Column({ name: 'nguoi_yeu_cau_huy_id', nullable: true })
+  nguoiYeuCauHuyId: number;
+
+  @Column({ name: 'ngay_yeu_cau_huy', type: 'datetime', nullable: true })
+  ngayYeuCauHuy: Date;
+
+  @Column({ name: 'nguoi_duyet_huy_id', nullable: true })
+  nguoiDuyetHuyId: number;
+
+  @Column({ name: 'ngay_duyet_huy', type: 'datetime', nullable: true })
+  ngayDuyetHuy: Date;
+
+  @Column({ name: 'nguoi_hoan_quy_id', nullable: true })
+  nguoiHoanQuyId: number;
+
+  @Column({ name: 'ngay_hoan_quy', type: 'datetime', nullable: true })
+  ngayHoanQuy: Date;
+
   @CreateDateColumn({ name: 'tao_luc' })
   taoLuc: Date;
 
   @UpdateDateColumn({ name: 'cap_nhat_luc' })
   capNhatLuc: Date;
 }
-

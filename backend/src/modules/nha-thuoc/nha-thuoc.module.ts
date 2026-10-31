@@ -13,9 +13,11 @@ import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { NhaCungCap } from './entities/nha-cung-cap.entity';
 import { YeuCauNhapKho } from './entities/yeu-cau-nhap-kho.entity';
 import { YeuCauNhapKhoChiTiet } from './entities/yeu-cau-nhap-kho-chi-tiet.entity';
+import { ThongBaoModule } from '../thong-bao/thong-bao.module';
 
 @Module({
   imports: [
+    ThongBaoModule,
     TypeOrmModule.forFeature([
       Thuoc,
       LoThuoc,

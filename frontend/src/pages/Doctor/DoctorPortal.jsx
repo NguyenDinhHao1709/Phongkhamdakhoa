@@ -13,6 +13,7 @@ const ThongTinCaNhanPage = lazy(() => import('../Receptionist/NhanVienShared/Tho
 const LichLamViecPage = lazy(() => import('../Receptionist/NhanVienShared/LichLamViecPage.jsx'));
 const GuiDonGiamDocPage = lazy(() => import('../Receptionist/NhanVienShared/GuiDonGiamDocPage.jsx'));
 const ChamCongPage = lazy(() => import('../Receptionist/NhanVienShared/ChamCongPage.jsx'));
+const OfficeWorkspacePage = lazy(() => import('../Receptionist/NhanVienShared/OfficeWorkspacePage.jsx'));
 
 
 function Loader() {
@@ -40,6 +41,7 @@ export default function DoctorPortal() {
           <Route path="lich-lam-viec" element={<LichLamViecPage />} />
           <Route path="gui-don" element={<GuiDonGiamDocPage />} />
           <Route path="cham-cong" element={<ChamCongPage />} />
+          <Route path="office" element={<OfficeWorkspacePage />} />
 
           <Route path="*" element={<Navigate to="phong-kham" replace />} />
         </Routes>

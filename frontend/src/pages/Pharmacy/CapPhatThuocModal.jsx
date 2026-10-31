@@ -169,13 +169,29 @@ export default function CapPhatThuocModal({ donThuocId, onClose, onSuccess }) {
                       <td className="px-4 py-3 text-center text-xs font-medium text-gray-600">{item.donViTinh}</td>
                       <td className="px-4 py-3 text-center font-bold text-gray-900">{item.soLuong}</td>
                       <td className="px-4 py-3">
-                        {item.loThuocGợiÝ ? (
+                        {item.phanBoLoFefo?.length > 1 ? (
+                          <div className="space-y-1 text-xs">
+                            {item.phanBoLoFefo.map((p) => (
+                              <div key={p.id} className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-medium text-primary-700 bg-primary-50 px-2 py-0.5 rounded border border-primary-200">
+                                  Lô {p.maLo}: xuất {p.soLuongXuat} {item.donViTinh}
+                                </span>
+                                <span className="text-[11px] text-gray-400">
+                                  (HSD: {formatDate(p.ngayHetHan)} • Tồn lô: {p.soLuongTon})
+                                </span>
+                              </div>
+                            ))}
+                            <div className="text-[11px] font-semibold text-emerald-700">
+                              ✓ Tổng tồn khả dụng (3 lô): {item.tongTonKhaDung} {item.donViTinh}
+                            </div>
+                          </div>
+                        ) : item.loThuocGợiÝ ? (
                           <div className="text-xs">
                             <span className="font-medium text-primary-700 bg-primary-50 px-2 py-0.5 rounded border border-primary-200">
                               Lô {item.loThuocGợiÝ.maLo}
                             </span>
                             <div className="text-[11px] text-gray-400 mt-0.5">
-                              Hạn dùng: {formatDate(item.loThuocGợiÝ.ngayHetHan)} (Còn: {item.loThuocGợiÝ.soLuongTon})
+                              Hạn dùng: {formatDate(item.loThuocGợiÝ.ngayHetHan)} (Tổng còn: {item.tongTonKhaDung ?? item.loThuocGợiÝ.soLuongTon})
                             </div>
                           </div>
                         ) : (
@@ -228,7 +244,7 @@ export default function CapPhatThuocModal({ donThuocId, onClose, onSuccess }) {
               <MedButton
                 variant="primary"
                 loading={submitting}
-                disabled={checkInsufficient || donThuoc?.trangThaiThanhToan !== 'da_thanh_toan' || donThuoc?.luaChonMua !== 'mua_tai_benh_vien'}
+                disabled={checkInsufficient || donThuoc?.trangThaiThanhToan !== 'da_thanh_toan' || donThuoc?.luaChonMua === 'mua_ngoai'}
                 onClick={handleDispense}
                 leftIcon={<PackageCheck className="h-4 w-4" />}
               >

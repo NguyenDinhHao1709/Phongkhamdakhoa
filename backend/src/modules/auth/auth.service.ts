@@ -9,6 +9,8 @@ import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { NguoiDung, TrangThaiNguoiDung, LoaiTaiKhoan } from './entities/nguoi-dung.entity';
 import { VaiTro } from './entities/vai-tro.entity';
+import { QuyenHan } from './entities/quyen-han.entity';
+import { VaiTroQuyenHan } from './entities/vai-tro-quyen-han.entity';
 import { MaXacThucOtp, LoaiOtp } from './entities/ma-xac-thuc-otp.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
@@ -165,6 +167,19 @@ export class AuthService {
       }
     }
 
+    // Lấy danh sách quyền hạn thực tế của vai trò
+    let quyenHans: string[] = [];
+    if (nguoiDung.vaiTro?.maVaiTro === 'quan_tri_vien_cap_cao') {
+      const allPerms = await this.dataSource.getRepository(QuyenHan).find();
+      quyenHans = allPerms.map(p => p.maQuyen);
+    } else if (nguoiDung.vaiTro?.id) {
+      const perms = await this.dataSource.getRepository(VaiTroQuyenHan).find({
+        where: { vaiTroId: nguoiDung.vaiTro.id },
+        relations: ['quyenHan'],
+      });
+      quyenHans = perms.map(p => p.quyenHan?.maQuyen).filter(Boolean);
+    }
+
     const tokens = await this.taoTokens(nguoiDung);
 
     return {
@@ -180,6 +195,7 @@ export class AuthService {
           loaiTaiKhoan: nguoiDung.loaiTaiKhoan,
           benhNhanId,
           nhanVienId,
+          quyenHans,
         },
         ...tokens,
       },
@@ -497,6 +513,19 @@ export class AuthService {
       }
     }
 
+    // Lấy danh sách quyền hạn thực tế của vai trò
+    let quyenHans: string[] = [];
+    if (nguoiDung.vaiTro?.maVaiTro === 'quan_tri_vien_cap_cao') {
+      const allPerms = await this.dataSource.getRepository(QuyenHan).find();
+      quyenHans = allPerms.map(p => p.maQuyen);
+    } else if (nguoiDung.vaiTro?.id) {
+      const perms = await this.dataSource.getRepository(VaiTroQuyenHan).find({
+        where: { vaiTroId: nguoiDung.vaiTro.id },
+        relations: ['quyenHan'],
+      });
+      quyenHans = perms.map(p => p.quyenHan?.maQuyen).filter(Boolean);
+    }
+
     return {
       id: nguoiDung.id,
       tenDangNhap: nguoiDung.tenDangNhap,
@@ -513,6 +542,7 @@ export class AuthService {
       nhanVien: nhanVienInfo,
       bacSi: bacSiInfo,
       kyThuatVien: kyThuatVienInfo,
+      quyenHans,
     };
   }
 

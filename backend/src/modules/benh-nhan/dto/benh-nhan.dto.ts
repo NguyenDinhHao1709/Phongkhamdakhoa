@@ -31,6 +31,13 @@ export class TaoBenhNhanDto {
   @MaxLength(20)
   soCmnd?: string;
 
+  @ApiPropertyOptional({ example: 'DN4791234567890' })
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
+  @IsString()
+  @MaxLength(20)
+  soBhyt?: string;
+
   @ApiPropertyOptional({ example: '0901234567' })
   @IsOptional()
   @Transform(({ value }) => (value === '' ? null : value))

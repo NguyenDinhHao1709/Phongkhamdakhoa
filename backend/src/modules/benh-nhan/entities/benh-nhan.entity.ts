@@ -39,6 +39,9 @@ export class BenhNhan {
   })
   soCmnd: string;
 
+  @Column({ name: 'so_bhyt', length: 20, nullable: true })
+  soBhyt: string;
+
   @Column({ name: 'so_dien_thoai', length: 15, nullable: true })
   soDienThoai: string;
 

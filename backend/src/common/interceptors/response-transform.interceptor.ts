@@ -8,7 +8,8 @@ import { Aes256Transformer } from '../transformers/aes-256.transformer';
 
 const aes = new Aes256Transformer();
 
-function decryptPayload(val: any): any {
+function decryptPayload(val: any, depth = 0): any {
+  if (depth > 15) return val;
   if (val === null || val === undefined) return val;
   if (typeof val === 'string') {
     if (val.startsWith('enc:')) {
@@ -17,12 +18,12 @@ function decryptPayload(val: any): any {
     return val;
   }
   if (Array.isArray(val)) {
-    return val.map((item) => decryptPayload(item));
+    return val.map((item) => decryptPayload(item, depth + 1));
   }
   if (typeof val === 'object' && !(val instanceof Date) && !(val instanceof RegExp) && !(val instanceof Buffer)) {
     const res: any = {};
     for (const key of Object.keys(val)) {
-      res[key] = decryptPayload(val[key]);
+      res[key] = decryptPayload(val[key], depth + 1);
     }
     return res;
   }
@@ -44,8 +45,12 @@ export class ResponseTransformInterceptor<T>
     context: ExecutionContext,
     next: CallHandler,
   ): Observable<StandardResponse<T>> {
+    const httpRes = context.switchToHttp().getResponse();
     return next.handle().pipe(
       map((rawData) => {
+        if (httpRes?.headersSent) {
+          return rawData;
+        }
         const data = decryptPayload(rawData);
         // Nếu controller trả về object có field `data` và `message` riêng
         if (data && typeof data === 'object' && 'data' in data && 'message' in data) {

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Bell, FlaskConical, FileText, CheckCheck, Inbox, Clock, ClipboardList, Wallet, X } from 'lucide-react';
+import { Bell, FlaskConical, FileText, CheckCheck, Inbox, Clock, ClipboardList, Wallet, X, Pill, CreditCard } from 'lucide-react';
 import api from '../services/api';
 import { timeAgo } from '../utils/formatDate';
 import useAuthStore from '../store/authStore';
@@ -133,11 +133,26 @@ export function NotificationDropdown() {
         // Bác sĩ: mở phòng khám lâm sàng, tự nạp bệnh nhân và chuyển sang tab Xét nghiệm & CLS
         navigate(chiDinhId ? `/bac-si/phong-kham?chiDinhId=${chiDinhId}&tab=xn` : '/bac-si/phong-kham');
       }
+    } else if (item.loai === 'can_thanh_toan') {
+      if (user?.vaiTro === 'thu_ngan') {
+        navigate('/thu-ngan/hoa-don');
+      } else {
+        navigate('/thu-ngan/chi-tra-nha-cung-cap');
+      }
+    } else if (item.loai === 'cap_phat_thuoc') {
+      if (user?.vaiTro === 'nhan_vien_nha_thuoc' || user?.vaiTro === 'nha_thuoc') {
+        navigate('/nha-thuoc/don-thuoc');
+      } else {
+        navigate('/nha-thuoc/tong-quan');
+      }
     } else if (item.loai === 'don_tu' || item.loai === 'phe_duyet') {
       const donId = item.doiTuongId;
       if (user?.vaiTro === 'ban_giam_doc') {
         // Giám đốc: mở trang duyệt đơn và chọn ngay đơn đó
         navigate(donId ? `/ban-giam-doc/phe-duyet-don?donId=${donId}` : '/ban-giam-doc/phe-duyet-don');
+      } else if (user?.vaiTro === 'thu_ngan') {
+        // Thu ngân nhận duyệt chi / duyệt hủy -> mở Sổ chi trả & Chi phí vận hành
+        navigate('/thu-ngan/chi-tra-nha-cung-cap');
       } else {
         const prefix = ROLE_PREFIX[user?.vaiTro] || 'tiep-tan';
         navigate(`/${prefix}/gui-don`);
@@ -179,6 +194,10 @@ export function NotificationDropdown() {
       case 'ban_giao_ca':
       case 'xac_nhan_nhan_ca':
         return <Wallet className="w-4 h-4 text-purple-600" />;
+      case 'can_thanh_toan':
+        return <CreditCard className="w-4 h-4 text-amber-600" />;
+      case 'cap_phat_thuoc':
+        return <Pill className="w-4 h-4 text-emerald-600" />;
       default:
         return <Bell className="w-4 h-4 text-primary-600" />;
     }
@@ -198,6 +217,10 @@ export function NotificationDropdown() {
       case 'ban_giao_ca':
       case 'xac_nhan_nhan_ca':
         return 'bg-purple-100';
+      case 'can_thanh_toan':
+        return 'bg-amber-100';
+      case 'cap_phat_thuoc':
+        return 'bg-emerald-100';
       default:
         return 'bg-primary-100';
     }

@@ -145,23 +145,25 @@ export default function InSoCongNoModal({
               ) : (
                 <div className="grid grid-cols-3 gap-3">
                   <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-center">
-                    <p className="text-[11px] text-gray-500">Tổng Chi Phí Vận Hành (OPEX)</p>
+                    <p className="text-[11px] text-gray-500">Tổng Đã Thực Chi (Đã Xuất Quỹ)</p>
                     <p className="text-sm font-bold text-gray-900 mt-1">
                       {formatCurrency(opexStats?.tongChi || 0)}
                     </p>
-                    <p className="text-[10px] text-gray-500 mt-0.5">{opexStats?.soPhieu || 0} phiếu chi</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{opexStats?.soPhieu || 0} phiếu đã xuất quỹ</p>
                   </div>
                   <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-center">
-                    <p className="text-[11px] text-blue-800">Chi Bằng Tiền Mặt Tại Quỹ</p>
+                    <p className="text-[11px] text-blue-800">Chi Tiền Mặt Đã Xuất</p>
                     <p className="text-sm font-black text-blue-700 mt-1">
                       {formatCurrency(opexStats?.tienMat || 0)}
                     </p>
+                    <p className="text-[10px] text-blue-600 mt-0.5">CK: {formatCurrency(opexStats?.chuyenKhoan || 0)}</p>
                   </div>
-                  <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-center">
-                    <p className="text-[11px] text-purple-800">Chi Chuyển Khoản Ngân Hàng</p>
-                    <p className="text-sm font-black text-purple-700 mt-1">
-                      {formatCurrency(opexStats?.chuyenKhoan || 0)}
+                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-center">
+                    <p className="text-[11px] text-amber-800">Chờ Phê Duyệt & Xuất Quỹ</p>
+                    <p className="text-sm font-black text-amber-700 mt-1">
+                      {formatCurrency(opexStats?.tongChoXuat || 0)}
                     </p>
+                    <p className="text-[10px] text-amber-700 mt-0.5">{opexStats?.soPhieuChoXuat || 0} phiếu chờ chi</p>
                   </div>
                 </div>
               )}
@@ -218,6 +220,16 @@ export default function InSoCongNoModal({
                             <td className="border border-gray-300 px-2 py-1.5 text-center font-semibold">
                               {daChi ? (
                                 <span className="text-emerald-700">Đã Chi</span>
+                              ) : item.trangThaiChiTra === 'da_huy_hoan_quy' ? (
+                                <span className="text-gray-500 line-through">Đã Hoàn Quỹ</span>
+                              ) : item.trangThaiChiTra === 'cho_duyet_huy' ? (
+                                <span className="text-amber-700">Chờ GĐ Duyệt Hủy</span>
+                              ) : item.trangThaiChiTra === 'da_duyet_huy' ? (
+                                <span className="text-teal-700">GĐ Đã Duyệt Hủy</span>
+                              ) : item.trangThaiChiTra === 'da_duyet_chi' ? (
+                                <span className="text-teal-700">GĐ Đã Duyệt Chi</span>
+                              ) : item.trangThaiChiTra === 'tu_choi_chi' ? (
+                                <span className="text-rose-700">GĐ Từ Chối Chi</span>
                               ) : (
                                 <span className="text-amber-700">Chờ Chi</span>
                               )}
@@ -233,29 +245,50 @@ export default function InSoCongNoModal({
                       </td>
                     </tr>
                   ) : (
-                    opexList.slice(0, 30).map((item, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50">
-                        <td className="border border-gray-300 px-2 py-1.5 text-center">{idx + 1}</td>
-                        <td className="border border-gray-300 px-2 py-1.5 font-mono font-bold text-gray-800">
-                          {item.maPhieuChi || item.id || '--'}
-                        </td>
-                        <td className="border border-gray-300 px-2 py-1.5 text-center text-gray-600">
-                          {formatDate(item.ngayChi)}
-                        </td>
-                        <td className="border border-gray-300 px-2 py-1.5 font-medium">
-                          {item.khoanChi || '--'} ({item.nguoiNhan || '--'})
-                        </td>
-                        <td className="border border-gray-300 px-2 py-1.5 font-mono text-gray-700">
-                          {item.chungTuGoc || '--'}
-                        </td>
-                        <td className="border border-gray-300 px-2 py-1.5 text-right font-bold text-rose-700">
-                          {formatCurrency(item.soTien || 0)}
-                        </td>
-                        <td className="border border-gray-300 px-2 py-1.5 text-center font-semibold text-emerald-700">
-                          Đã Xuất Quỹ
-                        </td>
-                      </tr>
-                    ))
+                    opexList.slice(0, 30).map((item, idx) => {
+                      const daXuatQuy = item.trangThai === 'da_chi';
+                      const daDuyet = item.trangThai === 'da_duyet';
+                      const tuChoi = item.trangThai === 'tu_choi';
+                      return (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="border border-gray-300 px-2 py-1.5 text-center">{idx + 1}</td>
+                          <td className="border border-gray-300 px-2 py-1.5 font-mono font-bold text-gray-800">
+                            {item.maPhieuChi || item.id || '--'}
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1.5 text-center text-gray-600">
+                            {formatDate(item.ngayChi)}
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1.5 font-medium">
+                            {item.khoanChi || '--'} ({item.nguoiNhan || '--'})
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1.5 font-mono text-gray-700">
+                            {item.chungTuGoc || '--'}
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1.5 text-right font-bold text-rose-700">
+                            {formatCurrency(item.soTien || 0)}
+                          </td>
+                          <td className="border border-gray-300 px-2 py-1.5 text-center font-semibold">
+                            {daXuatQuy ? (
+                              <span className="text-emerald-700">Đã Xuất Quỹ</span>
+                            ) : item.trangThai === 'da_huy_hoan_quy' ? (
+                              <span className="text-gray-500 line-through">Đã Hoàn Quỹ</span>
+                            ) : item.trangThai === 'cho_duyet_huy' ? (
+                              <span className="text-amber-700">Chờ GĐ Duyệt Hủy</span>
+                            ) : item.trangThai === 'da_duyet_huy' ? (
+                              <span className="text-teal-700">GĐ Đã Duyệt Hủy</span>
+                            ) : item.trangThai === 'da_huy' ? (
+                              <span className="text-gray-400 line-through">Đã Hủy</span>
+                            ) : daDuyet ? (
+                              <span className="text-teal-700">GĐ Đã Duyệt</span>
+                            ) : tuChoi ? (
+                              <span className="text-rose-700">Đã Từ Chối</span>
+                            ) : (
+                              <span className="text-amber-700">Chờ GĐ Duyệt</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

@@ -46,6 +46,17 @@ export default function HoSoYTeBenhNhanPage() {
   const records = Array.isArray(res) ? res : (res?.lichSuKham || []);
   const latestBenhNhan = res?.benhNhan || records[0]?.benhNhan;
 
+  const isRecordCompleted = (item, ba) => {
+    return (
+      ba?.trangThai === 'da_hoan_thanh' ||
+      ba?.trangThai === 'hoan_thanh' ||
+      item?.trangThai === 'da_hoan_thanh' ||
+      item?.trangThai === 'hoan_thanh' ||
+      item?.luotTiepNhan?.trangThai === 'hoan_thanh' ||
+      item?.hoaDon?.trangThai === 'da_thanh_toan'
+    );
+  };
+
   // Lọc danh sách hồ sơ y tế theo thời gian, loại và từ khóa tìm kiếm
   const filteredRecords = useMemo(() => {
     return records.filter((item) => {
@@ -103,9 +114,9 @@ export default function HoSoYTeBenhNhanPage() {
       } else if (filterType === 'tele_health') {
         if (ba.hinhThucKham !== 'truc_tuyen') return false;
       } else if (filterType === 'da_hoan_thanh') {
-        if (ba.trangThai !== 'da_hoan_thanh') return false;
+        if (!isRecordCompleted(item, ba)) return false;
       } else if (filterType === 'dang_kham') {
-        if (ba.trangThai === 'da_hoan_thanh') return false;
+        if (isRecordCompleted(item, ba)) return false;
       }
 
       // 3. Tìm kiếm theo từ khóa
@@ -446,13 +457,18 @@ export default function HoSoYTeBenhNhanPage() {
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border whitespace-nowrap ${
-                        ba.trangThai === 'da_hoan_thanh'
-                          ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                          : 'text-amber-700 bg-amber-50 border-amber-200'
-                      }`}>
-                        {ba.trangThai === 'da_hoan_thanh' ? '✓ Đã hoàn thành' : '⏳ Đang khám'}
-                      </span>
+                      {(() => {
+                        const isDone = isRecordCompleted(item, ba);
+                        return (
+                          <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border whitespace-nowrap ${
+                            isDone
+                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                              : 'text-amber-700 bg-amber-50 border-amber-200'
+                          }`}>
+                            {isDone ? '✓ Đã hoàn thành' : '⏳ Đang khám'}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
 

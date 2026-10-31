@@ -155,7 +155,7 @@ export default function RegisterPage() {
       const authData = res?.data || res;
       if (authData && authData.accessToken) {
         login(authData.user, authData.accessToken, authData.refreshToken);
-        navigate('/benh-nhan', { replace: true });
+        navigate('/', { replace: true });
       } else {
         alert('Đăng ký tài khoản thành công!');
         navigate('/login', { replace: true });

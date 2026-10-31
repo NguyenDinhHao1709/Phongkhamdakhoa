@@ -1,13 +1,14 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PayOS } from '@payos/node';
 import { LichHenService } from '../lich-hen/lich-hen.service';
-import { LichHen } from '../lich-hen/entities/lich-hen.entity';
+import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
+import { CauHinhTienCoc } from '../quan-ly/entities/cau-hinh-tien-coc.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 @Injectable()
-export class PayosService {
+export class PayosService implements OnModuleInit {
   private readonly logger = new Logger(PayosService.name);
   private payOS: PayOS;
 
@@ -16,6 +17,8 @@ export class PayosService {
     private readonly lichHenService: LichHenService,
     @InjectRepository(LichHen)
     private readonly lichHenRepo: Repository<LichHen>,
+    @InjectRepository(CauHinhTienCoc)
+    private readonly tienCocRepo: Repository<CauHinhTienCoc>,
   ) {
     const clientId = this.configService.get<string>('PAYOS_CLIENT_ID');
     const apiKey = this.configService.get<string>('PAYOS_API_KEY');
@@ -26,6 +29,61 @@ export class PayosService {
       this.logger.log('PayOS SDK đã được khởi tạo thành công với tài khoản phòng khám.');
     } else {
       this.logger.warn('Chưa cấu hình đầy đủ thông tin PayOS trong file .env');
+    }
+  }
+
+  onModuleInit() {
+    // 1. Quét đối soát dòng tiền các lịch hẹn đang chờ thanh toán ngay khi khởi động
+    this.doiSoatLichHenChoThanhToan().catch((err) =>
+      this.logger.warn(`Lỗi đối soát PayOS ban đầu: ${err?.message}`)
+    );
+
+    // 2. Chạy Background Reconciliation Worker định kỳ mỗi 60 giây
+    setInterval(() => {
+      this.doiSoatLichHenChoThanhToan().catch(() => {});
+    }, 60 * 1000);
+  }
+
+  /**
+   * Background Reconciliation Worker: Quét và đối chiếu toàn bộ lịch hẹn đang chờ thanh toán
+   * Đảm bảo nếu tiền đã vào PayOS thì tự động xác nhận lịch ngay lập tức, không để mất tiền của khách
+   */
+  async doiSoatLichHenChoThanhToan() {
+    if (!this.payOS) return;
+
+    try {
+      const pendingList = await this.lichHenRepo.find({
+        where: { trangThai: TrangThaiLichHen.CHO_THANH_TOAN },
+        order: { taoLuc: 'DESC' },
+      });
+
+      if (!pendingList || pendingList.length === 0) return;
+
+      const now = new Date();
+
+      for (const lh of pendingList) {
+        const orderMatch = lh.ghiChu?.match(/\[PAYOS_ORDER:(\d+)\]/);
+        if (!orderMatch) continue;
+        const orderCode = Number(orderMatch[1]);
+
+        try {
+          const order = await this.payOS.paymentRequests.get(orderCode);
+          if (order?.status === 'PAID') {
+            this.logger.log(`[Reconciliation] Phát hiện lịch hẹn ${lh.maLichHen} (order: ${orderCode}) ĐÃ THANH TOÁN -> Tự động xác nhận ngay.`);
+            await this.lichHenService.xacNhanSauThanhToan(lh.id);
+          } else if (lh.hanThanhToan && new Date(lh.hanThanhToan) < now && (order?.status === 'CANCELLED' || order?.status === 'EXPIRED')) {
+            // Chỉ huỷ lịch khi PayOS xác nhận rõ ràng là khách chưa thanh toán và đã quá hạn 15 phút
+            lh.trangThai = TrangThaiLichHen.DA_HUY;
+            lh.ghiChu = `${lh.ghiChu || ''} [Hết hạn thanh toán 15 phút - Đã đối soát PayOS chưa thanh toán]`.trim();
+            await this.lichHenRepo.save(lh);
+            this.logger.log(`[SafeCancel] Đã an toàn huỷ lịch ${lh.maLichHen} do PayOS xác nhận chưa thanh toán và hết hạn.`);
+          }
+        } catch {
+          // Bỏ qua lỗi từng đơn để không gián đoạn tiến trình
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`[Reconciliation] Lỗi tiến trình đối soát tự động: ${err?.message}`);
     }
   }
 
@@ -46,8 +104,9 @@ export class PayosService {
       throw new NotFoundException('Không tìm thấy lịch hẹn cần thanh toán');
     }
 
-    // Số tiền thanh toán: 200k nếu là khám online, 40k nếu là khám trực tiếp
-    const amount = lh.hinhThuc === 'truc_tuyen' ? 200000 : 40000;
+    // Lấy số tiền cọc động từ cấu hình Ban Giám Đốc
+    const cocConfig = await this.tienCocRepo.findOneBy({ loaiHinhThuc: lh.hinhThuc });
+    const amount = cocConfig?.soTienCoc ? Number(cocConfig.soTienCoc) : (lh.hinhThuc === 'truc_tuyen' ? 200000 : 40000);
     
     // PayOS yêu cầu orderCode là số nguyên dương an toàn <= 9007199254740991
     // Sử dụng Date.now() là 13 chữ số, hoàn toàn duy nhất theo từng mili-giây
@@ -171,6 +230,44 @@ export class PayosService {
     } catch (error: any) {
       this.logger.error('Lỗi xác thực webhook PayOS:', error?.message || error);
       return { success: false, error: error?.message };
+    }
+  }
+
+  /**
+   * Kiểm tra và đồng bộ trạng thái thanh toán theo ID lịch hẹn
+   * Giúp bệnh nhân chủ động bấm "Kiểm tra ngay" hoặc khi modal hết giờ
+   */
+  async kiemTraTheoLichHen(lichHenId: number) {
+    const lh = await this.lichHenRepo.findOne({
+      where: { id: lichHenId },
+      relations: ['benhNhan', 'bacSi'],
+    });
+
+    if (!lh) {
+      throw new NotFoundException('Không tìm thấy lịch hẹn');
+    }
+
+    // Nếu đã xác nhận rồi thì trả về ngay
+    if (lh.trangThai === 'da_xac_nhan' || lh.trangThai === 'hoan_thanh') {
+      return { isPaid: true, status: 'PAID', appointment: lh };
+    }
+
+    const orderMatch = lh.ghiChu?.match(/\[PAYOS_ORDER:(\d+)\]/);
+    if (!orderMatch || !this.payOS) {
+      return { isPaid: false, status: lh.trangThai, appointment: lh };
+    }
+
+    const orderCode = Number(orderMatch[1]);
+    try {
+      const order = await this.payOS.paymentRequests.get(orderCode);
+      if (order?.status === 'PAID') {
+        this.logger.log(`Xác nhận thanh toán thành công cho lịch hẹn ${lh.maLichHen} qua tra cứu ID.`);
+        const confirmed = await this.lichHenService.xacNhanSauThanhToan(lh.id);
+        return { isPaid: true, status: 'PAID', appointment: confirmed?.data || lh };
+      }
+      return { isPaid: false, status: order?.status || 'PENDING', appointment: lh };
+    } catch (err: any) {
+      return { isPaid: false, status: 'PENDING', error: err?.message, appointment: lh };
     }
   }
 }

@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, Query, Res,
+  Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Res,
   UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseIntPipe,
 } from '@nestjs/common';
 import { Response } from 'express';
@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Quản lý & Ban Giám Đốc')
 @Controller('quan-ly')
@@ -31,9 +32,88 @@ export class QuanLyController {
   // ─── ADMIN: DANH MỤC DÙNG CHUNG (MASTER DATA) ─────────────────
   @Get('danh-muc-tong-hop')
   @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
-  @ApiOperation({ summary: 'Lấy toàn bộ danh mục dùng chung (Phòng ban, phòng khám, dịch vụ, thuốc)' })
+  @ApiOperation({ summary: 'Lấy toàn bộ danh mục dùng chung (Khoa phòng ban, phòng khám)' })
   getDanhMucTongHop() {
     return this.quanLyService.getDanhMucTongHop();
+  }
+
+  @Post('phong-ban')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thêm mới Khoa / Phòng ban' })
+  taoPhongBan(@Body() dto: { tenPhongBan: string; moTa?: string }, @CurrentUser('id') userId: number) {
+    return this.quanLyService.taoPhongBan(dto, userId);
+  }
+
+  @Put('phong-ban/:id')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Cập nhật Khoa / Phòng ban' })
+  capNhatPhongBan(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: { tenPhongBan: string; moTa?: string },
+    @CurrentUser('id') userId: number,
+  ) {
+    return this.quanLyService.capNhatPhongBan(id, dto, userId);
+  }
+
+  @Delete('phong-ban/:id')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Xóa Khoa / Phòng ban' })
+  xoaPhongBan(@Param('id', ParseIntPipe) id: number, @CurrentUser('id') userId: number) {
+    return this.quanLyService.xoaPhongBan(id, userId);
+  }
+
+  @Post('phong-kham')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thêm mới Phòng khám thực tế' })
+  taoPhongKham(
+    @Body() dto: { tenPhong: string; viTri?: string; chuyenKhoa?: string; trangThai?: string; phongBanId?: number },
+    @CurrentUser('id') userId: number,
+  ) {
+    return this.quanLyService.taoPhongKham(dto, userId);
+  }
+
+  @Put('phong-kham/:id')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Cập nhật Phòng khám thực tế' })
+  capNhatPhongKham(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: { tenPhong: string; viTri?: string; chuyenKhoa?: string; trangThai?: string; phongBanId?: number },
+    @CurrentUser('id') userId: number,
+  ) {
+    return this.quanLyService.capNhatPhongKham(id, dto, userId);
+  }
+
+  @Patch('phong-kham/:id/trang-thai')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Đổi trạng thái hoạt động phòng khám' })
+  doiTrangThaiPhongKham(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('trangThai') trangThai: string,
+    @CurrentUser('id') userId: number,
+  ) {
+    return this.quanLyService.doiTrangThaiPhongKham(id, trangThai, userId);
+  }
+
+  @Delete('phong-kham/:id')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Xóa Phòng khám thực tế' })
+  xoaPhongKham(@Param('id', ParseIntPipe) id: number, @CurrentUser('id') userId: number) {
+    return this.quanLyService.xoaPhongKham(id, userId);
+  }
+
+  // ─── ADMIN & PUBLIC: THÔNG TIN BỆNH VIỆN / CƠ SỞ Y TẾ ─────────
+  @Public()
+  @Get('thong-tin-benh-vien')
+  @ApiOperation({ summary: 'Lấy thông tin cơ sở khám chữa bệnh & liên hệ (Công khai)' })
+  getThongTinBenhVien() {
+    return this.quanLyService.getThongTinBenhVien();
+  }
+
+  @Put('thong-tin-benh-vien')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Cập nhật thông tin bệnh viện & liên hệ' })
+  capNhatThongTinBenhVien(@Body() dto: any, @CurrentUser('id') userId: number) {
+    return this.quanLyService.capNhatThongTinBenhVien(dto, userId);
   }
 
   // ─── ADMIN: THÔNG SỐ CƠ SỞ DỮ LIỆU & BACKUP ─────────────────
@@ -54,7 +134,7 @@ export class QuanLyController {
 
     res.setHeader('Content-Type', 'application/sql; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    return res.send(sql);
+    res.end(sql);
   }
 
   // ─── ADMIN: NHẬT KÝ HỆ THỐNG (SYSTEM AUDIT LOG) ───────────────
@@ -294,6 +374,64 @@ export class QuanLyController {
     return this.quanLyService.doiTrangThaiTaiKhoan(+id, trangThai);
   }
 
+  // ─── ADMIN: QUẢN LÝ TÀI KHOẢN BỆNH NHÂN ───────────────────────
+  @Get('tai-khoan-benh-nhan')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
+  @ApiOperation({ summary: 'Lấy danh sách hồ sơ & tài khoản bệnh nhân kèm thống kê' })
+  getDanhSachTaiKhoanBenhNhan(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('search') search?: string,
+    @Query('trangThai') trangThai?: string,
+    @Query('coTaiKhoan') coTaiKhoan?: string,
+  ) {
+    return this.quanLyService.getDanhSachTaiKhoanBenhNhan({ page, limit, search, trangThai, coTaiKhoan });
+  }
+
+  @Post('tai-khoan-benh-nhan')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Tạo hồ sơ và tài khoản bệnh nhân mới' })
+  taoTaiKhoanBenhNhan(@Body() body: any) {
+    return this.quanLyService.taoTaiKhoanBenhNhan(body);
+  }
+
+  @Post('tai-khoan-benh-nhan/:id/cap-tai-khoan')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Cấp tài khoản đăng nhập trực tuyến cho bệnh nhân chưa có tài khoản' })
+  capTaiKhoanChoBenhNhan(
+    @Param('id', ParseIntPipe) benhNhanId: number,
+    @Body() body: { tenDangNhap: string; matKhau: string },
+  ) {
+    return this.quanLyService.capTaiKhoanChoBenhNhan(benhNhanId, body);
+  }
+
+  @Patch('tai-khoan-benh-nhan/:id/mat-khau')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Đặt lại mật khẩu cho tài khoản bệnh nhân' })
+  datLaiMatKhauBenhNhan(
+    @Param('id', ParseIntPipe) nguoiDungId: number,
+    @Body('matKhauMoi') matKhauMoi: string,
+  ) {
+    return this.quanLyService.datLaiMatKhau(nguoiDungId, matKhauMoi);
+  }
+
+  @Patch('tai-khoan-benh-nhan/:id/trang-thai')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Khóa / Mở khóa tài khoản bệnh nhân' })
+  doiTrangThaiTaiKhoanBenhNhan(
+    @Param('id', ParseIntPipe) nguoiDungId: number,
+    @Body('trangThai') trangThai: any,
+  ) {
+    return this.quanLyService.doiTrangThaiTaiKhoan(nguoiDungId, trangThai);
+  }
+
+  @Delete('tai-khoan-benh-nhan/:id')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Xóa hồ sơ và tài khoản bệnh nhân' })
+  xoaTaiKhoanBenhNhan(@Param('id', ParseIntPipe) id: number) {
+    return this.quanLyService.xoaTaiKhoanBenhNhan(id);
+  }
+
   @Get('phan-quyen')
   @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Lấy ma trận phân quyền (Vai trò x Quyền hạn)' })
@@ -306,9 +444,10 @@ export class QuanLyController {
   @ApiOperation({ summary: 'Cập nhật danh sách quyền cho 1 vai trò' })
   capNhatPhanQuyen(
     @Param('vaiTroId') vaiTroId: string,
-    @Body('quyenHanIds') quyenHanIds: number[]
+    @Body('quyenHanIds') quyenHanIds: number[],
+    @CurrentUser('id') userId: number,
   ) {
-    return this.quanLyService.capNhatPhanQuyen(+vaiTroId, quyenHanIds);
+    return this.quanLyService.capNhatPhanQuyen(+vaiTroId, quyenHanIds, userId);
   }
 
   // ─── BÁO CÁO CÁC BỘ PHẬN GỬI BAN GIÁM ĐỐC ─────────────────────
@@ -353,5 +492,101 @@ export class QuanLyController {
   ) {
     const yKien = body.yKien || body.yKienGiamDoc || '';
     return this.quanLyService.chiDaoBaoCaoBoPhan(id, userId, yKien);
+  }
+
+  // ─── BẢNG GIÁ DỊCH VỤ KHÁM CHỮA BỆNH & CẬN LÂM SÀNG ─────────
+
+  @Public()
+  @Get('bang-gia-public')
+  @ApiOperation({ summary: 'Công khai bảng giá dịch vụ cho bệnh nhân và khách vãng lai tra cứu' })
+  getBangGiaPublic(
+    @Query('loai') loai?: string,
+    @Query('tuKhoa') tuKhoa?: string,
+  ) {
+    return this.quanLyService.getBangGiaPublic({ loai, tuKhoa });
+  }
+
+  @Get('dich-vu-kham-chua-benh')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Ban Giám Đốc / Quản trị viên xem toàn bộ danh mục & bảng giá dịch vụ (kèm thống kê KPI)' })
+  getDanhSachDichVuQuanLy(
+    @Query('loai') loai?: string,
+    @Query('trangThai') trangThai?: string,
+    @Query('tuKhoa') tuKhoa?: string,
+  ) {
+    return this.quanLyService.getDanhSachDichVuQuanLy({ loai, trangThai, tuKhoa });
+  }
+
+  @Post('dich-vu-kham-chua-benh')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Ban Giám Đốc thêm dịch vụ / kỹ thuật khám chữa bệnh mới vào bảng giá' })
+  taoDichVuKhamChuaBenh(
+    @CurrentUser('id') userId: number,
+    @Body() dto: {
+      maDichVu: string;
+      tenDichVu: string;
+      loai: string;
+      gia: number;
+      donViKetQua?: string;
+      giaTriBinhThuong?: string;
+      boPhanThucHien?: string;
+      mauBenhPham?: string;
+      moTa?: string;
+      trangThai?: string;
+    },
+  ) {
+    return this.quanLyService.taoDichVuKhamChuaBenh(userId, dto);
+  }
+
+  @Patch('dich-vu-kham-chua-benh/:id')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Ban Giám Đốc điều chỉnh đơn giá hoặc thông tin dịch vụ' })
+  capNhatDichVuKhamChuaBenh(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: any,
+  ) {
+    return this.quanLyService.capNhatDichVuKhamChuaBenh(id, userId, dto);
+  }
+
+  @Patch('dich-vu-kham-chua-benh/:id/trang-thai')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Kích hoạt hoặc tạm ngừng dịch vụ' })
+  toggleTrangThaiDichVu(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body('trangThai') trangThai?: string,
+  ) {
+    return this.quanLyService.toggleTrangThaiDichVu(id, userId, trangThai);
+  }
+
+  @Delete('dich-vu-kham-chua-benh/:id')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Xóa dịch vụ khỏi bảng giá' })
+  xoaDichVuKhamChuaBenh(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.quanLyService.xoaDichVuKhamChuaBenh(id, userId);
+  }
+
+  // ─── QUẢN LÝ TIỀN CỌC & CHÍNH SÁCH ĐẶT LỊCH TRƯỚC ─────────
+
+  @Public()
+  @Get('cau-hinh-tien-coc')
+  @ApiOperation({ summary: 'Lấy cấu hình biểu phí tiền cọc công khai khi đặt lịch (Public)' })
+  getCauHinhTienCocPublic() {
+    return this.quanLyService.getCauHinhTienCocPublic();
+  }
+
+  @Patch('cau-hinh-tien-coc/:id')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Ban Giám Đốc điều chỉnh mức tiền cọc, phần trăm tạm ứng và thời gian hoàn cọc' })
+  capNhatCauHinhTienCoc(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: any,
+  ) {
+    return this.quanLyService.capNhatCauHinhTienCoc(id, userId, dto);
   }
 }

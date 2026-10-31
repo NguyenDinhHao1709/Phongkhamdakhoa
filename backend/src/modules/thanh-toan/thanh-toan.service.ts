@@ -323,9 +323,18 @@ export class ThanhToanService {
         if (hdTamUng) {
           tienCocDaThu = Number(hdTamUng.thucThu);
           maLichHenCoc = lh.ma_lich_hen;
-        } else if (['benh_nhan_tu_dat', 'bac_si_dat'].includes(lh.nguon_dat)) {
           // Nếu đã xác nhận đặt lịch hẹn trước nhưng chưa tạo mã HDT riêng
-          tienCocDaThu = lh.hinh_thuc === 'truc_tuyen' ? 200000 : 40000;
+          let defaultCoc = lh.hinh_thuc === 'truc_tuyen' ? 251000 : 40000;
+          try {
+            const cocRows: any[] = await this.hoaDonRepo.query(
+              'SELECT so_tien_coc FROM cau_hinh_tien_coc WHERE loai_hinh_thuc = ? LIMIT 1',
+              [lh.hinh_thuc || 'truc_tiep'],
+            );
+            if (cocRows.length > 0 && cocRows[0].so_tien_coc) {
+              defaultCoc = Number(cocRows[0].so_tien_coc);
+            }
+          } catch {}
+          tienCocDaThu = defaultCoc;
           maLichHenCoc = lh.ma_lich_hen;
         }
       }
@@ -381,6 +390,18 @@ export class ThanhToanService {
       })
     );
     await this.hoaDonChiTietRepo.save(chiTietEntities);
+
+    try {
+      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+        tieuDe: `Hóa đơn viện phí mới: ${saved.maHoaDon}`,
+        noiDung: `Bệnh nhân ${luot.benhNhan?.hoTen || 'BN'} có khoản viện phí cần thanh toán (${Number(saved.thucThu || saved.tongTien || 0).toLocaleString('vi-VN')} đ). Vui lòng thu tiền tại quầy.`,
+        loai: 'can_thanh_toan',
+        doiTuongBang: 'hoa_don',
+        doiTuongId: saved.id,
+      });
+    } catch (e) {
+      console.warn('Lỗi gửi thông báo thu_ngan taoHoacCapNhatTuLuotKham:', e?.message);
+    }
 
     return this.getChiTietHoaDon(saved.id);
   }
@@ -476,6 +497,39 @@ export class ThanhToanService {
       await this.tiepNhanRepo.update(hd.luotTiepNhanId, {
         trangThai: 'hoan_thanh' as any,
       });
+      // Đồng thời cập nhật trạng thái phiếu khám bệnh sang da_hoan_thanh
+      await this.hoaDonRepo.manager.query(
+        `UPDATE benh_an_kham SET trang_thai = 'da_hoan_thanh' WHERE luot_tiep_nhan_id = ? AND trang_thai != 'da_hoan_thanh'`,
+        [hd.luotTiepNhanId],
+      ).catch(() => {});
+    }
+
+    try {
+      const chiTietList = await this.hoaDonChiTietRepo.find({ where: { hoaDonId: hd.id } });
+      const hasThuoc = chiTietList.some((c) => c.loaiPhi === 'tien_thuoc');
+      const hasCls = chiTietList.some((c) => ['xet_nghiem', 'chan_doan_hinh_anh', 'can_lam_sang'].includes(c.loaiPhi));
+
+      if (hasThuoc) {
+        await this.thongBaoService.taoThongBaoTheoRole('nhan_vien_nha_thuoc', {
+          tieuDe: `Đơn thuốc đã thanh toán: ${hd.maHoaDon}`,
+          noiDung: `Bệnh nhân ${hd.benhNhan?.hoTen || 'BN'} đã thanh toán tiền thuốc. Nhà thuốc sẵn sàng chuẩn bị và cấp phát!`,
+          loai: 'cap_phat_thuoc',
+          doiTuongBang: 'hoa_don',
+          doiTuongId: hd.id,
+        });
+      }
+
+      if (hasCls) {
+        await this.thongBaoService.taoThongBaoTheoRole('ky_thuat_vien', {
+          tieuDe: `Chỉ định CLS đã thanh toán: ${hd.maHoaDon}`,
+          noiDung: `Bệnh nhân ${hd.benhNhan?.hoTen || 'BN'} đã thanh toán phí cận lâm sàng. Kỹ thuật viên sẵn sàng tiếp nhận lấy mẫu!`,
+          loai: 'xet_nghiem',
+          doiTuongBang: 'hoa_don',
+          doiTuongId: hd.id,
+        });
+      }
+    } catch (e) {
+      console.warn('Lỗi gửi thông báo sau thanh toán:', e?.message);
     }
 
     return {
@@ -740,6 +794,7 @@ export class ThanhToanService {
     // 3. Áp dụng điều kiện thời gian cho Phiếu Chi Hoạt Động (OPEX)
     const opexQuery = this.phieuChiHoatDongRepo.createQueryBuilder('pc')
       .leftJoinAndSelect('pc.nguoiLap', 'nl')
+      .where('pc.trangThai = :stDaChi', { stDaChi: 'da_chi' })
       .orderBy('pc.ngayChi', 'DESC');
 
     if (phamVi === 'ca_nhan' && nvThuNgan) {
@@ -883,13 +938,18 @@ export class ThanhToanService {
   /**
    * Lấy danh sách Phiếu chi hoạt động ngoài thuốc (OPEX)
    */
-  async getDanhSachPhieuChiHoatDong(query: { tuNgay?: string; denNgay?: string; loaiChi?: string; search?: string }) {
+  async getDanhSachPhieuChiHoatDong(query: { tuNgay?: string; denNgay?: string; loaiChi?: string; trangThai?: string; search?: string }) {
     const qb = this.phieuChiHoatDongRepo.createQueryBuilder('pc')
       .leftJoinAndSelect('pc.nguoiLap', 'nl')
-      .orderBy('pc.ngayChi', 'DESC');
+      .leftJoinAndSelect('pc.nguoiDuyet', 'nd')
+      .leftJoinAndSelect('pc.nguoiChi', 'nc')
+      .orderBy('pc.taoLuc', 'DESC');
 
     if (query.loaiChi && query.loaiChi !== 'all') {
       qb.andWhere('pc.loaiChi = :loaiChi', { loaiChi: query.loaiChi });
+    }
+    if (query.trangThai && query.trangThai !== 'all') {
+      qb.andWhere('pc.trangThai = :trangThai', { trangThai: query.trangThai });
     }
     if (query.tuNgay) {
       qb.andWhere('pc.ngayChi >= :tuNgay', { tuNgay: `${query.tuNgay} 00:00:00` });
@@ -913,7 +973,7 @@ export class ThanhToanService {
   }
 
   /**
-   * Lập phiếu chi hoạt động mới (OPEX)
+   * Lập phiếu chi hoạt động mới (OPEX) - Trạng thái ban đầu: 'cho_duyet'
    */
   async taoPhieuChiHoatDong(userId: number, dto: {
     loaiChi: string;
@@ -944,12 +1004,270 @@ export class ThanhToanService {
       nguoiLapId: nv?.id || null,
       chungTuGoc: dto.chungTuGoc?.trim() || null,
       ghiChu: dto.ghiChu?.trim() || null,
+      trangThai: 'cho_duyet',
     });
+
+    const saved = await this.phieuChiHoatDongRepo.save(pc);
+
+    // Bắn thông báo chuông cho Ban Giám Đốc duyệt khoản chi
+    try {
+      await this.thongBaoService.taoThongBaoTheoRole('ban_giam_doc', {
+        tieuDe: `🏢 Đề xuất chi phí vận hành mới: ${saved.khoanChi}`,
+        noiDung: `Thu ngân vừa lập phiếu chi ${saved.maPhieuChi} số tiền ${Number(saved.soTien || 0).toLocaleString('vi-VN')} đ cho ${saved.nguoiNhan}. Chờ Ban Giám Đốc duyệt chi.`,
+        loai: 'phe_duyet',
+        doiTuongBang: 'phieu_chi_hoat_dong',
+        doiTuongId: saved.id,
+      });
+    } catch (e) {
+      console.error('Lỗi gửi thông báo OPEX tới Giám Đốc:', e);
+    }
+
+    return {
+      success: true,
+      message: 'Lập đề xuất chi hoạt động thành công (Đang chờ Ban Giám Đốc phê duyệt)',
+      data: saved,
+    };
+  }
+
+  /**
+   * Ban Giám Đốc duyệt hoặc từ chối phiếu chi hoạt động (OPEX)
+   */
+  async duyetPhieuChiHoatDong(id: number, duyet: boolean, lyDo?: string, userId = 1) {
+    const pc = await this.phieuChiHoatDongRepo.findOne({ where: { id } });
+    if (!pc) throw new NotFoundException('Không tìm thấy phiếu chi hoạt động');
+    if (pc.trangThai !== 'cho_duyet') {
+      throw new BadRequestException('Chỉ có thể phê duyệt phiếu chi đang ở trạng thái Chờ Giám Đốc duyệt');
+    }
+
+    const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
+
+    if (duyet) {
+      pc.trangThai = 'da_duyet';
+      pc.nguoiDuyetId = nv?.id || null;
+      pc.ngayDuyet = new Date();
+      pc.lyDoTuChoi = null;
+    } else {
+      pc.trangThai = 'tu_choi';
+      pc.nguoiDuyetId = nv?.id || null;
+      pc.ngayDuyet = new Date();
+      pc.lyDoTuChoi = lyDo || 'Ban Giám Đốc từ chối phê duyệt khoản chi này';
+    }
+
+    const saved = await this.phieuChiHoatDongRepo.save(pc);
+
+    // Bắn thông báo chuông cho Thu Ngân về kết quả phê duyệt của Giám Đốc
+    try {
+      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+        tieuDe: duyet
+          ? `✓ Ban Giám Đốc đã duyệt chi: ${pc.maPhieuChi}`
+          : `✕ Ban Giám Đốc từ chối duyệt chi: ${pc.maPhieuChi}`,
+        noiDung: duyet
+          ? `Khoản chi "${pc.khoanChi}" (${Number(pc.soTien || 0).toLocaleString('vi-VN')} đ) đã được Ban Giám Đốc phê duyệt. Thu ngân có thể tiến hành xuất quỹ!`
+          : `Khoản chi "${pc.khoanChi}" bị từ chối. Lý do: "${pc.lyDoTuChoi}".`,
+        loai: 'phe_duyet',
+        doiTuongBang: 'phieu_chi_hoat_dong',
+        doiTuongId: pc.id,
+      });
+    } catch (e) {
+      console.error('Lỗi gửi thông báo duyệt OPEX tới Thu Ngân:', e);
+    }
+
+    return {
+      success: true,
+      message: duyet
+        ? 'Ban Giám Đốc đã duyệt chi thành công. Thu ngân có thể tiến hành xuất quỹ!'
+        : 'Ban Giám Đốc đã từ chối phiếu chi này.',
+      data: saved,
+    };
+  }
+
+  /**
+   * Thu ngân xác nhận xuất tiền quỹ cho phiếu chi hoạt động đã được Giám đốc duyệt
+   */
+  async xuatTienPhieuChiHoatDong(id: number, userId = 1) {
+    const pc = await this.phieuChiHoatDongRepo.findOne({ where: { id } });
+    if (!pc) throw new NotFoundException('Không tìm thấy phiếu chi hoạt động');
+    if (pc.trangThai !== 'da_duyet') {
+      if (pc.trangThai === 'cho_duyet') {
+        throw new BadRequestException('Phiếu chi đang chờ Ban Giám Đốc phê duyệt, chưa được phép xuất quỹ!');
+      }
+      if (pc.trangThai === 'da_chi') {
+        throw new BadRequestException('Phiếu chi này đã được xuất quỹ trước đó rồi!');
+      }
+      if (pc.trangThai === 'tu_choi') {
+        throw new BadRequestException(`Phiếu chi đã bị Ban Giám Đốc từ chối: "${pc.lyDoTuChoi || 'Không duyệt'}". Không thể xuất tiền!`);
+      }
+      throw new BadRequestException('Phiếu chi chưa được phê duyệt hợp lệ.');
+    }
+
+    const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
+    pc.trangThai = 'da_chi';
+    pc.nguoiChiId = nv?.id || userId;
+    pc.ngayXuatQuy = new Date();
+    pc.ngayChi = new Date();
 
     const saved = await this.phieuChiHoatDongRepo.save(pc);
     return {
       success: true,
-      message: 'Lập phiếu chi hoạt động thành công',
+      message: 'Thu ngân đã xác nhận xuất tiền quỹ thành công. Phiếu chi đã được ghi vào sổ quỹ!',
+      data: saved,
+    };
+  }
+
+  /**
+   * 1. Hủy trực tiếp phiếu chi hoạt động khi chưa xuất quỹ (cho_duyet hoặc da_duyet)
+   */
+  async huyTrucTiepPhieuChiHoatDong(id: number, lyDo?: string, userId = 1) {
+    const pc = await this.phieuChiHoatDongRepo.findOne({ where: { id } });
+    if (!pc) throw new NotFoundException('Không tìm thấy phiếu chi hoạt động');
+
+    if (pc.trangThai === 'da_chi') {
+      throw new BadRequestException('Phiếu chi này đã xuất quỹ tiền mặt! Vui lòng lập đơn yêu cầu hủy gửi Ban Giám Đốc phê duyệt.');
+    }
+    if (['da_huy', 'da_huy_hoan_quy'].includes(pc.trangThai)) {
+      throw new BadRequestException('Phiếu chi này đã bị hủy trước đó rồi!');
+    }
+
+    const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
+    pc.trangThai = 'da_huy';
+    pc.lyDoHuy = lyDo || 'Kế toán/Thu ngân hủy chứng từ trước khi xuất quỹ';
+    pc.nguoiYeuCauHuyId = nv?.id || userId;
+    pc.ngayYeuCauHuy = new Date();
+
+    const saved = await this.phieuChiHoatDongRepo.save(pc);
+    return {
+      success: true,
+      message: 'Đã hủy phiếu chi thành công (tiền chưa xuất quỹ nên không ảnh hưởng sổ quỹ).',
+      data: saved,
+    };
+  }
+
+  /**
+   * 2. Gửi yêu cầu hủy phiếu chi đã xuất quỹ lên Ban Giám Đốc
+   */
+  async yeuCauHuyPhieuChiHoatDong(id: number, lyDo: string, userId = 1) {
+    const pc = await this.phieuChiHoatDongRepo.findOne({ where: { id } });
+    if (!pc) throw new NotFoundException('Không tìm thấy phiếu chi hoạt động');
+
+    if (pc.trangThai !== 'da_chi') {
+      throw new BadRequestException('Chỉ các phiếu chi đã xuất quỹ mới cần gửi đơn đề xuất hủy lên Ban Giám Đốc!');
+    }
+    if (!lyDo || !lyDo.trim()) {
+      throw new BadRequestException('Bắt buộc phải nhập lý do đề xuất hủy phiếu chi và thu hồi tiền!');
+    }
+
+    const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
+    pc.trangThai = 'cho_duyet_huy';
+    pc.lyDoHuy = lyDo.trim();
+    pc.nguoiYeuCauHuyId = nv?.id || userId;
+    pc.ngayYeuCauHuy = new Date();
+
+    const saved = await this.phieuChiHoatDongRepo.save(pc);
+
+    // Bắn thông báo chuông cho Ban Giám Đốc duyệt hủy phiếu chi
+    try {
+      await this.thongBaoService.taoThongBaoTheoRole('ban_giam_doc', {
+        tieuDe: `🔄 Đề xuất hủy phiếu chi đã xuất quỹ: ${pc.maPhieuChi}`,
+        noiDung: `Thu ngân vừa gửi đơn xin hủy & thu hồi ${Number(pc.soTien || 0).toLocaleString('vi-VN')} đ vào quỹ cho phiếu chi ${pc.maPhieuChi}. Lý do: "${pc.lyDoHuy}". Chờ Giám đốc duyệt.`,
+        loai: 'phe_duyet',
+        doiTuongBang: 'phieu_chi_hoat_dong',
+        doiTuongId: pc.id,
+      });
+    } catch (e) {
+      console.error('Lỗi gửi thông báo yêu cầu hủy OPEX:', e);
+    }
+
+    return {
+      success: true,
+      message: 'Đã gửi yêu cầu hủy phiếu chi lên Ban Giám Đốc xem xét phê duyệt.',
+      data: saved,
+    };
+  }
+
+  /**
+   * 3. Ban Giám Đốc phê duyệt / từ chối yêu cầu hủy phiếu chi
+   */
+  async duyetHuyPhieuChiHoatDong(id: number, duyet: boolean, lyDo?: string, userId = 1) {
+    const pc = await this.phieuChiHoatDongRepo.findOne({ where: { id } });
+    if (!pc) throw new NotFoundException('Không tìm thấy phiếu chi hoạt động');
+
+    if (pc.trangThai !== 'cho_duyet_huy') {
+      throw new BadRequestException('Phiếu chi không ở trạng thái Chờ Giám Đốc duyệt hủy!');
+    }
+
+    const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
+
+    if (duyet) {
+      pc.trangThai = 'da_duyet_huy';
+      pc.nguoiDuyetHuyId = nv?.id || userId;
+      pc.ngayDuyetHuy = new Date();
+    } else {
+      pc.trangThai = 'da_chi'; // Trả về trạng thái đã chi ban đầu
+      pc.lyDoTuChoi = lyDo || 'Ban Giám Đốc từ chối đề xuất hủy phiếu chi này';
+    }
+
+    const saved = await this.phieuChiHoatDongRepo.save(pc);
+
+    // Bắn thông báo chuông cho Thu Ngân về kết quả duyệt hủy
+    try {
+      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+        tieuDe: duyet
+          ? `✓ GĐ đã đồng ý duyệt hủy phiếu chi: ${pc.maPhieuChi}`
+          : `✕ GĐ từ chối đơn hủy phiếu chi: ${pc.maPhieuChi}`,
+        noiDung: duyet
+          ? `Ban Giám Đốc đã phê duyệt hủy phiếu chi ${pc.maPhieuChi} (${Number(pc.soTien || 0).toLocaleString('vi-VN')} đ). Thu ngân vui lòng bấm xác nhận thu hồi tiền về quỹ!`
+          : `Lý do từ chối: "${pc.lyDoTuChoi}".`,
+        loai: 'phe_duyet',
+        doiTuongBang: 'phieu_chi_hoat_dong',
+        doiTuongId: pc.id,
+      });
+    } catch (e) {
+      console.error('Lỗi gửi thông báo duyệt hủy OPEX:', e);
+    }
+
+    return {
+      success: true,
+      message: duyet
+        ? 'Ban Giám Đốc đã đồng ý duyệt hủy phiếu chi. Thu ngân có thể tiến hành xác nhận thu hồi tiền về quỹ!'
+        : 'Ban Giám Đốc đã từ chối yêu cầu hủy phiếu chi này.',
+      data: saved,
+    };
+  }
+
+  /**
+   * 4. Thu ngân xác nhận thu hồi tiền vào quỹ (lần xác nhận cuối cùng)
+   */
+  async xacNhanHoanQuyPhieuChiHoatDong(id: number, userId = 1) {
+    const pc = await this.phieuChiHoatDongRepo.findOne({ where: { id } });
+    if (!pc) throw new NotFoundException('Không tìm thấy phiếu chi hoạt động');
+
+    if (pc.trangThai !== 'da_duyet_huy') {
+      throw new BadRequestException('Chỉ có thể thu hồi tiền khi Ban Giám Đốc đã phê duyệt đơn xin hủy!');
+    }
+
+    const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
+    pc.trangThai = 'da_huy_hoan_quy';
+    pc.nguoiHoanQuyId = nv?.id || userId;
+    pc.ngayHoanQuy = new Date();
+
+    const saved = await this.phieuChiHoatDongRepo.save(pc);
+
+    // Bắn thông báo chuông cho Ban Giám Đốc tiền đã về két
+    try {
+      await this.thongBaoService.taoThongBaoTheoRole('ban_giam_doc', {
+        tieuDe: `↺ Đã thu hồi tiền vào quỹ: ${pc.maPhieuChi}`,
+        noiDung: `Thu ngân đã xác nhận nhận lại ${Number(pc.soTien || 0).toLocaleString('vi-VN')} đ vào quỹ cho phiếu chi ${pc.maPhieuChi}. Quỹ tiền mặt đã tự động phục hồi.`,
+        loai: 'phe_duyet',
+        doiTuongBang: 'phieu_chi_hoat_dong',
+        doiTuongId: pc.id,
+      });
+    } catch (e) {
+      console.error('Lỗi gửi thông báo hoàn quỹ:', e);
+    }
+
+    return {
+      success: true,
+      message: `Đã xác nhận thu hồi số tiền ${Number(saved.soTien || 0).toLocaleString('vi-VN')} đ vào quỹ thành công! Tiền đã tự động hồi về quỹ.`,
       data: saved,
     };
   }
@@ -990,7 +1308,8 @@ export class ThanhToanService {
 
     // 2. Quét phiếu chi hoạt động do thu ngân chi trong ca
     const opexList = await this.phieuChiHoatDongRepo.createQueryBuilder('pc')
-      .where('pc.nguoiLapId = :myId', { myId: nv.id })
+      .where('(pc.nguoiChiId = :myId OR (pc.nguoiLapId = :myId AND pc.nguoiChiId IS NULL))', { myId: nv.id })
+      .andWhere('pc.trangThai = :stDaChi', { stDaChi: 'da_chi' })
       .andWhere('pc.ngayChi >= :tu AND pc.ngayChi <= :den', { tu, den })
       .getMany();
 

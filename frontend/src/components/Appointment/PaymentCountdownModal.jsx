@@ -138,7 +138,15 @@ export default function PaymentCountdownModal({
     clearInterval(countdownIntervalRef.current);
     clearInterval(pollingIntervalRef.current);
     cancelledRef.current = true;
+
+    // Safe-Cancel Guard: Đối soát lần cuối với PayOS trước khi hủy để không làm mất tiền của khách
     try {
+      const checkRes = await apiGet(`/payos/kiem-tra-lich-hen/${lichHenId}`);
+      const real = checkRes?.data || checkRes;
+      if (real?.isPaid || real?.status === 'PAID') {
+        handlePaymentSuccess();
+        return;
+      }
       await apiPatch(`/lich-hen/${lichHenId}/huy`, { lyDoHuy: 'Hết thời gian thanh toán' });
     } catch {
       // ignore

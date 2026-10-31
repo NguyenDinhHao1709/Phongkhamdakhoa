@@ -71,6 +71,39 @@ export class YeuCauNhapKho {
   @Column({ name: 'ghi_chu_chi', type: 'text', nullable: true })
   ghiChuChi: string;
 
+  @Column({ name: 'nguoi_duyet_chi_id', nullable: true })
+  nguoiDuyetChiId: number;
+
+  @Column({ name: 'ngay_duyet_chi', type: 'datetime', nullable: true })
+  ngayDuyetChi: Date;
+
+  @Column({ name: 'ghi_chu_duyet_chi', type: 'text', nullable: true })
+  ghiChuDuyetChi: string;
+
+  @Column({ name: 'ly_do_tu_choi_chi', type: 'text', nullable: true })
+  lyDoTuChoiChi: string;
+
+  @Column({ name: 'ly_do_huy_chi', type: 'text', nullable: true })
+  lyDoHuyChi: string;
+
+  @Column({ name: 'nguoi_yeu_cau_huy_chi_id', nullable: true })
+  nguoiYeuCauHuyChiId: number;
+
+  @Column({ name: 'ngay_yeu_cau_huy_chi', type: 'datetime', nullable: true })
+  ngayYeuCauHuyChi: Date;
+
+  @Column({ name: 'nguoi_duyet_huy_chi_id', nullable: true })
+  nguoiDuyetHuyChiId: number;
+
+  @Column({ name: 'ngay_duyet_huy_chi', type: 'datetime', nullable: true })
+  ngayDuyetHuyChi: Date;
+
+  @Column({ name: 'nguoi_hoan_quy_chi_id', nullable: true })
+  nguoiHoanQuyChiId: number;
+
+  @Column({ name: 'ngay_hoan_quy_chi', type: 'datetime', nullable: true })
+  ngayHoanQuyChi: Date;
+
   @CreateDateColumn({ name: 'tao_luc' })
   taoLuc: Date;
 }

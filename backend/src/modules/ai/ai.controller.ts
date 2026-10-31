@@ -1,6 +1,7 @@
 import {
-  Controller, Post, Get, Body, Query, Param, ParseIntPipe, UseGuards, BadRequestException,
+  Controller, Post, Get, Body, Query, Param, ParseIntPipe, UseGuards, BadRequestException, Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AiService } from './ai.service';
 import { Public } from '../../common/decorators/public.decorator';
@@ -64,6 +65,24 @@ export class AiController {
     return this.aiService.resetPatientSession(dto.sessionId);
   }
 
+  @Public()
+  @Get('tts')
+  @ApiOperation({ summary: 'Chuyển văn bản thành giọng đọc tiếng Việt chuẩn (MP3 audio stream)' })
+  async streamTts(@Query('text') text: string, @Res() res: Response) {
+    if (!text) {
+      res.status(400).send('Vui lòng cung cấp văn bản cần đọc');
+      return;
+    }
+    try {
+      const audioBuffer = await this.aiService.getVietnameseTts(text);
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.send(audioBuffer);
+    } catch {
+      res.status(500).send('Không thể phát âm thanh');
+    }
+  }
+
   // ─── 1. CHAT MULTI-TURN (Trang chủ + Tiếp tân) ─────────────────
   @Public()
   @Post('triage-chat')
@@ -123,34 +142,14 @@ export class AiController {
   @Post('forecast-medicine')
   @ApiOperation({ summary: 'Dự báo nhu cầu thuốc 14 ngày tới' })
   postForecastMedicine(@Body() body: { horizon_days?: number; items?: any[] }) {
-    return {
-      success: true,
-      message: 'Dự báo nhu cầu thuốc thành công',
-      horizon_days: body?.horizon_days || 14,
-      data: (body?.items || []).map((it) => ({
-        maThuoc: it.maThuoc || 'TH001',
-        tenThuoc: it.tenThuoc || 'Thuốc kiểm tra',
-        tocDoXuatMoiNgay: 3.5,
-        duBaoNhuCau7Ngay: 25,
-        duBaoNhuCau14Ngay: 49,
-        tonKhoHienTai: it.tonKhoTong || 50,
-        soNgayTonKhoUocTinh: Math.round((it.tonKhoTong || 50) / 3.5),
-        mucTonToiThieuDeXuat: 30,
-        canDatHangLai: (it.tonKhoTong || 50) <= 30,
-      })),
-    };
+    return this.aiService.forecastMedicine(body);
   }
 
   @Public()
   @Get('health')
   @ApiOperation({ summary: 'Kiểm tra trạng thái Microservice AI & Machine Learning' })
   getHealth() {
-    return {
-      status: 'ok',
-      service: 'PhongKham ML Forecasting & Gemini AI Service',
-      version: '2.0.0',
-      timestamp: new Date().toISOString(),
-    };
+    return this.aiService.getHealth();
   }
 
   // ─── 7. LEGACY ──────────────────────────────────────────────────
@@ -159,5 +158,29 @@ export class AiController {
   @ApiOperation({ summary: '[Legacy] Khai báo triệu chứng & Nhận gợi ý chuyên khoa (Public)' })
   goiYChuyenKhoa(@Body() body: { trieuChung: string }) {
     return this.aiService.goiYChuyenKhoa(body.trieuChung);
+  }
+
+  // ─── 8. CLINICAL AI 3.1: RAG PHÁC ĐỒ BỘ Y TẾ ───────────────────
+  @Public()
+  @Post('clinical-protocol-rag')
+  @ApiOperation({ summary: 'RAG truy xuất Phác đồ Chẩn đoán & Điều trị chuẩn Bộ Y tế' })
+  clinicalProtocolRag(@Body() body: any) {
+    return this.aiService.clinicalProtocolRag(body);
+  }
+
+  // ─── 9. CLINICAL AI 3.2: COMPUTER VISION & ĐỌC KẾT QUẢ CLS ──────
+  @Public()
+  @Post('analyze-lab-vision')
+  @ApiOperation({ summary: 'AI Computer Vision & Phân tích đa chỉ số Cận lâm sàng' })
+  analyzeLabVision(@Body() body: any) {
+    return this.aiService.analyzeLabVision(body);
+  }
+
+  // ─── 10. CLINICAL AI 3.3: KIỂM TRA TƯƠNG TÁC THUỐC & DỊ ỨNG ─────
+  @Public()
+  @Post('check-drug-interactions')
+  @ApiOperation({ summary: 'Kiểm tra tương tác thuốc, dị ứng chéo và chức năng Gan/Thận thời gian thực' })
+  checkDrugInteractions(@Body() body: any) {
+    return this.aiService.checkDrugInteractions(body);
   }
 }

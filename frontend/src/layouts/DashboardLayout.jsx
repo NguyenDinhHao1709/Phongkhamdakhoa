@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import useAuthStore from '../store/authStore';
+import useThemeStore from '../store/themeStore';
 import { VAI_TRO_LABEL } from '../utils/constants';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import {
@@ -11,65 +12,71 @@ import {
   User, Settings, Video, Clock, Send, Bot, Database,
   Shield, Layers, TrendingUp, DollarSign,
   FileSearch, CheckSquare, FileText, ScanFace,
-  Menu, X, PackagePlus
+  Menu, X, PackagePlus, UserCheck, MessageSquare, Sun, Moon
 } from 'lucide-react';
 
 
 const MENU_CONFIG = {
   tiep_tan: [
-    { to: '/tiep-tan/hang-doi', icon: ClipboardList, label: 'Hàng đợi phòng khám' },
-    { to: '/tiep-tan/lich-hen', icon: Calendar, label: 'Quản lý lịch hẹn' },
-    { to: '/tiep-tan/benh-nhan', icon: Users, label: 'Hồ sơ bệnh nhân' },
-    { to: '/tiep-tan/ai-triage', icon: Bot, label: 'Phân luồng AI Triage' },
-    { to: '/tiep-tan/thong-ke', icon: BarChart3, label: 'Báo cáo tiếp đón' },
+    { to: '/tiep-tan/hang-doi', icon: ClipboardList, label: 'Hàng đợi phòng khám', perm: 'tiep_nhan.goi_so' },
+    { to: '/tiep-tan/lich-hen', icon: Calendar, label: 'Quản lý lịch hẹn', perm: 'lich_hen.xem' },
+    { to: '/tiep-tan/benh-nhan', icon: Users, label: 'Hồ sơ bệnh nhân', perm: 'benh_nhan.them' },
+    { to: '/tiep-tan/ai-triage', icon: Bot, label: 'Phân luồng AI Triage', perm: 'benh_nhan.xem' },
+    { to: '/tiep-tan/office', icon: MessageSquare, label: 'Office' },
+    { to: '/tiep-tan/thong-ke', icon: BarChart3, label: 'Báo cáo tiếp đón', perm: 'bao_cao.doanh_thu' },
     { to: '/tiep-tan/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
     { to: '/tiep-tan/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/tiep-tan/gui-don', icon: Send, label: 'Gửi yêu cầu' },
     { to: '/tiep-tan/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   bac_si: [
-    { to: '/bac-si/phong-kham', icon: Stethoscope, label: 'Phòng khám lâm sàng' },
-    { to: '/bac-si/kham-truc-tuyen', icon: Video, label: 'Tư vấn Online & Đặt lịch' },
-    { to: '/bac-si/ho-so-benh-an', icon: ClipboardList, label: 'Hồ sơ bệnh án (EMR)' },
-    { to: '/bac-si/lich-hen', icon: Calendar, label: 'Quản lý lịch hẹn' },
-    { to: '/bac-si/thong-ke', icon: BarChart3, label: 'Báo cáo & Thống kê' },
+    { to: '/bac-si/phong-kham', icon: Stethoscope, label: 'Phòng khám lâm sàng', perm: 'kham_benh.kham' },
+    { to: '/bac-si/kham-truc-tuyen', icon: Video, label: 'Tư vấn Online & Đặt lịch', perm: 'kham_benh.truc_tuyen' },
+    { to: '/bac-si/ho-so-benh-an', icon: ClipboardList, label: 'Hồ sơ bệnh án (EMR)', perm: 'kham_benh.xem_lich_su' },
+    { to: '/bac-si/lich-hen', icon: Calendar, label: 'Quản lý lịch hẹn', perm: 'lich_hen.xem' },
+    { to: '/bac-si/office', icon: MessageSquare, label: 'Office' },
+    { to: '/bac-si/thong-ke', icon: BarChart3, label: 'Báo cáo & Thống kê', perm: 'bao_cao.doanh_thu' },
     { to: '/bac-si/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
     { to: '/bac-si/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/bac-si/gui-don', icon: Send, label: 'Gửi yêu cầu' },
     { to: '/bac-si/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   ky_thuat_vien: [
-    { to: '/ky-thuat-vien/xet-nghiem', icon: FlaskConical, label: 'Xét nghiệm & CĐHA' },
-    { to: '/ky-thuat-vien/thong-ke', icon: BarChart3, label: 'Báo cáo & Thống kê' },
+    { to: '/ky-thuat-vien/xet-nghiem', icon: FlaskConical, label: 'Xét nghiệm & CĐHA', perm: 'xet_nghiem.xem' },
+    { to: '/ky-thuat-vien/office', icon: MessageSquare, label: 'Office' },
+    { to: '/ky-thuat-vien/thong-ke', icon: BarChart3, label: 'Báo cáo & Thống kê', perm: 'bao_cao.doanh_thu' },
     { to: '/ky-thuat-vien/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
     { to: '/ky-thuat-vien/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/ky-thuat-vien/gui-don', icon: Send, label: 'Gửi yêu cầu' },
     { to: '/ky-thuat-vien/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   nhan_vien_nha_thuoc: [
-    { to: '/nha-thuoc/don-thuoc', icon: Pill, label: 'Cấp phát đơn thuốc' },
-    { to: '/nha-thuoc/kho-thuoc', icon: Layers, label: 'Kho thuốc & Tồn kho' },
-    { to: '/nha-thuoc/mua-hang', icon: PackagePlus, label: 'Mua hàng & Nhập thuốc' },
-    { to: '/nha-thuoc/thong-ke', icon: BarChart3, label: 'Báo cáo & Dự báo nhu cầu' },
+    { to: '/nha-thuoc/don-thuoc', icon: Pill, label: 'Cấp phát đơn thuốc', perm: 'thuoc.xuat_kho' },
+    { to: '/nha-thuoc/kho-thuoc', icon: Layers, label: 'Kho thuốc & Tồn kho', perm: 'thuoc.xem' },
+    { to: '/nha-thuoc/mua-hang', icon: PackagePlus, label: 'Mua hàng & Nhập thuốc', perm: 'thuoc.nhap_kho' },
+    { to: '/nha-thuoc/office', icon: MessageSquare, label: 'Office' },
+    { to: '/nha-thuoc/thong-ke', icon: BarChart3, label: 'Báo cáo & Dự báo nhu cầu', perm: 'bao_cao.doanh_thu' },
     { to: '/nha-thuoc/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
     { to: '/nha-thuoc/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/nha-thuoc/gui-don', icon: Send, label: 'Gửi yêu cầu' },
     { to: '/nha-thuoc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   nha_thuoc: [
-    { to: '/nha-thuoc/don-thuoc', icon: Pill, label: 'Cấp phát đơn thuốc' },
-    { to: '/nha-thuoc/kho-thuoc', icon: Layers, label: 'Kho thuốc & Tồn kho' },
-    { to: '/nha-thuoc/mua-hang', icon: PackagePlus, label: 'Mua hàng & Nhập thuốc' },
-    { to: '/nha-thuoc/thong-ke', icon: BarChart3, label: 'Báo cáo & Dự báo nhu cầu' },
+    { to: '/nha-thuoc/don-thuoc', icon: Pill, label: 'Cấp phát đơn thuốc', perm: 'thuoc.xuat_kho' },
+    { to: '/nha-thuoc/kho-thuoc', icon: Layers, label: 'Kho thuốc & Tồn kho', perm: 'thuoc.xem' },
+    { to: '/nha-thuoc/mua-hang', icon: PackagePlus, label: 'Mua hàng & Nhập thuốc', perm: 'thuoc.nhap_kho' },
+    { to: '/nha-thuoc/office', icon: MessageSquare, label: 'Office' },
+    { to: '/nha-thuoc/thong-ke', icon: BarChart3, label: 'Báo cáo & Dự báo nhu cầu', perm: 'bao_cao.doanh_thu' },
     { to: '/nha-thuoc/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
     { to: '/nha-thuoc/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/nha-thuoc/gui-don', icon: Send, label: 'Gửi yêu cầu' },
     { to: '/nha-thuoc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   thu_ngan: [
-    { to: '/thu-ngan/hoa-don', icon: Receipt, label: 'Thu viện phí & Biên lai (AR)' },
-    { to: '/thu-ngan/chi-tra-nha-cung-cap', icon: DollarSign, label: 'Sổ chi trả & Chi phí (AP/OPEX)' },
-    { to: '/thu-ngan/thong-ke', icon: BarChart3, label: 'Báo cáo sổ quỹ & Chốt ca' },
+    { to: '/thu-ngan/hoa-don', icon: Receipt, label: 'Thu viện phí & Biên lai (AR)', perm: 'hoa_don.xem' },
+    { to: '/thu-ngan/chi-tra-nha-cung-cap', icon: DollarSign, label: 'Sổ chi trả & Chi phí (AP/OPEX)', perm: 'hoa_don.thanh_toan' },
+    { to: '/thu-ngan/office', icon: MessageSquare, label: 'Office' },
+    { to: '/thu-ngan/thong-ke', icon: BarChart3, label: 'Báo cáo sổ quỹ & Chốt ca', perm: 'hoa_don.chot_ca' },
     { to: '/thu-ngan/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
     { to: '/thu-ngan/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
     { to: '/thu-ngan/gui-don', icon: Send, label: 'Gửi yêu cầu' },
@@ -77,7 +84,9 @@ const MENU_CONFIG = {
   ],
   quan_tri_vien: [
     { to: '/quan-tri/tong-quan', icon: BarChart3, label: 'Tổng quan hệ thống' },
+    { to: '/quan-tri/office', icon: MessageSquare, label: 'Office' },
     { to: '/quan-tri/nhan-vien', icon: Users, label: 'Quản lý nhân sự' },
+    { to: '/quan-tri/benh-nhan', icon: UserCheck, label: 'Tài khoản bệnh nhân' },
     { to: '/quan-tri/phan-quyen', icon: Shield, label: 'Phân quyền & Vai trò' },
     { to: '/quan-tri/danh-muc', icon: Layers, label: 'Danh mục dùng chung' },
     { to: '/quan-tri/sao-luu', icon: Database, label: 'Sao lưu & CSDL' },
@@ -87,7 +96,9 @@ const MENU_CONFIG = {
   ],
   quan_tri_vien_cap_cao: [
     { to: '/quan-tri/tong-quan', icon: BarChart3, label: 'Tổng quan hệ thống' },
+    { to: '/quan-tri/office', icon: MessageSquare, label: 'Office' },
     { to: '/quan-tri/nhan-vien', icon: Users, label: 'Quản lý nhân sự' },
+    { to: '/quan-tri/benh-nhan', icon: UserCheck, label: 'Tài khoản bệnh nhân' },
     { to: '/quan-tri/phan-quyen', icon: Shield, label: 'Phân quyền & Vai trò' },
     { to: '/quan-tri/danh-muc', icon: Layers, label: 'Danh mục dùng chung' },
     { to: '/quan-tri/sao-luu', icon: Database, label: 'Sao lưu & CSDL' },
@@ -96,14 +107,16 @@ const MENU_CONFIG = {
     { to: '/quan-tri/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   ban_giam_doc: [
-    { to: '/ban-giam-doc/thong-ke', icon: BarChart3, label: 'Dashboard điều hành' },
-    { to: '/ban-giam-doc/tai-chinh', icon: FileText, label: 'Báo cáo toàn diện BV' },
-    { to: '/ban-giam-doc/bao-cao-bo-phan', icon: ClipboardList, label: 'Báo cáo bộ phận & Chỉ đạo' },
-    { to: '/ban-giam-doc/du-bao-luong', icon: TrendingUp, label: 'Dự báo lưu lượng' },
-    { to: '/ban-giam-doc/xep-lich', icon: Calendar, label: 'Phân ca làm việc' },
-    { to: '/ban-giam-doc/quan-ly-cham-cong', icon: ScanFace, label: 'Quản lý chấm công' },
-    { to: '/ban-giam-doc/tra-cuu', icon: FileSearch, label: 'Tra cứu tổng hợp' },
-    { to: '/ban-giam-doc/phe-duyet-don', icon: CheckSquare, label: 'Phê duyệt yêu cầu' },
+    { to: '/ban-giam-doc/thong-ke', icon: BarChart3, label: 'Dashboard điều hành', perm: 'bao_cao.doanh_thu' },
+    { to: '/ban-giam-doc/office', icon: MessageSquare, label: 'Office' },
+    { to: '/ban-giam-doc/bang-gia-dich-vu', icon: DollarSign, label: 'Quản lý bảng giá dịch vụ', perm: 'bao_cao.doanh_thu' },
+    { to: '/ban-giam-doc/tai-chinh', icon: FileText, label: 'Báo cáo toàn diện BV', perm: 'bao_cao.doanh_thu' },
+    { to: '/ban-giam-doc/bao-cao-bo-phan', icon: ClipboardList, label: 'Báo cáo bộ phận & Chỉ đạo', perm: 'bao_cao.doanh_thu' },
+    { to: '/ban-giam-doc/du-bao-luong', icon: TrendingUp, label: 'Dự báo lưu lượng', perm: 'bao_cao.doanh_thu' },
+    { to: '/ban-giam-doc/xep-lich', icon: Calendar, label: 'Phân ca làm việc', perm: 'lich_hen.duyet' },
+    { to: '/ban-giam-doc/quan-ly-cham-cong', icon: ScanFace, label: 'Quản lý chấm công', perm: 'lich_hen.duyet' },
+    { to: '/ban-giam-doc/tra-cuu', icon: FileSearch, label: 'Tra cứu tổng hợp', perm: 'benh_nhan.xem' },
+    { to: '/ban-giam-doc/phe-duyet-don', icon: CheckSquare, label: 'Phê duyệt yêu cầu', perm: 'lich_hen.duyet' },
     { to: '/ban-giam-doc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
 };
@@ -112,9 +125,21 @@ export function DashboardLayout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, logout } = useAuthStore();
+  const { darkMode, toggleTheme } = useThemeStore();
   const navigate = useNavigate();
 
-  const menuItems = MENU_CONFIG[user?.vaiTro] || [];
+  const allMenuItems = MENU_CONFIG[user?.vaiTro] || [];
+  const menuItems = allMenuItems.filter(item => {
+    // Nếu item không cấu hình perm thì mọi nhân sự trong vai trò đều truy cập được
+    if (!item.perm) return true;
+    // Super Admin có tất cả quyền
+    if (user?.vaiTro === 'quan_tri_vien_cap_cao' || user?.vaiTro === 'quan_tri_vien') return true;
+    // Kiểm tra danh sách quyền thực tế của nhân sự
+    if (Array.isArray(user?.quyenHans)) {
+      return user.quyenHans.includes(item.perm);
+    }
+    return true;
+  });
 
   const getProfileRoute = () => {
     switch (user?.vaiTro) {
@@ -324,6 +349,19 @@ export function DashboardLayout({ children }) {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Nút Chuyển đổi Giao diện Sáng / Tối Toàn hệ thống */}
+            <button
+              onClick={toggleTheme}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors cursor-pointer"
+              title={darkMode ? 'Chuyển sang Giao diện Sáng' : 'Chuyển sang Giao diện Tối'}
+            >
+              {darkMode ? (
+                <Sun className="h-4 w-4 text-amber-400" />
+              ) : (
+                <Moon className="h-4 w-4 text-slate-600" />
+              )}
+            </button>
+
             {/* Notification Dropdown */}
             <NotificationDropdown />
 

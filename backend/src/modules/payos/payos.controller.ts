@@ -20,6 +20,12 @@ export class PayosController {
     return this.payosService.kiemTraTrangThaiDonHang(orderCode);
   }
 
+  @Get('kiem-tra-lich-hen/:lichHenId')
+  @ApiOperation({ summary: 'Kiểm tra trạng thái thanh toán và đồng bộ theo ID lịch hẹn' })
+  kiemTraTheoLichHen(@Param('lichHenId', ParseIntPipe) lichHenId: number) {
+    return this.payosService.kiemTraTheoLichHen(lichHenId);
+  }
+
   @Public()
   @Post('webhook')
   @HttpCode(HttpStatus.OK)

@@ -16,7 +16,7 @@ export class DichVuXetNghiem {
   @Column({ name: 'ten_dich_vu', length: 200 })
   tenDichVu: string;
 
-  @Column({ type: 'enum', enum: ['xet_nghiem', 'cdha', 'khac'], default: 'xet_nghiem' })
+  @Column({ type: 'enum', enum: ['kham_benh', 'xet_nghiem', 'cdha', 'khac'], default: 'xet_nghiem' })
   loai: string;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })

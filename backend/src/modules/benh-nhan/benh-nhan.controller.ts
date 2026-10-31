@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Body, Param, Query,
-  ParseIntPipe, UseGuards,
+  ParseIntPipe, UseGuards, ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { BenhNhanService } from './benh-nhan.service';
@@ -8,6 +8,7 @@ import { TaoBenhNhanDto, CapNhatBenhNhanDto, TimKiemBenhNhanDto } from './dto/be
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Bệnh nhân')
 @ApiBearerAuth()
@@ -52,9 +53,16 @@ export class BenhNhanController {
   }
 
   @Patch(':id')
-  @Roles('tiep_tan', 'quan_tri_vien')
+  @Roles('tiep_tan', 'quan_tri_vien', 'benh_nhan')
   @ApiOperation({ summary: 'Cập nhật thông tin bệnh nhân' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: CapNhatBenhNhanDto) {
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CapNhatBenhNhanDto,
+    @CurrentUser() user: any,
+  ) {
+    if (user?.vaiTro === 'benh_nhan' && user?.benhNhanId !== id) {
+      throw new ForbiddenException('Bạn chỉ có quyền cập nhật hồ sơ cá nhân của chính mình');
+    }
     return this.service.update(id, dto);
   }
 }

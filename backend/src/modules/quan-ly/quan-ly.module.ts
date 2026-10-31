@@ -16,11 +16,12 @@ import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
 import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
 import { HoaDonChiTiet } from '../thanh-toan/entities/hoa-don-chi-tiet.entity';
-import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
+import { ChiDinhCanLamSang, DichVuXetNghiem } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHen } from '../lich-hen/entities/lich-hen.entity';
 import { NhatKyHeThong } from './entities/nhat-ky-he-thong.entity';
 import { BaoCaoBoPhan } from './entities/bao-cao-bo-phan.entity';
+import { CauHinhTienCoc } from './entities/cau-hinh-tien-coc.entity';
 import { QuanLyController } from './quan-ly.controller';
 import { QuanLyService } from './quan-ly.service';
 import { ThongBaoModule } from '../thong-bao/thong-bao.module';
@@ -44,10 +45,12 @@ import { ThongBaoModule } from '../thong-bao/thong-bao.module';
       HoaDon,
       HoaDonChiTiet,
       ChiDinhCanLamSang,
+      DichVuXetNghiem,
       DonThuoc,
       NhatKyHeThong,
       LichHen,
       BaoCaoBoPhan,
+      CauHinhTienCoc,
     ]),
     ThongBaoModule,
     HttpModule,

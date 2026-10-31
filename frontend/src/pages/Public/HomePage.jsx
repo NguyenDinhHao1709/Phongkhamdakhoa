@@ -1,19 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Stethoscope, Calendar, ShieldCheck, Heart, User, LogIn,
+  Stethoscope, Calendar, ShieldCheck, Heart, User, LogIn, LogOut,
   Search, ArrowRight, Activity, PhoneCall, CheckCircle2,
   FileText, Clock, MapPin, Award, BookOpen, UserCheck, X,
   Video, Building2, Ticket, ChevronRight, Check, Pill,
   Layers, FlaskConical, Sparkles, MessageCircle, Bot, Zap,
-  Menu
+  Menu, Edit3, ClipboardList, Home, Sun, Moon
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
+import useHospitalStore from '../../store/hospitalStore';
+import useThemeStore from '../../store/themeStore';
 import { apiGet } from '../../services/api';
 import SearchResultsModal from './SearchResultsModal';
 import SpecialtyDetailModal from './SpecialtyDetailModal';
-import PublicDatLichModal from './PublicDatLichModal';
 import AiTriageChatbot from './AiTriageChatbot';
+import BangGiaDichVuSection from './BangGiaDichVuSection';
+import CapNhatHoSoModal from '../../components/Patient/CapNhatHoSoModal';
 import MedButton from '../../design-system/components/Button/MedButton';
 
 const ROLE_HOME = {
@@ -26,7 +29,7 @@ const ROLE_HOME = {
   quan_tri_vien: '/quan-tri',
   quan_tri_vien_cap_cao: '/quan-tri',
   ban_giam_doc: '/ban-giam-doc',
-  benh_nhan: '/benh-nhan',
+  benh_nhan: '/',
 };
 
 const SPECIALTIES_DATA = [
@@ -330,6 +333,7 @@ const DOCTOR_SPECIALTY_TABS = [
 export default function HomePage() {
   const navigate = useNavigate();
   const { isAuthenticated, user, setUser } = useAuthStore();
+  const { darkMode, toggleTheme } = useThemeStore();
 
   // Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -347,33 +351,65 @@ export default function HomePage() {
 
   // Medical Guidance Modal (Chatbot)
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
-  const [showChatBubble, setShowChatBubble] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [liveTicket, setLiveTicket] = useState(null);
+  const [liveQueue, setLiveQueue] = useState(null);
+  const logout = useAuthStore((s) => s.logout);
 
   // Article Modal State
   const [selectedArticle, setSelectedArticle] = useState(null);
 
-  // Public Booking Modal State
-  const [isPublicBookingOpen, setIsPublicBookingOpen] = useState(false);
-  const [bookingHinhThuc, setBookingHinhThuc] = useState('truc_tiep');
-  const [bookingDoctor, setBookingDoctor] = useState(null);
+  // Global Hospital Info State (configured by Admin)
+  const hospitalInfo = useHospitalStore((s) => s.hospitalInfo);
+  const fetchHospitalInfo = useHospitalStore((s) => s.fetchHospitalInfo);
+
+  const displayName = user?.hoTen
+    || (user?.tenDangNhap?.includes('@') ? user.tenDangNhap.split('@')[0] : user?.tenDangNhap)
+    || 'Bệnh nhân';
 
   useEffect(() => {
     fetchPublicDoctors();
+    fetchHospitalInfo(true);
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated && (!user?.hoTen || user?.hoTen === user?.tenDangNhap)) {
+    if (isAuthenticated && (!user?.hoTen || user?.hoTen === user?.tenDangNhap || !user?.benhNhanId)) {
       apiGet('/auth/me')
         .then((res) => {
           const userData = res?.data || res;
-          if (userData && userData.hoTen) {
+          if (userData) {
             setUser({ ...user, ...userData });
           }
         })
         .catch((err) => console.error('Lỗi nạp tên người dùng:', err));
     }
-  }, [isAuthenticated, user?.hoTen, user?.tenDangNhap]);
+  }, [isAuthenticated, user?.hoTen, user?.tenDangNhap, user?.benhNhanId]);
+
+  useEffect(() => {
+    if (isAuthenticated && user?.vaiTro === 'benh_nhan') {
+      const fetchLiveTicket = async () => {
+        try {
+          const res = await apiGet('/tiep-nhan/phieu-kham-benh-nhan');
+          if (res?.data?.ticket) {
+            setLiveTicket(res.data.ticket);
+            setLiveQueue(res.data.queue);
+          } else {
+            setLiveTicket(null);
+            setLiveQueue(null);
+          }
+        } catch {
+          setLiveTicket(null);
+        }
+      };
+      fetchLiveTicket();
+      const interval = setInterval(fetchLiveTicket, 15000);
+      return () => clearInterval(interval);
+    } else {
+      setLiveTicket(null);
+      setLiveQueue(null);
+    }
+  }, [isAuthenticated, user?.vaiTro]);
 
   const fetchPublicDoctors = async () => {
     try {
@@ -414,116 +450,340 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-gray-800 antialiased">
       {/* ─── MAIN HEALTHCARE NAVBAR ──────────────────────────────────── */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
-          {/* Logo & Identity */}
-          <div className="flex items-center gap-2.5 sm:gap-3.5 cursor-pointer flex-shrink-0" onClick={() => navigate('/')}>
-            <div className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-xl bg-primary-600 text-white shadow-xs">
-              <Stethoscope className="h-5 w-5 sm:h-6 sm:w-6" />
+      <header className="sticky top-0 z-40 bg-white border-b border-gray-200">
+        {isAuthenticated && user?.vaiTro === 'benh_nhan' ? (
+          /* ─── PATIENT LOGGED-IN NAVBAR (CHUẨN THEO ẢNH 2 CỔNG BỆNH NHÂN) ─── */
+          <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-5">
+            {/* Logo & Mobile Menu Toggle */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setMobileNavOpen(!mobileNavOpen)}
+                className="md:hidden p-2 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                title="Mở menu"
+              >
+                {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+
+              <div
+                className="flex items-center gap-2 cursor-pointer shrink-0"
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                title="Về đầu Trang chủ"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs">
+                  <Stethoscope className="h-4 w-4" />
+                </div>
+                <span className="text-[14px] sm:text-[15px] font-bold text-gray-900 truncate">
+                  {hospitalInfo.tenBenhVien || 'Phòng Khám Đa Khoa'}
+                </span>
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="text-base sm:text-lg font-black text-gray-900 tracking-tight leading-none whitespace-nowrap">
-                PHÒNG KHÁM ĐA KHOA
-              </span>
-              <span className="hidden sm:block text-[11px] font-bold text-primary-700 tracking-wider uppercase mt-1 whitespace-nowrap">
-                TRUNG TÂM Y KHOA CHẤT LƯỢNG CAO
-              </span>
+
+            {/* Desktop Navigation Tabs */}
+            <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center flex-nowrap">
+              {[
+                { to: '/', icon: Home, label: 'Trang chủ' },
+                { to: '/benh-nhan/dat-lich', icon: Calendar, label: 'Đặt lịch khám' },
+                { to: '/benh-nhan/so-thu-tu', icon: Ticket, label: 'Tiến độ & STT' },
+                { to: '/benh-nhan/lich-hen', icon: ClipboardList, label: 'Lịch hẹn' },
+                { to: '/benh-nhan/ho-so-y-te', icon: FileText, label: 'Hồ sơ y tế' },
+                { to: '/benh-nhan/chat-ai', icon: Stethoscope, label: 'Hỗ trợ sức khỏe' },
+              ].map(({ to, icon: Icon, label }) => {
+                const isActive = to === '/';
+                return (
+                  <button
+                    key={to}
+                    onClick={() => {
+                      if (to === '/') {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      } else {
+                        navigate(to);
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-[13px] whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-blue-50 text-blue-700 font-semibold'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* User info & Logout */}
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              <button
+                onClick={toggleTheme}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer"
+                title={darkMode ? 'Chuyển sang Giao diện Sáng' : 'Chuyển sang Giao diện Tối'}
+              >
+                {darkMode ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-slate-600" />}
+              </button>
+              <div
+                onClick={() => setShowProfileModal(true)}
+                className="hidden sm:block text-right border-l border-gray-200 pl-3 cursor-pointer group hover:opacity-85 transition-opacity"
+                title="Nhấn để xem & cập nhật hồ sơ cá nhân"
+              >
+                <div className="flex items-center gap-1.5 justify-end">
+                  <p className="text-xs font-semibold text-gray-900 leading-tight truncate max-w-[150px] group-hover:text-blue-600 transition-colors">{displayName}</p>
+                  <Edit3 className="h-3 w-3 text-gray-400 group-hover:text-blue-600 transition-colors" />
+                </div>
+                <p className="text-[11px] text-blue-600 font-medium">Sửa hồ sơ</p>
+              </div>
+              <button
+                onClick={() => { logout(); navigate('/'); }}
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
+                title="Đăng xuất"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
           </div>
+        ) : (
+          /* ─── PUBLIC NAVBAR (CHƯA ĐĂNG NHẬP HOẶC NHÂN VIÊN) ─── */
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
+            {/* Logo & Identity */}
+            <div className="flex items-center gap-2.5 sm:gap-3.5 cursor-pointer flex-shrink-0" onClick={() => navigate('/')}>
+              <div className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-xl bg-primary-600 text-white shadow-xs">
+                <Stethoscope className="h-5 w-5 sm:h-6 sm:w-6" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-base sm:text-lg font-black text-gray-900 tracking-tight leading-none whitespace-nowrap uppercase">
+                  {hospitalInfo.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}
+                </span>
+                <span className="hidden sm:block text-[11px] font-bold text-primary-700 tracking-wider uppercase mt-1 whitespace-nowrap">
+                  {hospitalInfo.slogan || 'TRUNG TÂM Y KHOA CHẤT LƯỢNG CAO'}
+                </span>
+              </div>
+            </div>
 
-          {/* Nav Links */}
-          <nav className="hidden lg:flex items-center gap-5 xl:gap-8 text-sm font-bold text-gray-600 whitespace-nowrap">
-            <a href="#hero" className="text-primary-700 hover:text-primary-800 transition-colors whitespace-nowrap">Trang chủ</a>
-            <a href="#dich-vu" className="hover:text-primary-600 transition-colors whitespace-nowrap">Dịch vụ y tế</a>
-            <a href="#chuyen-khoa" className="hover:text-primary-600 transition-colors whitespace-nowrap">Chuyên khoa</a>
-            <a href="#bac-si" className="hover:text-primary-600 transition-colors whitespace-nowrap">Đội ngũ Bác sĩ</a>
-          </nav>
+            {/* Public Nav Links */}
+            <nav className="hidden lg:flex items-center gap-5 xl:gap-8 text-sm font-bold text-gray-600 whitespace-nowrap">
+              <a href="#hero" className="text-primary-700 hover:text-primary-800 transition-colors whitespace-nowrap">Trang chủ</a>
+              <a href="#dich-vu" className="hover:text-primary-600 transition-colors whitespace-nowrap">Dịch vụ y tế</a>
+              <a href="#chuyen-khoa" className="hover:text-primary-600 transition-colors whitespace-nowrap">Chuyên khoa</a>
+              <a href="#bac-si" className="hover:text-primary-600 transition-colors whitespace-nowrap">Đội ngũ Bác sĩ</a>
+            </nav>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2 sm:gap-2.5">
-            {isAuthenticated ? (
+            {/* Public / Staff Action Buttons */}
+            <div className="flex items-center gap-2 sm:gap-2.5">
               <button
-                onClick={() => {
-                  const targetHome = ROLE_HOME[user?.vaiTro] || '/';
-                  navigate(targetHome);
-                }}
-                className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold transition-all shadow-xs"
+                onClick={toggleTheme}
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer"
+                title={darkMode ? 'Chuyển sang Giao diện Sáng' : 'Chuyển sang Giao diện Tối'}
               >
-                <User className="h-4 w-4 shrink-0" />
-                <span className="truncate max-w-[120px] sm:max-w-none">{user?.vaiTro === 'benh_nhan' ? 'Cổng Bệnh Nhân' : 'Hệ Thống'} ({user?.hoTen || user?.tenDangNhap})</span>
+                {darkMode ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-slate-600" />}
               </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => navigate('/login')}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-gray-700 hover:bg-slate-50 transition-colors"
-                >
-                  <LogIn className="h-4 w-4 text-gray-500" /> Đăng nhập
-                </button>
-                <button
-                  onClick={() => handleBookingClick('truc_tiep')}
-                  className="hidden sm:flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-xs transition-colors"
-                >
-                  <Calendar className="h-4 w-4" /> Đặt lịch khám
-                </button>
-              </>
-            )}
+              {isAuthenticated ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const targetHome = ROLE_HOME[user?.vaiTro] || '/';
+                      navigate(targetHome);
+                    }}
+                    className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold transition-all shadow-xs"
+                  >
+                    <User className="h-4 w-4 shrink-0" />
+                    <span className="truncate max-w-[120px] sm:max-w-none">Hệ Thống ({user?.hoTen || user?.tenDangNhap})</span>
+                  </button>
+                  <button
+                    onClick={() => { logout(); navigate('/'); }}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
+                    title="Đăng xuất"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={() => navigate('/login')}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-gray-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    <LogIn className="h-4 w-4 text-gray-500" /> Đăng nhập
+                  </button>
+                  <button
+                    onClick={() => handleBookingClick('truc_tiep')}
+                    className="hidden sm:flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Calendar className="h-4 w-4" /> Đặt lịch khám
+                  </button>
+                </>
+              )}
 
-            {/* Hamburger Button on Mobile / Tablet (< lg) */}
+              <button
+                onClick={() => setMobileNavOpen(!mobileNavOpen)}
+                className="lg:hidden p-2 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors ml-0.5 cursor-pointer"
+                title="Menu điều hướng"
+              >
+                {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ─── MOBILE DROPDOWN MENU ─── */}
+        {mobileNavOpen && (
+          isAuthenticated && user?.vaiTro === 'benh_nhan' ? (
+            /* Mobile menu cho bệnh nhân đã đăng nhập */
+            <div className="md:hidden border-t border-gray-100 bg-white px-3 py-3 shadow-xl space-y-1 animate-fade-in">
+              <div
+                onClick={() => { setMobileNavOpen(false); setShowProfileModal(true); }}
+                className="px-3 py-2.5 mb-2 rounded-xl bg-blue-50/70 border border-blue-100 flex items-center justify-between cursor-pointer"
+              >
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-bold text-gray-900">{displayName}</p>
+                    <Edit3 className="h-3 w-3 text-blue-600" />
+                  </div>
+                  <p className="text-[11px] text-blue-600 font-medium">Bấm để cập nhật hồ sơ cá nhân</p>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setMobileNavOpen(false); logout(); navigate('/'); }}
+                  className="text-xs text-red-600 font-semibold hover:underline flex items-center gap-1 cursor-pointer ml-2"
+                >
+                  <LogOut className="h-3.5 w-3.5" /> Đăng xuất
+                </button>
+              </div>
+
+              {[
+                { to: '/', icon: Home, label: 'Trang chủ' },
+                { to: '/benh-nhan/dat-lich', icon: Calendar, label: 'Đặt lịch khám' },
+                { to: '/benh-nhan/so-thu-tu', icon: Ticket, label: 'Tiến độ & STT' },
+                { to: '/benh-nhan/lich-hen', icon: ClipboardList, label: 'Lịch hẹn' },
+                { to: '/benh-nhan/ho-so-y-te', icon: FileText, label: 'Hồ sơ y tế' },
+                { to: '/benh-nhan/chat-ai', icon: Stethoscope, label: 'Hỗ trợ sức khỏe' },
+              ].map(({ to, icon: Icon, label }) => {
+                const isActive = to === '/';
+                return (
+                  <button
+                    key={to}
+                    onClick={() => {
+                      setMobileNavOpen(false);
+                      if (to === '/') {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      } else {
+                        navigate(to);
+                      }
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
+                      isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            /* Mobile menu công khai khi chưa đăng nhập hoặc nhân viên */
+            <div className="lg:hidden border-t border-slate-200 bg-white px-4 py-3 shadow-xl space-y-1 animate-fade-in">
+              <a
+                href="#hero"
+                onClick={() => setMobileNavOpen(false)}
+                className="block px-3 py-2.5 rounded-xl text-sm font-bold text-primary-700 hover:bg-primary-50 transition-colors"
+              >
+                Trang chủ
+              </a>
+              <a
+                href="#dich-vu"
+                onClick={() => setMobileNavOpen(false)}
+                className="block px-3 py-2.5 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Dịch vụ y tế
+              </a>
+              <a
+                href="#chuyen-khoa"
+                onClick={() => setMobileNavOpen(false)}
+                className="block px-3 py-2.5 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Chuyên khoa
+              </a>
+              <a
+                href="#bac-si"
+                onClick={() => setMobileNavOpen(false)}
+                className="block px-3 py-2.5 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Đội ngũ Bác sĩ
+              </a>
+              <a
+                href="#bang-gia"
+                onClick={() => setMobileNavOpen(false)}
+                className="block px-3 py-2.5 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Bảng giá dịch vụ
+              </a>
+
+              {isAuthenticated ? (
+                <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
+                  <button
+                    onClick={() => {
+                      setMobileNavOpen(false);
+                      const targetHome = ROLE_HOME[user?.vaiTro] || '/';
+                      navigate(targetHome);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary-600 text-white text-xs font-bold shadow-xs hover:bg-primary-700 transition-colors"
+                  >
+                    <User className="h-4 w-4" />
+                    <span>Về Hệ Thống ({user?.hoTen || user?.tenDangNhap})</span>
+                  </button>
+                  <button
+                    onClick={() => { setMobileNavOpen(false); logout(); navigate('/'); }}
+                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50 transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" /> Đăng xuất
+                  </button>
+                </div>
+              ) : (
+                <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
+                  <button
+                    onClick={() => { setMobileNavOpen(false); handleBookingClick('truc_tiep'); }}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary-600 text-white text-xs font-bold shadow-xs hover:bg-primary-700 transition-colors"
+                  >
+                    <Calendar className="h-4 w-4" /> Đặt lịch khám ngay
+                  </button>
+                  <button
+                    onClick={() => { setMobileNavOpen(false); navigate('/login'); }}
+                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-slate-300 text-gray-700 text-xs font-bold hover:bg-slate-50 transition-colors"
+                  >
+                    <LogIn className="h-4 w-4 text-gray-500" /> Đăng nhập tài khoản
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        )}
+      </header>
+
+      {/* ─── LIVE TICKET ANNOUNCEMENT BAR (NẾU HÔM NAY CÓ LƯỢT KHÁM) ─── */}
+      {liveTicket && (
+        <div className="bg-gradient-to-r from-blue-700 via-primary-700 to-indigo-800 text-white py-2.5 px-4 shadow-md sticky top-18 z-30 animate-fade-in border-b border-blue-500/30">
+          <div className="mx-auto max-w-7xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="bg-white/20 backdrop-blur-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider text-[10px]">
+                Phiếu khám hôm nay
+              </span>
+              <span>Số thứ tự: <strong className="font-mono text-amber-300 text-base font-black">{liveTicket.soThuTu}</strong></span>
+              <span className="text-blue-100 font-medium">({liveTicket.phongKham} · {liveTicket.bacSi})</span>
+              {liveQueue && (
+                <span className="hidden md:inline text-blue-200">
+                  · Số đang gọi: <strong className="text-white font-mono">{liveQueue.soDangGoi || '...'}</strong> (Còn {liveQueue.soNguoiPhiaTruoc ?? 0} người)
+                </span>
+              )}
+            </div>
             <button
-              onClick={() => setMobileNavOpen(!mobileNavOpen)}
-              className="lg:hidden p-2 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors ml-0.5"
-              title="Menu điều hướng"
+              onClick={() => navigate('/benh-nhan/so-thu-tu')}
+              className="bg-white text-primary-700 px-3.5 py-1.5 rounded-xl font-bold hover:bg-blue-50 transition-all flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer"
             >
-              {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              <span>Xem tiến trình & STT</span>
+              <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
-
-        {/* Mobile / Tablet Nav Dropdown (< lg) */}
-        {mobileNavOpen && (
-          <div className="lg:hidden border-t border-slate-200 bg-white px-4 py-3 shadow-xl space-y-1 animate-fade-in">
-            <a
-              href="#hero"
-              onClick={() => setMobileNavOpen(false)}
-              className="block px-3 py-2.5 rounded-xl text-sm font-bold text-primary-700 hover:bg-primary-50 transition-colors"
-            >
-              Trang chủ
-            </a>
-            <a
-              href="#dich-vu"
-              onClick={() => setMobileNavOpen(false)}
-              className="block px-3 py-2.5 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              Dịch vụ y tế
-            </a>
-            <a
-              href="#chuyen-khoa"
-              onClick={() => setMobileNavOpen(false)}
-              className="block px-3 py-2.5 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              Chuyên khoa
-            </a>
-            <a
-              href="#bac-si"
-              onClick={() => setMobileNavOpen(false)}
-              className="block px-3 py-2.5 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              Đội ngũ Bác sĩ
-            </a>
-            {!isAuthenticated && (
-              <div className="pt-2 border-t border-gray-100 flex flex-col gap-2">
-                <button
-                  onClick={() => { setMobileNavOpen(false); handleBookingClick('truc_tiep'); }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary-600 text-white text-xs font-bold shadow-xs hover:bg-primary-700 transition-colors"
-                >
-                  <Calendar className="h-4 w-4" /> Đặt lịch khám ngay
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </header>
+      )}
 
       {/* ─── HERO SECTION: Y TẾ ĐÍCH THỰC & UY TÍN ───────────────────── */}
       <section id="hero" className="bg-white py-12 lg:py-16 border-b border-slate-200">
@@ -532,7 +792,10 @@ export default function HomePage() {
             {/* Left Content */}
             <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
               <div className="inline-flex items-center gap-2 rounded-md bg-blue-50 px-3 py-1.5 text-xs font-semibold text-primary-800 border border-blue-100">
-                <ShieldCheck className="h-4 w-4 text-primary-600" /> Giấy phép hoạt động Khám chữa bệnh số 08922/BYT-GPHĐ
+                <ShieldCheck className="h-4 w-4 text-primary-600" />
+                {(hospitalInfo.soGiayPhep || '').toLowerCase().includes('giấy phép')
+                  ? hospitalInfo.soGiayPhep
+                  : `Giấy phép hoạt động Khám chữa bệnh số ${hospitalInfo.soGiayPhep || '08922/BYT-GPHĐ'}`}
               </div>
 
               <h1 className="text-2xl sm:text-3xl lg:text-[35px] font-extrabold text-slate-900 leading-tight tracking-tight">
@@ -627,7 +890,7 @@ export default function HomePage() {
                 </div>
 
                 <div className="pt-2 flex items-center justify-between text-xs text-gray-500 border-t border-gray-100">
-                  <span>Hotline đặt hẹn: <strong className="text-primary-700 font-bold">1900 8888</strong></span>
+                  <span>Hotline đặt hẹn: <strong className="text-primary-700 font-bold">{hospitalInfo.tongDai}</strong></span>
                   <span className="text-emerald-700 font-bold">Trực 24/7</span>
                 </div>
               </div>
@@ -654,7 +917,7 @@ export default function HomePage() {
               className="w-[80vw] max-w-[300px] sm:w-auto sm:max-w-none shrink-0 snap-start p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-primary-400 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
             >
               <div>
-                <div className="h-12 w-12 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                <div className="h-12 w-12 rounded-xl bg-blue-50 text-primary-700 flex items-center justify-center font-bold">
                   <Building2 className="h-6 w-6" />
                 </div>
                 <h3 className="text-base font-extrabold text-gray-900 mt-4 group-hover:text-primary-600 transition-colors">
@@ -676,7 +939,7 @@ export default function HomePage() {
               className="w-[80vw] max-w-[300px] sm:w-auto sm:max-w-none shrink-0 snap-start p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-primary-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
             >
               <div>
-                <div className="h-12 w-12 rounded-xl bg-blue-50 text-primary-700 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                <div className="h-12 w-12 rounded-xl bg-blue-50 text-primary-700 flex items-center justify-center font-bold">
                   <Ticket className="h-6 w-6" />
                 </div>
                 <h3 className="text-base font-extrabold text-gray-900 mt-4 group-hover:text-primary-700 transition-colors">
@@ -698,7 +961,7 @@ export default function HomePage() {
               className="w-[80vw] max-w-[300px] sm:w-auto sm:max-w-none shrink-0 snap-start p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-primary-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
             >
               <div>
-                <div className="h-12 w-12 rounded-xl bg-blue-50 text-primary-700 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                <div className="h-12 w-12 rounded-xl bg-blue-50 text-primary-700 flex items-center justify-center font-bold">
                   <Video className="h-6 w-6" />
                 </div>
                 <h3 className="text-base font-extrabold text-gray-900 mt-4 group-hover:text-primary-700 transition-colors">
@@ -723,7 +986,7 @@ export default function HomePage() {
               className="w-[80vw] max-w-[300px] sm:w-auto sm:max-w-none shrink-0 snap-start p-5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-primary-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
             >
               <div>
-                <div className="h-12 w-12 rounded-xl bg-blue-50 text-primary-700 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+                <div className="h-12 w-12 rounded-xl bg-blue-50 text-primary-700 flex items-center justify-center font-bold">
                   <FileText className="h-6 w-6" />
                 </div>
                 <h3 className="text-base font-extrabold text-gray-900 mt-4 group-hover:text-primary-700 transition-colors">
@@ -739,6 +1002,16 @@ export default function HomePage() {
               </div>
             </div>
           </div>
+
+          {/* ─── LIVE PRICE LIST TABLE (BẢNG GIÁ DỊCH VỤ NIÊM YẾT) ─── */}
+          <BangGiaDichVuSection
+            onBookService={(dichVu) => {
+              const hinhThuc = (dichVu.loai === 'kham_benh' && (dichVu.maDichVu === 'KB002' || dichVu.tenDichVu?.toLowerCase().includes('trực tuyến') || dichVu.tenDichVu?.toLowerCase().includes('telehealth')))
+                ? 'truc_tuyen'
+                : 'truc_tiep';
+              handleBookingClick(hinhThuc);
+            }}
+          />
         </div>
       </section>
 
@@ -931,49 +1204,49 @@ export default function HomePage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-white font-black text-base">
-                <Stethoscope className="h-5 w-5 text-primary-400" /> PHÒNG KHÁM ĐA KHOA
+              <div className="flex items-center gap-2 text-white font-black text-base uppercase">
+                <Stethoscope className="h-5 w-5 text-primary-400" /> {hospitalInfo.tenBenhVien}
               </div>
               <p className="text-slate-400 leading-relaxed text-xs">
-                Cơ sở khám chữa bệnh đa khoa kỹ thuật cao, đáp ứng các tiêu chuẩn y tế nghiêm ngặt của Bộ Y Tế.
+                {hospitalInfo.moTa}
               </p>
               <p className="text-emerald-400 text-[11px] font-semibold">
-                Giấy phép hoạt động số 08922/BYT-GPHĐ
+                {(hospitalInfo.soGiayPhep || '').toLowerCase().includes('giấy phép')
+                  ? hospitalInfo.soGiayPhep
+                  : `Giấy phép hoạt động số ${hospitalInfo.soGiayPhep || '08922/BYT-GPHĐ'}`}
               </p>
             </div>
 
             <div>
               <h4 className="text-white font-bold text-sm mb-3">Thông Tin Liên Hệ</h4>
               <ul className="space-y-2 text-slate-400">
-                <li className="flex items-start gap-2"><MapPin className="h-3.5 w-3.5 text-rose-400 mt-0.5" /> 123 Nguyễn Văn Cừ, Quận 5, TP.HCM</li>
-                <li className="flex items-center gap-2"><PhoneCall className="h-3.5 w-3.5 text-emerald-400" /> Tổng đài: 1900 8888</li>
-                <li className="flex items-center gap-2"><Clock className="h-3.5 w-3.5 text-blue-400" /> Giờ làm: 07:00 – 20:00 (Thứ 2 - CN)</li>
+                <li className="flex items-start gap-2"><MapPin className="h-3.5 w-3.5 text-rose-400 mt-0.5 shrink-0" /> {hospitalInfo.diaChi}</li>
+                <li className="flex items-center gap-2"><PhoneCall className="h-3.5 w-3.5 text-emerald-400 shrink-0" /> Tổng đài: {hospitalInfo.tongDai}</li>
+                <li className="flex items-center gap-2"><Clock className="h-3.5 w-3.5 text-blue-400 shrink-0" /> Giờ làm: {hospitalInfo.gioLamViec}</li>
               </ul>
             </div>
 
             <div>
               <h4 className="text-white font-bold text-sm mb-3">Dịch Vụ Nổi Bật</h4>
               <ul className="space-y-2 text-slate-400">
-                <li>• Khám bệnh Nội tổng quát & Tim mạch</li>
-                <li>• Khám Tai Mũi Họng & Nội soi</li>
-                <li>• Khám Nhi khoa & Dinh dưỡng</li>
-                <li>• Chẩn đoán hình ảnh & Xét nghiệm Laser</li>
-                <li>• Khám tư vấn từ xa (Telehealth)</li>
+                {(hospitalInfo.dichVuNoiBat || []).map((item, idx) => (
+                  <li key={idx}>• {item}</li>
+                ))}
               </ul>
             </div>
 
             <div>
               <h4 className="text-white font-bold text-sm mb-3">Đường Dây Nóng Khẩn Cấp</h4>
               <div className="p-3.5 rounded-xl bg-slate-800 border border-slate-700 space-y-1.5">
-                <p className="text-slate-300 font-bold text-xs uppercase">Cấp Cứu 24/24</p>
-                <p className="text-2xl font-black text-emerald-400">1900 8888</p>
-                <p className="text-[11px] text-slate-400">Luôn sẵn sàng tiếp nhận & xử trí y tế</p>
+                <p className="text-slate-300 font-bold text-xs uppercase">{hospitalInfo.tieuDeCapCuu}</p>
+                <p className="text-2xl font-black text-emerald-400">{hospitalInfo.hotlineCapCuu}</p>
+                <p className="text-[11px] text-slate-400">{hospitalInfo.khauHieuCapCuu}</p>
               </div>
             </div>
           </div>
 
           <div className="pt-8 border-t border-slate-800 text-center text-slate-500 text-[11px]">
-            © 2026 Hệ Thống Quản Lý Phòng Khám Đa Khoa. Bản quyền thuộc về Phòng Khám Đa Khoa.
+            {hospitalInfo.banQuyen}
           </div>
         </div>
       </footer>
@@ -1039,17 +1312,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ─── PUBLIC BOOKING MODAL ───────────────────────────────────── */}
-      {isPublicBookingOpen && (
-        <PublicDatLichModal
-          isOpen={isPublicBookingOpen}
-          onClose={() => setIsPublicBookingOpen(false)}
-          defaultHinhThuc={bookingHinhThuc}
-          defaultDoctor={bookingDoctor}
-        />
-      )}
-
-      {/* ─── FLOATING AI CHATBOT WIDGET (Vùng khoanh đỏ góc dưới bên phải) ─── */}
+      {/* ─── FLOATING AI CHATBOT WIDGET ─── */}
       <div className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-50 flex flex-col items-end pointer-events-none">
         {/* Floating Chat Window */}
         {isChatbotOpen && (
@@ -1062,60 +1325,39 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Floating Launcher Button & Tooltip Bubble */}
+        {/* Floating Launcher Button (Gọn gàng, chuẩn y tế, không che khuất bảng biểu) */}
         {!isChatbotOpen && (
-          <div className="pointer-events-auto flex flex-col items-end gap-2.5">
-            {/* Friendly Speech Bubble */}
-            {showChatBubble && (
-              <div className="relative bg-white text-gray-800 px-4 py-3 rounded-2xl shadow-2xl border border-slate-200 text-xs max-w-[270px] animate-fade-in">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowChatBubble(false);
-                  }}
-                  className="absolute -top-1.5 -left-1.5 h-5 w-5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-[10px] font-bold border border-slate-300 transition-colors shadow-xs"
-                  title="Ẩn thông báo"
-                >
-                  ✕
-                </button>
-                <div 
-                  onClick={() => setIsChatbotOpen(true)} 
-                  className="cursor-pointer space-y-1"
-                >
-                  <p className="font-extrabold text-primary-700 flex items-center gap-1.5 text-[11px]">
-                    <Sparkles className="h-3.5 w-3.5 text-amber-500" /> Chatbot Gợi Ý Chuyên Khoa
-                  </p>
-                  <p className="text-gray-600 leading-relaxed text-[11px]">
-                    Bạn có dấu hiệu khó chịu? Nhập triệu chứng để AI tư vấn chuyên khoa khám phù hợp!
-                  </p>
-                </div>
-                {/* Arrow indicator */}
-                <div className="absolute -bottom-1.5 right-6 w-3 h-3 bg-white border-r border-b border-slate-200 transform rotate-45"></div>
-              </div>
-            )}
-
-            {/* Launcher FAB Button */}
+          <div className="pointer-events-auto">
             <button
               onClick={() => setIsChatbotOpen(true)}
-              className="group relative flex items-center gap-2.5 px-4 py-3 rounded-full bg-gradient-to-r from-primary-600 via-primary-700 to-indigo-700 text-white shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all cursor-pointer border border-white/20"
-              title="Chat với AI Triage Phòng Khám"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-primary-600 hover:bg-primary-700 text-white shadow-lg transition-all cursor-pointer border border-primary-500/30 text-xs font-bold"
+              title="Chat với AI tư vấn triệu chứng"
             >
-              <div className="relative">
-                <div className="h-7 w-7 rounded-full bg-white/20 flex items-center justify-center">
-                  <Bot className="h-4.5 w-4.5 text-white" />
-                </div>
-                <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 border border-primary-700"></span>
-                </span>
-              </div>
-              <span className="font-extrabold text-xs sm:text-sm whitespace-nowrap pr-1 tracking-tight">
-                Tư vấn triệu chứng AI
-              </span>
+              <Bot className="h-4 w-4" />
+              <span>Tư vấn triệu chứng AI</span>
             </button>
           </div>
         )}
       </div>
+
+      {/* ─── MODAL CẬP NHẬT HỒ SƠ BỆNH NHÂN ─── */}
+      {showProfileModal && (
+        <CapNhatHoSoModal
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          benhNhanId={user?.benhNhanId}
+          onSuccess={() => {
+            if (user?.benhNhanId) {
+              apiGet(`/benh-nhan/${user.benhNhanId}`)
+                .then((res) => {
+                  const patient = res?.data || res;
+                  if (patient?.hoTen) setUser({ ...user, hoTen: patient.hoTen });
+                })
+                .catch(() => {});
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

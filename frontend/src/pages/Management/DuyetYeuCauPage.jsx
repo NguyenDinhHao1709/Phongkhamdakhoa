@@ -45,7 +45,10 @@ const ROLE_PRESETS = [
 
 const LOAI_DON_PRESETS = [
   { value: 'all', label: 'Tất cả loại đơn' },
-  { value: 'Yêu cầu mua thuốc', label: 'Yêu cầu mua thuốc' },
+  { value: 'Đề xuất hủy phiếu chi (Hoàn quỹ)', label: '🔄 Đề xuất hủy phiếu chi (Hoàn quỹ)' },
+  { value: 'Đề nghị chi tiền NCC thuốc', label: '💰 Đề nghị chi tiền NCC thuốc (AP)' },
+  { value: 'Đề xuất chi phí vận hành (OPEX)', label: '🏢 Đề xuất chi phí vận hành (OPEX)' },
+  { value: 'Yêu cầu mua thuốc', label: '📦 Yêu cầu mua thuốc' },
   { value: 'Yêu cầu hủy ca khám', label: 'Yêu cầu hủy ca khám' },
   { value: 'Đề xuất vật tư y tế', label: 'Đề xuất vật tư y tế' },
   { value: 'Xin nghỉ phép', label: 'Xin nghỉ phép' },
@@ -97,6 +100,12 @@ export default function DuyetYeuCauPage() {
     refetchInterval: 2500,
   });
 
+  const { data: opexData } = useQuery({
+    queryKey: ['giam-doc-phe-duyet-opex'],
+    queryFn: () => apiGet('/thanh-toan/phieu-chi-hoat-dong?trangThai=all'),
+    refetchInterval: 2500,
+  });
+
   const rawList = Array.isArray(data?.data)
     ? data.data
     : Array.isArray(data?.data?.data)
@@ -105,20 +114,92 @@ export default function DuyetYeuCauPage() {
     ? data
     : [];
   const purchaseRequests = Array.isArray(purchaseData?.data) ? purchaseData.data : [];
-  const allApprovalRequests = useMemo(() => [
-    ...rawList,
-    ...purchaseRequests.map((request) => ({
-      id: `mua-thuoc-${request.id}`,
-      purchaseRequestId: request.id,
-      isPurchaseRequest: true,
-      loaiDon: 'Yêu cầu mua thuốc',
-      nguoiGui: { hoTen: 'Nhân viên nhà thuốc', chucVu: 'Nhà thuốc', tenVaiTro: 'Nhà thuốc' },
-      ngayGui: request.taoLuc,
-      trangThai: request.trangThai === 'cho_duyet' ? 'cho_xu_ly' : request.trangThai === 'tu_choi' ? 'tu_choi' : 'da_xu_ly',
-      noiDung: request.ghiChu || 'Đề nghị mua thuốc bổ sung cho kho dược.',
-      purchaseRequest: request,
-    })),
-  ], [rawList, purchaseRequests]);
+  const opexRequests = Array.isArray(opexData?.data?.data)
+    ? opexData.data.data
+    : Array.isArray(opexData?.data)
+    ? opexData.data
+    : [];
+
+  const allApprovalRequests = useMemo(() => {
+    const list = [...rawList];
+
+    // 1. PO requests (Yêu cầu mua thuốc)
+    purchaseRequests.forEach((request) => {
+      list.push({
+        id: `mua-thuoc-${request.id}`,
+        purchaseRequestId: request.id,
+        isPurchaseRequest: true,
+        loaiDon: 'Yêu cầu mua thuốc',
+        nguoiGui: { hoTen: request.ten_nguoi_lap || 'Nhân viên nhà thuốc', chucVu: 'Nhà thuốc', tenVaiTro: 'Nhà thuốc' },
+        ngayGui: request.taoLuc,
+        trangThai: request.trangThai === 'cho_duyet' ? 'cho_xu_ly' : request.trangThai === 'tu_choi' ? 'tu_choi' : 'da_xu_ly',
+        noiDung: request.ghiChu || 'Đề nghị mua thuốc bổ sung cho kho dược.',
+        purchaseRequest: request,
+      });
+
+      // 2. AP payment requests (Đề nghị chi tiền NCC thuốc)
+      if (request.trangThaiChiTra === 'cho_duyet_huy') {
+        list.push({
+          id: `huy-chi-ncc-${request.id}`,
+          purchaseRequestId: request.id,
+          isCancelApRequest: true,
+          loaiDon: 'Đề xuất hủy phiếu chi (Hoàn quỹ)',
+          nguoiGui: { hoTen: request.ten_nguoi_lap || 'Thu ngân / Kế toán', chucVu: 'Kế toán thanh toán', tenVaiTro: 'Thu ngân' },
+          ngayGui: request.ngayYeuCauHuyChi || request.taoLuc,
+          trangThai: 'cho_xu_ly',
+          noiDung: `[Yêu cầu hoàn quỹ] Hủy chi trả đơn thuốc #${request.maYeuCau} cho NCC. Số tiền hoàn quỹ: ${Number(request.soTienChiTra || request.tongThucTe || 0).toLocaleString('vi-VN')} đ. Lý do xin hủy: ${request.lyDoHuyChi || 'Xin hủy và hoàn tiền về quỹ'}.`,
+          soTien: request.soTienChiTra || request.tongThucTe,
+          purchaseRequest: request,
+        });
+      } else if (request.trangThaiChiTra && request.trangThaiChiTra !== 'chua_chi' && request.trangThaiChiTra !== 'cho_chi') {
+        list.push({
+          id: `de-nghi-chi-ncc-${request.id}`,
+          purchaseRequestId: request.id,
+          isApPaymentRequest: true,
+          loaiDon: 'Đề nghị chi tiền NCC thuốc',
+          nguoiGui: { hoTen: request.ten_nguoi_lap || 'Thu ngân / Kế toán', chucVu: 'Kế toán thanh toán', tenVaiTro: 'Thu ngân' },
+          ngayGui: request.ngayDuyetChi || request.taoLuc,
+          trangThai: request.trangThaiChiTra === 'cho_giam_doc_duyet' ? 'cho_xu_ly' : request.trangThaiChiTra === 'tu_choi_chi' ? 'tu_choi' : 'da_xu_ly',
+          noiDung: `Đề nghị phê duyệt xuất quỹ chi trả đơn thuốc #${request.maYeuCau} cho NCC: ${request.nhaCungCap?.tenNhaCungCap || 'Nhà cung cấp'}. Hóa đơn VAT: ${request.soHoaDonNcc || '---'}, Số tiền thực nhận QC: ${Number(request.tongThucTe || 0).toLocaleString('vi-VN')} đ.`,
+          soTien: request.tongThucTe,
+          purchaseRequest: request,
+        });
+      }
+    });
+
+    // 3. OPEX requests (Đề xuất chi phí hoạt động)
+    opexRequests.forEach((pc) => {
+      if (pc.trangThai === 'cho_duyet_huy') {
+        list.push({
+          id: `huy-chi-phi-opex-${pc.id}`,
+          opexId: pc.id,
+          isCancelOpexRequest: true,
+          loaiDon: 'Đề xuất hủy phiếu chi (Hoàn quỹ)',
+          nguoiGui: { hoTen: pc.nguoiLap?.hoTen || 'Thu ngân / Kế toán', chucVu: 'Thu ngân', tenVaiTro: 'Thu ngân' },
+          ngayGui: pc.ngayYeuCauHuy || pc.taoLuc,
+          trangThai: 'cho_xu_ly',
+          noiDung: `[Yêu cầu hoàn quỹ] Hủy phiếu chi #${pc.maPhieuChi} - Khoản chi: ${pc.khoanChi}. Người nhận: ${pc.nguoiNhan}. Số tiền hoàn quỹ: ${Number(pc.soTien || 0).toLocaleString('vi-VN')} đ. Lý do xin hủy: ${pc.lyDoHuy || 'Xin hoàn quỹ chi trả'}.`,
+          soTien: pc.soTien,
+          opexRequest: pc,
+        });
+      } else {
+        list.push({
+          id: `chi-phi-opex-${pc.id}`,
+          opexId: pc.id,
+          isOpexRequest: true,
+          loaiDon: 'Đề xuất chi phí vận hành (OPEX)',
+          nguoiGui: { hoTen: pc.nguoiLap?.hoTen || 'Thu ngân / Kế toán', chucVu: 'Thu ngân', tenVaiTro: 'Thu ngân' },
+          ngayGui: pc.taoLuc || pc.ngayChi,
+          trangThai: pc.trangThai === 'cho_duyet' ? 'cho_xu_ly' : pc.trangThai === 'tu_choi' ? 'tu_choi' : 'da_xu_ly',
+          noiDung: `[${pc.khoanChi}] - Đề xuất chi cho: ${pc.nguoiNhan}. Số tiền: ${Number(pc.soTien || 0).toLocaleString('vi-VN')} đ. Phương thức: ${pc.phuongThucChi === 'tien_mat' ? 'Tiền mặt' : 'Chuyển khoản'}. Chứng từ: ${pc.chungTuGoc || '---'}.`,
+          soTien: pc.soTien,
+          opexRequest: pc,
+        });
+      }
+    });
+
+    return list;
+  }, [rawList, purchaseRequests, opexRequests]);
 
   // Tự động mở đơn khi click từ Thông báo
   useEffect(() => {
@@ -151,28 +232,111 @@ export default function DuyetYeuCauPage() {
     },
   });
 
+  const [targetDonObj, setTargetDonObj] = useState(null);
+
   const handleOpenApprove = (don) => {
     setTargetDonId(don.id);
+    setTargetDonObj(don);
     if (don.loaiDon === 'Yêu cầu hủy ca khám') {
       setApproveNote(
         'Ban Giám Đốc đồng ý phê duyệt hủy ca khám. Hệ thống tự động hoàn tiền 100% tạm ứng cho bệnh nhân.'
       );
+    } else if (don.isCancelOpexRequest || don.isCancelApRequest) {
+      setApproveNote('Ban Giám Đốc đồng ý phê duyệt hủy phiếu chi. Kế toán / Thu ngân tiến hành thu hồi tiền vào quỹ phòng khám.');
+    } else if (don.isApPaymentRequest) {
+      setApproveNote('Ban Giám Đốc đồng ý duyệt chi tiền mua thuốc cho NCC. Kế toán / Thu ngân tiến hành xuất quỹ.');
+    } else if (don.isOpexRequest) {
+      setApproveNote('Ban Giám Đốc đồng ý duyệt chi phí vận hành. Kế toán / Thu ngân tiến hành xuất quỹ.');
     } else {
       setApproveNote('Ban Giám Đốc đã phê duyệt.');
     }
     setApproveModalOpen(true);
   };
 
-  const decideApprovalRequest = async (don, duyet) => {
-    if (!don.isPurchaseRequest) return;
-    await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${don.purchaseRequestId}/duyet`, {
-      duyet,
-      lyDo: duyet ? undefined : 'Không được phê duyệt theo quyết định của Ban Giám đốc',
-    });
-    queryClient.invalidateQueries({ queryKey: ['giam-doc-phe-duyet-mua-thuoc'] });
+  const handleOpenReject = (donOrId) => {
+    const don = typeof donOrId === 'object' ? donOrId : allApprovalRequests.find(d => d.id === donOrId);
+    setTargetDonId(don?.id || donOrId);
+    setTargetDonObj(don);
+    setRejectReason('');
+    setRejectModalOpen(true);
   };
 
-  const handleConfirmApprove = () => {
+  const handleConfirmApprove = async () => {
+    if (targetDonObj?.isCancelOpexRequest) {
+      try {
+        await apiPatch(`/thanh-toan/phieu-chi-hoat-dong/${targetDonObj.opexId}/duyet-huy`, {
+          duyet: true,
+          lyDo: approveNote.trim() || 'Ban Giám Đốc đồng ý phê duyệt hủy phiếu chi',
+        });
+        queryClient.invalidateQueries({ queryKey: ['giam-doc-phe-duyet-opex'] });
+        setApproveModalOpen(false);
+        setTargetDonObj(null);
+      } catch (err) {
+        alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra');
+      }
+      return;
+    }
+
+    if (targetDonObj?.isCancelApRequest) {
+      try {
+        await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${targetDonObj.purchaseRequestId}/duyet-huy`, {
+          duyet: true,
+          lyDo: approveNote.trim() || 'Ban Giám Đốc đồng ý phê duyệt hủy phiếu chi',
+        });
+        queryClient.invalidateQueries({ queryKey: ['giam-doc-phe-duyet-mua-thuoc'] });
+        setApproveModalOpen(false);
+        setTargetDonObj(null);
+      } catch (err) {
+        alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra');
+      }
+      return;
+    }
+
+    if (targetDonObj?.isApPaymentRequest) {
+      try {
+        await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${targetDonObj.purchaseRequestId}/duyet-chi`, {
+          duyet: true,
+          lyDo: approveNote.trim() || 'Ban Giám Đốc đã phê duyệt chi tiền',
+        });
+        queryClient.invalidateQueries({ queryKey: ['giam-doc-phe-duyet-mua-thuoc'] });
+        setApproveModalOpen(false);
+        setTargetDonObj(null);
+      } catch (err) {
+        alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra');
+      }
+      return;
+    }
+
+    if (targetDonObj?.isOpexRequest) {
+      try {
+        await apiPatch(`/thanh-toan/phieu-chi-hoat-dong/${targetDonObj.opexId}/duyet`, {
+          duyet: true,
+          lyDo: approveNote.trim() || 'Ban Giám Đốc đã phê duyệt chi phí',
+        });
+        queryClient.invalidateQueries({ queryKey: ['giam-doc-phe-duyet-opex'] });
+        setApproveModalOpen(false);
+        setTargetDonObj(null);
+      } catch (err) {
+        alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra');
+      }
+      return;
+    }
+
+    if (targetDonObj?.isPurchaseRequest) {
+      try {
+        await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${targetDonObj.purchaseRequestId}/duyet`, {
+          duyet: true,
+          lyDo: approveNote.trim() || 'Ban Giám Đốc đã phê duyệt mua thuốc',
+        });
+        queryClient.invalidateQueries({ queryKey: ['giam-doc-phe-duyet-mua-thuoc'] });
+        setApproveModalOpen(false);
+        setTargetDonObj(null);
+      } catch (err) {
+        alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra');
+      }
+      return;
+    }
+
     duyetMutation.mutate({
       id: targetDonId,
       action: 'duyet',
@@ -180,17 +344,87 @@ export default function DuyetYeuCauPage() {
     });
   };
 
-  const handleOpenReject = (id) => {
-    setTargetDonId(id);
-    setRejectReason('');
-    setRejectModalOpen(true);
-  };
-
-  const handleConfirmReject = () => {
+  const handleConfirmReject = async () => {
     if (!rejectReason.trim()) {
       alert('Vui lòng nhập lý do từ chối yêu cầu.');
       return;
     }
+
+    if (targetDonObj?.isCancelOpexRequest) {
+      try {
+        await apiPatch(`/thanh-toan/phieu-chi-hoat-dong/${targetDonObj.opexId}/duyet-huy`, {
+          duyet: false,
+          lyDo: rejectReason.trim(),
+        });
+        queryClient.invalidateQueries({ queryKey: ['giam-doc-phe-duyet-opex'] });
+        setRejectModalOpen(false);
+        setTargetDonObj(null);
+      } catch (err) {
+        alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra');
+      }
+      return;
+    }
+
+    if (targetDonObj?.isCancelApRequest) {
+      try {
+        await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${targetDonObj.purchaseRequestId}/duyet-huy`, {
+          duyet: false,
+          lyDo: rejectReason.trim(),
+        });
+        queryClient.invalidateQueries({ queryKey: ['giam-doc-phe-duyet-mua-thuoc'] });
+        setRejectModalOpen(false);
+        setTargetDonObj(null);
+      } catch (err) {
+        alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra');
+      }
+      return;
+    }
+
+    if (targetDonObj?.isApPaymentRequest) {
+      try {
+        await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${targetDonObj.purchaseRequestId}/duyet-chi`, {
+          duyet: false,
+          lyDo: rejectReason.trim(),
+        });
+        queryClient.invalidateQueries({ queryKey: ['giam-doc-phe-duyet-mua-thuoc'] });
+        setRejectModalOpen(false);
+        setTargetDonObj(null);
+      } catch (err) {
+        alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra');
+      }
+      return;
+    }
+
+    if (targetDonObj?.isOpexRequest) {
+      try {
+        await apiPatch(`/thanh-toan/phieu-chi-hoat-dong/${targetDonObj.opexId}/duyet`, {
+          duyet: false,
+          lyDo: rejectReason.trim(),
+        });
+        queryClient.invalidateQueries({ queryKey: ['giam-doc-phe-duyet-opex'] });
+        setRejectModalOpen(false);
+        setTargetDonObj(null);
+      } catch (err) {
+        alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra');
+      }
+      return;
+    }
+
+    if (targetDonObj?.isPurchaseRequest) {
+      try {
+        await apiPatch(`/nha-thuoc/mua-hang/yeu-cau/${targetDonObj.purchaseRequestId}/duyet`, {
+          duyet: false,
+          lyDo: rejectReason.trim(),
+        });
+        queryClient.invalidateQueries({ queryKey: ['giam-doc-phe-duyet-mua-thuoc'] });
+        setRejectModalOpen(false);
+        setTargetDonObj(null);
+      } catch (err) {
+        alert(err?.error?.message || err?.response?.data?.message || err?.message || 'Có lỗi xảy ra');
+      }
+      return;
+    }
+
     duyetMutation.mutate({
       id: targetDonId,
       action: 'tu_choi',
@@ -334,6 +568,20 @@ export default function DuyetYeuCauPage() {
   }, [filteredDonList, currentPage]);
 
   const getLoaiDonBadge = (loaiDon) => {
+    if (loaiDon?.includes('chi tiền NCC')) {
+      return {
+        icon: ShieldCheck,
+        color: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        dot: 'bg-emerald-600',
+      };
+    }
+    if (loaiDon?.includes('vận hành') || loaiDon?.includes('OPEX')) {
+      return {
+        icon: ShieldCheck,
+        color: 'bg-purple-50 text-purple-800 border-purple-200',
+        dot: 'bg-purple-600',
+      };
+    }
     if (loaiDon?.includes('hủy ca')) {
       return {
         icon: CalendarOff,
@@ -790,6 +1038,97 @@ export default function DuyetYeuCauPage() {
                   </div>
                 )}
 
+                {(don.isCancelOpexRequest || don.isCancelApRequest) && (
+                  <div className="rounded-xl border border-rose-300 bg-rose-50/70 p-3.5 text-xs text-gray-800 space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-rose-200 pb-2 flex-wrap gap-2">
+                      <span className="font-bold text-rose-900 flex items-center gap-1.5">
+                        <AlertTriangle className="h-4 w-4 text-rose-600" />
+                        Đề xuất HỦY phiếu chi đã xuất quỹ & Thu hồi tiền về quỹ
+                      </span>
+                      <span className="font-extrabold text-sm text-rose-800 bg-white px-3 py-1 rounded-lg border border-rose-300 shadow-xs">
+                        Số tiền hoàn quỹ: {Number(don.soTien || 0).toLocaleString('vi-VN')} đ
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                      <div>Chứng từ / Phiếu chi: <strong className="text-gray-900 font-mono">{don.opexRequest?.maPhieuChi || don.purchaseRequest?.soChungTuChi || don.purchaseRequest?.maYeuCau}</strong></div>
+                      <div>Khoản chi / Mục đích: <strong className="text-gray-900">{don.opexRequest?.khoanChi || `Thanh toán mua thuốc #${don.purchaseRequest?.maYeuCau}`}</strong></div>
+                      <div>Đối tượng nhận ban đầu: <strong className="text-gray-900">{don.opexRequest?.nguoiNhan || don.purchaseRequest?.nhaCungCap?.tenNhaCungCap || 'NCC'}</strong></div>
+                      <div>Thời gian xuất tiền ban đầu: <strong className="text-gray-900 font-medium">{formatDateTime(don.opexRequest?.ngayXuatQuy || don.purchaseRequest?.ngayChiTra || don.ngayGui)}</strong></div>
+                    </div>
+                    <div className="text-[11px] bg-white p-2.5 rounded-lg border border-rose-200 text-rose-800">
+                      <span className="font-bold text-rose-900">Lý do thu ngân xin hủy & hoàn quỹ: </span>
+                      <span className="italic">{don.opexRequest?.lyDoHuy || don.purchaseRequest?.lyDoHuyChi || 'Không có ghi chú'}</span>
+                    </div>
+                    <div className="text-[10px] text-gray-500 italic">
+                      * Khi Giám đốc xác nhận duyệt, trạng thái sẽ chuyển sang &quot;Đã duyệt hủy&quot;, cho phép Thu ngân bấm xác nhận thu tiền về két để quỹ tiền mặt tự động hồi phục.
+                    </div>
+                  </div>
+                )}
+
+                {don.isApPaymentRequest && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5 text-xs text-gray-800 space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-emerald-200/80 pb-2 flex-wrap gap-2">
+                      <span className="font-bold text-emerald-900 flex items-center gap-1.5">
+                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                        Đề nghị thanh toán công nợ mua thuốc NCC (AP 3-Way Matching)
+                      </span>
+                      <span className="font-extrabold text-sm text-emerald-800 bg-white px-3 py-1 rounded-lg border border-emerald-300 shadow-xs">
+                        Số tiền đề xuất: {Number(don.purchaseRequest?.tongThucTe || 0).toLocaleString('vi-VN')} đ
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                      <div>Nhà cung cấp: <strong className="text-gray-900">{don.purchaseRequest?.nhaCungCap?.tenNhaCungCap || 'Chưa chọn'}</strong></div>
+                      <div>Mã đơn nhập kho: <strong className="text-gray-900">{don.purchaseRequest?.maYeuCau}</strong></div>
+                      <div>Hóa đơn VAT (NCC): <strong className="text-purple-700 font-mono">{don.purchaseRequest?.soHoaDonNcc || 'Chưa ghi nhận'}</strong> ({don.purchaseRequest?.ngayHoaDonNcc ? new Date(don.purchaseRequest.ngayHoaDonNcc).toLocaleDateString('vi-VN') : '-'})</div>
+                      <div>Phương thức chi dự kiến: <strong className="text-gray-900">{don.purchaseRequest?.phuongThucChi === 'tien_mat' ? 'Tiền mặt tại quỹ' : 'Chuyển khoản'}</strong> (Số phiếu: {don.purchaseRequest?.soChungTuChi || '---'})</div>
+                    </div>
+                    {don.purchaseRequest?.ghiChuChi && (
+                      <div className="text-[11px] bg-white/80 p-2 rounded-lg border border-emerald-100 text-gray-700">
+                        <span className="font-semibold text-gray-500">Ghi chú đối chiếu kế toán: </span>
+                        {don.purchaseRequest.ghiChuChi}
+                      </div>
+                    )}
+                    {don.purchaseRequest?.lyDoTuChoiChi && (
+                      <div className="text-[11px] bg-rose-50 p-2 rounded-lg border border-rose-200 text-rose-700">
+                        <span className="font-bold">Lý do từ chối trước đó: </span>
+                        {don.purchaseRequest.lyDoTuChoiChi}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {don.isOpexRequest && (
+                  <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-3.5 text-xs text-gray-800 space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-purple-200/80 pb-2 flex-wrap gap-2">
+                      <span className="font-bold text-purple-900 flex items-center gap-1.5">
+                        <ShieldCheck className="h-4 w-4 text-purple-600" />
+                        Đề xuất chi phí hoạt động & Vận hành phòng khám (OPEX)
+                      </span>
+                      <span className="font-extrabold text-sm text-purple-800 bg-white px-3 py-1 rounded-lg border border-purple-300 shadow-xs">
+                        Số tiền đề xuất: {Number(don.opexRequest?.soTien || 0).toLocaleString('vi-VN')} đ
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                      <div>Nội dung khoản chi: <strong className="text-gray-900">{don.opexRequest?.khoanChi}</strong></div>
+                      <div>Người / Đơn vị nhận tiền: <strong className="text-gray-900">{don.opexRequest?.nguoiNhan}</strong></div>
+                      <div>Phương thức chi đề xuất: <strong className="text-gray-900">{don.opexRequest?.phuongThucChi === 'tien_mat' ? 'Tiền mặt tại quỹ' : 'Chuyển khoản'}</strong></div>
+                      <div>Chứng từ gốc / Hóa đơn: <strong className="text-indigo-700 font-mono">{don.opexRequest?.chungTuGoc || '---'}</strong></div>
+                    </div>
+                    {don.opexRequest?.ghiChu && (
+                      <div className="text-[11px] bg-white/80 p-2 rounded-lg border border-purple-100 text-gray-700">
+                        <span className="font-semibold text-gray-500">Diễn giải chi tiết: </span>
+                        {don.opexRequest.ghiChu}
+                      </div>
+                    )}
+                    {don.opexRequest?.lyDoTuChoi && (
+                      <div className="text-[11px] bg-rose-50 p-2 rounded-lg border border-rose-200 text-rose-700">
+                        <span className="font-bold">Lý do từ chối: </span>
+                        {don.opexRequest.lyDoTuChoi}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Cảnh báo quy trình nếu là đơn Hủy ca khám */}
                 {don.loaiDon === 'Yêu cầu hủy ca khám' && (
                   <div className="bg-rose-50/70 border border-rose-200/80 rounded-xl p-3 text-xs text-rose-900 flex items-start gap-2.5">
@@ -825,9 +1164,7 @@ export default function DuyetYeuCauPage() {
                 {don.trangThai === 'cho_xu_ly' && (
                   <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
                     <button
-                      onClick={() => don.isPurchaseRequest
-                        ? decideApprovalRequest(don, false)
-                        : handleOpenReject(don.id)}
+                      onClick={() => handleOpenReject(don)}
                       disabled={duyetMutation.isPending}
                       className="inline-flex items-center gap-1.5 px-3.5 py-1.5 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
                     >
@@ -836,9 +1173,7 @@ export default function DuyetYeuCauPage() {
                     </button>
 
                     <button
-                      onClick={() => don.isPurchaseRequest
-                        ? decideApprovalRequest(don, true)
-                        : handleOpenApprove(don)}
+                      onClick={() => handleOpenApprove(don)}
                       disabled={duyetMutation.isPending}
                       className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs shadow-emerald-600/20 active:scale-95 cursor-pointer"
                       data-testid={`btn-approve-${don.id}`}

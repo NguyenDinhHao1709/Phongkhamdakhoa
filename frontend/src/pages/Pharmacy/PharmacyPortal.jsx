@@ -8,12 +8,14 @@ import LichLamViecPage from '../Receptionist/NhanVienShared/LichLamViecPage';
 import GuiDonGiamDocPage from '../Receptionist/NhanVienShared/GuiDonGiamDocPage';
 import ChamCongPage from '../Receptionist/NhanVienShared/ChamCongPage';
 import MuaHangThuocPage from './MuaHangThuocPage';
+import OfficeWorkspacePage from '../Receptionist/NhanVienShared/OfficeWorkspacePage';
 
 export default function PharmacyPortal() {
   return (
     <DashboardLayout>
       <Routes>
         <Route path="don-thuoc" element={<DonThuocListPage />} />
+        <Route path="office" element={<OfficeWorkspacePage />} />
         <Route path="kho-thuoc" element={<KhoThuocPage />} />
         <Route path="thong-ke" element={<ThongKeNhaThuocPage />} />
         <Route path="mua-hang" element={<MuaHangThuocPage />} />

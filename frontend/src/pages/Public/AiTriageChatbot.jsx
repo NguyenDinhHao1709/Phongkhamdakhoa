@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Bot, Send, X, RotateCcw, AlertTriangle, Stethoscope, ChevronDown, MessageCircle, Zap, Minus, Calendar } from 'lucide-react';
+import { Bot, Send, X, RotateCcw, AlertTriangle, Stethoscope, Zap, Minus, Calendar, Pill } from 'lucide-react';
 import { apiPost } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../../store/authStore';
+import useHospitalStore from '../../store/hospitalStore';
 
 const CHUYEN_KHOA_COLORS = {
   CAP_CUU: 'bg-red-600',
@@ -19,21 +20,23 @@ const CHUYEN_KHOA_COLORS = {
 };
 
 const QUICK_SUGGESTIONS = [
+  'Đau dạ dày, ợ chua thì uống thuốc gì?',
+  'Thuốc Paracetamol 500mg uống như thế nào?',
+  'Uống kháng sinh trước hay sau ăn?',
+  'Bé nhà tôi sốt 39 độ, ho nhiều phải làm sao?',
   'Tôi bị đau đầu và chóng mặt từ sáng',
-  'Bé nhà tôi sốt 39 độ, ho nhiều',
-  'Tôi tức ngực, khó thở',
-  'Đau bụng dưới liên tục từ hôm qua',
-  'Đau lưng, mỏi khớp gối',
+  'Chỉ số đường huyết, mỡ máu bao nhiêu là bình thường?',
 ];
 
 export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize, initialMessage = '' }) {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuthStore();
+  const hospitalInfo = useHospitalStore((s) => s.hospitalInfo);
   const [sessionId] = useState(() => uuidv4());
   const [messages, setMessages] = useState([
     {
       id: 1, role: 'bot',
-      text: '🏥 Xin chào! Tôi là **Trợ Lý Y Tế AI Triage** của Phòng Khám Đa Khoa.\n\nHãy mô tả các triệu chứng hoặc cảm giác khó chịu của bạn (ví dụ: sốt, ho, đau đầu, tức ngực...). Tôi sẽ phân tích và gợi ý chuyên khoa khám bệnh phù hợp nhất cho bạn.',
+      text: `🏥 Xin chào! Tôi là **Bác Sĩ & Dược Sĩ AI Tư Vấn Y Tế** của ${hospitalInfo.tenBenhVien || 'Phòng Khám Đa Khoa'}.\n\nBạn có thể hỏi tôi bất kỳ vấn đề y tế nào:\n• **Triệu chứng & Bệnh lý:** Sốt, ho, đau dạ dày, đau đầu, tức ngực...\n• **Tư vấn Thuốc:** Bị bệnh này uống thuốc gì? Uống trước hay sau ăn, cách mấy tiếng?\n• **Chỉ số Sức khỏe:** Huyết áp, đường huyết, mỡ máu, chế độ ăn uống & gợi ý chuyên khoa.`,
       data: null, timestamp: new Date(),
     },
   ]);
@@ -60,9 +63,9 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
     const userMsg = { id: Date.now(), role: 'user', text: msg, timestamp: new Date() };
     setMessages(prev => [...prev, userMsg]);
 
-    // Lấy 6 tin nhắn hội thoại gần nhất gửi kèm để AI nắm giữ ngữ cảnh (Chat Context)
+    // Lấy các tin nhắn hội thoại gần nhất gửi kèm (loại bỏ tin nhắn chào mặc định id: 1)
     const chatHistory = messages
-      .filter(m => m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('🔄'))
+      .filter(m => m.id !== 1 && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('🔄'))
       .slice(-6)
       .map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
@@ -81,7 +84,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
       const botMsg = {
         id: Date.now() + 1,
         role: 'bot',
-        text: d?.cau_tra_loi || 'Tôi đã tiếp nhận triệu chứng của bạn và đang gợi ý khoa khám phù hợp.',
+        text: d?.cau_tra_loi || 'Tôi đã tiếp nhận câu hỏi của bạn và đang tổng hợp tư vấn y khoa phù hợp.',
         data: d,
         timestamp: new Date(),
       };
@@ -95,7 +98,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
     } catch (err) {
       setMessages(prev => [...prev, {
         id: Date.now() + 1, role: 'bot',
-        text: '⚠️ Xin lỗi, tôi đang gặp sự cố kết nối. Vui lòng thử lại hoặc liên hệ nhân viên tiếp tân qua hotline 1900 8888.',
+        text: `⚠️ Xin lỗi, tôi đang gặp sự cố kết nối. Vui lòng thử lại hoặc liên hệ nhân viên tiếp tân qua hotline ${hospitalInfo.tongDai || '1900 8888'}.`,
         timestamp: new Date(),
       }]);
     } finally {
@@ -108,7 +111,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
     try { await apiPost('/ai/reset-session', { sessionId }); } catch (_) {}
     setMessages([{
       id: Date.now(), role: 'bot',
-      text: '🔄 Cuộc trò chuyện đã được đặt lại. Bạn đang có dấu hiệu hoặc vấn đề sức khỏe gì cần tư vấn?',
+      text: '🔄 Cuộc trò chuyện đã được đặt lại. Bạn cần tư vấn về triệu chứng, cách uống thuốc hay chỉ số sức khỏe nào?',
       data: null, timestamp: new Date(),
     }]);
     setLastResult(null);
@@ -128,20 +131,20 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
 
   const renderText = (text) => {
     if (!text) return null;
-    return text.split('\n').map((line, i) => (
-      <span key={i}>
-        {line.replace(/\*\*(.*?)\*\*/g, (_, m) => m).split(/(\*\*.*?\*\*)/).map((part, j) =>
+    const lines = text.split('\n');
+    return lines.map((line, i) => (
+      <span key={i} className="block leading-relaxed">
+        {line.split(/(\*\*.*?\*\*)/g).map((part, j) =>
           part.startsWith('**') && part.endsWith('**')
-            ? <strong key={j}>{part.slice(2, -2)}</strong>
+            ? <strong key={j} className="font-bold text-gray-900">{part.slice(2, -2)}</strong>
             : part
         )}
-        {i < text.split('\n').length - 1 && <br />}
       </span>
     ));
   };
 
   return (
-    <div className={`flex flex-col bg-white overflow-hidden ${mode === 'floating' ? 'rounded-2xl shadow-2xl border border-slate-200 w-[360px] sm:w-[420px] max-w-[calc(100vw-24px)] h-[560px] max-h-[85vh]' : 'h-full w-full'}`}>
+    <div className={`flex flex-col bg-white overflow-hidden ${mode === 'floating' ? 'rounded-2xl shadow-2xl border border-slate-200 w-[370px] sm:w-[440px] max-w-[calc(100vw-24px)] h-[590px] max-h-[85vh]' : 'h-full w-full'}`}>
       {/* Header */}
       <div className="flex items-center justify-between bg-gradient-to-r from-primary-700 via-primary-600 to-indigo-700 text-white px-4 py-3 shrink-0 shadow-xs">
         <div className="flex items-center gap-2.5">
@@ -153,10 +156,10 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
           </div>
           <div>
             <p className="font-extrabold text-sm leading-tight flex items-center gap-1.5">
-              AI Triage Tư Vấn Y Tế
+              Bác Sĩ & Dược Sĩ AI 24/7
             </p>
             <p className="text-[11px] text-blue-200 flex items-center gap-1 font-medium">
-              <Zap className="h-3 w-3 text-amber-300" /> Sẵn sàng 24/7 • Gợi ý chuyên khoa
+              <Zap className="h-3 w-3 text-amber-300" /> Tư vấn Bệnh lý • Thuốc • Chuyên khoa
             </p>
           </div>
         </div>
@@ -196,8 +199,11 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>TRIỆU CHỨNG CÓ THỂ NGUY HIỂM! Cần cấp cứu ngay!</span>
           </div>
-          <a href="tel:19008888" className="px-2 py-1 bg-white text-red-700 rounded-md text-[10px] font-black uppercase whitespace-nowrap hover:bg-red-50">
-            Gọi 1900 8888
+          <a
+            href={`tel:${(hospitalInfo.hotlineCapCuu || hospitalInfo.tongDai || '19008888').replace(/\s+/g, '')}`}
+            className="px-2 py-1 bg-white text-red-700 rounded-md text-[10px] font-black uppercase whitespace-nowrap hover:bg-red-50"
+          >
+            Gọi {hospitalInfo.hotlineCapCuu || hospitalInfo.tongDai || '1900 8888'}
           </a>
         </div>
       )}
@@ -211,22 +217,33 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
                 <Bot className="h-4 w-4" />
               </div>
             )}
-            <div className={`max-w-[85%]`}>
-              <div className={`rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm leading-relaxed ${
+            <div className={`max-w-[88%]`}>
+              <div className={`rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm space-y-1 ${
                 msg.role === 'user'
-                  ? 'bg-primary-600 text-white rounded-tr-xs shadow-xs'
+                  ? 'bg-primary-600 text-white rounded-tr-xs shadow-xs [&_strong]:text-white'
                   : 'bg-white text-gray-800 rounded-tl-xs border border-slate-200 shadow-2xs'
               }`}>
                 {renderText(msg.text)}
               </div>
 
+              {/* Hộp Lưu ý sử dụng thuốc an toàn (khi hỏi về thuốc/cách uống) */}
+              {msg.data && msg.data.luu_y_dung_thuoc && (
+                <div className="mt-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900 flex items-start gap-2 shadow-2xs">
+                  <Pill className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="leading-relaxed">
+                    <strong className="font-bold text-amber-950">Lưu ý Dược lâm sàng: </strong>
+                    <span>{msg.data.luu_y_dung_thuoc}</span>
+                  </div>
+                </div>
+              )}
+
               {/* Card kết quả AI gợi ý chuyên khoa */}
-              {msg.data && (msg.data.chuyen_khoa || msg.data.khoa) && !msg.data.can_hoi_them && (
+              {msg.data && (msg.data.chuyen_khoa || msg.data.khoa) && !msg.data.can_hoi_them && msg.data.hien_thi_dat_lich !== false && (
                 <div className="mt-2.5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden animate-fade-in">
-                  <div className={`${CHUYEN_KHOA_COLORS[msg.data.ma_khoa] || 'bg-primary-600'} text-white px-3.5 py-2.5 flex items-center justify-between gap-2`}>
+                  <div className={`${CHUYEN_KHOA_COLORS[msg.data.ma_khoa] || 'bg-primary-600'} text-white px-3.5 py-2 flex items-center justify-between gap-2`}>
                     <div className="flex items-center gap-2">
                       <Stethoscope className="h-4 w-4 shrink-0" />
-                      <span className="font-extrabold text-xs sm:text-sm">Gợi ý: {msg.data.chuyen_khoa || msg.data.khoa}</span>
+                      <span className="font-extrabold text-xs sm:text-sm">Chuyên khoa phù hợp: {msg.data.chuyen_khoa || msg.data.khoa}</span>
                     </div>
                     {msg.data.khan_cap && (
                       <span className="bg-red-200 text-red-800 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
@@ -237,18 +254,18 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
                   <div className="p-3 space-y-1.5 text-xs text-gray-600 bg-white">
                     {msg.data.loi_khuyen_so_bo && (
                       <p className="leading-relaxed">
-                        <strong className="text-gray-900 font-semibold">Lời khuyên:</strong> {msg.data.loi_khuyen_so_bo}
+                        <strong className="text-gray-900 font-semibold">Lời khuyên Bác sĩ:</strong> {msg.data.loi_khuyen_so_bo}
                       </p>
                     )}
                     <div className="flex items-center justify-between text-[11px] text-gray-500 pt-1 border-t border-slate-100">
-                      <span>Độ tin cậy AI:</span>
-                      <strong className="text-primary-700 font-bold">{Math.round((msg.data.do_tin_cay || 0.85) * 100)}%</strong>
+                      <span>Độ tin cậy phân tích Y khoa:</span>
+                      <strong className="text-primary-700 font-bold">{Math.round((msg.data.do_tin_cay || 0.92) * 100)}%</strong>
                     </div>
                   </div>
                   <div className="p-2.5 bg-slate-50 border-t border-slate-100">
                     <button
                       onClick={() => handleDatLich(msg.data.chuyen_khoa || msg.data.khoa)}
-                      className="w-full bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold py-2 px-3 rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5"
+                      className="w-full bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold py-2 px-3 rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <Calendar className="h-3.5 w-3.5" /> Đặt lịch khám {msg.data.chuyen_khoa || msg.data.khoa} ngay
                     </button>
@@ -276,7 +293,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
                 {[0, 1, 2].map(i => (
                   <span key={i} className="h-2 w-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }}></span>
                 ))}
-                <span className="text-xs text-gray-500 ml-1 font-medium">AI đang phân tích triệu chứng...</span>
+                <span className="text-xs text-gray-500 ml-1 font-medium">Bác sĩ AI đang phân tích y khoa...</span>
               </div>
             </div>
           </div>
@@ -288,14 +305,14 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
       {messages.length <= 1 && (
         <div className="px-3.5 pt-2 pb-2 bg-white border-t border-slate-100 shrink-0">
           <p className="text-[10px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider">
-            Gợi ý triệu chứng mẫu:
+            Câu hỏi Y tế & Thuốc thường gặp:
           </p>
           <div className="flex flex-wrap gap-1.5">
             {QUICK_SUGGESTIONS.map((s, i) => (
               <button
                 key={i}
                 onClick={() => sendMessage(s)}
-                className="text-[11px] bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 px-2.5 py-1 rounded-full transition-colors font-medium text-left"
+                className="text-[11px] bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 px-2.5 py-1 rounded-full transition-colors font-medium text-left cursor-pointer"
               >
                 {s}
               </button>
@@ -312,20 +329,20 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-            placeholder="Khai báo triệu chứng (ví dụ: sốt, ho, đau bụng...)"
+            placeholder="Hỏi triệu chứng, bệnh này uống thuốc gì, cách uống thuốc..."
             rows={2}
             className="flex-1 resize-none rounded-xl border border-slate-300 px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all placeholder-gray-400"
           />
           <button
             onClick={() => sendMessage()}
             disabled={!input.trim() || loading}
-            className="h-10 w-10 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl flex items-center justify-center shrink-0 transition-colors shadow-xs"
+            className="h-10 w-10 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl flex items-center justify-center shrink-0 transition-colors shadow-xs cursor-pointer"
           >
             <Send className="h-4 w-4" />
           </button>
         </div>
         <p className="text-[10px] text-gray-400 mt-1.5 text-center">
-          Khách hàng chưa đăng nhập vẫn sử dụng bình thường • AI hỗ trợ gợi ý chuyên khoa
+          Hỗ trợ tư vấn bệnh lý, cách dùng thuốc an toàn & gợi ý chuyên khoa 24/7
         </p>
       </div>
     </div>

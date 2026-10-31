@@ -10,9 +10,13 @@ import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { LichLamViec } from '../nhan-vien/entities/lich-lam-viec.entity';
 import { DanhGiaCaKham } from '../danh-gia/entities/danh-gia.entity';
 import { LichSuGoiKham } from './entities/lich-su-goi-kham.entity';
+import { ThongBaoModule } from '../thong-bao/thong-bao.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([LuotTiepNhan, SinhHieu, LichHen, BacSi, BenhNhan, LichLamViec, DanhGiaCaKham, LichSuGoiKham])],
+  imports: [
+    TypeOrmModule.forFeature([LuotTiepNhan, SinhHieu, LichHen, BacSi, BenhNhan, LichLamViec, DanhGiaCaKham, LichSuGoiKham]),
+    ThongBaoModule,
+  ],
   controllers: [TiepNhanController],
   providers: [TiepNhanService, QueueGateway],
   exports: [TiepNhanService, QueueGateway, TypeOrmModule],

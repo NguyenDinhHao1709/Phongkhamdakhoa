@@ -53,22 +53,9 @@ export default function LapPhieuChiHoatDongModal({ onClose, onSuccess, onOpenPri
         ...formData,
         soTien: amount,
       });
-      alert('Đã lập phiếu chi hoạt động thành công!');
+      alert('Đã lập đề xuất chi hoạt động thành công! Hồ sơ đã được chuyển đến Ban Giám Đốc để phê duyệt trước khi xuất tiền quỹ.');
       onSuccess?.();
       onClose();
-      if (res?.data?.data && onOpenPrint) {
-        onOpenPrint({
-          ...res.data.data,
-          loai: 'phieu_chi',
-          loaiChiTiet: 'chi_hoat_dong',
-          soChungTu: res.data.data.maPhieuChi,
-          doiTuong: res.data.data.nguoiNhan,
-          dienGiai: `[Chi vận hành] ${res.data.data.khoanChi}`,
-          soTien: res.data.data.soTien,
-          phuongThuc: res.data.data.phuongThucChi,
-          ngayLap: res.data.data.ngayChi,
-        });
-      }
     } catch (err) {
       console.error(err);
       setErrorMsg(err?.error?.message || err?.message || 'Có lỗi xảy ra khi lập phiếu chi.');
@@ -87,8 +74,8 @@ export default function LapPhieuChiHoatDongModal({ onClose, onSuccess, onOpenPri
               <Building2 className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-gray-900">Lập Phiếu Chi Hoạt Động & Vận Hành (OPEX)</h3>
-              <p className="text-xs text-emerald-700">Ghi nhận chi phí vận hành phòng khám vào sổ quỹ chuẩn ERP</p>
+              <h3 className="text-base font-bold text-gray-900">Lập Đề Xuất Chi Hoạt Động & Vận Hành (OPEX)</h3>
+              <p className="text-xs text-emerald-700">🛡️ Kiểm soát nội bộ ERP: Ban Giám Đốc sẽ duyệt trước khi Thu ngân xuất tiền quỹ</p>
             </div>
           </div>
           <button
@@ -247,7 +234,7 @@ export default function LapPhieuChiHoatDongModal({ onClose, onSuccess, onOpenPri
               className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50"
             >
               <PlusCircle className={`h-4 w-4 ${submitting ? 'animate-spin' : ''}`} />
-              <span>{submitting ? 'Đang ghi sổ...' : 'Lập Phiếu Chi & Lưu Sổ'}</span>
+              <span>{submitting ? 'Đang gửi đề xuất...' : 'Gửi Đề Xuất Chi Cho Giám Đốc'}</span>
             </button>
           </div>
         </form>

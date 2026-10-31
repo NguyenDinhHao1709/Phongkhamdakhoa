@@ -61,12 +61,25 @@ export default function LichHenBenhNhanPage() {
   });
   const [submittingRefund, setSubmittingRefund] = useState(false);
   const [refundError, setRefundError] = useState('');
+  const [cauHinhTienCoc, setCauHinhTienCoc] = useState([]);
 
   useEffect(() => {
     fetchData();
+    fetchCauHinhTienCoc();
     const refreshTimer = setInterval(fetchData, 15000);
     return () => clearInterval(refreshTimer);
   }, []);
+
+  const fetchCauHinhTienCoc = async () => {
+    try {
+      const res = await apiGet('/quan-ly/cau-hinh-tien-coc');
+      const raw = res?.data?.data || res?.data || res;
+      const items = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+      if (items.length > 0) setCauHinhTienCoc(items);
+    } catch (err) {
+      console.error('Lỗi nạp cấu hình tiền cọc:', err);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -335,7 +348,13 @@ export default function LichHenBenhNhanPage() {
                             className="w-full md:w-auto bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-xs justify-center"
                             leftIcon={<CreditCard className="h-4 w-4" />}
                           >
-                            Thanh toán phí khám (200.000 đ)
+                            {(() => {
+                              const cfg = cauHinhTienCoc.find(x => x.loaiHinhThuc === lh.hinhThuc);
+                              const amount = cfg?.soTienCoc ? Number(cfg.soTienCoc) : (lh.hinhThuc === 'truc_tuyen' ? 251000 : 40000);
+                              return lh.hinhThuc === 'truc_tuyen'
+                                ? `Thanh toán phí tư vấn (${new Intl.NumberFormat('vi-VN').format(amount)} đ)`
+                                : `Thanh toán tạm ứng (${new Intl.NumberFormat('vi-VN').format(amount)} đ)`;
+                            })()}
                           </MedButton>
                         ) : (() => {
                           const access = checkTelehealthAccess(lh.ngayHen, lh.gioHen, lh.ghiChu);
@@ -739,7 +758,11 @@ export default function LichHenBenhNhanPage() {
         <PaymentCountdownModal
           lichHenId={paymentAppointment.id}
           maLichHen={paymentAppointment.maLichHen}
-          soTien={paymentAppointment.hinhThuc === 'truc_tuyen' ? 200000 : 40000}
+          soTien={
+            paymentAppointment.hinhThuc === 'truc_tuyen'
+              ? (Number(cauHinhTienCoc.find(x => x.loaiHinhThuc === 'truc_tuyen')?.soTienCoc) || 251000)
+              : (Number(cauHinhTienCoc.find(x => x.loaiHinhThuc === 'truc_tiep')?.soTienCoc) || 40000)
+          }
           title={
             paymentAppointment.hinhThuc === 'truc_tuyen'
               ? 'Thanh toán phí khám trực tuyến Telehealth'

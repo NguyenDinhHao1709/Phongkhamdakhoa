@@ -26,6 +26,7 @@ export default function BenhNhanChiTietPage({ isCreate = false, isEdit = false }
     gioiTinh: 'nam',
     soDienThoai: '',
     soCmnd: '',
+    soBhyt: '',
     email: '',
     diaChi: '',
     nhomMau: '',
@@ -54,6 +55,7 @@ export default function BenhNhanChiTietPage({ isCreate = false, isEdit = false }
           gioiTinh: res.data.gioiTinh || 'nam',
           soDienThoai: res.data.soDienThoai || '',
           soCmnd: res.data.soCmnd || '',
+          soBhyt: res.data.soBhyt || '',
           email: res.data.email || '',
           diaChi: res.data.diaChi || '',
           nhomMau: res.data.nhomMau || '',
@@ -242,10 +244,25 @@ export default function BenhNhanChiTietPage({ isCreate = false, isEdit = false }
                       value={formData.soCmnd}
                       onChange={(e) => setFormData({ ...formData, soCmnd: e.target.value })}
                       placeholder="12 chữ số..."
-                      className="w-full p-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500"
+                      className="w-full p-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500 font-mono"
                     />
                   ) : (
                     <p className="font-mono text-gray-900">{patient?.soCmnd || '—'}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Mã số thẻ BHYT</label>
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={formData.soBhyt}
+                      onChange={(e) => setFormData({ ...formData, soBhyt: e.target.value.toUpperCase() })}
+                      placeholder="15 ký tự (VD: DN4791234567890)..."
+                      className="w-full p-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500 font-mono"
+                    />
+                  ) : (
+                    <p className="font-mono text-gray-900">{patient?.soBhyt || 'Chưa cập nhật'}</p>
                   )}
                 </div>
 

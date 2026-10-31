@@ -1,13 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not, In, Like, MoreThanOrEqual } from 'typeorm';
+import { Repository, Not, In, Like, MoreThanOrEqual, IsNull } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
-import { NguoiDung, TrangThaiNguoiDung } from '../auth/entities/nguoi-dung.entity';
+import { NguoiDung, TrangThaiNguoiDung, LoaiTaiKhoan } from '../auth/entities/nguoi-dung.entity';
 import { VaiTro } from '../auth/entities/vai-tro.entity';
 import { QuyenHan } from '../auth/entities/quyen-han.entity';
 import { VaiTroQuyenHan } from '../auth/entities/vai-tro-quyen-han.entity';
+import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { KyThuatVien } from '../nhan-vien/entities/ky-thuat-vien.entity';
 import { DonGui, TrangThaiDonGui } from '../nhan-vien/entities/don-gui.entity';
@@ -18,11 +19,12 @@ import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
 import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
 import { HoaDonChiTiet } from '../thanh-toan/entities/hoa-don-chi-tiet.entity';
-import { ChiDinhCanLamSang } from '../xet-nghiem/entities/xet-nghiem.entity';
+import { ChiDinhCanLamSang, DichVuXetNghiem } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
 import { NhatKyHeThong, LoaiNhatKy } from './entities/nhat-ky-he-thong.entity';
 import { BaoCaoBoPhan } from './entities/bao-cao-bo-phan.entity';
+import { CauHinhTienCoc } from './entities/cau-hinh-tien-coc.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -48,10 +50,12 @@ export class QuanLyService {
     @InjectRepository(HoaDon) private hoaDonRepo: Repository<HoaDon>,
     @InjectRepository(HoaDonChiTiet) private hoaDonChiTietRepo: Repository<HoaDonChiTiet>,
     @InjectRepository(ChiDinhCanLamSang) private clsRepo: Repository<ChiDinhCanLamSang>,
+    @InjectRepository(DichVuXetNghiem) private dichVuRepo: Repository<DichVuXetNghiem>,
     @InjectRepository(DonThuoc) private donThuocRepo: Repository<DonThuoc>,
     @InjectRepository(LichHen) private lichHenRepo: Repository<LichHen>,
     @InjectRepository(NhatKyHeThong) private nhatKyRepo: Repository<NhatKyHeThong>,
     @InjectRepository(BaoCaoBoPhan) private baoCaoBoPhanRepo: Repository<BaoCaoBoPhan>,
+    @InjectRepository(CauHinhTienCoc) private tienCocRepo: Repository<CauHinhTienCoc>,
     private readonly thongBaoService: ThongBaoService,
     private readonly httpService: HttpService,
   ) {}
@@ -113,6 +117,13 @@ export class QuanLyService {
     });
     const savedUser = await this.nguoiDungRepo.save(newUser);
 
+    let defaultPhongBanId: number | null = null;
+    if (vaiTro.maVaiTro === 'bac_si') defaultPhongBanId = 1;
+    else if (vaiTro.maVaiTro === 'ky_thuat_vien') defaultPhongBanId = 2;
+    else if (vaiTro.maVaiTro === 'nhan_vien_nha_thuoc' || vaiTro.maVaiTro === 'nha_thuoc') defaultPhongBanId = 3;
+    else if (vaiTro.maVaiTro === 'thu_ngan') defaultPhongBanId = 4;
+    else if (vaiTro.maVaiTro === 'tiep_tan') defaultPhongBanId = 5;
+
     const newNv = this.nhanVienRepo.create({
       nguoiDungId: savedUser.id,
       hoTen,
@@ -123,6 +134,7 @@ export class QuanLyService {
       soCmnd: soCmnd || null,
       diaChi: diaChi || null,
       chucVu: vaiTro.tenVaiTro,
+      phongBanId: defaultPhongBanId,
       ngayVaoLam: ngayVaoLam || null,
       anhDaiDien: anhDaiDien || null,
     });
@@ -289,6 +301,214 @@ export class QuanLyService {
   }
 
   // ==========================================
+  // QUẢN LÝ TÀI KHOẢN BỆNH NHÂN (ADMIN)
+  // ==========================================
+  async getDanhSachTaiKhoanBenhNhan(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    trangThai?: string;
+    coTaiKhoan?: string;
+  }) {
+    const page = Number(params.page) || 1;
+    const limit = Number(params.limit) || 12;
+    const skip = (page - 1) * limit;
+
+    const qb = this.benhNhanRepo.createQueryBuilder('bn')
+      .leftJoin('bn.nguoiDung', 'nd')
+      .addSelect([
+        'nd.id',
+        'nd.tenDangNhap',
+        'nd.loaiTaiKhoan',
+        'nd.trangThai',
+        'nd.lanDangNhapCuoi',
+        'nd.taoLuc',
+      ]);
+
+    const keyword = (params.search || '').trim();
+    if (keyword) {
+      qb.andWhere(
+        '(bn.ho_ten LIKE :kw OR bn.ma_benh_nhan LIKE :kw OR bn.so_cmnd LIKE :kw OR bn.so_dien_thoai LIKE :kw OR bn.email LIKE :kw OR nd.ten_dang_nhap LIKE :kw)',
+        { kw: `%${keyword}%` },
+      );
+    }
+
+    if (params.coTaiKhoan === 'co') {
+      qb.andWhere('bn.nguoi_dung_id IS NOT NULL');
+    } else if (params.coTaiKhoan === 'chua') {
+      qb.andWhere('bn.nguoi_dung_id IS NULL');
+    }
+
+    if (params.trangThai && params.trangThai !== 'TAT_CA') {
+      if (params.trangThai === 'chua_co_tai_khoan') {
+        qb.andWhere('bn.nguoi_dung_id IS NULL');
+      } else {
+        qb.andWhere('nd.trang_thai = :st', { st: params.trangThai });
+      }
+    }
+
+    qb.orderBy('bn.taoLuc', 'DESC').skip(skip).take(limit);
+
+    const [items, total] = await qb.getManyAndCount();
+
+    // Thống kê nhanh
+    const totalPatients = await this.benhNhanRepo.count();
+    const withAccountCount = await this.benhNhanRepo.count({
+      where: { nguoiDungId: Not(IsNull()) as any },
+    });
+    const activeAccountCount = await this.nguoiDungRepo.count({
+      where: { loaiTaiKhoan: LoaiTaiKhoan.BENH_NHAN, trangThai: TrangThaiNguoiDung.HOAT_DONG },
+    });
+    const lockedAccountCount = await this.nguoiDungRepo.count({
+      where: { loaiTaiKhoan: LoaiTaiKhoan.BENH_NHAN, trangThai: TrangThaiNguoiDung.KHOA },
+    });
+
+    return {
+      message: 'Lấy danh sách tài khoản bệnh nhân thành công',
+      data: items,
+      stats: {
+        total: totalPatients,
+        withAccount: withAccountCount,
+        active: activeAccountCount,
+        locked: lockedAccountCount,
+      },
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
+  }
+
+  async taoTaiKhoanBenhNhan(dto: {
+    hoTen: string;
+    soDienThoai?: string;
+    email?: string;
+    tenDangNhap?: string;
+    matKhau: string;
+    ngaySinh?: string;
+    gioiTinh?: string;
+    soCmnd?: string;
+    soBhyt?: string;
+    diaChi?: string;
+    nhomMau?: string;
+    diUng?: string;
+    tienSuBenh?: string;
+  }) {
+    const role = await this.vaiTroRepo.findOne({ where: { maVaiTro: 'benh_nhan' } });
+    if (!role) throw new NotFoundException('Vai trò bệnh nhân không tồn tại');
+
+    const username = (dto.tenDangNhap || dto.email || dto.soDienThoai || '').trim();
+    if (!username) throw new BadRequestException('Vui lòng cung cấp email, SĐT hoặc tên đăng nhập');
+
+    const existingUser = await this.nguoiDungRepo.findOne({ where: { tenDangNhap: username } });
+    if (existingUser) throw new ConflictException('Tên đăng nhập / Email này đã được sử dụng');
+
+    const hashedPassword = await bcrypt.hash(dto.matKhau || '123456', 10);
+    const newUser = this.nguoiDungRepo.create({
+      tenDangNhap: username,
+      matKhauHash: hashedPassword,
+      vaiTroId: role.id,
+      loaiTaiKhoan: LoaiTaiKhoan.BENH_NHAN,
+      trangThai: TrangThaiNguoiDung.HOAT_DONG,
+      emailDaXacThuc: true as any,
+    });
+    const savedUser = await this.nguoiDungRepo.save(newUser);
+
+    const bnCount = await this.benhNhanRepo.count();
+    const newPatient = this.benhNhanRepo.create({
+      maBenhNhan: MaGeneratorService.generateMaBenhNhan(bnCount + 1),
+      nguoiDungId: savedUser.id,
+      hoTen: dto.hoTen,
+      soDienThoai: dto.soDienThoai,
+      email: dto.email,
+      ngaySinh: dto.ngaySinh || '1995-01-01',
+      gioiTinh: (dto.gioiTinh || 'nam') as any,
+      soCmnd: dto.soCmnd,
+      soBhyt: dto.soBhyt,
+      diaChi: dto.diaChi,
+      nhomMau: dto.nhomMau,
+      diUng: dto.diUng,
+      tienSuBenh: dto.tienSuBenh,
+    });
+    const savedPatient = await this.benhNhanRepo.save(newPatient);
+
+    await this.ghiLog({
+      nguoiDungId: savedUser.id,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien',
+      hanhDong: 'TAO_TAI_KHOAN_BENH_NHAN',
+      loaiNhatKy: LoaiNhatKy.INFO,
+      moTa: `Quản trị viên đã tạo tài khoản bệnh nhân "${username}" cho ${dto.hoTen} (${savedPatient.maBenhNhan})`,
+    });
+
+    return { message: 'Tạo tài khoản bệnh nhân thành công', data: savedPatient };
+  }
+
+  async capTaiKhoanChoBenhNhan(benhNhanId: number, dto: { tenDangNhap: string; matKhau: string }) {
+    const patient = await this.benhNhanRepo.findOne({ where: { id: benhNhanId } });
+    if (!patient) throw new NotFoundException('Không tìm thấy hồ sơ bệnh nhân');
+    if (patient.nguoiDungId) throw new BadRequestException('Bệnh nhân này đã có tài khoản đăng nhập');
+
+    const role = await this.vaiTroRepo.findOne({ where: { maVaiTro: 'benh_nhan' } });
+    if (!role) throw new NotFoundException('Vai trò bệnh nhân không tồn tại');
+
+    const username = dto.tenDangNhap.trim();
+    const existing = await this.nguoiDungRepo.findOne({ where: { tenDangNhap: username } });
+    if (existing) throw new ConflictException('Tên đăng nhập đã tồn tại trong hệ thống');
+
+    const hashedPassword = await bcrypt.hash(dto.matKhau || '123456', 10);
+    const newUser = this.nguoiDungRepo.create({
+      tenDangNhap: username,
+      matKhauHash: hashedPassword,
+      vaiTroId: role.id,
+      loaiTaiKhoan: LoaiTaiKhoan.BENH_NHAN,
+      trangThai: TrangThaiNguoiDung.HOAT_DONG,
+      emailDaXacThuc: true as any,
+    });
+    const savedUser = await this.nguoiDungRepo.save(newUser);
+
+    patient.nguoiDungId = savedUser.id;
+    await this.benhNhanRepo.save(patient);
+
+    await this.ghiLog({
+      nguoiDungId: savedUser.id,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien',
+      hanhDong: 'CAP_TAI_KHOAN_BENH_NHAN',
+      loaiNhatKy: LoaiNhatKy.INFO,
+      moTa: `Quản trị viên cấp tài khoản "${username}" cho bệnh nhân ${patient.hoTen} (${patient.maBenhNhan})`,
+    });
+
+    return { message: 'Cấp tài khoản thành công', data: patient };
+  }
+
+  async xoaTaiKhoanBenhNhan(benhNhanId: number) {
+    const patient = await this.benhNhanRepo.findOne({ where: { id: benhNhanId } });
+    if (!patient) throw new NotFoundException('Không tìm thấy bệnh nhân');
+
+    if (patient.nguoiDungId) {
+      const uId = patient.nguoiDungId;
+      patient.nguoiDungId = null as any;
+      await this.benhNhanRepo.save(patient);
+      await this.nguoiDungRepo.delete(uId);
+    }
+    await this.benhNhanRepo.delete(benhNhanId);
+
+    await this.ghiLog({
+      nguoiDungId: 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien',
+      hanhDong: 'XOA_BENH_NHAN',
+      loaiNhatKy: LoaiNhatKy.WARNING,
+      moTa: `Quản trị viên đã xóa hồ sơ / tài khoản bệnh nhân ${patient.hoTen} (${patient.maBenhNhan})`,
+    });
+
+    return { message: 'Xóa bệnh nhân thành công' };
+  }
+
+  // ==========================================
   // PHÂN QUYỀN (VAI TRÒ & QUYỀN HẠN)
   // ==========================================
   async getPhanQuyenData() {
@@ -303,10 +523,28 @@ export class QuanLyService {
 
     const mappings = await this.vaiTroQuyenHanRepo.find();
 
+    // Lấy số lượng nhân sự của từng vai trò
+    const userCounts = await this.nguoiDungRepo.createQueryBuilder('nd')
+      .select('nd.vaiTroId', 'vaiTroId')
+      .addSelect('COUNT(nd.id)', 'soNhanSu')
+      .groupBy('nd.vaiTroId')
+      .getRawMany();
+    const countMap = new Map(userCounts.map(u => [Number(u.vaiTroId), Number(u.soNhanSu)]));
+
     const matrix = vaiTros.map(vt => {
-      const perms = mappings.filter(m => m.vaiTroId === vt.id).map(m => m.quyenHanId);
+      let perms = mappings.filter(m => m.vaiTroId === vt.id).map(m => m.quyenHanId);
+      if (vt.maVaiTro === 'quan_tri_vien_cap_cao') {
+        perms = quyenHans.map(q => q.id);
+      }
       return {
-        vaiTro: vt,
+        vaiTro: {
+          id: vt.id,
+          maVaiTro: vt.maVaiTro,
+          tenVaiTro: vt.tenVaiTro,
+          moTa: vt.moTa,
+          laHeThong: Boolean(vt.laHeThong),
+          soNhanSu: countMap.get(vt.id) || 0,
+        },
         quyenHanIds: perms,
       };
     });
@@ -320,15 +558,23 @@ export class QuanLyService {
 
     return {
       data: {
-        vaiTros,
+        vaiTros: vaiTros.map(vt => ({
+          id: vt.id,
+          maVaiTro: vt.maVaiTro,
+          tenVaiTro: vt.tenVaiTro,
+          moTa: vt.moTa,
+          laHeThong: Boolean(vt.laHeThong),
+          soNhanSu: countMap.get(vt.id) || 0,
+        })),
         quyenHans: groupedQuyen,
+        allQuyenHans: quyenHans,
         matrix,
       },
       message: 'Lấy dữ liệu phân quyền thành công'
     };
   }
 
-  async capNhatPhanQuyen(vaiTroId: number, quyenHanIds: number[]) {
+  async capNhatPhanQuyen(vaiTroId: number, quyenHanIds: number[], currentUserId?: number) {
     const role = await this.vaiTroRepo.findOne({ where: { id: vaiTroId } });
     if (!role) throw new NotFoundException('Vai trò không tồn tại');
     if (role.laHeThong) {
@@ -343,6 +589,24 @@ export class QuanLyService {
         quyenHanId: qhId,
       }));
       await this.vaiTroQuyenHanRepo.save(newMappings);
+    }
+
+    // Ghi nhật ký kiểm toán hệ thống
+    try {
+      const actor = currentUserId ? await this.nguoiDungRepo.findOne({ where: { id: currentUserId } }) : null;
+      await this.nhatKyRepo.save(
+        this.nhatKyRepo.create({
+          nguoiDungId: currentUserId || null,
+          tenNguoiDung: actor?.tenDangNhap || 'Quản trị viên',
+          vaiTro: 'quan_tri_vien',
+          hanhDong: 'CAP_NHAT_PHAN_QUYEN',
+          loaiNhatKy: LoaiNhatKy.INFO,
+          moTa: `Điều chỉnh phân quyền vai trò "${role.tenVaiTro}" (${role.maVaiTro}): Đã cấp ${quyenHanIds?.length || 0} quyền hạn.`,
+          diaChiIp: '127.0.0.1',
+        }),
+      );
+    } catch (e) {
+      // Ignore
     }
 
     return { message: 'Cập nhật phân quyền thành công' };
@@ -2058,10 +2322,19 @@ export class QuanLyService {
 
   // ─── ADMIN: TỔNG QUAN HỆ THỐNG KỸ THUẬT ─────────────────────
   async getSystemOverview() {
+    // 1. Phân loại tài khoản người dùng
     const totalUsers = await this.nguoiDungRepo.count();
-    const activeUsers = await this.nguoiDungRepo.count({ where: { trangThai: 'hoat_dong' as any } });
-    const lockedUsers = await this.nguoiDungRepo.count({ where: { trangThai: 'bi_khoa' as any } });
+    const activeUsers = await this.nguoiDungRepo.count({ where: { trangThai: TrangThaiNguoiDung.HOAT_DONG } });
+    const lockedUsers = await this.nguoiDungRepo.count({ where: { trangThai: TrangThaiNguoiDung.KHOA } });
 
+    // Tách biệt nhân sự nội bộ vs bệnh nhân trực tuyến
+    const staffUsers = await this.nguoiDungRepo.createQueryBuilder('nd')
+      .innerJoin('nd.vaiTro', 'vt')
+      .where("vt.ma_vai_tro != 'benh_nhan'")
+      .getCount();
+    const patientUsers = totalUsers - staffUsers;
+
+    // 2. Phân bổ theo 8 vai trò hệ thống
     const rolesDistribution = await this.nguoiDungRepo.createQueryBuilder('nd')
       .innerJoin('nd.vaiTro', 'vt')
       .select('vt.tenVaiTro', 'tenVaiTro')
@@ -2070,20 +2343,138 @@ export class QuanLyService {
       .groupBy('vt.id')
       .getRawMany();
 
+    // 3. Cơ sở dữ liệu & Dung lượng
+    let dbInfo = { totalTables: 0, totalRows: 0, totalSizeMB: '0.00' };
+    try {
+      const tables: any[] = await this.nguoiDungRepo.query(`
+        SELECT 
+          COUNT(*) as tableCount,
+          SUM(table_rows) as totalRows,
+          ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) as totalSizeMB
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+      `);
+      if (tables && tables[0]) {
+        dbInfo = {
+          totalTables: Number(tables[0].tableCount || 0),
+          totalRows: Number(tables[0].totalRows || 0),
+          totalSizeMB: (Number(tables[0].totalSizeMB || 0)).toFixed(2),
+        };
+      }
+    } catch (e) {
+      // Fallback
+    }
+
+    // 4. Kiểm toán an ninh & Nhật ký hệ thống
+    const today = new Date().toISOString().slice(0, 10);
+    const todayLogsCount = await this.nhatKyRepo.createQueryBuilder('nk')
+      .where('DATE(nk.thoiGian) = :today', { today })
+      .getCount();
+    const errorLogsCount = await this.nhatKyRepo.createQueryBuilder('nk')
+      .where('DATE(nk.thoiGian) = :today AND nk.loaiNhatKy = :err', { today, err: LoaiNhatKy.ERROR })
+      .getCount();
+    const warnLogsCount = await this.nhatKyRepo.createQueryBuilder('nk')
+      .where('DATE(nk.thoiGian) = :today AND nk.loaiNhatKy = :warn', { today, warn: LoaiNhatKy.WARNING })
+      .getCount();
+
+    const recentLogs = await this.nhatKyRepo.find({
+      order: { thoiGian: 'DESC' },
+      take: 6,
+    });
+
+    // 5. Danh sách tài khoản tạo gần nhất
     const recentUsers = await this.nguoiDungRepo.find({
       relations: ['vaiTro'],
       order: { taoLuc: 'DESC' },
-      take: 8,
+      take: 6,
     });
 
     const mem = process.memoryUsage();
     const uptimeHours = (process.uptime() / 3600).toFixed(1);
 
+    // 6. Danh mục giám sát dịch vụ cốt lõi (Service Health Monitor)
+    const services = [
+      {
+        id: 'api',
+        name: 'NestJS REST API Core',
+        type: 'Ứng dụng chính',
+        status: 'online',
+        badge: 'Port 5000 · HTTP/JSON',
+        details: `Node.js ${process.version} · Platform ${process.platform}`,
+      },
+      {
+        id: 'database',
+        name: 'Cơ Sở Dữ Liệu MySQL',
+        type: 'Lưu trữ CSDL',
+        status: 'online',
+        badge: 'Port 3306 · InnoDB UTF8MB4',
+        details: `${dbInfo.totalTables} bảng · ${dbInfo.totalSizeMB} MB dung lượng`,
+      },
+      {
+        id: 'websocket',
+        name: 'WebSocket Realtime Gateway',
+        type: 'Thời gian thực',
+        status: 'online',
+        badge: 'Socket.io Server (5000)',
+        details: 'Phát sóng hàng đợi, màn hình TV, Kiosk & Chatbot',
+      },
+      {
+        id: 'ai',
+        name: 'Google Gemini 2.5 Flash Gateway',
+        type: 'Trí tuệ nhân tạo',
+        status: 'online',
+        badge: 'gemini-2.5-flash',
+        details: 'Phân luồng khám bệnh (AI Triage) & Trợ lý bệnh nhân',
+      },
+      {
+        id: 'payment',
+        name: 'Cổng Thanh Toán Trực Tuyến PayOS',
+        type: 'Thanh toán & Cọc',
+        status: 'online',
+        badge: 'PayOS API Connected',
+        details: 'Tạo link thanh toán QR & đồng bộ trạng thái cọc khám',
+      },
+      {
+        id: 'email',
+        name: 'Dịch Vụ Gửi Thư Điện Tử (SMTP)',
+        type: 'Thông báo & OTP',
+        status: 'online',
+        badge: 'Gmail SMTP Port 587',
+        details: 'Gửi mã OTP xác thực, xác nhận lịch hẹn & hóa đơn',
+      },
+    ];
+
     return {
       accounts: {
         total: totalUsers,
+        staffTotal: staffUsers,
+        patientTotal: patientUsers,
         active: activeUsers,
         locked: lockedUsers,
+      },
+      database: {
+        dbName: 'phong_kham',
+        totalTables: dbInfo.totalTables,
+        totalRows: dbInfo.totalRows,
+        totalSizeMB: dbInfo.totalSizeMB,
+        status: 'MySQL 3306 (utf8mb4 - Hoạt động)',
+      },
+      services,
+      auditStats: {
+        todayTotal: todayLogsCount,
+        todayError: errorLogsCount,
+        todayWarn: warnLogsCount,
+        todayInfo: todayLogsCount - errorLogsCount - warnLogsCount,
+        recentLogs: recentLogs.map(l => ({
+          id: l.id,
+          tenNguoiDung: l.tenNguoiDung,
+          vaiTro: l.vaiTro,
+          hanhDong: l.hanhDong,
+          loaiNhatKy: l.loaiNhatKy,
+          moTa: l.moTa,
+          diaChiIp: l.diaChiIp,
+          thoiGian: l.thoiGian,
+        })),
       },
       rolesDistribution: rolesDistribution.map(r => ({
         tenVaiTro: r.tenVaiTro,
@@ -2097,13 +2488,14 @@ export class QuanLyService {
         memoryRss: `${Math.round(mem.rss / 1024 / 1024)} MB`,
         memoryHeap: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`,
         dbStatus: 'Hoạt động (MySQL 3306)',
-        aiServiceStatus: 'Hoạt động (gemini-3.5-flash-lite)',
+        aiServiceStatus: 'Hoạt động (gemini-2.5-flash)',
         socketStatus: 'Hoạt động (Socket.io Port 5000)',
       },
       recentUsers: recentUsers.map(u => ({
         id: u.id,
         tenDangNhap: u.tenDangNhap,
         vaiTro: u.vaiTro?.tenVaiTro || 'Chưa gán',
+        maVaiTro: u.vaiTro?.maVaiTro,
         trangThai: u.trangThai,
         taoLuc: u.taoLuc,
       })),
@@ -2112,24 +2504,239 @@ export class QuanLyService {
 
   // ─── ADMIN: DANH MỤC DÙNG CHUNG (MASTER DATA) ─────────────────
   async getDanhMucTongHop() {
-    const phongBans = await this.nguoiDungRepo.query(
-      'SELECT id, ten_phong_ban, mo_ta FROM phong_ban ORDER BY id ASC'
-    );
-    const phongKhams = await this.nguoiDungRepo.query(
-      'SELECT id, ten_phong, vi_tri, chuyen_khoa, trang_thai FROM phong_kham ORDER BY id ASC'
-    );
-    const dichVus = await this.nguoiDungRepo.query(
-      'SELECT id, ma_dich_vu, ten_dich_vu, loai, gia, don_vi_ket_qua, trang_thai FROM dich_vu_xet_nghiem ORDER BY id ASC'
-    );
-    const thuocs = await this.nguoiDungRepo.query(
-      'SELECT id, ma_thuoc, ten_thuoc, ten_hoat_chat, don_vi_tinh, gia_ban, ton_kho_tong, trang_thai FROM thuoc ORDER BY id ASC'
-    );
+    const phongBans = await this.nguoiDungRepo.query(`
+      SELECT pb.id, pb.ten_phong_ban, pb.mo_ta,
+             (SELECT COUNT(*) FROM nhan_vien nv WHERE nv.phong_ban_id = pb.id) AS so_nhan_su,
+             (SELECT COUNT(*) FROM phong_kham pk WHERE pk.phong_ban_id = pb.id) AS so_phong_kham
+      FROM phong_ban pb
+      ORDER BY pb.id ASC
+    `);
+
+    const phongKhams = await this.nguoiDungRepo.query(`
+      SELECT pk.id, pk.ten_phong, pk.vi_tri, pk.chuyen_khoa, pk.trang_thai, pk.phong_ban_id,
+             pb.ten_phong_ban
+      FROM phong_kham pk
+      LEFT JOIN phong_ban pb ON pb.id = pk.phong_ban_id
+      ORDER BY pk.id ASC
+    `);
 
     return {
       phongBans,
       phongKhams,
-      dichVus,
-      thuocs,
+    };
+  }
+
+  async taoPhongBan(dto: { tenPhongBan: string; moTa?: string }, userId?: number) {
+    if (!dto.tenPhongBan?.trim()) {
+      throw new BadRequestException('Tên khoa / phòng ban không được để trống');
+    }
+    await this.nguoiDungRepo.query(
+      'INSERT INTO phong_ban (ten_phong_ban, mo_ta, tao_luc) VALUES (?, ?, NOW())',
+      [dto.tenPhongBan.trim(), dto.moTa?.trim() || null],
+    );
+    await this.ghiLog({
+      nguoiDungId: userId || 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien_cap_cao',
+      hanhDong: 'THEM_PHONG_BAN',
+      loaiNhatKy: LoaiNhatKy.INFO,
+      moTa: `Thêm mới khoa / phòng ban: "${dto.tenPhongBan.trim()}"`,
+    });
+    return { message: 'Thêm khoa / phòng ban thành công' };
+  }
+
+  async capNhatPhongBan(id: number, dto: { tenPhongBan: string; moTa?: string }, userId?: number) {
+    if (!dto.tenPhongBan?.trim()) {
+      throw new BadRequestException('Tên khoa / phòng ban không được để trống');
+    }
+    const [existing] = await this.nguoiDungRepo.query('SELECT id, ten_phong_ban FROM phong_ban WHERE id = ?', [id]);
+    if (!existing) throw new NotFoundException('Không tìm thấy khoa / phòng ban');
+
+    await this.nguoiDungRepo.query(
+      'UPDATE phong_ban SET ten_phong_ban = ?, mo_ta = ? WHERE id = ?',
+      [dto.tenPhongBan.trim(), dto.moTa?.trim() || null, id],
+    );
+    await this.ghiLog({
+      nguoiDungId: userId || 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien_cap_cao',
+      hanhDong: 'CAP_NHAT_PHONG_BAN',
+      loaiNhatKy: LoaiNhatKy.INFO,
+      moTa: `Cập nhật khoa / phòng ban: "${dto.tenPhongBan.trim()}"`,
+    });
+    return { message: 'Cập nhật khoa / phòng ban thành công' };
+  }
+
+  async xoaPhongBan(id: number, userId?: number) {
+    const [existing] = await this.nguoiDungRepo.query('SELECT id, ten_phong_ban FROM phong_ban WHERE id = ?', [id]);
+    if (!existing) throw new NotFoundException('Không tìm thấy khoa / phòng ban');
+
+    const [{ cntNV }] = await this.nguoiDungRepo.query('SELECT COUNT(*) AS cntNV FROM nhan_vien WHERE phong_ban_id = ?', [id]);
+    const [{ cntPK }] = await this.nguoiDungRepo.query('SELECT COUNT(*) AS cntPK FROM phong_kham WHERE phong_ban_id = ?', [id]);
+
+    if (Number(cntNV) > 0 || Number(cntPK) > 0) {
+      throw new BadRequestException(`Không thể xóa "${existing.ten_phong_ban}" vì đang có ${cntNV} nhân sự và ${cntPK} phòng khám trực thuộc. Vui lòng điều chuyển trước.`);
+    }
+
+    await this.nguoiDungRepo.query('DELETE FROM phong_ban WHERE id = ?', [id]);
+    await this.ghiLog({
+      nguoiDungId: userId || 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien_cap_cao',
+      hanhDong: 'XOA_PHONG_BAN',
+      loaiNhatKy: LoaiNhatKy.WARNING,
+      moTa: `Xóa khoa / phòng ban: "${existing.ten_phong_ban}" (ID: ${id})`,
+    });
+    return { message: 'Đã xóa khoa / phòng ban thành công' };
+  }
+
+  async taoPhongKham(dto: { tenPhong: string; viTri?: string; chuyenKhoa?: string; trangThai?: string; phongBanId?: number }, userId?: number) {
+    if (!dto.tenPhong?.trim()) {
+      throw new BadRequestException('Tên phòng khám không được để trống');
+    }
+    const status = dto.trangThai || 'hoat_dong';
+    await this.nguoiDungRepo.query(
+      'INSERT INTO phong_kham (ten_phong, vi_tri, chuyen_khoa, trang_thai, phong_ban_id) VALUES (?, ?, ?, ?, ?)',
+      [dto.tenPhong.trim(), dto.viTri?.trim() || null, dto.chuyenKhoa?.trim() || null, status, dto.phongBanId || null],
+    );
+    await this.ghiLog({
+      nguoiDungId: userId || 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien_cap_cao',
+      hanhDong: 'THEM_PHONG_KHAM',
+      loaiNhatKy: LoaiNhatKy.INFO,
+      moTa: `Thêm mới phòng khám: "${dto.tenPhong.trim()}" (${dto.chuyenKhoa || 'Chuyên khoa'})`,
+    });
+    return { message: 'Thêm phòng khám thành công' };
+  }
+
+  async capNhatPhongKham(id: number, dto: { tenPhong: string; viTri?: string; chuyenKhoa?: string; trangThai?: string; phongBanId?: number }, userId?: number) {
+    if (!dto.tenPhong?.trim()) {
+      throw new BadRequestException('Tên phòng khám không được để trống');
+    }
+    const [existing] = await this.nguoiDungRepo.query('SELECT id, ten_phong FROM phong_kham WHERE id = ?', [id]);
+    if (!existing) throw new NotFoundException('Không tìm thấy phòng khám');
+
+    await this.nguoiDungRepo.query(
+      'UPDATE phong_kham SET ten_phong = ?, vi_tri = ?, chuyen_khoa = ?, trang_thai = ?, phong_ban_id = ? WHERE id = ?',
+      [dto.tenPhong.trim(), dto.viTri?.trim() || null, dto.chuyenKhoa?.trim() || null, dto.trangThai || 'hoat_dong', dto.phongBanId || null, id],
+    );
+    await this.ghiLog({
+      nguoiDungId: userId || 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien_cap_cao',
+      hanhDong: 'CAP_NHAT_PHONG_KHAM',
+      loaiNhatKy: LoaiNhatKy.INFO,
+      moTa: `Cập nhật phòng khám: "${dto.tenPhong.trim()}" (ID: ${id})`,
+    });
+    return { message: 'Cập nhật phòng khám thành công' };
+  }
+
+  async doiTrangThaiPhongKham(id: number, trangThai: string, userId?: number) {
+    const [existing] = await this.nguoiDungRepo.query('SELECT id, ten_phong FROM phong_kham WHERE id = ?', [id]);
+    if (!existing) throw new NotFoundException('Không tìm thấy phòng khám');
+
+    await this.nguoiDungRepo.query('UPDATE phong_kham SET trang_thai = ? WHERE id = ?', [trangThai, id]);
+    await this.ghiLog({
+      nguoiDungId: userId || 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien_cap_cao',
+      hanhDong: 'DOI_TRANG_THAI_PHONG_KHAM',
+      loaiNhatKy: LoaiNhatKy.INFO,
+      moTa: `Đổi trạng thái phòng khám "${existing.ten_phong}" thành "${trangThai}"`,
+    });
+    return { message: 'Đổi trạng thái phòng khám thành công' };
+  }
+
+  async xoaPhongKham(id: number, userId?: number) {
+    const [existing] = await this.nguoiDungRepo.query('SELECT id, ten_phong FROM phong_kham WHERE id = ?', [id]);
+    if (!existing) throw new NotFoundException('Không tìm thấy phòng khám');
+
+    const [{ cntLH }] = await this.nguoiDungRepo.query('SELECT COUNT(*) AS cntLH FROM lich_hen WHERE phong_kham_id = ?', [id]);
+    const [{ cntTN }] = await this.nguoiDungRepo.query('SELECT COUNT(*) AS cntTN FROM luot_tiep_nhan WHERE phong_kham_id = ?', [id]);
+
+    if (Number(cntLH) > 0 || Number(cntTN) > 0) {
+      await this.nguoiDungRepo.query('UPDATE phong_kham SET trang_thai = "dong_cua" WHERE id = ?', [id]);
+      return {
+        message: `Phòng khám "${existing.ten_phong}" đã có lịch sử khám (${cntLH} lịch hẹn, ${cntTN} lượt tiếp nhận). Hệ thống đã chuyển trạng thái sang "Đóng cửa" để bảo toàn lịch sử y tế.`,
+      };
+    }
+
+    await this.nguoiDungRepo.query('DELETE FROM phong_kham WHERE id = ?', [id]);
+    await this.ghiLog({
+      nguoiDungId: userId || 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien_cap_cao',
+      hanhDong: 'XOA_PHONG_KHAM',
+      loaiNhatKy: LoaiNhatKy.WARNING,
+      moTa: `Xóa phòng khám: "${existing.ten_phong}" (ID: ${id})`,
+    });
+    return { message: 'Đã xóa phòng khám thành công' };
+  }
+
+  // ─── ADMIN: THÔNG TIN BỆNH VIỆN & CƠ SỞ Y TẾ ──────────────────
+  async getThongTinBenhVien() {
+    const defaultData = {
+      tenBenhVien: 'PHÒNG KHÁM ĐA KHOA',
+      slogan: 'TRUNG TÂM Y KHOA CHẤT LƯỢNG CAO',
+      moTa: 'Cơ sở khám chữa bệnh đa khoa kỹ thuật cao, đáp ứng các tiêu chuẩn y tế nghiêm ngặt của Bộ Y Tế.',
+      soGiayPhep: 'Giấy phép hoạt động số 08922/BYT-GPHĐ',
+      diaChi: '123 Nguyễn Văn Cừ, Quận 5, TP.HCM',
+      tongDai: '1900 8888',
+      gioLamViec: '07:00 – 20:00 (Thứ 2 - CN)',
+      email: 'hotro@phongkhamdakhoa.vn',
+      tieuDeCapCuu: 'CẤP CỨU 24/24',
+      hotlineCapCuu: '1900 8888',
+      khauHieuCapCuu: 'Luôn sẵn sàng tiếp nhận & xử trí y tế',
+      dichVuNoiBat: [
+        'Khám bệnh Nội tổng quát & Tim mạch',
+        'Khám Tai Mũi Họng & Nội soi',
+        'Khám Nhi khoa & Dinh dưỡng',
+        'Chẩn đoán hình ảnh & Xét nghiệm Laser',
+        'Khám tư vấn từ xa (Telehealth)',
+      ],
+      banQuyen: '© 2026 Hệ Thống Quản Lý Phòng Khám Đa Khoa. Bản quyền thuộc về Phòng Khám Đa Khoa.',
+    };
+
+    const rows = await this.nguoiDungRepo.query(
+      'SELECT gia_tri FROM cai_dat_he_thong WHERE khoa_cai_dat = "THONG_TIN_BENH_VIEN" LIMIT 1',
+    );
+    if (!rows || rows.length === 0 || !rows[0].gia_tri) {
+      return defaultData;
+    }
+    const val = typeof rows[0].gia_tri === 'string' ? JSON.parse(rows[0].gia_tri) : rows[0].gia_tri;
+    return { ...defaultData, ...val };
+  }
+
+  async capNhatThongTinBenhVien(dto: any, userId?: number) {
+    const existing = await this.nguoiDungRepo.query(
+      'SELECT id FROM cai_dat_he_thong WHERE khoa_cai_dat = "THONG_TIN_BENH_VIEN" LIMIT 1',
+    );
+    const jsonStr = JSON.stringify(dto);
+    if (existing && existing.length > 0) {
+      await this.nguoiDungRepo.query(
+        'UPDATE cai_dat_he_thong SET gia_tri = ?, cap_nhat_luc = NOW() WHERE khoa_cai_dat = "THONG_TIN_BENH_VIEN"',
+        [jsonStr],
+      );
+    } else {
+      await this.nguoiDungRepo.query(
+        'INSERT INTO cai_dat_he_thong (khoa_cai_dat, gia_tri, ghi_chu, cap_nhat_luc) VALUES ("THONG_TIN_BENH_VIEN", ?, "Thông tin bệnh viện & liên hệ", NOW())',
+        [jsonStr],
+      );
+    }
+
+    await this.ghiLog({
+      nguoiDungId: userId || 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien_cap_cao',
+      hanhDong: 'CAP_NHAT_THONG_TIN_BENH_VIEN',
+      loaiNhatKy: LoaiNhatKy.INFO,
+      moTa: `Cập nhật thông tin bệnh viện / cơ sở y tế: "${dto.tenBenhVien || 'Phòng khám'}"`,
+    });
+
+    return {
+      message: 'Cập nhật thông tin bệnh viện thành công',
+      data: dto,
     };
   }
 
@@ -2984,6 +3591,400 @@ export class QuanLyService {
 
     return {
       message: 'Đã lưu ý kiến chỉ đạo của Ban Giám Đốc thành công',
+      data: saved,
+    };
+  }
+
+  // ==========================================
+  // QUẢN LÝ BẢNG GIÁ DỊCH VỤ KHÁM CHỮA BỆNH & CẬN LÂM SÀNG
+  // ==========================================
+
+  // 1. Lấy danh sách dịch vụ cho khách / bệnh nhân (Công khai)
+  async getBangGiaPublic(query?: { loai?: string; tuKhoa?: string }) {
+    const qb = this.dichVuRepo.createQueryBuilder('dv')
+      .where('dv.trang_thai = :status', { status: 'hoat_dong' });
+
+    if (query?.loai && query.loai !== 'tat_ca') {
+      qb.andWhere('dv.loai = :loai', { loai: query.loai });
+    }
+
+    if (query?.tuKhoa && query.tuKhoa.trim()) {
+      const keyword = `%${query.tuKhoa.trim()}%`;
+      qb.andWhere('(dv.ten_dich_vu LIKE :kw OR dv.ma_dich_vu LIKE :kw OR dv.bo_phan_thuc_hien LIKE :kw)', { kw: keyword });
+    }
+
+    qb.orderBy('CASE dv.loai WHEN "kham_benh" THEN 1 WHEN "xet_nghiem" THEN 2 WHEN "cdha" THEN 3 ELSE 4 END', 'ASC')
+      .addOrderBy('dv.gia', 'ASC');
+
+    const data = await qb.getMany();
+    return {
+      success: true,
+      total: data.length,
+      data,
+    };
+  }
+
+  // 2. Lấy danh sách đầy đủ cho Ban Giám Đốc / Quản trị viên (Kèm thống kê KPI)
+  async getDanhSachDichVuQuanLy(query?: { loai?: string; trangThai?: string; tuKhoa?: string }) {
+    const qb = this.dichVuRepo.createQueryBuilder('dv');
+
+    if (query?.loai && query.loai !== 'tat_ca') {
+      qb.andWhere('dv.loai = :loai', { loai: query.loai });
+    }
+
+    if (query?.trangThai && query.trangThai !== 'tat_ca') {
+      qb.andWhere('dv.trang_thai = :trangThai', { trangThai: query.trangThai });
+    }
+
+    if (query?.tuKhoa && query.tuKhoa.trim()) {
+      const keyword = `%${query.tuKhoa.trim()}%`;
+      qb.andWhere('(dv.ten_dich_vu LIKE :kw OR dv.ma_dich_vu LIKE :kw OR dv.bo_phan_thuc_hien LIKE :kw)', { kw: keyword });
+    }
+
+    qb.orderBy('dv.id', 'DESC');
+    const items = await qb.getMany();
+
+    // Thống kê nhanh KPI cho Ban Giám Đốc
+    const all = await this.dichVuRepo.find();
+    const stats = {
+      tongDichVu: all.length,
+      hoatDong: all.filter(x => x.trangThai === 'hoat_dong').length,
+      tamNgung: all.filter(x => x.trangThai === 'ngung').length,
+      khamBenh: all.filter(x => x.loai === 'kham_benh').length,
+      xetNghiem: all.filter(x => x.loai === 'xet_nghiem').length,
+      cdha: all.filter(x => x.loai === 'cdha').length,
+      khac: all.filter(x => x.loai === 'khac').length,
+      giaThapNhat: all.length > 0 ? Math.min(...all.map(x => Number(x.gia) || 0)) : 0,
+      giaCaoNhat: all.length > 0 ? Math.max(...all.map(x => Number(x.gia) || 0)) : 0,
+    };
+
+    return {
+      success: true,
+      stats,
+      total: items.length,
+      data: items,
+    };
+  }
+
+  // 3. Tạo mới dịch vụ khám / cận lâm sàng
+  async taoDichVuKhamChuaBenh(userId: number, dto: {
+    maDichVu: string;
+    tenDichVu: string;
+    loai: string;
+    gia: number;
+    donViKetQua?: string;
+    giaTriBinhThuong?: string;
+    boPhanThucHien?: string;
+    mauBenhPham?: string;
+    moTa?: string;
+    trangThai?: string;
+  }) {
+    if (!dto.maDichVu || !dto.tenDichVu || dto.gia === undefined || dto.gia === null) {
+      throw new BadRequestException('Mã dịch vụ, tên dịch vụ và giá là bắt buộc');
+    }
+
+    const tonTai = await this.dichVuRepo.findOneBy({ maDichVu: dto.maDichVu.trim().toUpperCase() });
+    if (tonTai) {
+      throw new ConflictException(`Mã dịch vụ "${dto.maDichVu.trim().toUpperCase()}" đã tồn tại trong hệ thống`);
+    }
+
+    const dv = this.dichVuRepo.create({
+      maDichVu: dto.maDichVu.trim().toUpperCase(),
+      tenDichVu: dto.tenDichVu.trim(),
+      loai: dto.loai || 'kham_benh',
+      gia: Number(dto.gia) || 0,
+      donViKetQua: dto.donViKetQua?.trim() || null,
+      giaTriBinhThuong: dto.giaTriBinhThuong?.trim() || null,
+      boPhanThucHien: dto.boPhanThucHien?.trim() || null,
+      mauBenhPham: dto.mauBenhPham?.trim() || null,
+      moTa: dto.moTa?.trim() || null,
+      trangThai: dto.trangThai || 'hoat_dong',
+    });
+
+    const saved = await this.dichVuRepo.save(dv);
+
+    // Ghi nhật ký hệ thống
+    const user = await this.nguoiDungRepo.findOneBy({ id: userId });
+    await this.nhatKyRepo.save(
+      this.nhatKyRepo.create({
+        nguoiDungId: userId,
+        tenNguoiDung: user?.tenDangNhap || 'Ban Giám Đốc',
+        vaiTro: 'ban_giam_doc',
+        hanhDong: 'TAO_DICH_VU_KHAM_CHUA_BENH',
+        loaiNhatKy: LoaiNhatKy.INFO,
+        moTa: `Thêm dịch vụ "${saved.tenDichVu}" (${saved.maDichVu}) - Đơn giá: ${new Intl.NumberFormat('vi-VN').format(saved.gia)} VNĐ`,
+        diaChiIp: '127.0.0.1',
+      }),
+    );
+
+    return {
+      message: 'Thêm mới dịch vụ thành công',
+      data: saved,
+    };
+  }
+
+  // 4. Cập nhật thông tin và đơn giá dịch vụ
+  async capNhatDichVuKhamChuaBenh(id: number, userId: number, dto: Partial<{
+    tenDichVu: string;
+    loai: string;
+    gia: number;
+    donViKetQua: string;
+    giaTriBinhThuong: string;
+    boPhanThucHien: string;
+    mauBenhPham: string;
+    moTa: string;
+    trangThai: string;
+  }>) {
+    const dv = await this.dichVuRepo.findOneBy({ id });
+    if (!dv) {
+      throw new NotFoundException(`Không tìm thấy dịch vụ với ID ${id}`);
+    }
+
+    const giaCu = dv.gia;
+    if (dto.tenDichVu !== undefined) dv.tenDichVu = dto.tenDichVu.trim();
+    if (dto.loai !== undefined) dv.loai = dto.loai;
+    if (dto.gia !== undefined) dv.gia = Number(dto.gia) || 0;
+    if (dto.donViKetQua !== undefined) dv.donViKetQua = dto.donViKetQua?.trim() || null;
+    if (dto.giaTriBinhThuong !== undefined) dv.giaTriBinhThuong = dto.giaTriBinhThuong?.trim() || null;
+    if (dto.boPhanThucHien !== undefined) dv.boPhanThucHien = dto.boPhanThucHien?.trim() || null;
+    if (dto.mauBenhPham !== undefined) dv.mauBenhPham = dto.mauBenhPham?.trim() || null;
+    if (dto.moTa !== undefined) dv.moTa = dto.moTa?.trim() || null;
+    if (dto.trangThai !== undefined) dv.trangThai = dto.trangThai;
+
+    const saved = await this.dichVuRepo.save(dv);
+
+    // Tự động đồng bộ sang cấu hình tiền cọc nếu điều chỉnh dịch vụ khám chính
+    try {
+      if (saved.maDichVu === 'KB002' || saved.maDichVu === 'KB001') {
+        const hinhThucTarget = saved.maDichVu === 'KB002' ? 'truc_tuyen' : 'truc_tiep';
+        const cocItem = await this.tienCocRepo.findOneBy({ loaiHinhThuc: hinhThucTarget });
+        if (cocItem) {
+          cocItem.phiKhamMacDinh = Number(saved.gia);
+          cocItem.soTienCoc = Math.round((cocItem.phiKhamMacDinh * cocItem.phanTramCoc) / 100);
+          await this.tienCocRepo.save(cocItem);
+        }
+      }
+    } catch (errSync) {
+      console.error('Lỗi tự động đồng bộ tiền cọc khi sửa giá khám:', errSync);
+    }
+
+    // Ghi nhật ký hệ thống
+    const user = await this.nguoiDungRepo.findOneBy({ id: userId });
+    await this.nhatKyRepo.save(
+      this.nhatKyRepo.create({
+        nguoiDungId: userId,
+        tenNguoiDung: user?.tenDangNhap || 'Ban Giám Đốc',
+        vaiTro: 'ban_giam_doc',
+        hanhDong: 'CAP_NHAT_BANG_GIA_DICH_VU',
+        loaiNhatKy: LoaiNhatKy.INFO,
+        moTa: `Cập nhật dịch vụ "${saved.tenDichVu}" (${saved.maDichVu}). Giá cũ: ${new Intl.NumberFormat('vi-VN').format(giaCu)}đ -> Giá mới: ${new Intl.NumberFormat('vi-VN').format(saved.gia)}đ`,
+        diaChiIp: '127.0.0.1',
+      }),
+    );
+
+    return {
+      message: 'Cập nhật bảng giá dịch vụ thành công',
+      data: saved,
+    };
+  }
+
+  // 5. Bật / Tắt trạng thái hoạt động dịch vụ
+  async toggleTrangThaiDichVu(id: number, userId: number, trangThai?: string) {
+    const dv = await this.dichVuRepo.findOneBy({ id });
+    if (!dv) {
+      throw new NotFoundException(`Không tìm thấy dịch vụ với ID ${id}`);
+    }
+
+    dv.trangThai = trangThai || (dv.trangThai === 'hoat_dong' ? 'ngung' : 'hoat_dong');
+    const saved = await this.dichVuRepo.save(dv);
+
+    const user = await this.nguoiDungRepo.findOneBy({ id: userId });
+    await this.nhatKyRepo.save(
+      this.nhatKyRepo.create({
+        nguoiDungId: userId,
+        tenNguoiDung: user?.tenDangNhap || 'Ban Giám Đốc',
+        vaiTro: 'ban_giam_doc',
+        hanhDong: 'DOI_TRANG_THAI_DICH_VU',
+        loaiNhatKy: LoaiNhatKy.INFO,
+        moTa: `Đổi trạng thái dịch vụ "${saved.tenDichVu}" (${saved.maDichVu}) thành: ${saved.trangThai === 'hoat_dong' ? 'Hoạt động' : 'Tạm ngừng'}`,
+        diaChiIp: '127.0.0.1',
+      }),
+    );
+
+    return {
+      message: `Đã ${saved.trangThai === 'hoat_dong' ? 'kích hoạt' : 'tạm ngừng'} dịch vụ thành công`,
+      data: saved,
+    };
+  }
+
+  // 6. Xóa dịch vụ
+  async xoaDichVuKhamChuaBenh(id: number, userId: number) {
+    const dv = await this.dichVuRepo.findOneBy({ id });
+    if (!dv) {
+      throw new NotFoundException(`Không tìm thấy dịch vụ với ID ${id}`);
+    }
+
+    // Kiểm tra xem dịch vụ đã có chỉ định cận lâm sàng chưa
+    const daChiDinh = await this.clsRepo.count({ where: { dichVuXetNghiemId: id } });
+    if (daChiDinh > 0) {
+      // Nếu đã có chỉ định thực tế, tự động chuyển sang tạm ngừng để bảo toàn hồ sơ bệnh án
+      dv.trangThai = 'ngung';
+      await this.dichVuRepo.save(dv);
+      return {
+        message: `Dịch vụ đã phát sinh ${daChiDinh} lượt chỉ định trong hồ sơ y tế nên hệ thống đã tự động chuyển trạng thái sang "Tạm ngừng" để bảo toàn lịch sử dữ liệu.`,
+        data: dv,
+      };
+    }
+
+    await this.dichVuRepo.delete(id);
+
+    const user = await this.nguoiDungRepo.findOneBy({ id: userId });
+    await this.nhatKyRepo.save(
+      this.nhatKyRepo.create({
+        nguoiDungId: userId,
+        tenNguoiDung: user?.tenDangNhap || 'Ban Giám Đốc',
+        vaiTro: 'ban_giam_doc',
+        hanhDong: 'XOA_DICH_VU_KHAM_CHUA_BENH',
+        loaiNhatKy: LoaiNhatKy.WARNING,
+        moTa: `Xóa dịch vụ "${dv.tenDichVu}" (${dv.maDichVu})`,
+        diaChiIp: '127.0.0.1',
+      }),
+    );
+
+    return {
+      message: 'Đã xóa dịch vụ thành công',
+      data: { id },
+    };
+  }
+
+  // ==========================================
+  // QUẢN LÝ TIỀN CỌC & CHÍNH SÁCH ĐẶT LỊCH TRƯỚC
+  // ==========================================
+
+  // 1. Lấy thông tin cấu hình tiền cọc công khai (Cho Bệnh nhân & Khách vãng lai xem khi đặt lịch)
+  async getCauHinhTienCocPublic() {
+    let items = await this.tienCocRepo.find();
+    if (!items || items.length === 0) {
+      // Tự động khởi tạo nếu chưa có bản ghi
+      await this.tienCocRepo.save([
+        {
+          loaiHinhThuc: 'truc_tiep',
+          tenHinhThuc: 'Đặt lịch khám trực tiếp tại phòng khám',
+          phiKhamMacDinh: 200000,
+          phanTramCoc: 20,
+          soTienCoc: 40000,
+          thoiGianHuyHoanCocGio: 2,
+          phanTramHoanCoc: 100,
+          choPhepDatTruocNgayMin: 1,
+          choPhepDatTruocNgayMax: 30,
+          apDungTuDong: true,
+          moTa: 'Bệnh nhân tạm ứng 20% tiền khám (40.000đ) để giữ chỗ và phân bổ bác sĩ theo khung giờ hẹn.',
+          ghiChuHoanCoc: 'Hủy lịch trước > 2 tiếng: Tự động hoàn lại 100% tiền cọc. Hủy dưới 2 tiếng hoặc vắng mặt không hoàn cọc.',
+        },
+        {
+          loaiHinhThuc: 'truc_tuyen',
+          tenHinhThuc: 'Tư vấn khám bệnh từ xa Telehealth (Video Call 1-1)',
+          phiKhamMacDinh: 200000,
+          phanTramCoc: 100,
+          soTienCoc: 200000,
+          thoiGianHuyHoanCocGio: 24,
+          phanTramHoanCoc: 100,
+          choPhepDatTruocNgayMin: 1,
+          choPhepDatTruocNgayMax: 30,
+          apDungTuDong: true,
+          moTa: 'Thanh toán 100% chi phí tư vấn Telehealth để bác sĩ hội chẩn và mở phòng họp trực tuyến.',
+          ghiChuHoanCoc: 'Hủy lịch trước > 24 tiếng: Hoàn trả 100% phí tư vấn. Hủy trong vòng 24 tiếng được hoàn 50% hoặc bảo lưu lịch hẹn.',
+        },
+      ]);
+      items = await this.tienCocRepo.find();
+    }
+    return {
+      message: 'Lấy cấu hình tiền cọc thành công',
+      data: items,
+    };
+  }
+
+  // 2. Ban Giám Đốc lấy danh sách cấu hình tiền cọc
+  async getDanhSachCauHinhTienCoc() {
+    return this.getCauHinhTienCocPublic();
+  }
+
+  // 3. Ban Giám Đốc cập nhật mức tiền cọc & chính sách hoàn cọc
+  async capNhatCauHinhTienCoc(id: number, userId: number, dto: Partial<{
+    tenHinhThuc: string;
+    phiKhamMacDinh: number;
+    phanTramCoc: number;
+    soTienCoc: number;
+    thoiGianHuyHoanCocGio: number;
+    phanTramHoanCoc: number;
+    choPhepDatTruocNgayMin: number;
+    choPhepDatTruocNgayMax: number;
+    apDungTuDong: boolean;
+    moTa: string;
+    ghiChuHoanCoc: string;
+  }>) {
+    const item = await this.tienCocRepo.findOneBy({ id });
+    if (!item) {
+      throw new NotFoundException(`Không tìm thấy cấu hình tiền cọc ID ${id}`);
+    }
+
+    const giaCu = item.soTienCoc;
+
+    if (dto.tenHinhThuc !== undefined) item.tenHinhThuc = dto.tenHinhThuc.trim();
+    if (dto.phiKhamMacDinh !== undefined) item.phiKhamMacDinh = Number(dto.phiKhamMacDinh) || 0;
+    if (dto.phanTramCoc !== undefined) item.phanTramCoc = Number(dto.phanTramCoc) || 0;
+    
+    // Tự động tính số tiền cọc theo phần trăm nếu không nhập số tiền cụ thể
+    if (dto.soTienCoc !== undefined) {
+      item.soTienCoc = Number(dto.soTienCoc) || 0;
+    } else if (dto.phanTramCoc !== undefined && item.phiKhamMacDinh > 0) {
+      item.soTienCoc = Math.round((item.phiKhamMacDinh * item.phanTramCoc) / 100);
+    }
+
+    if (dto.thoiGianHuyHoanCocGio !== undefined) item.thoiGianHuyHoanCocGio = Number(dto.thoiGianHuyHoanCocGio) || 0;
+    if (dto.phanTramHoanCoc !== undefined) item.phanTramHoanCoc = Number(dto.phanTramHoanCoc) || 0;
+    if (dto.choPhepDatTruocNgayMin !== undefined) {
+      const val = Number(dto.choPhepDatTruocNgayMin);
+      item.choPhepDatTruocNgayMin = Number.isNaN(val) ? 0 : Math.max(0, val);
+    }
+    if (dto.choPhepDatTruocNgayMax !== undefined) {
+      const val = Number(dto.choPhepDatTruocNgayMax);
+      item.choPhepDatTruocNgayMax = Number.isNaN(val) ? 30 : Math.max(1, val);
+    }
+    if (dto.apDungTuDong !== undefined) item.apDungTuDong = Boolean(dto.apDungTuDong);
+    if (dto.moTa !== undefined) item.moTa = dto.moTa?.trim() || null;
+    if (dto.ghiChuHoanCoc !== undefined) item.ghiChuHoanCoc = dto.ghiChuHoanCoc?.trim() || null;
+
+    const saved = await this.tienCocRepo.save(item);
+
+    // Tự động đồng bộ ngược sang bảng giá dịch vụ
+    try {
+      const maDvTarget = saved.loaiHinhThuc === 'truc_tuyen' ? 'KB002' : 'KB001';
+      const dv = await this.dichVuRepo.findOneBy({ maDichVu: maDvTarget });
+      if (dv && saved.phiKhamMacDinh > 0) {
+        dv.gia = saved.phiKhamMacDinh;
+        await this.dichVuRepo.save(dv);
+      }
+    } catch (errSync) {
+      console.error('Lỗi tự động đồng bộ sang bảng giá dịch vụ:', errSync);
+    }
+
+    // Ghi nhật ký kiểm toán hệ thống
+    const user = await this.nguoiDungRepo.findOneBy({ id: userId });
+    await this.nhatKyRepo.save(
+      this.nhatKyRepo.create({
+        nguoiDungId: userId,
+        tenNguoiDung: user?.tenDangNhap || 'Ban Giám Đốc',
+        vaiTro: 'ban_giam_doc',
+        hanhDong: 'CAP_NHAT_CAU_HINH_TIEN_COC',
+        loaiNhatKy: LoaiNhatKy.INFO,
+        moTa: `Điều chỉnh cấu hình tiền cọc "${saved.tenHinhThuc}" (${saved.loaiHinhThuc}): Cọc cũ ${new Intl.NumberFormat('vi-VN').format(giaCu)}đ -> Cọc mới: ${new Intl.NumberFormat('vi-VN').format(saved.soTienCoc)}đ (${saved.phanTramCoc}% phí khám)`,
+        diaChiIp: '127.0.0.1',
+      }),
+    );
+
+    return {
+      message: 'Cập nhật cấu hình bảng giá tiền cọc thành công',
       data: saved,
     };
   }

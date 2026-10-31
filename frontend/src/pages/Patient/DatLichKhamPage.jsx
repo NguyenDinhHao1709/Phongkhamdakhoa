@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import {
@@ -32,16 +32,6 @@ export default function DatLichKhamPage() {
   const initialDoiTuong = searchParams.get('doiTuong') === 'nguoi_khac' ? 'nguoi_khac' : 'cho_toi';
   const [doiTuong, setDoiTuong] = useState(initialDoiTuong);
 
-  // Quy định: Đặt trước từ 2 đến 7 ngày tính từ ngày hiện tại
-  const today = new Date();
-  const minDateObj = new Date(today);
-  minDateObj.setDate(minDateObj.getDate() + 2); // Tối thiểu 2 ngày
-  const minDate = minDateObj.toISOString().split('T')[0];
-
-  const maxDateObj = new Date(today);
-  maxDateObj.setDate(maxDateObj.getDate() + 7); // Tối đa 7 ngày
-  const maxDate = maxDateObj.toISOString().split('T')[0];
-
   const [myAppointments, setMyAppointments] = useState([]);
   const [doctorsOnDate, setDoctorsOnDate] = useState([]);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
@@ -56,6 +46,49 @@ export default function DatLichKhamPage() {
   const [ticketModalData, setTicketModalData] = useState({ isOpen: false, appointment: null });
   const [paidMsg, setPaidMsg] = useState('');
   const [cancelledMsg, setCancelledMsg] = useState('');
+  const [cauHinhTienCoc, setCauHinhTienCoc] = useState([]);
+
+  // Nạp cấu hình bảng giá & tiền cọc động do Ban Giám Đốc thiết lập
+  useEffect(() => {
+    const fetchTienCoc = async () => {
+      try {
+        const res = await apiGet('/quan-ly/cau-hinh-tien-coc');
+        const raw = res?.data?.data || res?.data || res;
+        const items = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : []);
+        if (items.length > 0) {
+          setCauHinhTienCoc(items);
+        }
+      } catch (err) {
+        console.error('Lỗi nạp cấu hình tiền cọc:', err);
+      }
+    };
+    fetchTienCoc();
+  }, []);
+
+  // Cấu hình linh hoạt theo từng hình thức (Trực tiếp vs Trực tuyến) do Giám đốc thiết lập
+  const activeConfig = useMemo(() => {
+    return cauHinhTienCoc.find((x) => x.loaiHinhThuc === hinhThuc) || null;
+  }, [cauHinhTienCoc, hinhThuc]);
+
+  const minDays = activeConfig?.choPhepDatTruocNgayMin !== undefined && activeConfig?.choPhepDatTruocNgayMin !== null
+    ? Number(activeConfig.choPhepDatTruocNgayMin)
+    : (hinhThuc === 'truc_tuyen' ? 0 : 1);
+
+  const maxDays = activeConfig?.choPhepDatTruocNgayMax !== undefined && activeConfig?.choPhepDatTruocNgayMax !== null
+    ? Number(activeConfig.choPhepDatTruocNgayMax)
+    : 7;
+
+  const minDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + minDays);
+    return d.toISOString().split('T')[0];
+  }, [minDays]);
+
+  const maxDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + maxDays);
+    return d.toISOString().split('T')[0];
+  }, [maxDays]);
 
   const { register, handleSubmit, reset, watch, setValue } = useForm({
     defaultValues: {
@@ -66,7 +99,7 @@ export default function DatLichKhamPage() {
       moiQuanHe: 'Bố/Mẹ',
       chuyenKhoa: CHUYEN_KHOA_LIST[0],
       bacSiId: '',
-      ngayHen: minDate, // mặc định ngày sớm nhất (hôm nay + 2 ngày)
+      ngayHen: minDate,
       lyDoKham: '',
     },
   });
@@ -74,6 +107,13 @@ export default function DatLichKhamPage() {
   const selectedChuyenKhoa = watch('chuyenKhoa');
   const selectedNgayHen = watch('ngayHen');
   const selectedBacSiId = watch('bacSiId');
+
+  // Tự động đồng bộ ngày hẹn khi đổi hình thức hoặc khi cấu hình Giám đốc tải về
+  useEffect(() => {
+    if (!selectedNgayHen || selectedNgayHen < minDate || selectedNgayHen > maxDate) {
+      setValue('ngayHen', minDate);
+    }
+  }, [minDate, maxDate, selectedNgayHen, setValue]);
 
   useEffect(() => {
     const dt = searchParams.get('doiTuong');
@@ -233,11 +273,17 @@ export default function DatLichKhamPage() {
       const lichHenId = res.data?.id || res.data?.lichHenId;
       const maLichHen = res.data?.maLichHen || 'LH2026';
 
-      // Mở modal đếm ngược thanh toán (200k nếu online, 40k nếu trực tiếp)
+      const cfgOnline = cauHinhTienCoc.find(x => x.loaiHinhThuc === 'truc_tuyen');
+      const cfgTT = cauHinhTienCoc.find(x => x.loaiHinhThuc === 'truc_tiep');
+      const soTienThanhToan = hinhThuc === 'truc_tuyen'
+        ? Number(cfgOnline?.soTienCoc || 251000)
+        : Number(cfgTT?.soTienCoc || 40000);
+
+      // Mở modal đếm ngược thanh toán theo đúng biểu phí cấu hình động
       setPaymentModal({
         lichHenId,
         maLichHen,
-        soTien: hinhThuc === 'truc_tuyen' ? 200000 : 40000,
+        soTien: soTienThanhToan,
         isTelehealth: hinhThuc === 'truc_tuyen',
       });
       fetchMyAppointments();
@@ -255,7 +301,13 @@ export default function DatLichKhamPage() {
         <PaymentCountdownModal
           lichHenId={paymentModal.lichHenId}
           maLichHen={paymentModal.maLichHen}
-          soTien={paymentModal.soTien || (hinhThuc === 'truc_tuyen' ? 200000 : 40000)}
+          soTien={
+            paymentModal.soTien || (
+              hinhThuc === 'truc_tuyen'
+                ? Number(cauHinhTienCoc.find(x => x.loaiHinhThuc === 'truc_tuyen')?.soTienCoc || 251000)
+                : Number(cauHinhTienCoc.find(x => x.loaiHinhThuc === 'truc_tiep')?.soTienCoc || 40000)
+            )
+          }
           title={
             (paymentModal.isTelehealth ?? (hinhThuc === 'truc_tuyen'))
               ? 'Thanh toán phí tư vấn trực tuyến (Telehealth)'
@@ -265,10 +317,11 @@ export default function DatLichKhamPage() {
           onPaid={async () => {
             const res = await apiPost(`/lich-hen/${paymentModal.lichHenId}/xac-nhan-thanh-toan`);
             setPaymentModal(null);
-            // Mở modal Phiếu Hẹn Khám Điện Tử có QR code
+            // Mở modal Phiếu Hẹn Khám Điện Tử / Xác nhận đặt lịch
             setTicketModalData({
               isOpen: true,
-              appointment: res.data || {
+              appointment: {
+                ...(res.data || {}),
                 id: paymentModal.lichHenId,
                 maLichHen: paymentModal.maLichHen,
                 soThuTu: res.data?.soThuTu || 'A001',
@@ -277,7 +330,9 @@ export default function DatLichKhamPage() {
                 chuyenKhoa: selectedChuyenKhoa,
                 bacSi: selectedDoctor,
                 phongKham: selectedDoctor?.phongKham,
-                benhNhan: { hoTen: user?.hoTen || 'Bệnh nhân' },
+                benhNhan: res.data?.benhNhan || { hoTen: user?.hoTen || 'Bệnh nhân', soDienThoai: user?.soDienThoai },
+                hinhThuc: hinhThuc,
+                soTienThanhToan: paymentModal.soTien || res.data?.soTienThanhToan,
               },
             });
             fetchMyAppointments();
@@ -312,7 +367,9 @@ export default function DatLichKhamPage() {
             </div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-[11px] sm:text-xs font-bold w-fit">
               <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-600" />
-              <span>Đặt trước 2 đến 7 ngày</span>
+              <span>
+                {minDays === 0 ? `Đặt trước 0 - ${maxDays} ngày (Từ hôm nay)` : `Đặt trước ${minDays} - ${maxDays} ngày`}
+              </span>
             </div>
           </div>
         </div>
@@ -529,7 +586,7 @@ export default function DatLichKhamPage() {
               </p>
             </div>
 
-            {/* Bước 2: Chọn Ngày Khám (2 - 7 ngày) */}
+            {/* Bước 2: Chọn Ngày Khám */}
             <div>
               <label className="block text-xs font-bold text-gray-900 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
@@ -537,7 +594,7 @@ export default function DatLichKhamPage() {
                   <span>2. Chọn Ngày Khám *</span>
                 </span>
                 <span className="text-[10px] sm:text-[11px] font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                  Đặt trước 2 - 7 ngày
+                  {minDays === 0 ? `Đặt trước 0 - ${maxDays} ngày` : `Đặt trước ${minDays} - ${maxDays} ngày`}
                 </span>
               </label>
               <input
@@ -575,7 +632,7 @@ export default function DatLichKhamPage() {
                 <AlertCircle className="h-6 w-6 sm:h-8 sm:w-8 text-amber-600 mx-auto" />
                 <p className="text-xs sm:text-sm font-bold">Chưa có lịch trực cho chuyên khoa {selectedChuyenKhoa} vào ngày {selectedNgayHen}</p>
                 <p className="text-[11px] sm:text-xs text-amber-800">
-                  Quý khách vui lòng chọn ngày khám khác trong khoảng từ 2 đến 7 ngày tới, hoặc chọn chuyên khoa khác.
+                  Quý khách vui lòng chọn ngày khám khác trong khoảng từ {minDays === 0 ? 'hôm nay' : `${minDays} ngày tới`} đến {maxDays} ngày tới, hoặc chọn chuyên khoa khác.
                 </p>
               </div>
             ) : (
@@ -764,7 +821,7 @@ export default function DatLichKhamPage() {
                                 ? 'bg-white text-blue-700 border border-blue-300 hover:border-blue-600 hover:bg-blue-50 shadow-2xs cursor-pointer'
                                 : 'bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-45 cursor-not-allowed'
                             }`}
-                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : 'Ca này đã kín lịch hoặc ngoài ca trực'}
+                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : slot.daQuaGio ? 'Khung giờ khám này đã qua so với thời điểm hiện tại' : slot.daDat ? 'Đã kín lịch' : 'Ngoài ca trực'}
                           >
                             <span className="text-xs sm:text-sm font-extrabold">{slot.gio}</span>
                             {isAvailable ? (
@@ -773,7 +830,7 @@ export default function DatLichKhamPage() {
                               </span>
                             ) : (
                               <span className="text-[9px] text-slate-400 font-normal">
-                                {slot.daDat ? 'Đã kín' : 'Ngoài ca'}
+                                {slot.daQuaGio ? 'Đã qua giờ' : slot.daDat ? 'Đã kín' : 'Ngoài ca'}
                               </span>
                             )}
                           </button>
@@ -807,7 +864,7 @@ export default function DatLichKhamPage() {
                                 ? 'bg-white text-blue-700 border border-blue-300 hover:border-blue-600 hover:bg-blue-50 shadow-2xs cursor-pointer'
                                 : 'bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-45 cursor-not-allowed'
                             }`}
-                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : 'Ca này đã kín lịch hoặc ngoài ca trực'}
+                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : slot.daQuaGio ? 'Khung giờ khám này đã qua so với thời điểm hiện tại' : slot.daDat ? 'Đã kín lịch' : 'Ngoài ca trực'}
                           >
                             <span className="text-xs sm:text-sm font-extrabold">{slot.gio}</span>
                             {isAvailable ? (
@@ -816,7 +873,7 @@ export default function DatLichKhamPage() {
                               </span>
                             ) : (
                               <span className="text-[9px] text-slate-400 font-normal">
-                                {slot.daDat ? 'Đã kín' : 'Ngoài ca'}
+                                {slot.daQuaGio ? 'Đã qua giờ' : slot.daDat ? 'Đã kín' : 'Ngoài ca'}
                               </span>
                             )}
                           </button>
@@ -841,58 +898,89 @@ export default function DatLichKhamPage() {
             />
           </div>
 
-          {/* ─── BẢNG QUY ĐỊNH & CHI PHÍ ─── */}
-          {hinhThuc === 'truc_tuyen' ? (
-            <div className="rounded-xl sm:rounded-2xl bg-indigo-50/80 p-3.5 sm:p-5 border border-indigo-200 space-y-2 text-xs text-gray-700">
-              <div className="flex items-center justify-between border-b border-indigo-200 pb-2.5">
-                <span className="font-extrabold text-gray-900 text-xs sm:text-sm flex items-center gap-1.5">
-                  <CreditCard className="h-4 w-4 text-indigo-600" /> Phí tư vấn trực tuyến (Telehealth):
-                </span>
-                <span className="text-indigo-700 font-black text-base sm:text-lg">200.000 đ</span>
-              </div>
-              <div className="space-y-1.5 leading-relaxed text-[11px] sm:text-xs">
-                <p>• Phí tư vấn online: <strong>200.000 đ</strong> (thanh toán 100% trước khi tham gia cuộc gọi video).</p>
-                <p>• <strong>Quy định hủy lịch:</strong> Hủy <strong>trước 24 tiếng</strong> được <strong>hoàn trả 100%</strong> phí tư vấn qua chuyển khoản.</p>
-                <p className="flex items-start gap-1 text-indigo-900 font-medium">
-                  <ShieldAlert className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0 mt-0.5" />
-                  <span>Thanh toán thành công sẽ cấp ngay <strong>Phòng khám Video trực tuyến</strong> cùng Bác sĩ đúng giờ hẹn.</span>
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-xl sm:rounded-2xl bg-blue-50/80 p-3.5 sm:p-5 border border-blue-200 space-y-2 text-xs text-gray-700">
-              <div className="flex items-center justify-between border-b border-blue-200 pb-2.5">
-                <span className="font-extrabold text-gray-900 text-xs sm:text-sm flex items-center gap-1.5">
-                  <CreditCard className="h-4 w-4 text-blue-600" /> Tạm ứng giữ chỗ (1/5 phí):
-                </span>
-                <span className="text-blue-700 font-black text-base sm:text-lg">40.000 đ</span>
-              </div>
-              <div className="space-y-1.5 leading-relaxed text-[11px] sm:text-xs">
-                <p>• Phí khám niêm yết: <strong>200.000 đ</strong>. Tạm ứng <strong>40.000 đ</strong> để xác nhận giữ chỗ.</p>
-                <p>• <strong>Quy định hủy lịch:</strong> Hủy <strong>trước 24 tiếng</strong> được <strong>hoàn trả 100%</strong> tiền tạm ứng qua VNPay/MoMo.</p>
-                <p className="flex items-start gap-1 text-blue-900 font-medium">
-                  <ShieldAlert className="h-3.5 w-3.5 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <span>Thanh toán thành công sẽ cấp ngay <strong>Phiếu hẹn điện tử kèm Mã QR Code</strong> và số thứ tự khám.</span>
-                </p>
-              </div>
-            </div>
-          )}
+          {/* ─── BẢNG QUY ĐỊNH & CHI PHÍ ĐỘNG THEO GIÁM ĐỐC ─── */}
+          {(() => {
+            const configOnline = cauHinhTienCoc.find(x => x.loaiHinhThuc === 'truc_tuyen') || {
+              phiKhamMacDinh: 251000,
+              phanTramCoc: 100,
+              soTienCoc: 251000,
+              thoiGianHuyHoanCocGio: 24,
+              phanTramHoanCoc: 100,
+              ghiChuHoanCoc: 'Hủy lịch trước > 24 tiếng: Hoàn trả 100% phí tư vấn qua chuyển khoản.',
+            };
 
-          {/* NÚT XÁC NHẬN ĐẶT LỊCH */}
-          <button
-            type="submit"
-            disabled={submitting || !selectedSlot}
-            className={`w-full ${hinhThuc === 'truc_tuyen' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-60 text-white py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm`}
-          >
-            {hinhThuc === 'truc_tuyen' ? <Video className="h-4 w-4 sm:h-5 sm:w-5" /> : <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />}
-            {submitting
-              ? 'Đang khởi tạo lịch hẹn...'
-              : !selectedSlot
-              ? 'Vui lòng chọn 1 ca khám còn trống ở trên'
-              : hinhThuc === 'truc_tuyen'
-              ? `Xác nhận & Thanh toán 200.000đ [${selectedSlot} ngày ${selectedNgayHen}]`
-              : `Xác nhận & Tạm ứng 40.000đ [${selectedSlot} ngày ${selectedNgayHen}]`}
-          </button>
+            const configTT = cauHinhTienCoc.find(x => x.loaiHinhThuc === 'truc_tiep') || {
+              phiKhamMacDinh: 200000,
+              phanTramCoc: 20,
+              soTienCoc: 40000,
+              thoiGianHuyHoanCocGio: 2,
+              phanTramHoanCoc: 100,
+              ghiChuHoanCoc: 'Hủy lịch trước > 2 tiếng: Tự động hoàn lại 100% tiền cọc. Hủy dưới 2 tiếng hoặc không đến khám sẽ không được hoàn cọc.',
+            };
+
+            const currentConfig = hinhThuc === 'truc_tuyen' ? configOnline : configTT;
+            const formatVND = (val) => new Intl.NumberFormat('vi-VN').format(Number(val) || 0) + ' đ';
+
+            return (
+              <>
+                {hinhThuc === 'truc_tuyen' ? (
+                  <div className="rounded-xl sm:rounded-2xl bg-indigo-50/80 p-3.5 sm:p-5 border border-indigo-200 space-y-2 text-xs text-gray-700">
+                    <div className="flex items-center justify-between border-b border-indigo-200 pb-2.5">
+                      <span className="font-extrabold text-gray-900 text-xs sm:text-sm flex items-center gap-1.5">
+                        <CreditCard className="h-4 w-4 text-indigo-600" /> Phí tư vấn trực tuyến (Telehealth):
+                      </span>
+                      <span className="text-indigo-700 font-black text-base sm:text-lg">
+                        {formatVND(currentConfig.soTienCoc)}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 leading-relaxed text-[11px] sm:text-xs">
+                      <p>• Phí tư vấn online: <strong>{formatVND(currentConfig.phiKhamMacDinh)}</strong> (thanh toán {currentConfig.phanTramCoc}% trước khi tham gia cuộc gọi video).</p>
+                      <p>• <strong>Quy định hủy lịch:</strong> {currentConfig.ghiChuHoanCoc || `Hủy trước ${currentConfig.thoiGianHuyHoanCocGio} tiếng được hoàn trả ${currentConfig.phanTramHoanCoc}% phí tư vấn.`}</p>
+                      <p className="flex items-start gap-1 text-indigo-900 font-medium">
+                        <ShieldAlert className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0 mt-0.5" />
+                        <span>Thanh toán thành công sẽ cấp ngay <strong>Phòng khám Video trực tuyến</strong> cùng Bác sĩ đúng giờ hẹn.</span>
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl sm:rounded-2xl bg-blue-50/80 p-3.5 sm:p-5 border border-blue-200 space-y-2 text-xs text-gray-700">
+                    <div className="flex items-center justify-between border-b border-blue-200 pb-2.5">
+                      <span className="font-extrabold text-gray-900 text-xs sm:text-sm flex items-center gap-1.5">
+                        <CreditCard className="h-4 w-4 text-blue-600" /> Tạm ứng giữ chỗ ({currentConfig.phanTramCoc}% phí):
+                      </span>
+                      <span className="text-blue-700 font-black text-base sm:text-lg">
+                        {formatVND(currentConfig.soTienCoc)}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 leading-relaxed text-[11px] sm:text-xs">
+                      <p>• Phí khám niêm yết: <strong>{formatVND(currentConfig.phiKhamMacDinh)}</strong>. Tạm ứng <strong>{formatVND(currentConfig.soTienCoc)}</strong> để xác nhận giữ chỗ.</p>
+                      <p>• <strong>Quy định hủy lịch:</strong> {currentConfig.ghiChuHoanCoc || `Hủy trước ${currentConfig.thoiGianHuyHoanCocGio} tiếng được hoàn lại ${currentConfig.phanTramHoanCoc}% tiền tạm ứng.`}</p>
+                      <p className="flex items-start gap-1 text-blue-900 font-medium">
+                        <ShieldAlert className="h-3.5 w-3.5 text-blue-600 flex-shrink-0 mt-0.5" />
+                        <span>Thanh toán thành công sẽ cấp ngay <strong>Phiếu hẹn điện tử kèm Mã QR Code</strong> và số thứ tự khám.</span>
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* NÚT XÁC NHẬN ĐẶT LỊCH */}
+                <button
+                  type="submit"
+                  disabled={submitting || !selectedSlot}
+                  className={`w-full ${hinhThuc === 'truc_tuyen' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-60 text-white py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm`}
+                >
+                  {hinhThuc === 'truc_tuyen' ? <Video className="h-4 w-4 sm:h-5 sm:w-5" /> : <Calendar className="h-4 w-4 sm:h-5 sm:w-5" />}
+                  {submitting
+                    ? 'Đang khởi tạo lịch hẹn...'
+                    : !selectedSlot
+                    ? 'Vui lòng chọn 1 ca khám còn trống ở trên'
+                    : hinhThuc === 'truc_tuyen'
+                    ? `Xác nhận & Thanh toán ${formatVND(currentConfig.soTienCoc)} [${selectedSlot} ngày ${selectedNgayHen}]`
+                    : `Xác nhận & Tạm ứng ${formatVND(currentConfig.soTienCoc)} [${selectedSlot} ngày ${selectedNgayHen}]`}
+                </button>
+              </>
+            );
+          })()}
         </form>
       </div>
     </>

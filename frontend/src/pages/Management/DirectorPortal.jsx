@@ -7,8 +7,10 @@ import XepLichLamViecPage from './XepLichLamViecPage';
 import TraCuuTongHopPage from './TraCuuTongHopPage';
 import DuyetYeuCauPage from './DuyetYeuCauPage';
 import QuanLyChamCongPage from './QuanLyChamCongPage';
+import QuanLyBangGiaDichVuPage from './QuanLyBangGiaDichVuPage';
 import BaoCaoBoPhanGiamDocPage from './BaoCaoBoPhanGiamDocPage';
 import ThongTinCaNhanPage from '../Receptionist/NhanVienShared/ThongTinCaNhanPage';
+import OfficeWorkspacePage from '../Receptionist/NhanVienShared/OfficeWorkspacePage';
 
 export default function DirectorPortal() {
   return (
@@ -16,6 +18,10 @@ export default function DirectorPortal() {
       <Routes>
         {/* UC 17: Dashboard tổng quan hoạt động */}
         <Route path="thong-ke" element={<DashboardGiamDocPage />} />
+        <Route path="office" element={<OfficeWorkspacePage />} />
+
+        {/* Quản lý biểu phí & Bảng giá dịch vụ khám chữa bệnh */}
+        <Route path="bang-gia-dich-vu" element={<QuanLyBangGiaDichVuPage />} />
 
         {/* UC 18: Báo cáo tài chính & doanh thu */}
         <Route path="tai-chinh" element={<BaoCaoTaiChinhPage />} />

@@ -73,6 +73,7 @@ export class CapNhatTrangThaiTiepNhanDto {
 
 import { DanhGiaCaKham } from '../danh-gia/entities/danh-gia.entity';
 import { QueueGateway } from './queue.gateway';
+import { ThongBaoService } from '../thong-bao/thong-bao.service';
 
 @Injectable()
 export class TiepNhanService implements OnModuleInit {
@@ -89,6 +90,7 @@ export class TiepNhanService implements OnModuleInit {
     @InjectRepository(DanhGiaCaKham) private danhGiaRepo: Repository<DanhGiaCaKham>,
     @InjectRepository(LichSuGoiKham) private lichSuGoiRepo: Repository<LichSuGoiKham>,
     private readonly queueGateway: QueueGateway,
+    private readonly thongBaoService: ThongBaoService,
   ) {}
 
   onModuleInit() {
@@ -576,6 +578,31 @@ export class TiepNhanService implements OnModuleInit {
       where: { id: saved.id },
       relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
     });
+
+    try {
+      const bacSiUserId = withRelations?.bacSi?.nhanVien?.nguoiDungId;
+      if (bacSiUserId) {
+        await this.thongBaoService.taoThongBao({
+          nguoiNhanId: bacSiUserId,
+          tieuDe: `Bệnh nhân mới vào hàng đợi: ${withRelations?.benhNhan?.hoTen}`,
+          noiDung: `Bệnh nhân ${withRelations?.benhNhan?.hoTen} (STT: ${withRelations?.maSoThuTu}) vừa được xếp vào danh sách khám của bạn.`,
+          loai: 'lich_kham',
+          doiTuongBang: 'luot_tiep_nhan',
+          doiTuongId: withRelations?.id,
+        });
+      }
+
+      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+        tieuDe: `Bệnh nhân tiếp nhận mới: ${withRelations?.benhNhan?.hoTen}`,
+        noiDung: `Bệnh nhân ${withRelations?.benhNhan?.hoTen} (STT: ${withRelations?.maSoThuTu}) vừa tiếp nhận chuyên khoa ${withRelations?.chuyenKhoa || ''}. Vui lòng kiểm tra và thu phí khám ban đầu tại quầy.`,
+        loai: 'can_thanh_toan',
+        doiTuongBang: 'luot_tiep_nhan',
+        doiTuongId: withRelations?.id,
+      });
+    } catch (err) {
+      console.warn('Lỗi gửi thông báo tiếp nhận createTaiQuay:', err?.message);
+    }
+
     return {
       data: withRelations,
       message: `Đã tiếp nhận trực tiếp. ${withRelations?.maSoThuTu} — ${withRelations?.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách'}.`,
@@ -618,6 +645,30 @@ export class TiepNhanService implements OnModuleInit {
       where: { id: saved.id },
       relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
     });
+
+    try {
+      const bacSiUserId = withRelations?.bacSi?.nhanVien?.nguoiDungId;
+      if (bacSiUserId) {
+        await this.thongBaoService.taoThongBao({
+          nguoiNhanId: bacSiUserId,
+          tieuDe: `Bệnh nhân mới vào hàng đợi: ${withRelations?.benhNhan?.hoTen}`,
+          noiDung: `Bệnh nhân ${withRelations?.benhNhan?.hoTen} (STT: ${withRelations?.maSoThuTu}) vừa được xếp vào danh sách khám.`,
+          loai: 'lich_kham',
+          doiTuongBang: 'luot_tiep_nhan',
+          doiTuongId: withRelations?.id,
+        });
+      }
+
+      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+        tieuDe: `Bệnh nhân tiếp nhận mới: ${withRelations?.benhNhan?.hoTen}`,
+        noiDung: `Bệnh nhân ${withRelations?.benhNhan?.hoTen} (STT: ${withRelations?.maSoThuTu}) tiếp nhận khám bệnh. Vui lòng thu phí khám tại quầy.`,
+        loai: 'can_thanh_toan',
+        doiTuongBang: 'luot_tiep_nhan',
+        doiTuongId: withRelations?.id,
+      });
+    } catch (err) {
+      console.warn('Lỗi gửi thông báo tiếp nhận create:', err?.message);
+    }
 
     return { data: withRelations, message: `Tiếp nhận thành công. Số thứ tự: ${maSoThuTu}` };
   }
@@ -675,6 +726,26 @@ export class TiepNhanService implements OnModuleInit {
 
     Object.assign(luot, { phongKhamId: dto.phongKhamId, bacSiId: dto.bacSiId });
     const saved = await this.luotRepo.save(luot);
+
+    try {
+      if (dto.bacSiId) {
+        const bs = await this.bacSiRepo.findOne({ where: { id: dto.bacSiId }, relations: ['nhanVien'] });
+        if (bs?.nhanVien?.nguoiDungId) {
+          const bn = await this.benhNhanRepo.findOne({ where: { id: luot.benhNhanId } });
+          await this.thongBaoService.taoThongBao({
+            nguoiNhanId: bs.nhanVien.nguoiDungId,
+            tieuDe: `Điều phối bệnh nhân đến phòng khám: ${bn?.hoTen || 'BN'}`,
+            noiDung: `Bệnh nhân ${bn?.hoTen || 'BN'} (STT: ${luot.maSoThuTu}) vừa được điều phối chuyển sang phòng khám của bạn.`,
+            loai: 'lich_kham',
+            doiTuongBang: 'luot_tiep_nhan',
+            doiTuongId: luot.id,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Lỗi gửi thông báo dieuPhoiPhong:', err?.message);
+    }
+
     return { data: saved, message: 'Điều phối phòng thành công' };
   }
 

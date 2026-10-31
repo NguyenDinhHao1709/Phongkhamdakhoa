@@ -112,6 +112,17 @@ export class XetNghiemService {
         throw new BadRequestException('Danh sách chỉ định có dịch vụ bị chọn trùng nhau');
       }
       seenIds.add(item.dichVuXetNghiemId);
+
+      // Kiểm tra trạng thái hoạt động của dịch vụ cận lâm sàng
+      const dv = await this.dvRepo.findOneBy({ id: item.dichVuXetNghiemId });
+      if (!dv) {
+        throw new BadRequestException(`Không tìm thấy dịch vụ y tế với mã ID ${item.dichVuXetNghiemId}`);
+      }
+      if (dv.trangThai !== 'hoat_dong') {
+        throw new BadRequestException(
+          `Dịch vụ "${dv.tenDichVu}" hiện đang tạm ngừng áp dụng theo chỉ đạo Ban Giám Đốc. Bác sĩ vui lòng không chỉ định dịch vụ này!`,
+        );
+      }
     }
 
     // 2. Kiểm tra các dịch vụ đã chỉ định trước đó cho phiếu khám này
@@ -328,6 +339,29 @@ export class XetNghiemService {
       }
     } catch (err) {
       console.warn('[nhapKetQua] Không thể tự động cập nhật trạng thái da_co_kq_cls:', err);
+    }
+
+    try {
+      const cdFull = await this.cdRepo.findOne({
+        where: { id: chiDinhId },
+        relations: ['dichVu', 'benhAnKham', 'benhAnKham.hoSoBenhAn', 'benhAnKham.hoSoBenhAn.benhNhan', 'benhAnKham.bacSi', 'benhAnKham.bacSi.nhanVien'],
+      });
+      const bacSiUserId = cdFull?.benhAnKham?.bacSi?.nhanVien?.nguoiDungId;
+      const bnTen = cdFull?.benhAnKham?.hoSoBenhAn?.benhNhan?.hoTen || 'BN';
+      const tenDichVu = cdFull?.dichVu?.tenDichVu || 'xét nghiệm';
+
+      if (bacSiUserId) {
+        await this.thongBaoService.taoThongBao({
+          nguoiNhanId: bacSiUserId,
+          tieuDe: `Đã có kết quả CLS: ${bnTen}`,
+          noiDung: `Dịch vụ "${tenDichVu}" của bệnh nhân ${bnTen} đã có kết quả. Mời bác sĩ kiểm tra và kết luận bệnh án.`,
+          loai: 'xet_nghiem',
+          doiTuongBang: 'chi_dinh_can_lam_sang',
+          doiTuongId: chiDinhId,
+        });
+      }
+    } catch (err) {
+      console.warn('Lỗi gửi thông báo kết quả xét nghiệm:', err?.message);
     }
 
     return { data: saved, message: 'Nhập kết quả xét nghiệm thành công' };

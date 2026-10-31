@@ -533,8 +533,12 @@ export class HoSoBenhAnService {
 
         // Lấy lichHenId từ LuotTiepNhan hoặc parse từ ghiChu ca khám trực tuyến
         let lichHenId = null;
+        let luotTN = null;
         if (bak.luotTiepNhanId) {
-          const luotTN = await this.tiepNhanRepo.findOne({ where: { id: bak.luotTiepNhanId }, select: ['id', 'lichHenId'] });
+          luotTN = await this.tiepNhanRepo.findOne({
+            where: { id: bak.luotTiepNhanId },
+            select: ['id', 'lichHenId', 'trangThai'],
+          });
           lichHenId = luotTN?.lichHenId || null;
         } else if (bak.hinhThucKham === 'truc_tuyen' && bak.ghiChu) {
           const matchMaLh = bak.ghiChu.match(/Mã lịch:\s*([A-Za-z0-9]+)/i);
@@ -560,6 +564,15 @@ export class HoSoBenhAnService {
           }
         }
 
+        // Tự động đồng bộ trạng thái: nếu lượt tiếp nhận đã hoàn thành hoặc viện phí đã thanh toán thì xem như ca khám đã hoàn tất
+        let effectiveTrangThai = bak.trangThai;
+        if (luotTN?.trangThai === 'hoan_thanh' || hd?.trangThai === 'da_thanh_toan') {
+          effectiveTrangThai = TrangThaiBenhAnKham.DA_HOAN_THANH;
+          if (bak.trangThai !== TrangThaiBenhAnKham.DA_HOAN_THANH) {
+            this.benhAnRepo.update({ id: bak.id }, { trangThai: TrangThaiBenhAnKham.DA_HOAN_THANH }).catch(() => {});
+          }
+        }
+
         const dtWithAliases = dt.map((d) => ({
           ...d,
           chiTietDonThuoc: d.chiTiet,
@@ -568,10 +581,18 @@ export class HoSoBenhAnService {
         const bacSiTen = bak.bacSi?.nhanVien?.hoTen || 'Bác sĩ điều trị';
         return {
           ...bak,
+          trangThai: effectiveTrangThai,
           lichHenId,
           luotTiepNhanId: bak.luotTiepNhanId,
-          benhAn: bak,
-          benhAnKham: bak,
+          luotTiepNhan: luotTN,
+          benhAn: {
+            ...bak,
+            trangThai: effectiveTrangThai,
+          },
+          benhAnKham: {
+            ...bak,
+            trangThai: effectiveTrangThai,
+          },
           bacSi: bak.bacSi,
           bacSiTen,
           xetNghiem: xnWithResults,
