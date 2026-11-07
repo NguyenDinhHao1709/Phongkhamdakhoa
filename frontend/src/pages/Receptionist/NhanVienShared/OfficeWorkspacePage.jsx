@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import useAuthStore from '../../../store/authStore';
 import useThemeStore from '../../../store/themeStore';
 import api, { apiGet, apiPost, apiPatch, apiDelete } from '../../../services/api';
+import { OFFICE_URL } from '../../../utils/backendUrl';
 import { toAttachmentUrl } from '../../../utils/fileAttachments';
 import {
   MessageSquare,
@@ -323,7 +324,7 @@ export default function OfficeWorkspacePage() {
   useEffect(() => {
     if (!user?.id) return;
 
-    const socketHost = `${window.location.protocol === 'https:' ? 'http:' : window.location.protocol}//${window.location.hostname}:5003`;
+    const socketHost = OFFICE_URL || window.location.origin;
     const socket = io(socketHost, {
       transports: ['websocket', 'polling'],
       query: { userId: user.id },
