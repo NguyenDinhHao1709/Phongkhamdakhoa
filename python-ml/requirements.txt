@@ -6,4 +6,7 @@ statsmodels==0.14.2
 scikit-learn==1.5.0
 mysql-connector-python==8.3.0
 python-dotenv==1.0.1
-
+opencv-python-headless==4.10.0.84
+Pillow==10.4.0
+insightface==0.7.3
+onnxruntime==1.18.0
