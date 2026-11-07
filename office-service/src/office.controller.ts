@@ -20,7 +20,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { OfficeService } from './office.service';
 
-const uploadDir = path.resolve(__dirname, '../../backend/uploads/office');
+const uploadDir = process.env.UPLOAD_DIR || path.resolve(process.cwd(), 'uploads/office');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -241,4 +241,3 @@ export class OfficeController {
     };
   }
 }
-

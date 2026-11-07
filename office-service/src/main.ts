@@ -13,7 +13,7 @@ async function bootstrap() {
   app.use(json({ limit: '30mb' }));
   app.use(urlencoded({ extended: true, limit: '30mb' }));
 
-  app.useStaticAssets(join(__dirname, '../../backend/uploads'), {
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
   });
 
@@ -35,4 +35,3 @@ async function bootstrap() {
 }
 
 bootstrap();
-
