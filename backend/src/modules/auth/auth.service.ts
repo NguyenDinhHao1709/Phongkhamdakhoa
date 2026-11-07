@@ -41,7 +41,7 @@ export class AuthService {
     this.mailer = nodemailer.createTransport({
       host: config.get('MAIL_HOST', 'smtp.gmail.com'),
       port: Number(config.get('MAIL_PORT', 587)),
-      secure: false,
+      secure: config.get('MAIL_SECURE', 'false') === 'true',
       connectionTimeout: 10000,
       greetingTimeout: 10000,
       socketTimeout: 15000,
