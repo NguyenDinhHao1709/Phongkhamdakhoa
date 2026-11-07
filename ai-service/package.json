@@ -4,7 +4,7 @@
   "description": "AI & Clinical RAG Microservice - He thong Quan ly Phong kham Da khoa",
   "main": "dist/main.js",
   "scripts": {
-    "build": "node ../backend/node_modules/typescript/bin/tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
     "start": "node -r ./register-paths.js dist/main.js",
     "start:dev": "node -r ./register-paths.js dist/main.js"
   },
@@ -32,4 +32,3 @@
     "typescript": "^5.5.3"
   }
 }
-
