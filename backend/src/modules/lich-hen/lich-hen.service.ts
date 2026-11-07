@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Between, In, Not } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import axios from 'axios';
 import { LichHen, TrangThaiLichHen, CHO_PHAN_CONG_MARKER } from './entities/lich-hen.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
@@ -126,6 +127,54 @@ export class LichHenService implements OnModuleInit {
         user: (config.get<string>('MAIL_USER') || '').trim(),
         pass: (config.get<string>('MAIL_PASS') || '').replace(/\s+/g, ''),
       },
+    });
+  }
+
+  private async sendAppointmentEmail(to: string, subject: string, html: string) {
+    const brevoApiKey = this.config.get<string>('BREVO_API_KEY')?.trim();
+    const senderEmail = (
+      this.config.get<string>('BREVO_SENDER_EMAIL') ||
+      this.config.get<string>('MAIL_USER') ||
+      ''
+    ).trim();
+    const senderName = this.config.get<string>('BREVO_SENDER_NAME', 'Phòng Khám Đa Khoa');
+
+    if (!senderEmail) {
+      throw new Error('Chưa cấu hình email người gửi lịch hẹn');
+    }
+
+    if (brevoApiKey) {
+      try {
+        await axios.post(
+          'https://api.brevo.com/v3/smtp/email',
+          {
+            sender: { email: senderEmail, name: senderName },
+            to: [{ email: to }],
+            subject,
+            htmlContent: html,
+          },
+          {
+            headers: {
+              accept: 'application/json',
+              'api-key': brevoApiKey,
+              'content-type': 'application/json',
+            },
+            timeout: 15000,
+          },
+        );
+        return;
+      } catch (err) {
+        const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+        const detail = axios.isAxiosError(err) ? err.response?.data?.message : err.message;
+        throw new Error(`Brevo gửi email lịch hẹn thất bại${status ? ` (${status})` : ''}: ${detail || 'unknown error'}`);
+      }
+    }
+
+    await this.mailer.sendMail({
+      from: this.config.get('MAIL_FROM', senderEmail),
+      to,
+      subject,
+      html,
     });
   }
 
@@ -2195,13 +2244,8 @@ export class LichHenService implements OnModuleInit {
         `;
       }
 
-      // 4. Gửi email qua nodemailer
-      await this.mailer.sendMail({
-        from: this.config.get('MAIL_FROM', 'Phong Kham Da Khoa <no-reply@phongkham.vn>'),
-        to: email,
-        subject,
-        html: htmlBody,
-      });
+      // 4. Gửi email qua Brevo API hoặc SMTP dự phòng
+      await this.sendAppointmentEmail(email, subject, htmlBody);
 
       console.log(`[LichHenMailer] Đã gửi thành công email (${loaiEmail}) cho bệnh nhân ${tenBenhNhan} <${email}> - Mã LH: ${lh.maLichHen}`);
     } catch (err: any) {
