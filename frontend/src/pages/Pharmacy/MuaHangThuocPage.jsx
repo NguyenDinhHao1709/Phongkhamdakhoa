@@ -67,6 +67,57 @@ export default function MuaHangThuocPage() {
   // Form Yêu cầu PR
   const [showPrModal, setShowPrModal] = useState(false);
   const [form, setForm] = useState({ ghiChu: '', chiTiet: [{ ...emptyItem }] });
+  const [prSearchMedicine, setPrSearchMedicine] = useState('');
+
+  const filteredPrMedicines = useMemo(() => {
+    const s = prSearchMedicine.trim().toLowerCase();
+    if (!s) return [];
+    return medicines
+      .filter((m) => m.trangThai !== 'ngung_kinh_doanh')
+      .filter((m) =>
+        m.tenThuoc?.toLowerCase().includes(s) ||
+        m.maThuoc?.toLowerCase().includes(s) ||
+        (m.tenHoatChat && m.tenHoatChat.toLowerCase().includes(s)) ||
+        (m.hoatChat && m.hoatChat.toLowerCase().includes(s))
+      )
+      .slice(0, 10);
+  }, [medicines, prSearchMedicine]);
+
+  const handleSelectMedicineFromSearch = (med) => {
+    setForm((f) => {
+      const existingIdx = f.chiTiet.findIndex((x) => String(x.thuocId) === String(med.id));
+      if (existingIdx !== -1) {
+        return {
+          ...f,
+          chiTiet: f.chiTiet.map((x, i) => i === existingIdx ? { ...x, soLuongDat: Number(x.soLuongDat || 1) + 1 } : x),
+        };
+      }
+      if (f.chiTiet.length === 1 && !f.chiTiet[0].thuocId) {
+        return {
+          ...f,
+          chiTiet: [{
+            thuocId: String(med.id),
+            nhaCungCapId: '',
+            soLuongDat: 1,
+            donGiaBao: Number(med.giaNhapGanNhat || med.giaNhap || 0),
+          }],
+        };
+      }
+      return {
+        ...f,
+        chiTiet: [
+          ...f.chiTiet,
+          {
+            thuocId: String(med.id),
+            nhaCungCapId: '',
+            soLuongDat: 1,
+            donGiaBao: Number(med.giaNhapGanNhat || med.giaNhap || 0),
+          },
+        ],
+      };
+    });
+    setPrSearchMedicine('');
+  };
 
   // Modal Dự báo nhu cầu AI
   const [showForecastModal, setShowForecastModal] = useState(false);
@@ -181,6 +232,7 @@ export default function MuaHangThuocPage() {
     try {
       await apiPost('/nha-thuoc/mua-hang/yeu-cau', form);
       setForm({ ghiChu: '', chiTiet: [{ ...emptyItem }] });
+      setPrSearchMedicine('');
       setShowPrModal(false);
       await load();
     } catch (requestError) {
@@ -221,23 +273,84 @@ export default function MuaHangThuocPage() {
     await load();
   };
 
-  // 3. Mở Báo giá RFQ & So sánh
+  // Chuẩn hóa chuỗi so sánh thuốc không phân biệt hoa thường, dấu tiếng Việt và khoảng trắng
+  const normalizeDrugKey = (str) =>
+    (str || '')
+      .toString()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  // 3. Mở Báo giá RFQ & So sánh (Tự động nạp luôn báo giá nếu các NCC có trong Bảng giá Excel)
   const openQuotation = (request) => {
     setQuotationModal(request);
-    setQuotationItems(request.chiTiet.map((item) => ({
-      id: item.id,
-      nhaCungCapId: item.nhaCungCapId || '',
-      donGiaBao: item.donGiaBao || 0,
-      donGiaChon: item.donGiaChon || item.donGiaBao || 0,
-      baoGiaSoSanh: Array.isArray(item.baoGiaSoSanh) && item.baoGiaSoSanh.length
+
+    const items = (request.chiTiet || []).map((item) => {
+      let quotes = Array.isArray(item.baoGiaSoSanh) && item.baoGiaSoSanh.length
         ? item.baoGiaSoSanh.map((q) => ({
-            nhaCungCapId: q.nhaCungCapId || '',
-            donGia: q.donGia || 0,
+            nhaCungCapId: q.nhaCungCapId ? String(q.nhaCungCapId) : '',
+            donGia: Number(q.donGia || 0),
             ghiChu: q.ghiChu || '',
             hanDungCamKet: q.hanDungCamKet || '',
           }))
-        : [{ nhaCungCapId: item.nhaCungCapId || (suppliers[0]?.id || ''), donGia: item.donGiaBao || 0, ghiChu: '', hanDungCamKet: '' }],
-    })));
+        : [];
+
+      // Nếu chưa có báo giá hoặc báo giá còn 0, tự động đối soát ngay từ bảng giá Excel của các NCC
+      if (!quotes.length || quotes.every((q) => !Number(q.donGia))) {
+        const detailName = normalizeDrugKey(item.tenThuoc);
+        const detailCode = normalizeDrugKey(item.maThuoc);
+
+        suppliers.forEach((sup) => {
+          let bgData = sup.bangGiaData;
+          if (typeof bgData === 'string') {
+            try { bgData = JSON.parse(bgData); } catch {}
+          }
+          if (!Array.isArray(bgData) || bgData.length === 0) return;
+
+          const matched = bgData.find((p) => {
+            const pCode = normalizeDrugKey(p.maThuoc || p.ma_thuoc);
+            const pName = normalizeDrugKey(p.tenThuoc || p.ten_thuoc);
+            const pHoatChat = normalizeDrugKey(p.hoatChat || p.hoat_chat);
+
+            if (detailCode && pCode && detailCode === pCode) return true;
+            if (pName && detailName && (pName === detailName || pName.includes(detailName) || detailName.includes(pName))) return true;
+            if (pHoatChat && detailName && detailName.includes(pHoatChat)) return true;
+            return false;
+          });
+
+          if (matched && Number(matched.donGia || matched.don_gia) > 0) {
+            quotes.push({
+              nhaCungCapId: String(sup.id),
+              donGia: Number(matched.donGia || matched.don_gia),
+              hanDungCamKet: matched.hanDungCamKet || matched.han_dung_cam_ket || matched.ghiChu || 'Theo bảng giá Excel',
+              ghiChu: `Khớp tự động từ Excel: ${matched.tenThuoc || matched.ten_thuoc}`,
+            });
+          }
+        });
+      }
+
+      if (!quotes.length) {
+        quotes = [{ nhaCungCapId: item.nhaCungCapId ? String(item.nhaCungCapId) : (suppliers[0]?.id ? String(suppliers[0].id) : ''), donGia: Number(item.donGiaBao || 0), ghiChu: '', hanDungCamKet: '' }];
+      }
+
+      const validQuotes = quotes.filter((q) => Number(q.donGia) > 0);
+      const best = validQuotes.length ? validQuotes.reduce((min, q) => Number(q.donGia) < Number(min.donGia) ? q : min, validQuotes[0]) : null;
+
+      const nhaCungCapId = item.nhaCungCapId ? String(item.nhaCungCapId) : (best ? String(best.nhaCungCapId) : (quotes[0]?.nhaCungCapId || ''));
+      const donGiaChon = Number(item.donGiaChon) || (best ? Number(best.donGia) : Number(quotes[0]?.donGia || 0));
+
+      return {
+        id: item.id,
+        nhaCungCapId,
+        donGiaBao: Number(item.donGiaBao || 0),
+        donGiaChon,
+        baoGiaSoSanh: quotes,
+      };
+    });
+
+    setQuotationItems(items);
   };
 
   // Tự động chọn NCC có giá chào thấp nhất cho tất cả các thuốc
@@ -263,64 +376,68 @@ export default function MuaHangThuocPage() {
     if (!quotationModal || !Array.isArray(quotationModal.chiTiet)) return;
     let matchCount = 0;
 
-    setQuotationItems((prevItems) =>
-      prevItems.map((item, idx) => {
-        const detail = quotationModal.chiTiet[idx];
-        if (!detail) return item;
+    const nextItems = quotationItems.map((item, idx) => {
+      const detail = quotationModal.chiTiet.find((d) => d.id === item.id) || quotationModal.chiTiet[idx];
+      if (!detail) return item;
 
-        const detailName = (detail.tenThuoc || '').trim().toLowerCase();
-        const detailCode = (detail.maThuoc || '').trim().toLowerCase();
+      const detailName = normalizeDrugKey(detail.tenThuoc);
+      const detailCode = normalizeDrugKey(detail.maThuoc);
 
-        // Danh sách các quotes tìm thấy từ bảng giá Excel của các NCC
-        const newQuotes = [];
+      // Danh sách các quotes tìm thấy từ bảng giá Excel của các NCC
+      const newQuotes = [];
 
-        suppliers.forEach((sup) => {
-          if (!Array.isArray(sup.bangGiaData) || sup.bangGiaData.length === 0) return;
+      suppliers.forEach((sup) => {
+        let bgData = sup.bangGiaData;
+        if (typeof bgData === 'string') {
+          try { bgData = JSON.parse(bgData); } catch {}
+        }
+        if (!Array.isArray(bgData) || bgData.length === 0) return;
 
-          // Tìm kiếm trong bảng giá của NCC này
-          const matched = sup.bangGiaData.find((p) => {
-            const pCode = (p.maThuoc || '').trim().toLowerCase();
-            const pName = (p.tenThuoc || '').trim().toLowerCase();
-            const pHoatChat = (p.hoatChat || '').trim().toLowerCase();
+        // Tìm kiếm trong bảng giá của NCC này
+        const matched = bgData.find((p) => {
+          const pCode = normalizeDrugKey(p.maThuoc || p.ma_thuoc);
+          const pName = normalizeDrugKey(p.tenThuoc || p.ten_thuoc);
+          const pHoatChat = normalizeDrugKey(p.hoatChat || p.hoat_chat);
 
-            // 1. Khớp theo mã thuốc
-            if (detailCode && pCode && detailCode === pCode) return true;
-            // 2. Khớp theo tên thuốc
-            if (pName && detailName && (pName === detailName || pName.includes(detailName) || detailName.includes(pName))) {
-              return true;
-            }
-            // 3. Khớp theo hoạt chất
-            if (pHoatChat && detailName && detailName.includes(pHoatChat)) {
-              return true;
-            }
-            return false;
-          });
-
-          if (matched && Number(matched.donGia) > 0) {
-            matchCount++;
-            newQuotes.push({
-              nhaCungCapId: String(sup.id),
-              donGia: Number(matched.donGia),
-              hanDungCamKet: matched.hanDungCamKet || matched.ghiChu || 'Theo bảng giá Excel',
-              ghiChu: `Khớp tự động từ Excel: ${matched.tenThuoc}`,
-            });
+          // 1. Khớp theo mã thuốc
+          if (detailCode && pCode && detailCode === pCode) return true;
+          // 2. Khớp theo tên thuốc
+          if (pName && detailName && (pName === detailName || pName.includes(detailName) || detailName.includes(pName))) {
+            return true;
           }
+          // 3. Khớp theo hoạt chất
+          if (pHoatChat && detailName && detailName.includes(pHoatChat)) {
+            return true;
+          }
+          return false;
         });
 
-        // Nếu tìm thấy quotes từ bảng giá Excel, cập nhật danh sách báo giá cạnh tranh
-        if (newQuotes.length > 0) {
-          const best = newQuotes.reduce((min, q) => Number(q.donGia) < Number(min.donGia) ? q : min, newQuotes[0]);
-          return {
-            ...item,
-            nhaCungCapId: String(best.nhaCungCapId),
-            donGiaChon: Number(best.donGia),
-            baoGiaSoSanh: newQuotes,
-          };
+        if (matched && Number(matched.donGia || matched.don_gia) > 0) {
+          matchCount++;
+          newQuotes.push({
+            nhaCungCapId: String(sup.id),
+            donGia: Number(matched.donGia || matched.don_gia),
+            hanDungCamKet: matched.hanDungCamKet || matched.han_dung_cam_ket || matched.ghiChu || 'Theo bảng giá Excel',
+            ghiChu: `Khớp tự động từ Excel: ${matched.tenThuoc || matched.ten_thuoc}`,
+          });
         }
+      });
 
-        return item;
-      })
-    );
+      // Nếu tìm thấy quotes từ bảng giá Excel, cập nhật danh sách báo giá cạnh tranh
+      if (newQuotes.length > 0) {
+        const best = newQuotes.reduce((min, q) => Number(q.donGia) < Number(min.donGia) ? q : min, newQuotes[0]);
+        return {
+          ...item,
+          nhaCungCapId: String(best.nhaCungCapId),
+          donGiaChon: Number(best.donGia),
+          baoGiaSoSanh: newQuotes,
+        };
+      }
+
+      return item;
+    });
+
+    setQuotationItems(nextItems);
 
     if (matchCount > 0) {
       alert(`Đã tự động quét và khớp thành công ${matchCount} báo giá từ các Bảng giá Excel của Nhà cung cấp!`);
@@ -744,6 +861,76 @@ export default function MuaHangThuocPage() {
     };
   }, [list]);
 
+  const handleExportPurchasesExcel = () => {
+    if (!filteredList.length) {
+      alert('Không có dữ liệu mua hàng để xuất file!');
+      return;
+    }
+
+    const exportRows = filteredList.map((item, idx) => {
+      const thuocDetails = (item.chiTiet || [])
+        .map(
+          (ct) =>
+            `${ct.tenThuoc || 'Thuốc'}: Đặt ${ct.soLuongDat || 0} ${ct.donViTinh || ''} (Đơn giá: ${formatMoney(
+              ct.donGiaChon || ct.donGiaBao || 0,
+            )}, QC đạt: ${ct.soLuongDatChatLuong || 0})`,
+        )
+        .join('; ');
+
+      return {
+        'STT': idx + 1,
+        'Mã Chứng Từ': item.maYeuCau || '',
+        'Ngày Lập': formatDate(item.ngayTao || item.taoLuc),
+        'Người Lập': item.nguoiLap?.hoTen || '',
+        'Nhà Cung Cấp':
+          item.nhaCungCap?.tenNhaCungCap || item.chiTiet?.find((c) => c.tenNhaCungCap)?.tenNhaCungCap || 'Chưa chốt',
+        'Trạng Thái Quy Trình': STATUS_CONFIG[item.trangThai]?.label || item.trangThai || '',
+        'Người Duyệt': item.nguoiDuyet?.hoTen || '',
+        'Ngày Duyệt': formatDate(item.ngayDuyet),
+        'Dự Toán PO (VNĐ)': Number(item.tongDuToan || 0),
+        'Thực Nhận Kho (VNĐ)': Number(item.tongThucTe || 0),
+        'Số Hóa Đơn VAT': item.soHoaDonNcc || '',
+        'Ngày Hóa Đơn': formatDate(item.ngayHoaDonNcc),
+        'Trạng Thái Chi Trả': PAYMENT_CONFIG[item.trangThaiChiTra]?.label || item.trangThaiChiTra || '',
+        'Số Phiếu Chi': item.soChungTuChi || '',
+        'Phương Thức Chi': PAYMENT_METHOD_LABELS[item.phuongThucChi] || item.phuongThucChi || '',
+        'Số Tiền Đã Chi (VNĐ)': Number(item.soTienChiTra || 0),
+        'Chi Tiết Dược Phẩm Mua': thuocDetails || '',
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    worksheet['!cols'] = [
+      { wch: 6 }, // STT
+      { wch: 16 }, // Mã
+      { wch: 12 }, // Ngày lập
+      { wch: 20 }, // Người lập
+      { wch: 20 }, // NCC
+      { wch: 25 }, // Trạng thái
+      { wch: 20 }, // Người duyệt
+      { wch: 12 }, // Ngày duyệt
+      { wch: 16 }, // Dự toán
+      { wch: 16 }, // Thực nhận
+      { wch: 16 }, // Số HĐ
+      { wch: 12 }, // Ngày HĐ
+      { wch: 20 }, // Trạng thái chi
+      { wch: 18 }, // Phiếu chi
+      { wch: 20 }, // Phương thức
+      { wch: 16 }, // Tiền chi
+      { wch: 55 }, // Chi tiết
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'SoMuaHangDuocPham');
+
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(
+      2,
+      '0',
+    )}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    XLSX.writeFile(workbook, `SoTheoDoi_MuaHangDuocPham_${dateStr}.xlsx`);
+  };
+
   return (
     <div className="space-y-6 pb-16 font-sans text-gray-800">
       {/* ─── 1. TOP HEADER & HOSPITAL ERP BADGE ─── */}
@@ -782,6 +969,16 @@ export default function MuaHangThuocPage() {
                 <span>Lập phiếu yêu cầu (PR)</span>
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={handleExportPurchasesExcel}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 cursor-pointer active:scale-95 shadow-xs"
+              title="Xuất bảng Excel sổ theo dõi mua hàng & nhập kho"
+            >
+              <Download className="h-4 w-4 text-emerald-600" />
+              <span>Xuất Excel</span>
+            </button>
 
             <button
               type="button"
@@ -1377,7 +1574,7 @@ export default function MuaHangThuocPage() {
                   {/* Item Footer Info & 3-Way Reconciliation Summary */}
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-gray-50/80 p-3 text-xs text-gray-700">
                     <div className="flex flex-wrap items-center gap-4">
-                      <span>Nhà cung cấp: <b className="text-gray-900">{item.nhaCungCap?.tenNhaCungCap || 'Chưa chốt'}</b></span>
+                      <span>Nhà cung cấp: <b className="text-gray-900">{item.nhaCungCap?.tenNhaCungCap || item.chiTiet?.find((c) => c.tenNhaCungCap)?.tenNhaCungCap || 'Chưa chốt'}</b></span>
                       <span>Dự toán PO: <b>{formatMoney(item.tongDuToan)}</b></span>
                       <span>Thực nhận (Giá trị kho): <b className="text-emerald-700">{formatMoney(item.tongThucTe)}</b></span>
                       {item.soHoaDonNcc && (
@@ -1415,7 +1612,10 @@ export default function MuaHangThuocPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setShowPrModal(false)}
+                onClick={() => {
+                  setShowPrModal(false);
+                  setPrSearchMedicine('');
+                }}
                 className="rounded-lg p-2 text-gray-400 hover:bg-gray-100"
               >
                 <X className="h-5 w-5" />
@@ -1443,6 +1643,66 @@ export default function MuaHangThuocPage() {
                 </button>
               </div>
 
+              {/* Ô tìm kiếm & Thêm nhanh thuốc vào phiếu PR */}
+              <div className="relative">
+                <div className="relative flex items-center">
+                  <Search className="absolute left-3 h-4 w-4 text-blue-600" />
+                  <input
+                    type="text"
+                    value={prSearchMedicine}
+                    onChange={(e) => setPrSearchMedicine(e.target.value)}
+                    placeholder="🔍 Nhập tên thuốc, hoạt chất hoặc mã thuốc (VD: Siro Ho, Paracetamol, TH004...) để tìm & thêm nhanh..."
+                    className="w-full rounded-xl border border-blue-200 bg-blue-50/40 py-2.5 pl-9 pr-9 text-xs text-gray-900 placeholder-gray-400 shadow-2xs focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  />
+                  {prSearchMedicine && (
+                    <button
+                      type="button"
+                      onClick={() => setPrSearchMedicine('')}
+                      className="absolute right-2.5 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Dropdown danh sách kết quả tìm kiếm thả xuống */}
+                {prSearchMedicine.trim() && (
+                  <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-60 overflow-y-auto rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl">
+                    {filteredPrMedicines.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-gray-500">
+                        Không tìm thấy thuốc nào khớp với từ khóa "{prSearchMedicine}".
+                      </div>
+                    ) : (
+                      filteredPrMedicines.map((m) => (
+                        <div
+                          key={m.id}
+                          onClick={() => handleSelectMedicineFromSearch(m)}
+                          className="flex cursor-pointer items-center justify-between rounded-lg p-2.5 transition hover:bg-blue-50"
+                        >
+                          <div>
+                            <div className="text-xs font-bold text-gray-900">
+                              <span className="font-mono text-blue-700">[{m.maThuoc}]</span> {m.tenThuoc}
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                              ĐVT: <b className="text-gray-700">{m.donViTinh || '-'}</b> · Tồn kho: <b className={Number(m.tonKhoTong || 0) <= 10 ? 'text-rose-600 font-bold' : 'text-emerald-700 font-bold'}>{m.tonKhoTong || 0} {m.donViTinh}</b> · Hoạt chất: <span>{m.hoatChat || m.tenHoatChat || '-'}</span>
+                              {(m.giaNhapGanNhat || m.giaNhap) && (
+                                <span> · Giá nhập gần nhất: <b className="text-gray-700">{formatMoney(m.giaNhapGanNhat || m.giaNhap)}</b></span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-xs hover:bg-blue-700"
+                          >
+                            + Thêm vào phiếu
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
               {form.chiTiet.map((item, index) => (
                 <div key={index} className="grid items-end gap-2 rounded-xl border border-gray-200 bg-gray-50/70 p-3 md:grid-cols-[2fr_100px_130px_1.5fr_36px]">
                   <div>
@@ -1450,10 +1710,18 @@ export default function MuaHangThuocPage() {
                     <select
                       required
                       value={item.thuocId}
-                      onChange={(e) => setForm((f) => ({
-                        ...f,
-                        chiTiet: f.chiTiet.map((x, i) => i === index ? { ...x, thuocId: e.target.value } : x),
-                      }))}
+                      onChange={(e) => {
+                        const selId = e.target.value;
+                        const selMed = medicines.find((m) => String(m.id) === String(selId));
+                        setForm((f) => ({
+                          ...f,
+                          chiTiet: f.chiTiet.map((x, i) => i === index ? {
+                            ...x,
+                            thuocId: selId,
+                            donGiaBao: x.donGiaBao || (selMed ? Number(selMed.giaNhapGanNhat || selMed.giaNhap || 0) : 0),
+                          } : x),
+                        }));
+                      }}
                       className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 text-xs focus:ring-1 focus:ring-blue-500"
                     >
                       <option value="">-- Chọn thuốc --</option>
@@ -1550,7 +1818,10 @@ export default function MuaHangThuocPage() {
             <div className="mt-6 flex items-center justify-end gap-2 border-t border-gray-100 pt-4">
               <button
                 type="button"
-                onClick={() => setShowPrModal(false)}
+                onClick={() => {
+                  setShowPrModal(false);
+                  setPrSearchMedicine('');
+                }}
                 className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50"
               >
                 Hủy
@@ -2599,7 +2870,7 @@ export default function MuaHangThuocPage() {
               {/* Thông tin đối tác & Hóa đơn */}
               <div className="mb-4 grid grid-cols-2 gap-4 rounded-xl border border-gray-200 bg-gray-50/50 p-4 text-xs">
                 <div>
-                  <p>Nhà cung cấp: <b className="text-gray-900">{docModal.data.nhaCungCap?.tenNhaCungCap || 'Chưa chỉ định'}</b></p>
+                  <p>Nhà cung cấp: <b className="text-gray-900">{docModal.data.nhaCungCap?.tenNhaCungCap || docModal.data.chiTiet?.find((c) => c.tenNhaCungCap)?.tenNhaCungCap || 'Chưa chỉ định'}</b></p>
                   <p className="mt-1">Điện thoại / Email: <span>{docModal.data.nhaCungCap?.soDienThoai || docModal.data.nhaCungCap?.email || '-'}</span></p>
                   <p className="mt-1">Ghi chú yêu cầu: <span>{docModal.data.ghiChu || 'Không có'}</span></p>
                 </div>

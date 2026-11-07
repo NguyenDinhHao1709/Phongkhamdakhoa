@@ -602,7 +602,7 @@ export default function ChiTraNhaCungCapPage() {
                           </td>
 
                           <td className="py-3 font-semibold text-gray-800">
-                            <div>{item.nhaCungCap?.tenNhaCungCap || 'Chưa chọn'}</div>
+                            <div>{item.nhaCungCap?.tenNhaCungCap || item.chiTiet?.find((c) => c.tenNhaCungCap)?.tenNhaCungCap || 'Chưa chọn'}</div>
                             {item.nhaCungCap?.soDienThoai && (
                               <div className="text-[10px] text-gray-400">SĐT: {item.nhaCungCap.soDienThoai}</div>
                             )}

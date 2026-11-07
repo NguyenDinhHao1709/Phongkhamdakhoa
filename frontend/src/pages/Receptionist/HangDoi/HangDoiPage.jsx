@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
+import * as XLSX from 'xlsx';
 import { DashboardLayout } from '../../../layouts/DashboardLayout';
 import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
@@ -8,7 +9,7 @@ import { VitalsCard } from '../../../design-system/components/VitalSign/VitalDis
 import { apiGet, apiPost } from '../../../services/api';
 import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
-import { Clock, AlertTriangle, User2, Tv, Volume2, Loader2 } from 'lucide-react';
+import { Clock, AlertTriangle, User2, Tv, Volume2, Loader2, Download } from 'lucide-react';
 import useAuthStore from '../../../store/authStore';
 
 let socket = null;
@@ -57,6 +58,69 @@ export default function HangDoiPage() {
     }
   };
 
+  const handleExportExcel = () => {
+    if (!items || items.length === 0) {
+      alert('Hàng đợi hôm nay chưa có lượt tiếp đón nào để xuất file!');
+      return;
+    }
+
+    const STATUS_MAP = {
+      cho_kham: 'Chờ khám',
+      dang_kham: 'Đang khám',
+      dang_cls: 'Đang thực hiện CLS',
+      da_co_kq_cls: 'Đã có kết quả CLS',
+      hoan_thanh: 'Đã hoàn thành',
+      da_huy: 'Đã hủy',
+    };
+
+    const rows = items.map((luot, idx) => {
+      const bn = luot.benhNhan || {};
+      const bs = luot.bacSi?.nhanVien || {};
+      const pk = luot.phongKham || {};
+      const gioDenStr = luot.thoiGianDen || luot.taoLuc ? formatDateTime(luot.thoiGianDen || luot.taoLuc) : '-';
+
+      return {
+        'STT': idx + 1,
+        'Số Thứ Tự (STT Gọi)': luot.maSoThuTu || '',
+        'Mã Lượt Tiếp Nhận': luot.id ? `LTN-${luot.id}` : '',
+        'Mã Bệnh Nhân': bn.maBenhNhan || '',
+        'Họ Tên Bệnh Nhân': bn.hoTen || '',
+        'Năm Sinh / Tuổi': bn.ngaySinh ? tinhTuoi(bn.ngaySinh) : '',
+        'Giới Tính': bn.gioiTinh === 'nam' ? 'Nam' : bn.gioiTinh === 'nu' ? 'Nữ' : (bn.gioiTinh || ''),
+        'Số Điện Thoại': bn.soDienThoai || '',
+        'Phòng Khám': pk.ten_phong || pk.tenPhong || 'Chưa chỉ định',
+        'Bác Sĩ Phụ Trách': bs.hoTen || 'Chưa chỉ định',
+        'Thời Gian Tiếp Nhận': gioDenStr,
+        'Mức Độ Ưu Tiên': luot.mucDoUuTien === 'cap_cuu' ? 'Cấp cứu' : luot.mucDoUuTien === 'uu_tien' ? 'Ưu tiên' : 'Tiêu chuẩn',
+        'Trạng Thái Khám': STATUS_MAP[luot.trangThai] || luot.trangThai || '',
+        'Tiền Sử Dị Ứng': bn.diUng || 'Không',
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 18 }, // Số thứ tự
+      { wch: 18 }, // Mã lượt
+      { wch: 14 }, // Mã BN
+      { wch: 22 }, // Họ tên BN
+      { wch: 14 }, // Tuổi
+      { wch: 10 }, // Giới tính
+      { wch: 14 }, // SĐT
+      { wch: 20 }, // Phòng khám
+      { wch: 22 }, // Bác sĩ
+      { wch: 20 }, // Thời gian đến
+      { wch: 16 }, // Mức độ ưu tiên
+      { wch: 18 }, // Trạng thái
+      { wch: 20 }, // Dị ứng
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'SoTiepDonHangDoi');
+    const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    XLSX.writeFile(wb, `So_Tiep_Don_Hang_Doi_${now}.xlsx`);
+  };
+
   const dangKham = items.filter((i) => ['dang_kham', 'dang_cls', 'da_co_kq_cls'].includes(i.trangThai));
   const choKham  = items.filter((i) => i.trangThai === 'cho_kham');
 
@@ -70,7 +134,15 @@ export default function HangDoiPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition-all shadow-2xs cursor-pointer"
+            title="Xuất file Excel sổ tiếp đón và hàng đợi hôm nay"
+          >
+            <Download className="w-4 h-4 text-emerald-600" /> Xuất Sổ Tiếp Đón (Excel)
+          </button>
+
           <a
             href="/man-hinh-goi-so"
             target="_blank"

@@ -6,6 +6,7 @@ import ForecastDashboard from './ForecastDashboard';
 import XepLichLamViecPage from './XepLichLamViecPage';
 import TraCuuTongHopPage from './TraCuuTongHopPage';
 import DuyetYeuCauPage from './DuyetYeuCauPage';
+import BaiVietQuanLyPage from '../Shared/BaiViet/BaiVietQuanLyPage';
 import QuanLyChamCongPage from './QuanLyChamCongPage';
 import QuanLyBangGiaDichVuPage from './QuanLyBangGiaDichVuPage';
 import BaoCaoBoPhanGiamDocPage from './BaoCaoBoPhanGiamDocPage';
@@ -40,6 +41,7 @@ export default function DirectorPortal() {
 
         {/* UC 22: Phê duyệt đơn / yêu cầu nhân viên */}
         <Route path="phe-duyet-don" element={<DuyetYeuCauPage />} />
+        <Route path="bai-viet" element={<BaiVietQuanLyPage />} />
         <Route path="mua-hang-thuoc" element={<Navigate to="/ban-giam-doc/phe-duyet-don" replace />} />
 
         {/* Báo cáo chuyên môn các bộ phận & Ý kiến chỉ đạo */}

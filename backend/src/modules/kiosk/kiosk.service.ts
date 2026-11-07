@@ -17,6 +17,51 @@ export interface KioskDangKyMoiDto {
 
 @Injectable()
 export class KioskService {
+  private locks = new Map<string, Promise<any>>();
+  private lastSttDate = '';
+  private lastSttSeq = 0;
+
+  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(key) || Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chain = prev.then(() => next);
+    this.locks.set(key, chain);
+
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.locks.get(key) === chain) {
+        this.locks.delete(key);
+      }
+    }
+  }
+
+  private async generateNextKioskStt(prefix: 'A' | 'B'): Promise<string> {
+    return this.withLock('seq:kiosk_stt', async () => {
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      if (this.lastSttDate !== today || this.lastSttSeq === 0) {
+        const rows: any[] = await this.luotRepo.manager.query(
+          `SELECT COALESCE(MAX(CAST(REGEXP_REPLACE(ma_so_thu_tu, '[^0-9]', '') AS UNSIGNED)), 0) AS maxNum,
+                  COUNT(*) AS totalCnt
+           FROM luot_tiep_nhan
+           WHERE DATE(thoi_gian_den) = CURDATE()`,
+        );
+        const maxNum = Number(rows?.[0]?.maxNum || 0);
+        const totalCnt = Number(rows?.[0]?.totalCnt || 0);
+        this.lastSttSeq = Math.max(maxNum, totalCnt);
+        this.lastSttDate = today;
+      }
+      this.lastSttSeq += 1;
+      return `${prefix}${String(this.lastSttSeq).padStart(3, '0')}`;
+    });
+  }
+
   constructor(
     @InjectRepository(LuotTiepNhan)
     private readonly luotRepo: Repository<LuotTiepNhan>,
@@ -127,124 +172,147 @@ export class KioskService {
    * 2. Bệnh nhân bấm Check-in tại Kiosk -> Sinh STT thật & đưa vào hàng đợi
    */
   async checkInLichHen(lichHenId: number) {
-    const lh = await this.lichHenRepo.findOne({
-      where: { id: lichHenId },
-      relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
-    });
+    return this.withLock(`kiosk:checkin:${lichHenId}`, async () => {
+      const lh = await this.lichHenRepo.findOne({
+        where: { id: lichHenId },
+        relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
+      });
 
-    if (!lh) {
-      throw new NotFoundException('Không tìm thấy thông tin lịch hẹn.');
-    }
+      if (!lh) {
+        throw new NotFoundException('Không tìm thấy thông tin lịch hẹn.');
+      }
 
-    // Kiểm tra nếu đã check-in trước đó thì in lại vé cũ
-    const existingLuot = await this.luotRepo.findOne({
-      where: { lichHenId: lh.id },
-    });
+      if (lh.trangThai === TrangThaiLichHen.CHO_THANH_TOAN) {
+        throw new BadRequestException({
+          code: 'LICH_HEN_CHUA_THANH_TOAN_COC',
+          message: `Lịch hẹn ${lh.maLichHen} chưa hoàn tất thanh toán phí giữ chỗ. Vui lòng thanh toán hoặc liên hệ quầy Lễ tân trước khi Check-in!`,
+        });
+      }
+      if (['da_huy', 'tu_choi'].includes(String(lh.trangThai))) {
+        throw new BadRequestException({
+          code: 'LICH_HEN_DA_HUY',
+          message: `Lịch hẹn ${lh.maLichHen} đã bị hủy hoặc từ chối, không thể Check-in lấy số thứ tự!`,
+        });
+      }
 
-    let phongKhamInfo = {
-      id: lh.phongKhamId || 1,
-      tenPhong: 'Phòng 101 - Khám Nội Tổng Quát',
-      viTri: 'Tầng 1 - Khu Tiếp Nhận A',
-      chuyenKhoa: 'Nội Tổng Quát',
-    };
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const ngayHenStr =
+        typeof lh.ngayHen === 'string'
+          ? lh.ngayHen.slice(0, 10)
+          : new Date(lh.ngayHen).toISOString().slice(0, 10);
 
-    if (lh.phongKhamId) {
-      const pkRows = await this.luotRepo.manager.query(
-        `SELECT id, ten_phong, vi_tri, chuyen_khoa FROM phong_kham WHERE id = ? LIMIT 1`,
-        [lh.phongKhamId],
-      );
-      if (pkRows && pkRows.length > 0) {
-        phongKhamInfo = {
-          id: pkRows[0].id,
-          tenPhong: pkRows[0].ten_phong,
-          viTri: pkRows[0].vi_tri,
-          chuyenKhoa: pkRows[0].chuyen_khoa || 'Chuyên Khoa',
+      if (ngayHenStr !== today) {
+        throw new BadRequestException({
+          code: 'LICH_HEN_KHONG_PHAI_HOM_NAY',
+          message: `Lịch hẹn ${lh.maLichHen} có ngày khám là ${ngayHenStr} (không phải hôm nay ${today}). Chỉ được Check-in lấy số thứ tự đúng ngày hẹn khám!`,
+        });
+      }
+
+      // Kiểm tra nếu đã check-in trước đó thì in lại vé cũ
+      const existingLuot = await this.luotRepo.findOne({
+        where: { lichHenId: lh.id },
+      });
+
+      let phongKhamInfo = {
+        id: lh.phongKhamId || 1,
+        tenPhong: 'Phòng 101 - Khám Nội Tổng Quát',
+        viTri: 'Tầng 1 - Khu Tiếp Nhận A',
+        chuyenKhoa: 'Nội Tổng Quát',
+      };
+
+      if (lh.phongKhamId) {
+        const pkRows = await this.luotRepo.manager.query(
+          `SELECT id, ten_phong, vi_tri, chuyen_khoa FROM phong_kham WHERE id = ? LIMIT 1`,
+          [lh.phongKhamId],
+        );
+        if (pkRows && pkRows.length > 0) {
+          phongKhamInfo = {
+            id: pkRows[0].id,
+            tenPhong: pkRows[0].ten_phong,
+            viTri: pkRows[0].vi_tri,
+            chuyenKhoa: pkRows[0].chuyen_khoa || 'Chuyên Khoa',
+          };
+        }
+      }
+
+      if (existingLuot) {
+        // Đếm số người đang chờ phía trước trong cùng phòng khám
+        const soNguoiDangDoi = await this.luotRepo
+          .createQueryBuilder('ltn')
+          .where('ltn.phongKhamId = :pkId', { pkId: phongKhamInfo.id })
+          .andWhere('ltn.trangThai = :st', { st: TrangThaiTiepNhan.CHO_KHAM })
+          .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
+          .andWhere('ltn.id < :curId', { curId: existingLuot.id })
+          .getCount();
+
+        return {
+          success: true,
+          message: 'Bệnh nhân đã lấy số trước đó. Đang in lại vé STT.',
+          ticket: {
+            maSoThuTu: existingLuot.maSoThuTu,
+            hoTen: lh.benhNhan?.hoTen,
+            soDienThoai: lh.benhNhan?.soDienThoai,
+            tenPhong: phongKhamInfo.tenPhong,
+            viTri: phongKhamInfo.viTri,
+            chuyenKhoa: phongKhamInfo.chuyenKhoa,
+            bacSi: lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách phòng khám',
+            gioDangKy: new Date(existingLuot.thoiGianDen).toLocaleTimeString('vi-VN'),
+            loai: 'Đã đặt hẹn trước (Trực tuyến)',
+            soNguoiDangDoi,
+            qrCode: `CHECKIN:${existingLuot.maSoThuTu}:${lh.maLichHen}`,
+          },
         };
       }
-    }
 
-    if (existingLuot) {
-      // Đếm số người đang chờ phía trước trong cùng phòng khám
+      // Sinh STT nguyên tử tăng dần hôm nay cho nhóm ưu tiên có lịch hẹn (Loại A)
+      const maSoThuTu = await this.generateNextKioskStt('A');
+
+      const newLuot = this.luotRepo.create({
+        maSoThuTu,
+        benhNhanId: lh.benhNhanId,
+        lichHenId: lh.id,
+        phongKhamId: phongKhamInfo.id,
+        bacSiId: lh.bacSiId || undefined,
+        thoiGianDen: new Date(),
+        trangThai: TrangThaiTiepNhan.CHO_KHAM,
+        ghiChu: `Check-in tự động Kiosk lúc ${new Date().toLocaleTimeString('vi-VN')}. Lịch hẹn: ${lh.maLichHen}`,
+      });
+
+      const savedLuot = await this.luotRepo.save(newLuot);
+
+      // Ghi nhận mã checkin vào ghi chú của lịch hẹn
+      await this.lichHenRepo.update(lh.id, {
+        ghiChu: `${lh.ghiChu || ''} [ĐÃ_CHECKIN_KIOSK: ${maSoThuTu}]`.trim(),
+      });
+
+      // Số người đang chờ phía trước
       const soNguoiDangDoi = await this.luotRepo
         .createQueryBuilder('ltn')
         .where('ltn.phongKhamId = :pkId', { pkId: phongKhamInfo.id })
         .andWhere('ltn.trangThai = :st', { st: TrangThaiTiepNhan.CHO_KHAM })
         .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
-        .andWhere('ltn.id < :curId', { curId: existingLuot.id })
+        .andWhere('ltn.id < :curId', { curId: savedLuot.id })
         .getCount();
 
       return {
         success: true,
-        message: 'Bệnh nhân đã lấy số trước đó. Đang in lại vé STT.',
+        message: 'Check-in thành công! Chúc bạn buổi khám thuận lợi.',
         ticket: {
-          maSoThuTu: existingLuot.maSoThuTu,
+          maSoThuTu,
           hoTen: lh.benhNhan?.hoTen,
           soDienThoai: lh.benhNhan?.soDienThoai,
           tenPhong: phongKhamInfo.tenPhong,
           viTri: phongKhamInfo.viTri,
           chuyenKhoa: phongKhamInfo.chuyenKhoa,
           bacSi: lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách phòng khám',
-          gioDangKy: new Date(existingLuot.thoiGianDen).toLocaleTimeString('vi-VN'),
+          gioDangKy: new Date().toLocaleTimeString('vi-VN'),
           loai: 'Đã đặt hẹn trước (Trực tuyến)',
           soNguoiDangDoi,
-          qrCode: `CHECKIN:${existingLuot.maSoThuTu}:${lh.maLichHen}`,
+          qrCode: `CHECKIN:${maSoThuTu}:${lh.maLichHen}`,
         },
       };
-    }
-
-    // Tính STT tăng dần hôm nay cho nhóm ưu tiên có lịch hẹn (Loại A)
-    const todayCount = await this.luotRepo
-      .createQueryBuilder('ltn')
-      .where('DATE(ltn.thoiGianDen) = CURDATE()')
-      .getCount();
-
-    const sttNumber = todayCount + 1;
-    const maSoThuTu = `A${String(sttNumber).padStart(3, '0')}`;
-
-    const newLuot = this.luotRepo.create({
-      maSoThuTu,
-      benhNhanId: lh.benhNhanId,
-      lichHenId: lh.id,
-      phongKhamId: phongKhamInfo.id,
-      bacSiId: lh.bacSiId || undefined,
-      thoiGianDen: new Date(),
-      trangThai: TrangThaiTiepNhan.CHO_KHAM,
-      ghiChu: `Check-in tự động Kiosk lúc ${new Date().toLocaleTimeString('vi-VN')}. Lịch hẹn: ${lh.maLichHen}`,
     });
-
-    const savedLuot = await this.luotRepo.save(newLuot);
-
-    // Ghi nhận mã checkin vào ghi chú của lịch hẹn
-    await this.lichHenRepo.update(lh.id, {
-      ghiChu: `${lh.ghiChu || ''} [ĐÃ_CHECKIN_KIOSK: ${maSoThuTu}]`.trim(),
-    });
-
-    // Số người đang chờ phía trước
-    const soNguoiDangDoi = await this.luotRepo
-      .createQueryBuilder('ltn')
-      .where('ltn.phongKhamId = :pkId', { pkId: phongKhamInfo.id })
-      .andWhere('ltn.trangThai = :st', { st: TrangThaiTiepNhan.CHO_KHAM })
-      .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
-      .andWhere('ltn.id < :curId', { curId: savedLuot.id })
-      .getCount();
-
-    return {
-      success: true,
-      message: 'Check-in thành công! Chúc bạn buổi khám thuận lợi.',
-      ticket: {
-        maSoThuTu,
-        hoTen: lh.benhNhan?.hoTen,
-        soDienThoai: lh.benhNhan?.soDienThoai,
-        tenPhong: phongKhamInfo.tenPhong,
-        viTri: phongKhamInfo.viTri,
-        chuyenKhoa: phongKhamInfo.chuyenKhoa,
-        bacSi: lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách phòng khám',
-        gioDangKy: new Date().toLocaleTimeString('vi-VN'),
-        loai: 'Đã đặt hẹn trước (Trực tuyến)',
-        soNguoiDangDoi,
-        qrCode: `CHECKIN:${maSoThuTu}:${lh.maLichHen}`,
-      },
-    };
   }
 
   /**
@@ -258,108 +326,143 @@ export class KioskService {
       throw new BadRequestException('Vui lòng cung cấp Họ tên và Số điện thoại.');
     }
 
-    // 1. Tìm hoặc tạo hồ sơ bệnh nhân
-    let benhNhan = await this.benhNhanRepo.findOne({
-      where: { soDienThoai },
-    });
-
-    if (!benhNhan) {
-      const maBenhNhan = `BN${Date.now().toString().slice(-6)}`;
-      const birthYear = dto.namSinh ? parseInt(dto.namSinh, 10) : 1990;
-      const ngaySinh = `${birthYear}-01-01`;
-
-      benhNhan = this.benhNhanRepo.create({
-        maBenhNhan,
-        hoTen,
-        soDienThoai,
-        ngaySinh,
-        gioiTinh: dto.gioiTinh === 'nu' ? 'nu' : 'nam',
-        diaChi: 'Đăng ký tại Kiosk phòng khám',
+    return this.withLock(`kiosk:walkin:${soDienThoai}`, async () => {
+      // 1. Tìm hoặc tạo hồ sơ bệnh nhân
+      let benhNhan = await this.benhNhanRepo.findOne({
+        where: { soDienThoai },
       });
-      benhNhan = await this.benhNhanRepo.save(benhNhan);
-    }
 
-    // 2. Phân luồng phòng khám theo triệu chứng hoặc chuyên khoa
-    const tc = `${dto.trieuChung || ''} ${dto.chuyenKhoa || ''}`.toLowerCase();
-    let targetRoomId = 1;
-    let targetSpecialty = 'Nội tổng quát';
+      if (!benhNhan) {
+        const maBenhNhan = `BN${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 90 + 10)}`;
+        const birthYear = dto.namSinh ? parseInt(dto.namSinh, 10) : 1990;
+        const ngaySinh = `${birthYear}-01-01`;
 
-    if (tc.includes('ngực') || tc.includes('tim') || tc.includes('huyết áp') || tc.includes('khó thở') || tc.includes('mạch')) {
-      targetRoomId = 2;
-      targetSpecialty = 'Tim mạch';
-    } else if (tc.includes('bé') || tc.includes('trẻ') || tc.includes('nhi') || tc.includes('sốt mọc răng')) {
-      targetRoomId = 3;
-      targetSpecialty = 'Nhi khoa';
-    } else if (tc.includes('mắt') || tc.includes('thị lực') || tc.includes('đau mắt') || tc.includes('cận thị')) {
-      targetRoomId = 4;
-      targetSpecialty = 'Chuyên Khoa Mắt';
-    }
+        benhNhan = this.benhNhanRepo.create({
+          maBenhNhan,
+          hoTen,
+          soDienThoai,
+          ngaySinh,
+          gioiTinh: dto.gioiTinh === 'nu' ? 'nu' : 'nam',
+          diaChi: 'Đăng ký tại Kiosk phòng khám',
+        });
+        benhNhan = await this.benhNhanRepo.save(benhNhan);
+      }
 
-    // Lấy thông tin phòng khám thực tế từ DB
-    const pkRows = await this.luotRepo.manager.query(
-      `SELECT id, ten_phong, vi_tri, chuyen_khoa FROM phong_kham WHERE id = ? LIMIT 1`,
-      [targetRoomId],
-    );
+      // 2. Phân luồng phòng khám theo triệu chứng hoặc chuyên khoa
+      const tc = `${dto.trieuChung || ''} ${dto.chuyenKhoa || ''}`.toLowerCase();
+      let targetRoomId = 1;
+      let targetSpecialty = 'Nội tổng quát';
 
-    const phongKhamInfo = pkRows && pkRows.length > 0
-      ? pkRows[0]
-      : { id: targetRoomId, ten_phong: 'Phòng 101 - Khám Nội Tổng Quát', vi_tri: 'Tầng 1 - Khu A', chuyen_khoa: targetSpecialty };
+      if (tc.includes('ngực') || tc.includes('tim') || tc.includes('huyết áp') || tc.includes('khó thở') || tc.includes('mạch')) {
+        targetRoomId = 2;
+        targetSpecialty = 'Tim mạch';
+      } else if (tc.includes('bé') || tc.includes('trẻ') || tc.includes('nhi') || tc.includes('sốt mọc răng')) {
+        targetRoomId = 3;
+        targetSpecialty = 'Nhi khoa';
+      } else if (tc.includes('mắt') || tc.includes('thị lực') || tc.includes('đau mắt') || tc.includes('cận thị')) {
+        targetRoomId = 4;
+        targetSpecialty = 'Chuyên Khoa Mắt';
+      }
 
-    // Tìm bác sĩ đang trực ở chuyên khoa này
-    const doctors = await this.bacSiRepo.find({
-      relations: ['nhanVien'],
-    });
-    const matchedDoctor = doctors.find((d) => (d.chuyenKhoa || '').toLowerCase().includes(targetSpecialty.toLowerCase())) || doctors[0];
+      // Lấy thông tin phòng khám thực tế từ DB
+      const pkRows = await this.luotRepo.manager.query(
+        `SELECT id, ten_phong, vi_tri, chuyen_khoa FROM phong_kham WHERE id = ? LIMIT 1`,
+        [targetRoomId],
+      );
 
-    // 3. Sinh số thứ tự cho bệnh nhân vãng lai (Loại B)
-    const todayCount = await this.luotRepo
-      .createQueryBuilder('ltn')
-      .where('DATE(ltn.thoiGianDen) = CURDATE()')
-      .getCount();
+      const phongKhamInfo = pkRows && pkRows.length > 0
+        ? pkRows[0]
+        : { id: targetRoomId, ten_phong: 'Phòng 101 - Khám Nội Tổng Quát', vi_tri: 'Tầng 1 - Khu A', chuyen_khoa: targetSpecialty };
 
-    const sttNumber = todayCount + 1;
-    const maSoThuTu = `B${String(sttNumber).padStart(3, '0')}`;
+      // Tìm bác sĩ đang trực ở chuyên khoa này
+      const doctors = await this.bacSiRepo.find({
+        relations: ['nhanVien'],
+      });
+      const matchedDoctor = doctors.find((d) => (d.chuyenKhoa || '').toLowerCase().includes(targetSpecialty.toLowerCase())) || doctors[0];
 
-    const newLuot = this.luotRepo.create({
-      maSoThuTu,
-      benhNhanId: benhNhan.id,
-      lichHenId: undefined,
-      phongKhamId: phongKhamInfo.id,
-      bacSiId: matchedDoctor?.id,
-      thoiGianDen: new Date(),
-      trangThai: TrangThaiTiepNhan.CHO_KHAM,
-      ghiChu: `[Kiosk tự động] Đăng ký mới. Triệu chứng: ${dto.trieuChung || 'Khám lâm sàng'}`,
-    });
+      // Chống bấm đúp tại Kiosk: Nếu bệnh nhân đã có lượt đang chờ khám hôm nay tại phòng này thì in lại phiếu
+      const existingActiveWalkin = await this.luotRepo
+        .createQueryBuilder('ltn')
+        .where('ltn.benhNhanId = :bnId', { bnId: benhNhan.id })
+        .andWhere('ltn.phongKhamId = :pkId', { pkId: phongKhamInfo.id })
+        .andWhere('ltn.trangThai = :st', { st: TrangThaiTiepNhan.CHO_KHAM })
+        .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
+        .orderBy('ltn.id', 'DESC')
+        .getOne();
 
-    const savedLuot = await this.luotRepo.save(newLuot);
+      if (existingActiveWalkin) {
+        const soNguoiDangDoi = await this.luotRepo
+          .createQueryBuilder('ltn')
+          .where('ltn.phongKhamId = :pkId', { pkId: phongKhamInfo.id })
+          .andWhere('ltn.trangThai = :st', { st: TrangThaiTiepNhan.CHO_KHAM })
+          .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
+          .andWhere('ltn.id < :curId', { curId: existingActiveWalkin.id })
+          .getCount();
 
-    // Đếm số người đang chờ trong phòng
-    const soNguoiDangDoi = await this.luotRepo
-      .createQueryBuilder('ltn')
-      .where('ltn.phongKhamId = :pkId', { pkId: phongKhamInfo.id })
-      .andWhere('ltn.trangThai = :st', { st: TrangThaiTiepNhan.CHO_KHAM })
-      .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
-      .andWhere('ltn.id < :curId', { curId: savedLuot.id })
-      .getCount();
+        return {
+          success: true,
+          message: 'Bệnh nhân đã có số thứ tự chờ khám hôm nay. Đang in lại phiếu tiếp nhận.',
+          ticket: {
+            maSoThuTu: existingActiveWalkin.maSoThuTu,
+            hoTen: benhNhan.hoTen,
+            soDienThoai: benhNhan.soDienThoai,
+            tenPhong: phongKhamInfo.ten_phong,
+            viTri: phongKhamInfo.vi_tri,
+            chuyenKhoa: phongKhamInfo.chuyen_khoa,
+            trieuChung: dto.trieuChung || 'Khám sức khỏe tổng quát',
+            bacSi: matchedDoctor?.nhanVien?.hoTen || 'Bác sĩ trực chuyên khoa',
+            gioDangKy: new Date(existingActiveWalkin.thoiGianDen).toLocaleTimeString('vi-VN'),
+            loai: 'Tiếp nhận trực tiếp tại quầy Kiosk',
+            soNguoiDangDoi,
+            qrCode: `KIOSK_WALKIN:${existingActiveWalkin.maSoThuTu}:${benhNhan.id}`,
+          },
+        };
+      }
 
-    return {
-      success: true,
-      message: 'Đăng ký thành công! Đang in phiếu số thứ tự tiếp nhận.',
-      ticket: {
+      // 3. Sinh số thứ tự nguyên tử cho bệnh nhân vãng lai (Loại B)
+      const maSoThuTu = await this.generateNextKioskStt('B');
+
+      const newLuot = this.luotRepo.create({
         maSoThuTu,
-        hoTen: benhNhan.hoTen,
-        soDienThoai: benhNhan.soDienThoai,
-        tenPhong: phongKhamInfo.ten_phong,
-        viTri: phongKhamInfo.vi_tri,
-        chuyenKhoa: phongKhamInfo.chuyen_khoa,
-        trieuChung: dto.trieuChung || 'Khám sức khỏe tổng quát',
-        bacSi: matchedDoctor?.nhanVien?.hoTen || 'Bác sĩ trực chuyên khoa',
-        gioDangKy: new Date().toLocaleTimeString('vi-VN'),
-        loai: 'Tiếp nhận trực tiếp tại quầy Kiosk',
-        soNguoiDangDoi,
-        qrCode: `KIOSK_WALKIN:${maSoThuTu}:${benhNhan.id}`,
-      },
-    };
+        benhNhanId: benhNhan.id,
+        lichHenId: undefined,
+        phongKhamId: phongKhamInfo.id,
+        bacSiId: matchedDoctor?.id,
+        thoiGianDen: new Date(),
+        trangThai: TrangThaiTiepNhan.CHO_KHAM,
+        ghiChu: `[Kiosk tự động] Đăng ký mới. Triệu chứng: ${dto.trieuChung || 'Khám lâm sàng'}`,
+      });
+
+      const savedLuot = await this.luotRepo.save(newLuot);
+
+      // Đếm số người đang chờ trong phòng
+      const soNguoiDangDoi = await this.luotRepo
+        .createQueryBuilder('ltn')
+        .where('ltn.phongKhamId = :pkId', { pkId: phongKhamInfo.id })
+        .andWhere('ltn.trangThai = :st', { st: TrangThaiTiepNhan.CHO_KHAM })
+        .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
+        .andWhere('ltn.id < :curId', { curId: savedLuot.id })
+        .getCount();
+
+      return {
+        success: true,
+        message: 'Đăng ký thành công! Đang in phiếu số thứ tự tiếp nhận.',
+        ticket: {
+          maSoThuTu,
+          hoTen: benhNhan.hoTen,
+          soDienThoai: benhNhan.soDienThoai,
+          tenPhong: phongKhamInfo.ten_phong,
+          viTri: phongKhamInfo.vi_tri,
+          chuyenKhoa: phongKhamInfo.chuyen_khoa,
+          trieuChung: dto.trieuChung || 'Khám sức khỏe tổng quát',
+          bacSi: matchedDoctor?.nhanVien?.hoTen || 'Bác sĩ trực chuyên khoa',
+          gioDangKy: new Date().toLocaleTimeString('vi-VN'),
+          loai: 'Tiếp nhận trực tiếp tại quầy Kiosk',
+          soNguoiDangDoi,
+          qrCode: `KIOSK_WALKIN:${maSoThuTu}:${benhNhan.id}`,
+        },
+      };
+    });
   }
 
   /**

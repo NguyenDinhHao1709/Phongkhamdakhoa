@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import * as XLSX from 'xlsx';
 import {
   Search, Plus, ChevronLeft, ChevronRight, Phone, Calendar,
   AlertTriangle, Eye, Edit3, SlidersHorizontal, X, RotateCcw,
-  Sparkles, Users, UserPlus, ShieldAlert, Baby, Clock
+  Sparkles, Users, UserPlus, ShieldAlert, Baby, Clock, Download
 } from 'lucide-react';
 import { apiGet } from '../../../services/api';
-import { formatDate, tinhTuoi } from '../../../utils/formatDate';
+import { formatDate, formatDateTime, tinhTuoi } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
 
 function useBenhNhan(params) {
@@ -95,6 +96,63 @@ export default function BenhNhanListPage() {
   const items = data?.data || [];
   const pagination = data?.pagination || {};
 
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportExcel = async () => {
+    try {
+      setIsExporting(true);
+      // Kết xuất dữ liệu theo đúng bộ lọc hiện hành (tối đa 1000 hồ sơ)
+      const res = await apiGet('/benh-nhan', {
+        ...queryParams,
+        page: 1,
+        limit: 1000,
+      });
+      const exportData = res?.data || items;
+      if (!exportData || exportData.length === 0) {
+        alert('Không có dữ liệu bệnh nhân để xuất file!');
+        return;
+      }
+      const rows = exportData.map((bn, idx) => ({
+        'STT': idx + 1,
+        'Mã Bệnh Nhân': bn.maBenhNhan || '',
+        'Họ Tên': bn.hoTen || '',
+        'Ngày Sinh': bn.ngaySinh ? formatDate(bn.ngaySinh) : '',
+        'Tuổi': bn.ngaySinh ? tinhTuoi(bn.ngaySinh) : '',
+        'Giới Tính': bn.gioiTinh === 'nam' ? 'Nam' : bn.gioiTinh === 'nu' ? 'Nữ' : (bn.gioiTinh || ''),
+        'Số Điện Thoại': bn.soDienThoai || '',
+        'CCCD/CMND': bn.cccd || bn.cmnd || '',
+        'Địa Chỉ': bn.diaChi || '',
+        'Tiền Sử Dị Ứng': bn.diUng || 'Không ghi nhận',
+        'Nhóm Máu': bn.nhomMau || '',
+        'Ngày Tạo Hồ Sơ': bn.taoLuc || bn.createdAt ? formatDateTime(bn.taoLuc || bn.createdAt) : '',
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [
+        { wch: 6 },  // STT
+        { wch: 14 }, // Mã BN
+        { wch: 22 }, // Họ tên
+        { wch: 12 }, // Ngày sinh
+        { wch: 10 }, // Tuổi
+        { wch: 10 }, // Giới tính
+        { wch: 14 }, // SĐT
+        { wch: 16 }, // CCCD
+        { wch: 30 }, // Địa chỉ
+        { wch: 25 }, // Dị ứng
+        { wch: 10 }, // Nhóm máu
+        { wch: 18 }, // Ngày tạo
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'DanhSachBenhNhan');
+      const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      XLSX.writeFile(wb, `Danh_Sach_Benh_Nhan_${now}.xlsx`);
+    } catch (err) {
+      console.error('Lỗi xuất Excel:', err);
+      alert('Có lỗi khi kết xuất danh sách bệnh nhân.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleResetFilters = () => {
     setSearch('');
     setDebouncedQ('');
@@ -128,13 +186,26 @@ export default function BenhNhanListPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate('/tiep-tan/benh-nhan/tao-moi')}
-          className="flex items-center gap-1.5 px-3.5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer self-start sm:self-auto"
-        >
-          <Plus className="h-4 w-4" /> Tạo hồ sơ mới
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={isExporting}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+            title="Xuất file Excel danh sách bệnh nhân"
+          >
+            <Download className="h-4 w-4" />
+            <span>{isExporting ? 'Đang xuất...' : 'Xuất Excel'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/tiep-tan/benh-nhan/tao-moi')}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+          >
+            <Plus className="h-4 w-4" /> Tạo hồ sơ mới
+          </button>
+        </div>
       </div>
 
       {/* ─── CỤM THỐNG KÊ NHANH (MINI STATS CHIPS) ────────────────── */}

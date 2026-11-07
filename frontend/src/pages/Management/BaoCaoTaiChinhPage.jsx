@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import * as XLSX from 'xlsx';
 import { apiGet } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { formatCurrency } from '../../utils/formatCurrency';
@@ -282,57 +283,118 @@ export default function BaoCaoTaiChinhPage() {
     }
   };
 
-  // Xuất file CSV tùy theo Tab đang xem
-  const handleExportCSV = () => {
-    let headers = [];
-    let rows = [];
-    let fileName = `BaoCao_${activeTab}_${new Date().toISOString().slice(0, 10)}.csv`;
+  // Xuất bộ file Excel đa trang tính Báo cáo tài chính & Doanh thu (.xlsx)
+  const handleExportExcel = () => {
+    const wb = XLSX.utils.book_new();
 
-    if (activeTab === 'tai_chinh') {
-      if (filteredHoaDon.length === 0) return;
-      headers = ['Mã HĐ', 'Bệnh nhân', 'Số điện thoại', 'Tổng tiền (VNĐ)', 'Giảm giá (VNĐ)', 'Thực thu (VNĐ)', 'Phương thức', 'Ngày thanh toán', 'Thu ngân'];
-      rows = filteredHoaDon.map(h => [
-        h.maHoaDon,
-        `"${h.benhNhanTen || ''}"`,
-        h.benhNhanSdt || '',
-        h.tongTien,
-        h.soTienGiam,
-        h.thucThu,
-        PHUONG_THUC_LABEL[h.phuongThuc] || h.phuongThuc,
-        h.ngayThanhToan ? new Date(h.ngayThanhToan).toLocaleString('vi-VN') : '',
-        `"${h.thuNganTen || ''}"`,
-      ]);
-    } else if (activeTab === 'lam_sang') {
-      headers = ['Tên Dịch Vụ CLS / Xét Nghiệm', 'Phân Loại', 'Số Ca Chỉ Định', 'Đơn Giá (VNĐ)', 'Doanh Thu Dịch Vụ (VNĐ)', 'Tỷ Lệ Hoàn Thành'];
-      rows = (cls?.danhMucDichVu || []).map(d => [
-        `"${d.tenDichVu}"`,
-        `"${d.loai}"`,
-        d.soCa,
-        d.donGia,
-        d.doanhThu,
-        `"${d.tyLeHoanThanh}"`
-      ]);
-    } else if (activeTab === 'duoc') {
-      headers = ['Mã Thuốc', 'Tên Thuốc / Biệt Dược', 'Hoạt Chất', 'Nhóm', 'Số Lượng Kê Đơn', 'Đơn Vị', 'Doanh Thu (VNĐ)'];
-      rows = (duoc?.topThuocKeDon || []).map(t => [
-        t.maThuoc,
-        `"${t.tenThuoc}"`,
-        `"${t.hoatChat}"`,
-        `"${t.loai}"`,
-        t.soLuongKe,
-        t.donVi,
-        t.doanhThu
-      ]);
+    // 1. Sheet Tổng quan tài chính & chi phí
+    const tongThu = taiChinh?.thucThu || taiChinh?.tongDoanhThu || 0;
+    const opex = taiChinh?.tongChiPhiOpex || 0;
+    const ncc = taiChinh?.tongChiTraNcc || 0;
+    const loiNhuan = taiChinh?.loiNhuanRong ?? (tongThu - opex - ncc);
+
+    const summaryRows = [
+      ['BÁO CÁO TỔNG QUAN TÀI CHÍNH & KINH DOANH PHÒNG KHÁM'],
+      ['Kỳ báo cáo:', getTimeRangeStr()],
+      ['Ngày xuất báo cáo:', new Date().toLocaleString('vi-VN')],
+      [],
+      ['CHỈ SỐ TÀI CHÍNH CHỦ CHỐT', 'GIÁ TRỊ (VNĐ)'],
+      ['Tổng doanh thu viện phí danh nghĩa', taiChinh?.tongDoanhThu || 0],
+      ['Tổng tiền ưu đãi / miễn giảm', taiChinh?.tongGiamGia || 0],
+      ['Tổng thực thu viện phí vào quỹ', tongThu],
+      ['Tổng chi phí vận hành (OPEX)', opex],
+      ['Tổng chi trả nhà cung cấp dược / vật tư', ncc],
+      ['Lợi nhuận gộp ước tính', loiNhuan],
+      ['Tỷ suất sinh lời / Thực thu', tongThu > 0 ? `${((loiNhuan / tongThu) * 100).toFixed(1)}%` : '0%'],
+    ];
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    wsSummary['!cols'] = [{ wch: 38 }, { wch: 25 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Tong_Quan_Tai_Chinh');
+
+    // 2. Sheet Danh sách hóa đơn viện phí
+    if (filteredHoaDon.length > 0) {
+      const hoaDonRows = filteredHoaDon.map((h, idx) => ({
+        'STT': idx + 1,
+        'Mã Hóa Đơn': h.maHoaDon || '',
+        'Họ Tên Bệnh Nhân': h.benhNhanTen || '',
+        'Số Điện Thoại': h.benhNhanSdt || '',
+        'Tổng Tiền (VNĐ)': h.tongTien || 0,
+        'Giảm Giá (VNĐ)': h.soTienGiam || 0,
+        'Thực Thu (VNĐ)': h.thucThu || 0,
+        'Phương Thức': PHUONG_THUC_LABEL[h.phuongThuc] || h.phuongThuc || '',
+        'Ngày Thanh Toán': h.ngayThanhToan ? new Date(h.ngayThanhToan).toLocaleString('vi-VN') : '',
+        'Thu Ngân': h.thuNganTen || '',
+      }));
+      const wsHoaDon = XLSX.utils.json_to_sheet(hoaDonRows);
+      wsHoaDon['!cols'] = [
+        { wch: 6 },  // STT
+        { wch: 16 }, // Mã HĐ
+        { wch: 22 }, // Tên BN
+        { wch: 14 }, // SĐT
+        { wch: 16 }, // Tổng tiền
+        { wch: 16 }, // Giảm giá
+        { wch: 16 }, // Thực thu
+        { wch: 18 }, // Phương thức
+        { wch: 20 }, // Ngày thanh toán
+        { wch: 20 }, // Thu ngân
+      ];
+      XLSX.utils.book_append_sheet(wb, wsHoaDon, 'Hoa_Don_Vien_Phi');
     }
 
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', fileName);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // 3. Sheet Doanh thu Cận lâm sàng & Xét nghiệm
+    const clsList = cls?.danhMucDichVu || [];
+    if (clsList.length > 0) {
+      const clsRows = clsList.map((d, idx) => ({
+        'STT': idx + 1,
+        'Tên Dịch Vụ CLS / Xét Nghiệm': d.tenDichVu || '',
+        'Phân Loại': d.loai === 'cdha' ? 'Chẩn đoán hình ảnh' : 'Xét nghiệm phân tích',
+        'Số Ca Chỉ Định': d.soCa || 0,
+        'Đơn Giá (VNĐ)': d.donGia || 0,
+        'Doanh Thu Dịch Vụ (VNĐ)': d.doanhThu || 0,
+        'Tỷ Lệ Hoàn Thành': d.tyLeHoanThanh || '',
+      }));
+      const wsCls = XLSX.utils.json_to_sheet(clsRows);
+      wsCls['!cols'] = [
+        { wch: 6 },  // STT
+        { wch: 32 }, // Tên DV
+        { wch: 22 }, // Phân loại
+        { wch: 16 }, // Số ca
+        { wch: 16 }, // Đơn giá
+        { wch: 22 }, // Doanh thu
+        { wch: 18 }, // Tỷ lệ HT
+      ];
+      XLSX.utils.book_append_sheet(wb, wsCls, 'Doanh_Thu_Can_Lam_Sang');
+    }
+
+    // 4. Sheet Doanh thu quầy Dược & Đơn thuốc
+    const duocList = duoc?.topThuocKeDon || [];
+    if (duocList.length > 0) {
+      const duocRows = duocList.map((t, idx) => ({
+        'STT': idx + 1,
+        'Mã Thuốc': t.maThuoc || '',
+        'Tên Thuốc / Biệt Dược': t.tenThuoc || '',
+        'Hoạt Chất': t.hoatChat || '',
+        'Nhóm Thuốc': t.loai || '',
+        'Số Lượng Kê Đơn': t.soLuongKe || 0,
+        'Đơn Vị Tính': t.donVi || '',
+        'Doanh Thu Bán Thuốc (VNĐ)': t.doanhThu || 0,
+      }));
+      const wsDuoc = XLSX.utils.json_to_sheet(duocRows);
+      wsDuoc['!cols'] = [
+        { wch: 6 },  // STT
+        { wch: 14 }, // Mã thuốc
+        { wch: 28 }, // Tên thuốc
+        { wch: 20 }, // Hoạt chất
+        { wch: 18 }, // Nhóm thuốc
+        { wch: 16 }, // Số lượng
+        { wch: 12 }, // ĐVT
+        { wch: 24 }, // Doanh thu
+      ];
+      XLSX.utils.book_append_sheet(wb, wsDuoc, 'Doanh_Thu_Duoc_Pham');
+    }
+
+    const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    XLSX.writeFile(wb, `Bao_Cao_Tai_Chinh_Giam_Doc_${nowStr}.xlsx`);
   };
 
   const getTimeRangeStr = () => {
@@ -390,10 +452,11 @@ export default function BaoCaoTaiChinhPage() {
             <Printer className="h-3.5 w-3.5" /> In Báo Cáo
           </button>
           <button
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+            onClick={handleExportExcel}
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
+            title="Xuất bộ báo cáo tài chính đa trang tính định dạng Excel"
           >
-            <Download className="h-3.5 w-3.5" /> Xuất Excel / CSV
+            <Download className="h-3.5 w-3.5" /> Xuất Excel
           </button>
         </div>
       </div>

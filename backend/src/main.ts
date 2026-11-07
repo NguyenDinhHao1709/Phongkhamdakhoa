@@ -8,17 +8,24 @@ import { ResponseTransformInterceptor } from './common/interceptors/response-tra
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { json, urlencoded } from 'express';
+import { loadProtectionMiddleware } from './common/middleware/load-protection.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    logger: ['error', 'warn', 'log', 'debug'],
+    logger: ['error', 'warn', 'log'],
   });
+
+  // Kích hoạt lớp bảo vệ chống quá tải, Rate Limiting & Health Check tức thì (/api/health)
+  app.use(loadProtectionMiddleware);
 
   // Tăng giới hạn payload body cho chấm công khuôn mặt & tải ảnh
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ extended: true, limit: '50mb' }));
 
-  // Serve uploads folder from project root
+  // Serve uploads folder from both backend/uploads and project root uploads
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads/',
+  });
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
   });
@@ -78,7 +85,10 @@ async function bootstrap() {
   }
 
   const port = process.env.PORT || 5000;
-  await app.listen(port);
+  const httpServer = await app.listen(port);
+  // Tối ưu HTTP Keep-Alive để tái sử dụng kết nối TCP khi hàng ngàn người truy cập đồng thời
+  httpServer.keepAliveTimeout = 65_000;
+  httpServer.headersTimeout = 66_000;
   console.log(`🚀 Server đang chạy: http://localhost:${port}/api`);
   console.log(`🌿 Môi trường: ${process.env.NODE_ENV}`);
 }

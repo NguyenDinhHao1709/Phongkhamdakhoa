@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import * as XLSX from 'xlsx';
 import { useAuthStore } from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
@@ -96,43 +97,64 @@ export default function ThongKeXetNghiemPage() {
     setTimeout(() => setJustRefreshed(false), 2000);
   };
 
-  const handleExportCSV = () => {
+  // Xuất file Excel Báo cáo thống kê hiệu suất xét nghiệm & CLS (.xlsx)
+  const handleExportExcel = () => {
     const list = stats?.danhSachMoiNhat || [];
-    if (list.length === 0) {
+    if (!stats && list.length === 0) {
       alert('Không có dữ liệu để xuất báo cáo.');
       return;
     }
-    const headers = [
-      'Mã Chỉ Định',
-      'Tên Dịch Vụ',
-      'Loại CLS',
-      'Bệnh Nhân',
-      'Mã BN',
-      'Trạng Thái',
-      'Thời Gian Chỉ Định',
-      'Thời Gian Có KQ',
-    ];
-    const rows = list.map((c) => [
-      c.id,
-      `"${c.tenDichVu || ''}"`,
-      c.loai === 'cdha' ? 'Chẩn đoán hình ảnh' : 'Xét nghiệm máu & Sinh hóa',
-      `"${c.benhNhan?.hoTen || ''}"`,
-      c.benhNhan?.maBenhNhan || '',
-      TRANG_THAI_CONFIG[c.trangThai]?.label || c.trangThai,
-      c.thoiGianChiDinh ? new Date(c.thoiGianChiDinh).toLocaleString('vi-VN') : '',
-      c.thoiGianCoKetQua ? new Date(c.thoiGianCoKetQua).toLocaleString('vi-VN') : '',
-    ]);
 
-    const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' +
-      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `BaoCao_XetNghiem_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const wb = XLSX.utils.book_new();
+
+    // 1. Sheet Tổng quan hiệu suất
+    const summaryRows = [
+      ['BÁO CÁO THỐNG KÊ HIỆU SUẤT & SẢN LƯỢNG XÉT NGHIỆM - CẬN LÂM SÀNG'],
+      ['Kỳ báo cáo:', getKyBaoCaoLabel()],
+      ['Phạm vi dữ liệu:', scope === 'all' ? 'Toàn bộ khoa xét nghiệm' : 'Chuyên môn cá nhân'],
+      ['Ngày xuất báo cáo:', new Date().toLocaleString('vi-VN')],
+      [],
+      ['CHỈ SỐ HIỆU SUẤT XÉT NGHIỆM', 'GIÁ TRỊ'],
+      ['Tổng số ca chỉ định', stats?.tongChiDinh || 0],
+      ['Số ca đã có kết quả', stats?.daHoanThanh ?? stats?.coKetQua ?? 0],
+      ['Tỷ lệ hoàn thành kết quả', stats?.tyLeHoanThanh || '0%'],
+      ['Số ca đang xử lý / phân tích', stats?.dangXuLy || 0],
+      ['Số ca chờ lấy mẫu', stats?.choLayMau || 0],
+      ['Thời gian xử lý trung bình (TAT)', `${stats?.thoiGianTrungBinhPhut || 25} phút`],
+      ['Tỷ lệ phát hiện bất thường', stats?.tyLeBatThuong || '0%'],
+    ];
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    wsSummary['!cols'] = [{ wch: 35 }, { wch: 25 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Tong_Quan_Hieu_Suat_Lab');
+
+    // 2. Sheet Danh sách ca chỉ định chi tiết
+    const detailRows = list.map((c, idx) => ({
+      'STT': idx + 1,
+      'Mã Chỉ Định': c.id ? `CD-${c.id}` : '',
+      'Tên Dịch Vụ Cận Lâm Sàng': c.tenDichVu || '',
+      'Phân Loại CLS': c.loai === 'cdha' ? 'Chẩn đoán hình ảnh' : 'Xét nghiệm phân tích',
+      'Mã Bệnh Nhân': c.benhNhan?.maBenhNhan || '',
+      'Họ Tên Bệnh Nhân': c.benhNhan?.hoTen || '',
+      'Thời Gian Chỉ Định': c.thoiGianChiDinh ? new Date(c.thoiGianChiDinh).toLocaleString('vi-VN') : '',
+      'Thời Gian Có Kết Quả': c.thoiGianCoKetQua ? new Date(c.thoiGianCoKetQua).toLocaleString('vi-VN') : '',
+      'Trạng Thái': TRANG_THAI_CONFIG[c.trangThai]?.label || c.trangThai || '',
+    }));
+    const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+    wsDetail['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 14 }, // Mã CĐ
+      { wch: 32 }, // Tên DV
+      { wch: 22 }, // Phân loại
+      { wch: 14 }, // Mã BN
+      { wch: 22 }, // Họ tên BN
+      { wch: 20 }, // TG chỉ định
+      { wch: 20 }, // TG có kết quả
+      { wch: 18 }, // Trạng thái
+    ];
+    XLSX.utils.book_append_sheet(wb, wsDetail, 'Danh_Sach_Chi_Dinh');
+
+    const fileName = `Bao_Cao_Xet_Nghiem_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
   };
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -217,12 +239,12 @@ export default function ThongKeXetNghiemPage() {
               <div className="h-3.5 w-px bg-gray-200" />
               <button
                 type="button"
-                onClick={handleExportCSV}
+                onClick={handleExportExcel}
                 className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-white hover:shadow-2xs transition active:scale-95 cursor-pointer whitespace-nowrap"
-                title="Xuất dữ liệu định dạng file Excel / CSV"
+                title="Xuất file Excel báo cáo thống kê xét nghiệm & CLS"
               >
                 <Download className="h-3.5 w-3.5 text-emerald-600" />
-                <span>Xuất CSV</span>
+                <span>Xuất Excel</span>
               </button>
             </div>
           </div>

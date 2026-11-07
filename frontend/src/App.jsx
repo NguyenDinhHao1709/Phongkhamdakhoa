@@ -17,6 +17,8 @@ function ScrollToTop() {
    ================================================================ */
 const HomePage        = lazy(() => import("./pages/Public/HomePage.jsx"));
 const PublicDatLichPage = lazy(() => import("./pages/Public/PublicDatLichPage.jsx"));
+const ChinhSachBaoMatPage = lazy(() => import("./pages/Public/ChinhSachBaoMatPage.jsx"));
+const ChiTietBaiVietPage = lazy(() => import("./pages/Public/ChiTietBaiVietPage.jsx"));
 const LoginPage       = lazy(() => import("./pages/Login/LoginPage.jsx"));
 const RegisterPage    = lazy(() => import("./pages/Login/RegisterPage.jsx"));
 const UnauthorizedPage = lazy(() => import("./pages/Unauthorized/UnauthorizedPage.jsx"));
@@ -129,6 +131,8 @@ export default function App() {
         {/* Public Homepage */}
         <Route path="/" element={<HomePage />} />
         <Route path="/dat-lich" element={<PublicDatLichPage />} />
+        <Route path="/chinh-sach-bao-mat" element={<ChinhSachBaoMatPage />} />
+        <Route path="/bai-viet/:idOrSlug" element={<ChiTietBaiVietPage />} />
         <Route path="/kiosk" element={<KioskPage />} />
         <Route path="/man-hinh-goi-so" element={<ManHinhGoiSoPage />} />
         <Route path="/tv-hang-doi" element={<Navigate to="/man-hinh-goi-so" replace />} />

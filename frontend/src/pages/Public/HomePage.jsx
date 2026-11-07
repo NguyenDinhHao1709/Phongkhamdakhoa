@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   Stethoscope, Calendar, ShieldCheck, Heart, User, LogIn, LogOut,
   Search, ArrowRight, Activity, PhoneCall, CheckCircle2,
@@ -359,6 +359,7 @@ export default function HomePage() {
 
   // Article Modal State
   const [selectedArticle, setSelectedArticle] = useState(null);
+  const [publicArticles, setPublicArticles] = useState([]);
 
   // Global Hospital Info State (configured by Admin)
   const hospitalInfo = useHospitalStore((s) => s.hospitalInfo);
@@ -371,7 +372,16 @@ export default function HomePage() {
   useEffect(() => {
     fetchPublicDoctors();
     fetchHospitalInfo(true);
+    fetchPublicArticles();
   }, []);
+
+  const fetchPublicArticles = async () => {
+    try {
+      const res = await apiGet('/bai-viet/public?limit=4');
+      const items = res?.data?.items || res?.items || [];
+      setPublicArticles(Array.isArray(items) ? items : []);
+    } catch (e) {}
+  };
 
   useEffect(() => {
     if (isAuthenticated && (!user?.hoTen || user?.hoTen === user?.tenDangNhap || !user?.benhNhanId)) {
@@ -565,6 +575,7 @@ export default function HomePage() {
               <a href="#dich-vu" className="hover:text-primary-600 transition-colors whitespace-nowrap">Dịch vụ y tế</a>
               <a href="#chuyen-khoa" className="hover:text-primary-600 transition-colors whitespace-nowrap">Chuyên khoa</a>
               <a href="#bac-si" className="hover:text-primary-600 transition-colors whitespace-nowrap">Đội ngũ Bác sĩ</a>
+              <a href="#cam-nang-y-khoa" className="hover:text-primary-600 transition-colors whitespace-nowrap">Bài viết</a>
             </nav>
 
             {/* Public / Staff Action Buttons */}
@@ -708,6 +719,13 @@ export default function HomePage() {
                 className="block px-3 py-2.5 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
               >
                 Đội ngũ Bác sĩ
+              </a>
+              <a
+                href="#cam-nang-y-khoa"
+                onClick={() => setMobileNavOpen(false)}
+                className="block px-3 py-2.5 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Bài viết y khoa
               </a>
               <a
                 href="#bang-gia"
@@ -1199,6 +1217,70 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ─── CẨM NANG Y KHOA & BÀI VIẾT TƯ VẤN SỨC KHỎE ─────────── */}
+      {publicArticles.length > 0 && (
+        <section id="cam-nang-y-khoa" className="py-14 bg-slate-50 border-t border-slate-200">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-8">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold">
+                  <BookOpen className="h-3.5 w-3.5" /> BÁC SĨ CHUYÊN KHOA TƯ VẤN
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
+                  Cẩm Nang Y Khoa & Sức Khỏe Gia Đình
+                </h2>
+                <p className="text-xs sm:text-sm text-gray-500 max-w-2xl">
+                  Các bài viết được biên soạn và kiểm duyệt bởi đội ngũ Bác sĩ chuyên khoa của phòng khám, giúp người bệnh hiểu rõ bệnh học và chăm sóc bản thân đúng cách.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {publicArticles.map((art) => (
+                <Link
+                  key={art.id}
+                  to={`/bai-viet/${art.slug || art.id}`}
+                  className="group bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs hover:shadow-md hover:border-primary-300 transition-all flex flex-col justify-between"
+                >
+                  <div className="space-y-3 p-4">
+                    <div className="relative h-44 -mx-4 -mt-4 overflow-hidden bg-slate-100">
+                      <img
+                        src={art.anhDaiDien || 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=800'}
+                        alt={art.tieuDe}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          e.currentTarget.src = 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=800';
+                        }}
+                      />
+                      <span className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-white/90 backdrop-blur-xs text-[10px] font-bold text-primary-800 shadow-xs">
+                        {art.chuyenKhoa || 'Đa khoa'}
+                      </span>
+                    </div>
+
+                    <h4 className="font-extrabold text-gray-900 text-sm line-clamp-2 group-hover:text-primary-600 transition-colors leading-snug">
+                      {art.tieuDe}
+                    </h4>
+
+                    <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
+                      {art.tomTat || 'Thông tin tư vấn sức khỏe từ bác sĩ chuyên khoa.'}
+                    </p>
+                  </div>
+
+                  <div className="px-4 pb-4 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                    <span className="font-bold text-slate-800 text-[11px] truncate max-w-[180px]" title={art.tenTacGia}>
+                      {art.tenTacGia || 'Bác sĩ chuyên khoa'}
+                    </span>
+                    <span className="text-[11px] text-primary-600 font-bold flex items-center gap-0.5 group-hover:translate-x-1 transition-transform">
+                      Đọc tiếp <ChevronRight className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ─── HEALTHCARE FOOTER ───────────────────────────────────────── */}
       <footer className="bg-slate-900 text-slate-400 text-xs pt-12 pb-8 border-t border-slate-800">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-8">
@@ -1215,6 +1297,15 @@ export default function HomePage() {
                   ? hospitalInfo.soGiayPhep
                   : `Giấy phép hoạt động số ${hospitalInfo.soGiayPhep || '08922/BYT-GPHĐ'}`}
               </p>
+              <div className="pt-2">
+                <Link
+                  to="/chinh-sach-bao-mat"
+                  className="inline-flex items-center gap-1.5 text-xs text-primary-300 hover:text-white font-semibold transition-colors"
+                >
+                  <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                  <span>Chính sách bảo mật & Dữ liệu y tế</span>
+                </Link>
+              </div>
             </div>
 
             <div>
@@ -1245,8 +1336,17 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="pt-8 border-t border-slate-800 text-center text-slate-500 text-[11px]">
-            {hospitalInfo.banQuyen}
+          <div className="pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-slate-500 text-[11px]">
+            <span>{hospitalInfo.banQuyen}</span>
+            <div className="flex items-center gap-4 text-slate-400">
+              <Link to="/chinh-sach-bao-mat" className="hover:text-emerald-400 transition-colors">
+                Chính sách bảo mật
+              </Link>
+              <span>•</span>
+              <Link to="/dat-lich" className="hover:text-primary-400 transition-colors">
+                Đặt lịch khám
+              </Link>
+            </div>
           </div>
         </div>
       </footer>
@@ -1268,7 +1368,10 @@ export default function HomePage() {
               setActiveSearchKeyword(ck.ten);
             }
           }}
-          onSelectArticle={(bv) => setSelectedArticle(bv)}
+          onSelectArticle={(bv) => {
+            setIsSearchModalOpen(false);
+            navigate(`/bai-viet/${bv.slug || bv.id}`);
+          }}
         />
       )}
 

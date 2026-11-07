@@ -93,6 +93,20 @@ export default function LichHenBenhNhanPage() {
     }
   };
 
+  const formatVND = (val) => `${Number(val || 0).toLocaleString('vi-VN')} đ`;
+
+  const cocTrucTiepCfg = cauHinhTienCoc.find((x) => x.loaiHinhThuc === 'truc_tiep');
+  const cocTrucTuyenCfg = cauHinhTienCoc.find((x) => x.loaiHinhThuc === 'truc_tuyen');
+  const mucCocTrucTiep = Number(cocTrucTiepCfg?.soTienCoc || 40000);
+  const mucCocTrucTuyen = Number(cocTrucTuyenCfg?.soTienCoc || 200000);
+
+  const getAppointmentAmount = (lh) => {
+    if (!lh) return mucCocTrucTiep;
+    if (lh.soTienThanhToan != null && Number(lh.soTienThanhToan) > 0) return Number(lh.soTienThanhToan);
+    if (lh.soTienCoc != null && Number(lh.soTienCoc) > 0) return Number(lh.soTienCoc);
+    return lh.hinhThuc === 'truc_tuyen' ? mucCocTrucTuyen : mucCocTrucTiep;
+  };
+
   const openRefundModal = (lh, mode = 'cancel') => {
     const existingInfo = lh?.thongTinHoanCoc;
     setRefundForm({
@@ -132,13 +146,14 @@ export default function LichHenBenhNhanPage() {
     const now = new Date();
     const bookingDateTime = new Date(`${lh.ngayHen}T${lh.gioHen}`);
     const diffHours = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const soTienLhStr = formatVND(getAppointmentAmount(lh));
 
     if (diffHours < 24) {
-      alert(`⚠️ KHÔNG THỂ HỦY LỊCH HẸN TRỰC TUYẾN!\n\nLịch hẹn ${lh.maLichHen} còn dưới 24 tiếng (1 ngày) nữa là đến giờ khám (${lh.gioHen} ngày ${lh.ngayHen}).\nTheo quy định phòng khám, chỉ được hủy trước ngày khám ít nhất 1 ngày (24 tiếng). Khi hủy dưới 24 tiếng, hệ thống không thể xử lý hủy trực tuyến và không được hoàn lại tiền tạm ứng 1/5 (40.000đ).`);
+      alert(`⚠️ KHÔNG THỂ HỦY LỊCH HẸN TRỰC TUYẾN!\n\nLịch hẹn ${lh.maLichHen} còn dưới 24 tiếng (1 ngày) nữa là đến giờ khám (${lh.gioHen} ngày ${lh.ngayHen}).\nTheo quy định phòng khám, chỉ được hủy trước ngày khám ít nhất 1 ngày (24 tiếng). Khi hủy dưới 24 tiếng, hệ thống không thể xử lý hủy trực tuyến và không được hoàn lại tiền tạm ứng (${soTienLhStr}).`);
       return;
     }
 
-    // Mở Modal chuẩn ERP Y tế để bệnh nhân nhập Ngân hàng + Số tài khoản nhận lại 40.000đ tiền cọc
+    // Mở Modal chuẩn ERP Y tế để bệnh nhân nhập Ngân hàng + Số tài khoản nhận lại tiền cọc
     openRefundModal(lh, 'cancel');
   };
 
@@ -146,10 +161,11 @@ export default function LichHenBenhNhanPage() {
     e.preventDefault();
     const lh = refundModalData.appointment;
     if (!lh) return;
+    const soTienLhStr = formatVND(getAppointmentAmount(lh));
 
     if (refundForm.phuongThucNhan === 'chuyen_khoan') {
       if (!refundForm.nganHang.trim() || !refundForm.soTaiKhoan.trim()) {
-        setRefundError('Vui lòng chọn Ngân hàng và nhập Số tài khoản để Thu ngân chuyển hoàn 40.000 đ.');
+        setRefundError(`Vui lòng chọn Ngân hàng và nhập Số tài khoản để Thu ngân chuyển hoàn ${soTienLhStr}.`);
         return;
       }
       if (!refundForm.chuTaiKhoan.trim()) {
@@ -179,7 +195,7 @@ export default function LichHenBenhNhanPage() {
         type: 'success',
         text:
           res?.message ||
-          'Đã gửi yêu cầu hủy lịch và thông tin tài khoản nhận hoàn cọc 40.000đ sang bộ phận Thu ngân!',
+          `Đã gửi yêu cầu hủy lịch và thông tin tài khoản nhận hoàn cọc ${soTienLhStr} sang bộ phận Thu ngân!`,
       });
       fetchData();
     } catch (err) {
@@ -195,7 +211,7 @@ export default function LichHenBenhNhanPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Lịch hẹn của tôi</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Theo dõi trạng thái các cuộc hẹn khám và quy định hủy lịch/hoàn cọc tạm ứng 1/5
+            Theo dõi trạng thái các cuộc hẹn khám và quy định hủy lịch/hoàn cọc tạm ứng
           </p>
         </div>
         <MedButton variant="secondary" onClick={fetchData} leftIcon={<RefreshCw className="h-4 w-4" />}>
@@ -219,11 +235,11 @@ export default function LichHenBenhNhanPage() {
       {/* Thông tin chính sách đặt trước & hủy trước 1 ngày */}
       <div className="rounded-2xl bg-primary-50/70 p-4 border border-primary-200/80 text-xs text-primary-900 leading-relaxed">
         <p className="font-bold text-sm mb-1 flex items-center gap-1.5">
-          <ShieldAlert className="h-4 w-4 text-primary-600" /> Quy định Tạm ứng 1/5 & Quy trình Hoàn cọc chuẩn ERP Y tế:
+          <ShieldAlert className="h-4 w-4 text-primary-600" /> Quy định Tạm ứng & Quy trình Hoàn cọc chuẩn ERP Y tế:
         </p>
-        <p>• Mỗi lịch hẹn cần tạm ứng <strong>40.000 đ (1/5 phí khám 200.000đ)</strong> để xác nhận giữ chỗ và khấu trừ trực tiếp vào hóa đơn khi đến khám.</p>
-        <p>• Hủy lịch hợp lệ <strong>trước ngày khám ít nhất 1 ngày (trước 24 tiếng)</strong> hoặc do Bác sĩ dời/hủy ca: Được <strong>hoàn trả 100% tiền tạm ứng (40.000đ)</strong>. Quý khách cung cấp <strong>Số tài khoản Ngân hàng</strong> (hoặc chọn nhận tiền mặt tại quầy) để bộ phận Thu ngân đối soát và chuyển hoàn.</p>
-        <p>• Hủy lịch <strong>trong vòng 24 tiếng</strong> hoặc không đến khám (No-show): Khoản tiền tạm ứng 40.000đ sẽ không được hoàn lại theo quy định của phòng khám.</p>
+        <p>• Mỗi lịch hẹn khám trực tiếp cần tạm ứng <strong>{formatVND(mucCocTrucTiep)}</strong> (tư vấn trực tuyến: <strong>{formatVND(mucCocTrucTuyen)}</strong>) để xác nhận giữ chỗ và khấu trừ trực tiếp vào hóa đơn khi đến khám.</p>
+        <p>• Hủy lịch hợp lệ <strong>trước ngày khám ít nhất 1 ngày (trước 24 tiếng)</strong> hoặc do Bác sĩ dời/hủy ca: Được <strong>hoàn trả 100% số tiền tạm ứng đã đóng</strong>. Quý khách cung cấp <strong>Số tài khoản Ngân hàng</strong> (hoặc chọn nhận tiền mặt tại quầy) để bộ phận Thu ngân đối soát và chuyển hoàn.</p>
+        <p>• Hủy lịch <strong>trong vòng 24 tiếng</strong> hoặc không đến khám (No-show): Khoản tiền tạm ứng sẽ không được hoàn lại theo quy định của phòng khám.</p>
       </div>
 
       <div className="space-y-4">
@@ -241,6 +257,8 @@ export default function LichHenBenhNhanPage() {
             const isCanceled = lh.trangThai === 'da_huy';
             const isCompleted = lh.trangThai === 'hoan_thanh';
             const isChoThanhToan = lh.trangThai === 'cho_thanh_toan';
+            const soTienLh = getAppointmentAmount(lh);
+            const soTienLhStr = formatVND(soTienLh);
 
             return (
               <div
@@ -268,7 +286,7 @@ export default function LichHenBenhNhanPage() {
                       />
                     </div>
                     <span className="text-[11px] sm:text-xs font-semibold text-primary-700 bg-primary-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-primary-200 shrink-0 whitespace-nowrap">
-                      Tạm ứng 1/5: 40.000 đ
+                      {lh.hinhThuc === 'truc_tuyen' ? `Phí tư vấn: ${soTienLhStr}` : `Tạm ứng: ${soTienLhStr}`}
                     </span>
                     {lh.ghiChu?.includes('[ĐẶT_HỘ:') && (
                       <span className="text-[11px] sm:text-xs font-bold text-emerald-800 bg-emerald-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-emerald-200 flex items-center gap-1 shrink-0 whitespace-nowrap">
@@ -278,7 +296,7 @@ export default function LichHenBenhNhanPage() {
                     {lh.hinhThuc === 'truc_tuyen' ? (
                       lh.trangThai === 'cho_thanh_toan' ? (
                         <span className="text-[11px] sm:text-xs font-bold text-amber-700 bg-amber-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-amber-200 flex items-center gap-1 shrink-0 whitespace-nowrap">
-                          <CreditCard className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-amber-600" /> Cần thanh toán (200k)
+                          <CreditCard className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-amber-600" /> Cần thanh toán ({soTienLhStr})
                         </span>
                       ) : (
                         <span className="text-[11px] sm:text-xs font-bold text-emerald-700 bg-emerald-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-emerald-200 flex items-center gap-1 shrink-0 whitespace-nowrap">
@@ -288,7 +306,7 @@ export default function LichHenBenhNhanPage() {
                     ) : (
                       lh.trangThai === 'cho_thanh_toan' ? (
                         <span className="text-[11px] sm:text-xs font-bold text-amber-700 bg-amber-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-amber-200 flex items-center gap-1 shrink-0 whitespace-nowrap">
-                          <CreditCard className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-amber-600" /> Cần tạm ứng (40k)
+                          <CreditCard className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-amber-600" /> Cần tạm ứng ({soTienLhStr})
                         </span>
                       ) : (
                         <span className="text-[11px] sm:text-xs font-bold text-blue-700 bg-blue-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-blue-200 flex items-center gap-1 shrink-0 whitespace-nowrap">
@@ -348,13 +366,7 @@ export default function LichHenBenhNhanPage() {
                             className="w-full md:w-auto bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-xs justify-center"
                             leftIcon={<CreditCard className="h-4 w-4" />}
                           >
-                            {(() => {
-                              const cfg = cauHinhTienCoc.find(x => x.loaiHinhThuc === lh.hinhThuc);
-                              const amount = cfg?.soTienCoc ? Number(cfg.soTienCoc) : (lh.hinhThuc === 'truc_tuyen' ? 251000 : 40000);
-                              return lh.hinhThuc === 'truc_tuyen'
-                                ? `Thanh toán phí tư vấn (${new Intl.NumberFormat('vi-VN').format(amount)} đ)`
-                                : `Thanh toán tạm ứng (${new Intl.NumberFormat('vi-VN').format(amount)} đ)`;
-                            })()}
+                            {`Thanh toán phí tư vấn (${soTienLhStr})`}
                           </MedButton>
                         ) : (() => {
                           const access = checkTelehealthAccess(lh.ngayHen, lh.gioHen, lh.ghiChu);
@@ -413,7 +425,7 @@ export default function LichHenBenhNhanPage() {
                             className="w-full md:w-auto bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-xs justify-center"
                             leftIcon={<CreditCard className="h-4 w-4" />}
                           >
-                            Thanh toán tạm ứng (40.000 đ)
+                            {`Thanh toán tạm ứng (${soTienLhStr})`}
                           </MedButton>
                         ) : (
                           <div className="w-full md:w-auto text-[11px] sm:text-xs text-blue-700 bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200 text-center font-medium">
@@ -486,7 +498,7 @@ export default function LichHenBenhNhanPage() {
                       {isCanceled && lh.trangThaiHoanCoc === 'cho_hoan_coc' && (
                         <div className="col-span-3 md:col-auto flex flex-col gap-1.5">
                           <span className="py-1 px-2.5 rounded-lg text-[11px] font-bold bg-orange-50 text-orange-800 border border-orange-200 text-center">
-                            ⏳ Chờ Thu ngân hoàn cọc 40.000 đ
+                            ⏳ Chờ Thu ngân hoàn cọc {soTienLhStr}
                           </span>
                           <button
                             type="button"
@@ -504,7 +516,7 @@ export default function LichHenBenhNhanPage() {
                       {isCanceled && lh.trangThaiHoanCoc === 'da_hoan_coc' && (
                         <span className="col-span-3 md:col-auto py-1.5 px-2.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center gap-1">
                           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                          <span>Đã hoàn cọc 40.000 đ</span>
+                          <span>Đã hoàn cọc {soTienLhStr}</span>
                         </span>
                       )}
 
@@ -578,8 +590,8 @@ export default function LichHenBenhNhanPage() {
                 <div>
                   <h3 className="text-base font-bold text-rose-950">
                     {refundModalData.mode === 'update_bank'
-                      ? 'Cập nhật Tài khoản Nhận Hoàn Cọc (40.000 đ)'
-                      : 'Xác nhận Hủy Lịch Hẹn & Nhận Hoàn Cọc (40.000 đ)'}
+                      ? `Cập nhật Tài khoản Nhận Hoàn Cọc (${formatVND(getAppointmentAmount(refundModalData.appointment))})`
+                      : `Xác nhận Hủy Lịch Hẹn & Nhận Hoàn Cọc (${formatVND(getAppointmentAmount(refundModalData.appointment))})`}
                   </h3>
                   <p className="text-xs text-rose-700">
                     Mã lịch hẹn: <strong className="font-mono">{refundModalData.appointment.maLichHen}</strong> • Ngày khám:{' '}
@@ -607,7 +619,7 @@ export default function LichHenBenhNhanPage() {
               <div className="p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-900 space-y-1">
                 <p className="font-bold flex items-center gap-1.5">
                   <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                  Đủ điều kiện hoàn trả 100% tiền tạm ứng: <span className="text-sm font-black text-emerald-700">40.000 đ</span>
+                  Đủ điều kiện hoàn trả 100% tiền tạm ứng: <span className="text-sm font-black text-emerald-700">{formatVND(getAppointmentAmount(refundModalData.appointment))}</span>
                 </p>
                 <p className="text-[11px] text-emerald-800">
                   Vui lòng cung cấp thông tin nhận tiền bên dưới để bộ phận Thu ngân phòng khám đối soát và chuyển khoản hoàn trả chính xác cho quý khách.
@@ -705,7 +717,7 @@ export default function LichHenBenhNhanPage() {
                 </div>
               ) : (
                 <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900">
-                  Quý khách vui lòng xuất trình mã lịch hẹn <strong>{refundModalData.appointment.maLichHen}</strong> hoặc Số điện thoại tại <strong>Quầy Thu Ngân (Tầng 1)</strong> để nhận lại <strong>40.000 đ</strong> tiền mặt.
+                  Quý khách vui lòng xuất trình mã lịch hẹn <strong>{refundModalData.appointment.maLichHen}</strong> hoặc Số điện thoại tại <strong>Quầy Thu Ngân (Tầng 1)</strong> để nhận lại <strong>{formatVND(getAppointmentAmount(refundModalData.appointment))}</strong> tiền mặt.
                 </div>
               )}
 
@@ -758,27 +770,24 @@ export default function LichHenBenhNhanPage() {
         <PaymentCountdownModal
           lichHenId={paymentAppointment.id}
           maLichHen={paymentAppointment.maLichHen}
-          soTien={
-            paymentAppointment.hinhThuc === 'truc_tuyen'
-              ? (Number(cauHinhTienCoc.find(x => x.loaiHinhThuc === 'truc_tuyen')?.soTienCoc) || 251000)
-              : (Number(cauHinhTienCoc.find(x => x.loaiHinhThuc === 'truc_tiep')?.soTienCoc) || 40000)
-          }
+          soTien={getAppointmentAmount(paymentAppointment)}
           title={
             paymentAppointment.hinhThuc === 'truc_tuyen'
               ? 'Thanh toán phí khám trực tuyến Telehealth'
-              : 'Thanh toán tạm ứng giữ chỗ (1/5 phí khám)'
+              : 'Thanh toán tạm ứng giữ chỗ khám bệnh'
           }
           isTelehealth={paymentAppointment.hinhThuc === 'truc_tuyen'}
           hanThanhToan={paymentAppointment.hanThanhToan}
           onPaid={async () => {
+            const paidAmountStr = formatVND(getAppointmentAmount(paymentAppointment));
             await apiPost(`/lich-hen/${paymentAppointment.id}/xac-nhan-thanh-toan`);
             setPaymentAppointment(null);
             setMsg({
               type: 'success',
               text:
                 paymentAppointment.hinhThuc === 'truc_tuyen'
-                  ? 'Thanh toán phí khám thành công! Phòng gọi video WebRTC đã được kích hoạt.'
-                  : 'Thanh toán tiền tạm ứng 40.000 đ thành công! Lịch hẹn khám trực tiếp đã được xác nhận giữ chỗ.',
+                  ? `Thanh toán phí khám (${paidAmountStr}) thành công! Phòng gọi video WebRTC đã được kích hoạt.`
+                  : `Thanh toán tiền tạm ứng (${paidAmountStr}) thành công! Lịch hẹn khám trực tiếp đã được xác nhận giữ chỗ.`,
             });
             fetchData();
           }}

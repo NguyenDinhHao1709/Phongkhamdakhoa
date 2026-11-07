@@ -8,8 +8,9 @@ import { formatCurrency } from '../../../utils/formatCurrency';
 import {
   ClipboardList, Search, User, FileText, Activity, FlaskConical, Pill, Calendar,
   Clock, Printer, ExternalLink, Eye, CheckCircle2, CreditCard, ChevronDown,
-  ChevronUp, RotateCcw, X, Filter, Stethoscope, AlertTriangle
+  ChevronUp, RotateCcw, X, Filter, Stethoscope, AlertTriangle, Download
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { parseAttachmentUrls, toAttachmentUrl } from '../../../utils/fileAttachments';
 import InPhieuKhamModal from '../../../components/Print/InPhieuKhamModal';
 import InDonThuocModal from '../../../components/Print/InDonThuocModal';
@@ -188,6 +189,103 @@ export default function HoSoBenhAnQuanLyPage() {
     setCustomEndDate('');
     setHistorySearch('');
     setFilterType('all');
+  };
+
+  const handleExportExcel = () => {
+    if (!filteredHoSoList.length) {
+      alert('Không có dữ liệu lượt khám để xuất file!');
+      return;
+    }
+
+    const exportRows = filteredHoSoList.map((item, idx) => {
+      const bn = activeBn || {};
+      const rawDate = item.ngayKham || item.taoLuc;
+      const ngayKhamStr = rawDate ? formatDateTime(rawDate) : '-';
+      const bacSiTen =
+        item.bacSiTen ||
+        (typeof item.bacSi === 'string' ? item.bacSi : item.bacSi?.nhanVien?.hoTen) ||
+        'Bác sĩ điều trị';
+
+      // Chi tiết đơn thuốc
+      const donThuocList = item.donThuoc || [];
+      const thuocDetails = donThuocList
+        .flatMap((dt) => dt.chiTietDonThuoc || dt.chiTiet || [])
+        .map((ct) => {
+          const ten = ct.thuoc?.tenThuoc || ct.tenThuoc || 'Thuốc';
+          const sl = ct.soLuong || 1;
+          const dvt = ct.thuoc?.donViTinh || ct.donViTinh || '';
+          const hd = ct.cachDung || ct.lieuDung ? ` (${ct.cachDung || ct.lieuDung})` : '';
+          return `${ten} (SL: ${sl} ${dvt})${hd}`;
+        })
+        .join('; ');
+
+      // Chi tiết CLS/Xét nghiệm
+      const clsList = (item.canLamSang || item.xetNghiem || []).filter(
+        (c) => c.trangThai !== 'huy' && c.chiDinh?.trangThai !== 'huy',
+      );
+      const clsDetails = clsList
+        .map((c) => {
+          const tenDv = c.dichVu?.tenDichVu || c.tenDichVu || 'Dịch vụ CLS';
+          const kq = c.ketQua ? ` [KQ: ${c.ketQua}]` : '';
+          return `${tenDv}${kq}`;
+        })
+        .join('; ');
+
+      return {
+        'STT': idx + 1,
+        'Mã Lượt Khám': item.luotTiepNhanId ? `LTN-${item.luotTiepNhanId}` : `BA-${item.id || idx + 1}`,
+        'Mã Bệnh Nhân': bn.maBenhNhan || '',
+        'Họ Tên Bệnh Nhân': bn.hoTen || '',
+        'Giới Tính': bn.gioiTinh || '',
+        'Tuổi / Năm Sinh': bn.ngaySinh ? tinhTuoi(bn.ngaySinh) : '',
+        'Số Điện Thoại': bn.soDienThoai || '',
+        'Thời Gian Khám': ngayKhamStr,
+        'Bác Sĩ Khám': bacSiTen,
+        'Lý Do Khám': item.lyDoKham || '',
+        'Triệu Chứng': item.trieuChung || '',
+        'Chẩn Đoán Sơ Bộ': item.chanDoanSoBo || '',
+        'Mã ICD-10': item.maIcd10 || '',
+        'Chẩn Đoán Xác Định': item.chanDoanXacDinh || item.chanDoan || '',
+        'Phương Pháp Điều Trị / Lời Dặn': item.phuongPhapDieuTri || item.loiDuyen || item.loiDan || '',
+        'Trạng Thái Hồ Sơ': item.trangThai === 'da_hoan_thanh' ? 'Hoàn thành' : 'Đang khám',
+        'Số Đơn Thuốc': donThuocList.length,
+        'Chi Tiết Thuốc Kê': thuocDetails || 'Không kê thuốc',
+        'Số Chỉ Định CLS': clsList.length,
+        'Chi Tiết Xét Nghiệm / CLS': clsDetails || 'Không chỉ định CLS',
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    worksheet['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 14 }, // Mã Lượt
+      { wch: 14 }, // Mã BN
+      { wch: 22 }, // Họ tên BN
+      { wch: 10 }, // Giới tính
+      { wch: 10 }, // Tuổi
+      { wch: 14 }, // SĐT
+      { wch: 18 }, // Ngày khám
+      { wch: 20 }, // Bác sĩ
+      { wch: 22 }, // Lý do
+      { wch: 25 }, // Triệu chứng
+      { wch: 25 }, // CĐ sơ bộ
+      { wch: 12 }, // ICD-10
+      { wch: 30 }, // CĐ xác định
+      { wch: 30 }, // Lời dặn
+      { wch: 15 }, // Trạng thái
+      { wch: 14 }, // Số đơn thuốc
+      { wch: 45 }, // Chi tiết thuốc
+      { wch: 15 }, // Số CLS
+      { wch: 45 }, // Chi tiết CLS
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'SoBenhAn');
+
+    const bnName = (activeBn?.hoTen || 'BenhNhan').replace(/\s+/g, '_');
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    XLSX.writeFile(workbook, `SoBenhAn_${bnName}_${dateStr}.xlsx`);
   };
 
   const hasActiveFilter =
@@ -407,13 +505,25 @@ export default function HoSoBenhAnQuanLyPage() {
                     Lịch sử: <strong>{filteredHoSoList.length}</strong> / {hoSoList.length} lượt khám
                   </span>
                   {filteredHoSoList.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleToggleAll}
-                      className="text-xs text-primary-600 hover:text-primary-700 font-semibold underline ml-1 cursor-pointer"
-                    >
-                      {isAllExpanded ? 'Thu gọn tất cả' : 'Mở rộng tất cả'}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleToggleAll}
+                        className="text-xs text-primary-600 hover:text-primary-700 font-semibold underline ml-1 cursor-pointer"
+                      >
+                        {isAllExpanded ? 'Thu gọn tất cả' : 'Mở rộng tất cả'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleExportExcel}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition cursor-pointer shadow-2xs ml-1"
+                        title="Xuất lịch sử khám bệnh của bệnh nhân ra file Excel"
+                      >
+                        <Download className="h-3.5 w-3.5 text-emerald-600" />
+                        <span>Xuất Excel</span>
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

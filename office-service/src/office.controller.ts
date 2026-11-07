@@ -154,6 +154,28 @@ export class OfficeController {
     return this.officeService.markRoomRead(roomId, uid);
   }
 
+  @Delete('rooms/:id/conversation')
+  @ApiOperation({ summary: 'Xóa lịch sử cuộc trò chuyện ở phía người dùng hiện tại' })
+  deleteConversation(
+    @Param('id', ParseIntPipe) roomId: number,
+    @Headers('x-user-id') headerUid?: string,
+    @Query('userId') queryUid?: string,
+  ) {
+    const uid = this.resolveUserId(headerUid, queryUid);
+    return this.officeService.deleteConversationForUser(roomId, uid);
+  }
+
+  @Post('rooms/:id/leave')
+  @ApiOperation({ summary: 'Rời khỏi nhóm trò chuyện' })
+  leaveGroup(
+    @Param('id', ParseIntPipe) roomId: number,
+    @Body() body: { userId?: number },
+    @Headers('x-user-id') headerUid?: string,
+  ) {
+    const uid = this.resolveUserId(headerUid, undefined, body?.userId);
+    return this.officeService.leaveGroupRoom(roomId, uid);
+  }
+
   @Get('patients-search')
   @ApiOperation({ summary: 'Tìm kiếm nhanh bệnh nhân để gắn thẻ hồ sơ y tế vào cuộc trò chuyện' })
   searchPatients(@Query('q') q?: string) {

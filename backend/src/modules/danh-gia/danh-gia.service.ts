@@ -14,6 +14,28 @@ import { BenhAnKham, TrangThaiBenhAnKham } from '../ho-so-benh-an/entities/ho-so
 
 @Injectable()
 export class DanhGiaService {
+  private locks = new Map<string, Promise<any>>();
+
+  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(key) || Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chain = prev.then(() => next);
+    this.locks.set(key, chain);
+
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.locks.get(key) === chain) {
+        this.locks.delete(key);
+      }
+    }
+  }
+
   constructor(
     @InjectRepository(DanhGiaCaKham)
     private readonly danhGiaRepo: Repository<DanhGiaCaKham>,
@@ -35,161 +57,163 @@ export class DanhGiaService {
    * Bệnh nhân gửi đánh giá cho 1 ca khám đã hoàn thành
    */
   async taoDanhGia(userId: number, dto: TaoDanhGiaDto) {
-    const benhNhan = await this.benhNhanRepo.findOne({ where: { nguoiDungId: userId } });
-    if (!benhNhan) {
-      throw new BadRequestException('Không tìm thấy thông tin bệnh nhân tương ứng với tài khoản này');
-    }
-
-    if (!dto.lichHenId && !dto.luotTiepNhanId) {
-      throw new BadRequestException('Cần cung cấp mã lịch hẹn hoặc mã lượt tiếp nhận để đánh giá');
-    }
-
-    let bacSiId: number | null = null;
-    let targetLichHenId: number | null = null;
-    let targetLuotTiepNhanId: number | null = dto.luotTiepNhanId || null;
-
-    let lichHen: LichHen | null = null;
-    let luotTN: LuotTiepNhan | null = null;
-    let bak: BenhAnKham | null = null;
-
-    // 1. Tìm thông tin từ lịch hẹn nếu có
-    if (dto.lichHenId) {
-      lichHen = await this.lichHenRepo.findOne({
-        where: { id: dto.lichHenId },
-        relations: ['bacSi', 'bacSi.nhanVien'],
-      });
-      if (lichHen) {
-        if (lichHen.benhNhanId !== benhNhan.id) {
-          throw new ForbiddenException('Bạn chỉ có thể đánh giá ca khám của chính mình');
-        }
-        targetLichHenId = lichHen.id;
-        bacSiId = lichHen.bacSiId;
-
-        // Tìm lượt tiếp nhận và bệnh án liên quan
-        luotTN = await this.luotTiepNhanRepo.findOne({ where: { lichHenId: lichHen.id } });
-        if (luotTN) {
-          targetLuotTiepNhanId = luotTN.id;
-          if (!bacSiId && luotTN.bacSiId) bacSiId = luotTN.bacSiId;
-          bak = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: luotTN.id } });
-        }
+    return this.withLock(`danh_gia:user:${userId}`, async () => {
+      const benhNhan = await this.benhNhanRepo.findOne({ where: { nguoiDungId: userId } });
+      if (!benhNhan) {
+        throw new BadRequestException('Không tìm thấy thông tin bệnh nhân tương ứng với tài khoản này');
       }
-    }
 
-    // 2. Tìm thông tin từ lượt tiếp nhận nếu chưa tìm thấy hoặc cần bổ sung
-    if (!luotTN && dto.luotTiepNhanId) {
-      luotTN = await this.luotTiepNhanRepo.findOne({
-        where: { id: dto.luotTiepNhanId },
-        relations: ['bacSi', 'bacSi.nhanVien'],
-      });
-      if (luotTN) {
-        if (luotTN.benhNhanId !== benhNhan.id) {
-          throw new ForbiddenException('Bạn chỉ có thể đánh giá ca khám của chính mình');
-        }
-        targetLuotTiepNhanId = luotTN.id;
-        if (!bacSiId && luotTN.bacSiId) bacSiId = luotTN.bacSiId;
+      if (!dto.lichHenId && !dto.luotTiepNhanId) {
+        throw new BadRequestException('Cần cung cấp mã lịch hẹn hoặc mã lượt tiếp nhận để đánh giá');
+      }
 
-        if (!lichHen && luotTN.lichHenId) {
-          lichHen = await this.lichHenRepo.findOne({
-            where: { id: luotTN.lichHenId },
-            relations: ['bacSi', 'bacSi.nhanVien'],
-          });
-          if (lichHen) {
-            targetLichHenId = lichHen.id;
-            if (!bacSiId) bacSiId = lichHen.bacSiId;
+      let bacSiId: number | null = null;
+      let targetLichHenId: number | null = null;
+      let targetLuotTiepNhanId: number | null = dto.luotTiepNhanId || null;
+
+      let lichHen: LichHen | null = null;
+      let luotTN: LuotTiepNhan | null = null;
+      let bak: BenhAnKham | null = null;
+
+      // 1. Tìm thông tin từ lịch hẹn nếu có
+      if (dto.lichHenId) {
+        lichHen = await this.lichHenRepo.findOne({
+          where: { id: dto.lichHenId },
+          relations: ['bacSi', 'bacSi.nhanVien'],
+        });
+        if (lichHen) {
+          if (lichHen.benhNhanId !== benhNhan.id) {
+            throw new ForbiddenException('Bạn chỉ có thể đánh giá ca khám của chính mình');
+          }
+          targetLichHenId = lichHen.id;
+          bacSiId = lichHen.bacSiId;
+
+          // Tìm lượt tiếp nhận và bệnh án liên quan
+          luotTN = await this.luotTiepNhanRepo.findOne({ where: { lichHenId: lichHen.id } });
+          if (luotTN) {
+            targetLuotTiepNhanId = luotTN.id;
+            if (!bacSiId && luotTN.bacSiId) bacSiId = luotTN.bacSiId;
+            bak = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: luotTN.id } });
           }
         }
+      }
 
-        if (!bak) {
-          bak = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: luotTN.id } });
+      // 2. Tìm thông tin từ lượt tiếp nhận nếu chưa tìm thấy hoặc cần bổ sung
+      if (!luotTN && dto.luotTiepNhanId) {
+        luotTN = await this.luotTiepNhanRepo.findOne({
+          where: { id: dto.luotTiepNhanId },
+          relations: ['bacSi', 'bacSi.nhanVien'],
+        });
+        if (luotTN) {
+          if (luotTN.benhNhanId !== benhNhan.id) {
+            throw new ForbiddenException('Bạn chỉ có thể đánh giá ca khám của chính mình');
+          }
+          targetLuotTiepNhanId = luotTN.id;
+          if (!bacSiId && luotTN.bacSiId) bacSiId = luotTN.bacSiId;
+
+          if (!lichHen && luotTN.lichHenId) {
+            lichHen = await this.lichHenRepo.findOne({
+              where: { id: luotTN.lichHenId },
+              relations: ['bacSi', 'bacSi.nhanVien'],
+            });
+            if (lichHen) {
+              targetLichHenId = lichHen.id;
+              if (!bacSiId) bacSiId = lichHen.bacSiId;
+            }
+          }
+
+          if (!bak) {
+            bak = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: luotTN.id } });
+          }
         }
       }
-    }
 
-    if (!lichHen && !luotTN) {
-      throw new NotFoundException('Không tìm thấy thông tin ca khám cần đánh giá');
-    }
-
-    if (bak && !bacSiId) {
-      bacSiId = bak.bacSiId;
-    }
-
-    // 3. Kiểm tra xem ca khám đã hoàn tất hay chưa
-    // Ca khám hoàn thành khi:
-    // - Lịch hẹn ở trạng thái hoan_thanh
-    // - HOẶC Lượt tiếp nhận ở trạng thái hoan_thanh
-    // - HOẶC Phiếu khám (bệnh án) ở trạng thái da_hoan_thanh
-    const isCompleted =
-      lichHen?.trangThai === 'hoan_thanh' ||
-      luotTN?.trangThai === 'hoan_thanh' ||
-      bak?.trangThai === TrangThaiBenhAnKham.DA_HOAN_THANH;
-
-    if (!isCompleted) {
-      throw new BadRequestException('Chỉ có thể đánh giá ca khám sau khi đã hoàn tất (trạng thái hoàn thành)');
-    }
-
-    // Tự động đồng bộ trạng thái hoan_thanh nếu ca khám đã hoàn tất
-    if (lichHen && lichHen.trangThai !== 'hoan_thanh') {
-      try {
-        await this.lichHenRepo.update({ id: lichHen.id }, { trangThai: TrangThaiLichHen.HOAN_THANH });
-      } catch (e) {
-        console.warn('Lỗi đồng bộ trạng thái lịch hẹn:', e?.message);
+      if (!lichHen && !luotTN) {
+        throw new NotFoundException('Không tìm thấy thông tin ca khám cần đánh giá');
       }
-    }
-    if (luotTN && luotTN.trangThai !== 'hoan_thanh') {
-      try {
-        await this.luotTiepNhanRepo.update({ id: luotTN.id }, { trangThai: TrangThaiTiepNhan.HOAN_THANH });
-      } catch (e) {
-        console.warn('Lỗi đồng bộ trạng thái lượt tiếp nhận:', e?.message);
+
+      if (bak && !bacSiId) {
+        bacSiId = bak.bacSiId;
       }
-    }
 
-    // 4. Kiểm tra xem đã đánh giá trước đó chưa
-    const checkConditions: any[] = [];
-    if (targetLichHenId) checkConditions.push({ lichHenId: targetLichHenId });
-    if (targetLuotTiepNhanId) checkConditions.push({ luotTiepNhanId: targetLuotTiepNhanId });
+      // 3. Kiểm tra xem ca khám đã hoàn tất hay chưa
+      // Ca khám hoàn thành khi:
+      // - Lịch hẹn ở trạng thái hoan_thanh
+      // - HOẶC Lượt tiếp nhận ở trạng thái hoan_thanh
+      // - HOẶC Phiếu khám (bệnh án) ở trạng thái da_hoan_thanh
+      const isCompleted =
+        lichHen?.trangThai === 'hoan_thanh' ||
+        luotTN?.trangThai === 'hoan_thanh' ||
+        bak?.trangThai === TrangThaiBenhAnKham.DA_HOAN_THANH;
 
-    if (checkConditions.length > 0) {
-      const existing = await this.danhGiaRepo.findOne({ where: checkConditions });
-      if (existing) {
-        throw new BadRequestException('Ca khám này đã được gửi đánh giá trước đó');
+      if (!isCompleted) {
+        throw new BadRequestException('Chỉ có thể đánh giá ca khám sau khi đã hoàn tất (trạng thái hoàn thành)');
       }
-    }
 
-    if (!bacSiId) {
-      throw new BadRequestException('Không xác định được bác sĩ phụ trách ca khám');
-    }
+      // Tự động đồng bộ trạng thái hoan_thanh nếu ca khám đã hoàn tất
+      if (lichHen && lichHen.trangThai !== 'hoan_thanh') {
+        try {
+          await this.lichHenRepo.update({ id: lichHen.id }, { trangThai: TrangThaiLichHen.HOAN_THANH });
+        } catch (e) {
+          console.warn('Lỗi đồng bộ trạng thái lịch hẹn:', e?.message);
+        }
+      }
+      if (luotTN && luotTN.trangThai !== 'hoan_thanh') {
+        try {
+          await this.luotTiepNhanRepo.update({ id: luotTN.id }, { trangThai: TrangThaiTiepNhan.HOAN_THANH });
+        } catch (e) {
+          console.warn('Lỗi đồng bộ trạng thái lượt tiếp nhận:', e?.message);
+        }
+      }
 
-    // Tính điểm trung bình
-    let diemTrungBinh: number;
-    const isOnline = lichHen?.hinhThuc === 'truc_tuyen';
-    if (isOnline) {
-      diemTrungBinh = dto.diemBacSi;
-    } else if (dto.diemCls && dto.diemCls > 0) {
-      diemTrungBinh = Math.round(((dto.diemBacSi * 2 + dto.diemCls + (dto.diemTiepDon || 5)) / 4) * 100) / 100;
-    } else {
-      diemTrungBinh = Math.round(((dto.diemBacSi * 2 + (dto.diemTiepDon || 5)) / 3) * 100) / 100;
-    }
+      // 4. Kiểm tra xem đã đánh giá trước đó chưa
+      const checkConditions: any[] = [];
+      if (targetLichHenId) checkConditions.push({ lichHenId: targetLichHenId });
+      if (targetLuotTiepNhanId) checkConditions.push({ luotTiepNhanId: targetLuotTiepNhanId });
 
-    const danhGia = this.danhGiaRepo.create({
-      lichHenId: targetLichHenId,
-      luotTiepNhanId: dto.luotTiepNhanId || null,
-      benhNhanId: benhNhan.id,
-      bacSiId,
-      diemBacSi: dto.diemBacSi,
-      diemCls: isOnline ? null : (dto.diemCls || null),
-      diemTiepDon: isOnline ? (dto.diemBacSi || 5) : (dto.diemTiepDon || 5),
-      diemTrungBinh,
-      tieuChiHaiLong: dto.tieuChiHaiLong || [],
-      nhanXet: dto.nhanXet || null,
-      anDanh: Boolean(dto.anDanh),
+      if (checkConditions.length > 0) {
+        const existing = await this.danhGiaRepo.findOne({ where: checkConditions });
+        if (existing) {
+          throw new BadRequestException('Ca khám này đã được gửi đánh giá trước đó');
+        }
+      }
+
+      if (!bacSiId) {
+        throw new BadRequestException('Không xác định được bác sĩ phụ trách ca khám');
+      }
+
+      // Tính điểm trung bình
+      let diemTrungBinh: number;
+      const isOnline = lichHen?.hinhThuc === 'truc_tuyen';
+      if (isOnline) {
+        diemTrungBinh = dto.diemBacSi;
+      } else if (dto.diemCls && dto.diemCls > 0) {
+        diemTrungBinh = Math.round(((dto.diemBacSi * 2 + dto.diemCls + (dto.diemTiepDon || 5)) / 4) * 100) / 100;
+      } else {
+        diemTrungBinh = Math.round(((dto.diemBacSi * 2 + (dto.diemTiepDon || 5)) / 3) * 100) / 100;
+      }
+
+      const danhGia = this.danhGiaRepo.create({
+        lichHenId: targetLichHenId,
+        luotTiepNhanId: targetLuotTiepNhanId,
+        benhNhanId: benhNhan.id,
+        bacSiId,
+        diemBacSi: dto.diemBacSi,
+        diemCls: isOnline ? null : (dto.diemCls || null),
+        diemTiepDon: isOnline ? (dto.diemBacSi || 5) : (dto.diemTiepDon || 5),
+        diemTrungBinh,
+        tieuChiHaiLong: dto.tieuChiHaiLong || [],
+        nhanXet: dto.nhanXet || null,
+        anDanh: Boolean(dto.anDanh),
+      });
+
+      const saved = await this.danhGiaRepo.save(danhGia);
+
+      return {
+        message: 'Cảm ơn bạn đã gửi đánh giá trải nghiệm khám bệnh! Ý kiến của bạn giúp nâng cao chất lượng dịch vụ.',
+        data: saved,
+      };
     });
-
-    const saved = await this.danhGiaRepo.save(danhGia);
-
-    return {
-      message: 'Cảm ơn bạn đã gửi đánh giá trải nghiệm khám bệnh! Ý kiến của bạn giúp nâng cao chất lượng dịch vụ.',
-      data: saved,
-    };
   }
 
   /**

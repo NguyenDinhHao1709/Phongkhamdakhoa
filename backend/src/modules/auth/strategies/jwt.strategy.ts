@@ -31,6 +31,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       tenDangNhap: payload.tenDangNhap,
       vaiTroId: payload.vaiTroId,
       vai_tro: payload.maVaiTro,   // field dùng trong RolesGuard
+      ma_vai_tro: payload.maVaiTro,
+      maVaiTro: payload.maVaiTro,
       loaiTaiKhoan: payload.loaiTaiKhoan,
     };
   }

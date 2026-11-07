@@ -8,8 +8,9 @@ import { formatDate } from '../../../utils/formatDate';
 import {
   Calendar, Clock, Phone, Search,
   AlertTriangle, X, CheckCircle2,
-  ChevronDown, RotateCcw, AlertCircle, Info, Send, Star
+  ChevronDown, RotateCcw, AlertCircle, Info, Send, Star, Download
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import DanhGiaCaKhamModal from '../../../components/Appointment/DanhGiaCaKhamModal';
 
 const getTodayKey = () => {
@@ -256,6 +257,67 @@ export default function LichHenBacSiPage() {
     return timeStr.slice(0, 5);
   };
 
+  const handleExportExcel = () => {
+    if (!filteredItems.length) {
+      alert('Không có dữ liệu lịch hẹn để xuất file!');
+      return;
+    }
+
+    const exportRows = filteredItems.map((item, idx) => {
+      const patient = item.benhNhan || item.user || {};
+      const isOnline = item.hinhThuc === 'truc_tuyen' || item.hinhThucKham === 'online';
+      const ngayHenStr = item.ngayHen || item.ngayKham ? formatDate(item.ngayHen || item.ngayKham) : '-';
+      const gioHenStr = formatTimeCompact(item.gioHen || item.gioKham);
+
+      const statusMap = {
+        cho_xac_nhan: 'Chờ xác nhận',
+        da_xac_nhan: 'Đã xác nhận',
+        hoan_thanh: 'Đã hoàn thành',
+        da_huy: 'Đã hủy',
+        cho_duyet_huy: 'Chờ duyệt hủy ca',
+        kham_that_bai: 'Không hoàn thành',
+      };
+
+      return {
+        'STT': idx + 1,
+        'Mã Lịch Hẹn': item.maLichHen || '',
+        'Ngày Hẹn': ngayHenStr,
+        'Khung Giờ': gioHenStr,
+        'Họ Tên Bệnh Nhân': patient.hoTen || item.tenBenhNhan || '',
+        'Số Điện Thoại': patient.soDienThoai || item.soDienThoai || '',
+        'Hình Thức Khám': isOnline ? 'Khám Online (Telemedicine)' : 'Khám trực tiếp tại phòng khám',
+        'Lý Do Khám': item.lyDoKham || '',
+        'Trạng Thái Lịch Hẹn': statusMap[item.trangThai] || item.trangThai || '',
+        'Đánh Giá Sao': item.danhGia ? `${item.danhGia} ⭐` : 'Chưa đánh giá',
+        'Phản Hồi Bệnh Nhân': item.nhanXet || '',
+        'Ghi Chú': item.ghiChu || '',
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    worksheet['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 16 }, // Mã Lịch Hẹn
+      { wch: 14 }, // Ngày Hẹn
+      { wch: 12 }, // Khung Giờ
+      { wch: 24 }, // Bệnh Nhân
+      { wch: 14 }, // SĐT
+      { wch: 25 }, // Hình Thức
+      { wch: 25 }, // Lý Do
+      { wch: 20 }, // Trạng Thái
+      { wch: 14 }, // Đánh Giá
+      { wch: 30 }, // Phản Hồi
+      { wch: 25 }, // Ghi Chú
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'LichHenBacSi');
+
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    XLSX.writeFile(workbook, `LichHen_BacSi_${dateStr}.xlsx`);
+  };
+
   return (
     <div className="space-y-4 animate-fade-in max-w-7xl mx-auto pb-6">
       {/* ─── TIÊU ĐỀ & THANH CÔNG CỤ TRÊN CÙNG ────────────────── */}
@@ -275,6 +337,16 @@ export default function LichHenBacSiPage() {
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-center">
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition cursor-pointer shadow-2xs"
+            title="Xuất danh sách lịch hẹn ra file Excel"
+          >
+            <Download className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Xuất Excel</span>
+          </button>
+
           {/* Nút chuyển chế độ xem Grid / Table */}
           <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200">
             <button

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Users,
   CalendarCheck,
@@ -146,56 +147,79 @@ export default function ThongKeKhachHangPage() {
   // Phân trang
   const totalPages = Math.ceil(totalCount / limit) || 1;
 
-  // Xuất file CSV
-  const handleExportCSV = () => {
-    const headers = [
-      'STT',
-      'Mã Tiếp Nhận',
-      'Mã Bệnh Nhân',
-      'Họ Tên',
-      'Năm Sinh',
-      'Giới Tính',
-      'Số Điện Thoại',
-      'Phòng Khám',
-      'Bác Sĩ',
-      'Thời Gian Đến',
-      'Huyết Áp',
-      'Mạch',
-      'Nhiệt Độ',
-      'SpO2',
-      'Hình Thức',
-      'Trạng Thái',
+  // Xuất file Excel báo cáo tiếp đón (.xlsx)
+  const handleExportExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    // 1. Sheet Tổng quan tiếp đón
+    const summaryRows = [
+      ['BÁO CÁO TỔNG QUAN TIẾP ĐÓN & LƯU LƯỢNG BỆNH NHÂN'],
+      ['Kỳ báo cáo:', getKyBaoCaoLabel()],
+      ['Ngày xuất báo cáo:', new Date().toLocaleString('vi-VN')],
+      [],
+      ['CHỈ SỐ TIẾP ĐÓN', 'GIÁ TRỊ'],
+      ['Tổng số lượt tiếp nhận', stats?.tongLuot || listData.length],
+      ['Số ca hoàn thành khám', stats?.hoanThanh || 0],
+      ['Số ca đang khám', stats?.dangKham || 0],
+      ['Số ca chờ khám', stats?.choKham || 0],
+      ['Số ca đã hủy', stats?.daHuy || 0],
+      ['Thời gian chờ trung bình', stats?.thoiGianChoTrungBinh || '12 phút'],
+      ['Đặt hẹn trước (Online)', stats?.tyLeDatHenOnline || '0%'],
+      ['Khám trực tiếp vãng lai', stats?.tyLeVangLai || '0%'],
     ];
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    wsSummary['!cols'] = [{ wch: 30 }, { wch: 25 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Tong_Quan_Tiep_Don');
 
-    const rows = filteredList.map((item, idx) => [
-      idx + 1,
-      `"${item.maSoThuTu || ''}"`,
-      `"${item.benhNhan?.maBenhNhan || ''}"`,
-      `"${item.benhNhan?.hoTen || ''}"`,
-      `"${item.benhNhan?.ngaySinh ? item.benhNhan.ngaySinh.slice(0, 4) : ''}"`,
-      `"${item.benhNhan?.gioiTinh === 'nam' ? 'Nam' : item.benhNhan?.gioiTinh === 'nu' ? 'Nữ' : 'Khác'}"`,
-      `"${item.benhNhan?.soDienThoai || ''}"`,
-      `"${item.phongKham?.ten_phong || 'Chưa chỉ định'}"`,
-      `"${item.bacSi?.nhanVien?.hoTen || 'Chưa chỉ định'}"`,
-      `"${item.thoiGianDen ? new Date(item.thoiGianDen).toLocaleString('vi-VN') : ''}"`,
-      `"${item.sinhHieu?.huyetApTamThu ? `${item.sinhHieu.huyetApTamThu}/${item.sinhHieu.huyetApTamTruong || 80}` : '—'}"`,
-      `"${item.sinhHieu?.nhipTim ? `${item.sinhHieu.nhipTim} bpm` : '—'}"`,
-      `"${item.sinhHieu?.nhietDoC ? `${item.sinhHieu.nhietDoC}°C` : '—'}"`,
-      `"${item.sinhHieu?.spo2 ? `${item.sinhHieu.spo2}%` : '—'}"`,
-      `"${item.lichHenId ? 'Đặt hẹn online' : 'Khám trực tiếp'}"`,
-      `"${item.trangThai || ''}"`,
-    ]);
+    // 2. Sheet Danh sách chi tiết lượt tiếp nhận
+    const exportList = filteredList.length > 0 ? filteredList : listData;
+    const detailRows = exportList.map((item, idx) => ({
+      'STT': idx + 1,
+      'Số Thứ Tự (STT)': item.maSoThuTu || '',
+      'Mã Lượt Tiếp Nhận': item.id ? `LTN-${item.id}` : '',
+      'Mã Bệnh Nhân': item.benhNhan?.maBenhNhan || '',
+      'Họ Tên Bệnh Nhân': item.benhNhan?.hoTen || '',
+      'Năm Sinh': item.benhNhan?.ngaySinh ? String(item.benhNhan.ngaySinh).slice(0, 4) : '',
+      'Giới Tính': item.benhNhan?.gioiTinh === 'nam' ? 'Nam' : item.benhNhan?.gioiTinh === 'nu' ? 'Nữ' : 'Khác',
+      'Số Điện Thoại': item.benhNhan?.soDienThoai || '',
+      'Phòng Khám': item.phongKham?.ten_phong || item.phongKham?.tenPhong || 'Chưa chỉ định',
+      'Bác Sĩ Tiếp Nhận': item.bacSi?.nhanVien?.hoTen || 'Chưa chỉ định',
+      'Thời Gian Đến': item.thoiGianDen ? new Date(item.thoiGianDen).toLocaleString('vi-VN') : '',
+      'Huyết Áp (mmHg)': item.sinhHieu?.huyetApTamThu ? `${item.sinhHieu.huyetApTamThu}/${item.sinhHieu.huyetApTamTruong || 80}` : '—',
+      'Mạch (nhịp/phút)': item.sinhHieu?.nhipTim ? `${item.sinhHieu.nhipTim}` : '—',
+      'Nhiệt Độ (°C)': item.sinhHieu?.nhietDoC ? `${item.sinhHieu.nhietDoC}` : '—',
+      'SpO2 (%)': item.sinhHieu?.spo2 ? `${item.sinhHieu.spo2}` : '—',
+      'Chiều Cao (cm)': item.sinhHieu?.chieuCaoCm || '—',
+      'Cân Nặng (kg)': item.sinhHieu?.canNangKg || '—',
+      'Hình Thức': item.lichHenId ? 'Đặt hẹn online' : 'Khám trực tiếp',
+      'Trạng Thái': item.trangThai === 'cho_kham' ? 'Chờ khám' : item.trangThai === 'dang_kham' ? 'Đang khám' : item.trangThai === 'hoan_thanh' ? 'Hoàn thành' : item.trangThai,
+    }));
+    const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+    wsDetail['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 16 }, // STT
+      { wch: 18 }, // Mã lượt
+      { wch: 14 }, // Mã BN
+      { wch: 22 }, // Họ tên
+      { wch: 10 }, // Năm sinh
+      { wch: 10 }, // Giới tính
+      { wch: 14 }, // SĐT
+      { wch: 20 }, // Phòng khám
+      { wch: 22 }, // Bác sĩ
+      { wch: 20 }, // Thời gian đến
+      { wch: 16 }, // Huyết áp
+      { wch: 16 }, // Mạch
+      { wch: 14 }, // Nhiệt độ
+      { wch: 12 }, // SpO2
+      { wch: 14 }, // Chiều cao
+      { wch: 14 }, // Cân nặng
+      { wch: 18 }, // Hình thức
+      { wch: 16 }, // Trạng thái
+    ];
+    XLSX.utils.book_append_sheet(wb, wsDetail, 'Danh_Sach_Chi_Tiet');
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-    link.download = `bao_cao_tiep_don_${timestamp}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 8);
+    XLSX.writeFile(wb, `Bao_Cao_Tiep_Don_${timestamp}.xlsx`);
   };
 
   // Helper render badge trạng thái
@@ -336,12 +360,12 @@ export default function ThongKeKhachHangPage() {
           </button>
 
           <button
-            onClick={handleExportCSV}
+            onClick={handleExportExcel}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl hover:bg-emerald-100 shadow-xs transition-all cursor-pointer"
-            title="Xuất file CSV báo cáo"
+            title="Xuất file Excel báo cáo tiếp đón"
           >
             <Download className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Xuất CSV</span>
+            <span>Xuất Excel</span>
           </button>
 
           <button

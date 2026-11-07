@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import {
   DollarSign, Search, Filter, Plus, Edit3, Trash2, CheckCircle2,
   AlertCircle, RefreshCw, Layers, Stethoscope, FlaskConical,
   Activity, HelpCircle, X, ShieldAlert, TrendingUp, Tag, FileText, Check,
   CreditCard, Calendar, Clock, ShieldCheck, Settings2, Info,
-  Building2, Video
+  Building2, Video, Download
 } from 'lucide-react';
 import api from '../../services/api';
 
@@ -291,6 +292,55 @@ export default function QuanLyBangGiaDichVuPage() {
     }
   };
 
+  // Xuất file Excel Bảng giá dịch vụ khám chữa bệnh
+  const handleExportExcel = () => {
+    if (!dichVuList || dichVuList.length === 0) {
+      showToast('Không có dữ liệu bảng giá để xuất file!', 'error');
+      return;
+    }
+
+    const LOAI_TEXT = {
+      kham_benh: 'Khám bệnh lâm sàng',
+      xet_nghiem: 'Xét nghiệm sinh hóa & huyết học',
+      cdha: 'Chẩn đoán hình ảnh (CĐHA)',
+      khac: 'Thủ thuật & Khác',
+    };
+
+    const rows = dichVuList.map((dv, idx) => ({
+      'STT': idx + 1,
+      'Mã Dịch Vụ': dv.maDichVu || '',
+      'Tên Dịch Vụ Kỹ Thuật': dv.tenDichVu || '',
+      'Phân Loại': LOAI_TEXT[dv.loai] || dv.loai || '',
+      'Đơn Giá (VNĐ)': Number(dv.gia) || 0,
+      'Đơn Vị Tính': dv.donViKetQua || 'Lượt',
+      'Bộ Phận Thực Hiện': dv.boPhanThucHien || 'Phòng khám chuyên khoa',
+      'Mẫu Bệnh Phẩm': dv.mauBenhPham || '—',
+      'Trị Số Tham Chiếu / Bình Thường': dv.giaTriBinhThuong || 'Bình thường',
+      'Trạng Thái Áp Dụng': dv.trangThai === 'hoat_dong' ? 'Đang hoạt động' : 'Tạm ngưng',
+      'Mô Tả Chi Tiết': dv.moTa || '',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 14 }, // Mã DV
+      { wch: 35 }, // Tên DV
+      { wch: 25 }, // Phân loại
+      { wch: 16 }, // Đơn giá
+      { wch: 12 }, // ĐVT
+      { wch: 25 }, // Bộ phận
+      { wch: 18 }, // Mẫu bệnh phẩm
+      { wch: 25 }, // Tham chiếu
+      { wch: 18 }, // Trạng thái
+      { wch: 30 }, // Mô tả
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'BangGiaDichVu');
+    const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    XLSX.writeFile(wb, `Bang_Gia_Dich_Vu_Kham_Chua_Benh_${nowStr}.xlsx`);
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* ─── TOAST NOTIFICATION ──────────────────────────────────── */}
@@ -322,10 +372,19 @@ export default function QuanLyBangGiaDichVuPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+            title="Xuất file Excel toàn bộ bảng giá dịch vụ khám chữa bệnh"
+          >
+            <Download className="w-4 h-4 text-emerald-600" />
+            <span>Xuất Excel Bảng Giá</span>
+          </button>
+
           <button
             onClick={() => { fetchData(); fetchCauHinhTienCoc(); }}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
             title="Làm mới dữ liệu"
           >
             <RefreshCw className={`w-4 h-4 ${loading || loadingCoc ? 'animate-spin' : ''}`} />
@@ -334,7 +393,7 @@ export default function QuanLyBangGiaDichVuPage() {
           {activeTab === 'dich_vu' && (
             <button
               onClick={handleOpenAddModal}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-sm transition-all"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Thêm Dịch Vụ Mới</span>
@@ -745,11 +804,16 @@ export default function QuanLyBangGiaDichVuPage() {
                   <input
                     type="number"
                     min="0"
-                    step="5000"
+                    step="any"
                     value={cocFormData.phiKhamMacDinh}
                     onChange={(e) => {
-                      const phi = Number(e.target.value);
-                      const pt = Number(cocFormData.phanTramCoc);
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        setCocFormData({ ...cocFormData, phiKhamMacDinh: '', soTienCoc: 0 });
+                        return;
+                      }
+                      const phi = Number(raw);
+                      const pt = Number(cocFormData.phanTramCoc || 0);
                       setCocFormData({
                         ...cocFormData,
                         phiKhamMacDinh: phi,
@@ -759,7 +823,7 @@ export default function QuanLyBangGiaDichVuPage() {
                     className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-hidden focus:border-primary-500 font-bold"
                   />
                   <span className="text-[11px] text-slate-400 mt-0.5 block">
-                    = {formatVND(cocFormData.phiKhamMacDinh)}
+                    = {formatVND(cocFormData.phiKhamMacDinh || 0)}
                   </span>
                 </div>
 
@@ -772,10 +836,16 @@ export default function QuanLyBangGiaDichVuPage() {
                     type="number"
                     min="0"
                     max="100"
+                    step="any"
                     value={cocFormData.phanTramCoc}
                     onChange={(e) => {
-                      const pt = Number(e.target.value);
-                      const phi = Number(cocFormData.phiKhamMacDinh);
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        setCocFormData({ ...cocFormData, phanTramCoc: '', soTienCoc: 0 });
+                        return;
+                      }
+                      const pt = Number(raw);
+                      const phi = Number(cocFormData.phiKhamMacDinh || 0);
                       setCocFormData({
                         ...cocFormData,
                         phanTramCoc: pt,
@@ -798,13 +868,13 @@ export default function QuanLyBangGiaDichVuPage() {
                 <input
                   type="number"
                   min="0"
-                  step="1000"
+                  step="any"
                   value={cocFormData.soTienCoc}
-                  onChange={(e) => setCocFormData({ ...cocFormData, soTienCoc: Number(e.target.value) })}
+                  onChange={(e) => setCocFormData({ ...cocFormData, soTienCoc: e.target.value === '' ? '' : Number(e.target.value) })}
                   className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-primary-300 focus:outline-hidden focus:border-primary-600 font-black text-primary-700 text-base"
                 />
                 <span className="text-xs font-bold text-emerald-600 mt-1 block">
-                  Bệnh nhân cần nạp: {formatVND(cocFormData.soTienCoc)}
+                  Bệnh nhân cần nạp: {formatVND(cocFormData.soTienCoc || 0)}
                 </span>
               </div>
 
@@ -818,7 +888,7 @@ export default function QuanLyBangGiaDichVuPage() {
                     type="number"
                     min="1"
                     value={cocFormData.thoiGianHuyHoanCocGio}
-                    onChange={(e) => setCocFormData({ ...cocFormData, thoiGianHuyHoanCocGio: Number(e.target.value) })}
+                    onChange={(e) => setCocFormData({ ...cocFormData, thoiGianHuyHoanCocGio: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-hidden focus:border-primary-500 font-bold"
                   />
                   <span className="text-[11px] text-slate-400 mt-0.5 block">
@@ -835,8 +905,9 @@ export default function QuanLyBangGiaDichVuPage() {
                     type="number"
                     min="0"
                     max="100"
+                    step="any"
                     value={cocFormData.phanTramHoanCoc}
-                    onChange={(e) => setCocFormData({ ...cocFormData, phanTramHoanCoc: Number(e.target.value) })}
+                    onChange={(e) => setCocFormData({ ...cocFormData, phanTramHoanCoc: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-hidden focus:border-primary-500 font-bold"
                   />
                   <span className="text-[11px] text-slate-400 mt-0.5 block">
@@ -855,7 +926,7 @@ export default function QuanLyBangGiaDichVuPage() {
                     type="number"
                     min="0"
                     value={cocFormData.choPhepDatTruocNgayMin}
-                    onChange={(e) => setCocFormData({ ...cocFormData, choPhepDatTruocNgayMin: Number(e.target.value) })}
+                    onChange={(e) => setCocFormData({ ...cocFormData, choPhepDatTruocNgayMin: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-hidden focus:border-primary-500 font-bold"
                   />
                 </div>
@@ -867,7 +938,7 @@ export default function QuanLyBangGiaDichVuPage() {
                     type="number"
                     min="1"
                     value={cocFormData.choPhepDatTruocNgayMax}
-                    onChange={(e) => setCocFormData({ ...cocFormData, choPhepDatTruocNgayMax: Number(e.target.value) })}
+                    onChange={(e) => setCocFormData({ ...cocFormData, choPhepDatTruocNgayMax: e.target.value === '' ? '' : Number(e.target.value) })}
                     className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-hidden focus:border-primary-500 font-bold"
                   />
                 </div>
@@ -992,7 +1063,7 @@ export default function QuanLyBangGiaDichVuPage() {
                       type="number"
                       required
                       min="0"
-                      step="1000"
+                      step="any"
                       value={formData.gia}
                       onChange={(e) => setFormData({ ...formData, gia: e.target.value })}
                       placeholder="VD: 150000"

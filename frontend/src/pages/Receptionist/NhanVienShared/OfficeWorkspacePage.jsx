@@ -33,8 +33,11 @@ import {
   FolderOpen,
   Bell,
   ChevronRight,
+  ChevronDown,
   ExternalLink,
   CheckCircle2,
+  LogOut,
+  Link2,
 } from 'lucide-react';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -166,6 +169,34 @@ export default function OfficeWorkspacePage() {
     () => roomMessages.filter((m) => m.loai === 'tep_tin' && !m.daThuHoi),
     [roomMessages],
   );
+  const sharedLinks = useMemo(() => {
+    const links = [];
+    const seen = new Set();
+    for (let i = roomMessages.length - 1; i >= 0; i--) {
+      const m = roomMessages[i];
+      if (m.daThuHoi || !m.noiDung) continue;
+      const matches = String(m.noiDung).match(/https?:\/\/[^\s]+/gi) || [];
+      for (const rawUrl of matches) {
+        const cleanUrl = rawUrl.replace(/[.,;!?)]+$/, '');
+        if (seen.has(cleanUrl)) continue;
+        seen.add(cleanUrl);
+        let hostname = cleanUrl;
+        try {
+          hostname = new URL(cleanUrl).hostname.replace(/^www\./i, '');
+        } catch {
+          hostname = cleanUrl.replace(/^https?:\/\//i, '').split('/')[0];
+        }
+        links.push({
+          id: `${m.id}_${cleanUrl}`,
+          url: cleanUrl,
+          hostname,
+          sender: m.nguoiGui?.hoTen || 'Đồng nghiệp',
+          taoLuc: m.taoLuc,
+        });
+      }
+    }
+    return links;
+  }, [roomMessages]);
 
   // Search
   const [sidebarSearch, setSidebarSearch] = useState('');
@@ -193,6 +224,15 @@ export default function OfficeWorkspacePage() {
   const [addMemberIds, setAddMemberIds] = useState([]);
 
   const [lightboxImage, setLightboxImage] = useState(null);
+  const [infoSections, setInfoSections] = useState({
+    members: true,
+    images: true,
+    files: true,
+    links: true,
+  });
+  const [showAllLinksInDrawer, setShowAllLinksInDrawer] = useState(false);
+  const [confirmRoomAction, setConfirmRoomAction] = useState(null); // { type: 'delete_chat' | 'leave_group' }
+  const [processingRoomAction, setProcessingRoomAction] = useState(false);
 
   // Refs
   const socketRef = useRef(null);
@@ -722,6 +762,34 @@ export default function OfficeWorkspacePage() {
       await fetchWorkspaceInit(true);
     } catch (err) {
       console.error('Lỗi thêm thành viên:', err);
+    }
+  };
+
+  const handleConfirmRoomAction = async () => {
+    if (!confirmRoomAction || !selectedRoomId) return;
+    setProcessingRoomAction(true);
+    try {
+      if (confirmRoomAction.type === 'delete_chat') {
+        await apiDelete(`/office/rooms/${selectedRoomId}/conversation`);
+        setRoomMessages([]);
+        setPinnedMessages([]);
+        setConfirmRoomAction(null);
+        await fetchWorkspaceInit(true);
+      } else if (confirmRoomAction.type === 'leave_group') {
+        const leavingId = Number(selectedRoomId);
+        await apiPost(`/office/rooms/${leavingId}/leave`, {});
+        setConfirmRoomAction(null);
+        setShowRightInfo(false);
+        const remaining = rooms.filter((r) => Number(r.id) !== leavingId);
+        setRooms(remaining);
+        setSelectedRoomId(remaining.length > 0 ? remaining[0].id : null);
+        await fetchWorkspaceInit(false);
+      }
+    } catch (err) {
+      console.error('Lỗi thao tác hội thoại:', err);
+      window.alert(err?.response?.data?.message || 'Không thể thực hiện thao tác này.');
+    } finally {
+      setProcessingRoomAction(false);
     }
   };
 
@@ -1583,25 +1651,24 @@ export default function OfficeWorkspacePage() {
                                           </div>
                                         </div>
                                       ) : msg.loai === 'hinh_anh' && msg.tepDinhKem?.url ? (
-                                        <div className="space-y-1.5">
+                                        <div className="relative group/img overflow-hidden rounded-xl">
                                           <img
                                             src={msg.tepDinhKem.url}
-                                            alt={msg.noiDung}
+                                            alt="Hình ảnh đính kèm"
                                             onClick={() => setLightboxImage(msg.tepDinhKem.url)}
-                                            className="max-h-64 rounded-xl object-cover cursor-zoom-in border border-white/10"
+                                            className="max-h-72 max-w-full sm:max-w-xs rounded-xl object-cover cursor-zoom-in border border-white/10 block"
                                           />
-                                          <div className="flex items-center justify-between text-[11px] opacity-85">
-                                            <span className="truncate max-w-[200px]">{msg.noiDung}</span>
-                                            <a
-                                              href={msg.tepDinhKem.url}
-                                              download={msg.noiDung}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              className="underline ml-2 flex items-center gap-1"
-                                            >
-                                              <Download className="w-3 h-3" /> Tải về
-                                            </a>
-                                          </div>
+                                          <a
+                                            href={msg.tepDinhKem.url}
+                                            download={msg.tepDinhKem.fileName || msg.noiDung || 'image'}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            title="Tải ảnh về máy"
+                                            className="opacity-0 group-hover/img:opacity-100 transition absolute bottom-2 right-2 px-2.5 py-1 rounded-lg bg-black/70 hover:bg-black/85 text-white text-[11px] font-medium flex items-center gap-1 backdrop-blur-xs shadow-md"
+                                          >
+                                            <Download className="w-3 h-3" /> Tải về
+                                          </a>
                                         </div>
                                       ) : msg.loai === 'tep_tin' && msg.tepDinhKem?.url ? (
                                         <a
@@ -2148,85 +2215,342 @@ export default function OfficeWorkspacePage() {
 
                 {/* Right Room Info & Member List Drawer */}
                 {showRightInfo && (
-                  <div className={`w-72 border-l p-4 overflow-y-auto space-y-4 shrink-0 ${bgMiddleCol}`}>
+                  <div className={`w-80 border-l flex flex-col overflow-hidden shrink-0 ${bgMiddleCol}`}>
+                    {/* Header */}
                     <div
-                      className={`flex items-center justify-between border-b pb-2.5 ${
+                      className={`flex items-center justify-between px-4 py-3.5 border-b shrink-0 ${
                         darkMode ? 'border-slate-800' : 'border-gray-200'
                       }`}
                     >
-                      <h4 className={`font-bold text-xs uppercase tracking-wider ${textMuted}`}>
-                        Thông tin hội thoại
+                      <h4 className="font-bold text-sm tracking-tight">
+                        {activeRoom.loai === 'nhom' ? 'Thông tin nhóm' : 'Thông tin hội thoại'}
                       </h4>
-                      <button onClick={() => setShowRightInfo(false)} className={textMuted}>
+                      <button
+                        onClick={() => setShowRightInfo(false)}
+                        className={`p-1 rounded-lg transition ${textMuted} ${hoverItem}`}
+                      >
                         <X className="w-4 h-4" />
                       </button>
                     </div>
 
-                    <div className="text-center space-y-1.5 py-2">
-                      <div
-                        className={`w-14 h-14 mx-auto rounded-full bg-gradient-to-br ${getAvatarGradient(
-                          activeRoom.id,
-                        )} flex items-center justify-center text-white font-bold text-lg`}
-                      >
-                        {getInitials(activeRoom.tenPhong)}
+                    {/* Scrollable Content */}
+                    <div className="flex-1 overflow-y-auto divide-y divide-gray-200/70 dark:divide-slate-800/90">
+                      {/* Avatar & Title */}
+                      <div className="text-center space-y-1.5 px-4 py-4">
+                        <div
+                          className={`w-14 h-14 mx-auto rounded-full bg-gradient-to-br ${getAvatarGradient(
+                            activeRoom.id,
+                          )} flex items-center justify-center text-white font-bold text-lg shadow-sm`}
+                        >
+                          {getInitials(activeRoom.tenPhong)}
+                        </div>
+                        <div className="font-bold text-sm">{activeRoom.tenPhong}</div>
+                        <div className={`text-xs ${textMuted}`}>{activeRoom.moTa}</div>
                       </div>
-                      <div className="font-bold text-sm">{activeRoom.tenPhong}</div>
-                      <div className={`text-xs ${textMuted}`}>{activeRoom.moTa}</div>
-                    </div>
 
-                    <div className="space-y-2">
-                      <div className={`flex items-center justify-between text-xs font-bold ${textSubtle}`}>
-                        <span>Thành viên ({activeRoom.members?.length || 0})</span>
-                        {activeRoom.loai === 'nhom' && (
+                      {/* Section 1: Thành viên */}
+                      <div className="px-4 py-3 space-y-2.5">
+                        <div className="flex items-center justify-between">
                           <button
-                            onClick={() => setShowAddMemberModal(true)}
-                            className="text-emerald-500 hover:underline text-[11px]"
+                            type="button"
+                            onClick={() =>
+                              setInfoSections((prev) => ({ ...prev, members: !prev.members }))
+                            }
+                            className="flex items-center gap-1.5 text-xs font-bold"
                           >
-                            + Thêm
+                            <span>Thành viên ({activeRoom.members?.length || 0})</span>
+                            <ChevronDown
+                              className={`w-3.5 h-3.5 transition-transform ${
+                                infoSections.members ? '' : '-rotate-90'
+                              }`}
+                            />
                           </button>
+                          {activeRoom.loai === 'nhom' && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAddMemberModal(true)}
+                              className="text-emerald-500 hover:underline text-[11px] font-semibold"
+                            >
+                              + Thêm
+                            </button>
+                          )}
+                        </div>
+
+                        {infoSections.members && (
+                          <div className="space-y-1 max-h-48 overflow-y-auto pr-0.5">
+                            {(activeRoom.members || []).map((m) => (
+                              <div
+                                key={m.id}
+                                onClick={() => handleStartDirectChat(m.id)}
+                                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer ${hoverItem}`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div
+                                    className={`w-7 h-7 rounded-full bg-gradient-to-br ${getAvatarGradient(
+                                      m.id,
+                                    )} flex items-center justify-center text-white font-bold text-[10px] relative shrink-0`}
+                                  >
+                                    {getInitials(m.hoTen)}
+                                    <span
+                                      className={`w-2 h-2 rounded-full border ${
+                                        darkMode ? 'border-slate-900' : 'border-white'
+                                      } absolute -bottom-0.5 -right-0.5 ${
+                                        m.online ? 'bg-emerald-400' : 'bg-slate-400'
+                                      }`}
+                                    />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-medium truncate">{m.hoTen}</div>
+                                    <div className={`text-[10px] truncate ${textMuted}`}>{m.chucVu}</div>
+                                  </div>
+                                </div>
+                                {m.vaiTroNhom === 'truong_nhom' && (
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${
+                                      darkMode
+                                        ? 'bg-amber-500/20 text-amber-300'
+                                        : 'bg-amber-100 text-amber-700'
+                                    }`}
+                                  >
+                                    Trưởng nhóm
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
 
-                      <div className="space-y-1.5">
-                        {(activeRoom.members || []).map((m) => (
-                          <div
-                            key={m.id}
-                            onClick={() => handleStartDirectChat(m.id)}
-                            className={`flex items-center justify-between p-2 rounded-lg cursor-pointer ${hoverItem}`}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div
-                                className={`w-7 h-7 rounded-full bg-gradient-to-br ${getAvatarGradient(
-                                  m.id,
-                                )} flex items-center justify-center text-white font-bold text-[10px] relative shrink-0`}
-                              >
-                                {getInitials(m.hoTen)}
-                                <span
-                                  className={`w-2 h-2 rounded-full border ${
-                                    darkMode ? 'border-slate-900' : 'border-white'
-                                  } absolute -bottom-0.5 -right-0.5 ${
-                                    m.online ? 'bg-emerald-400' : 'bg-slate-400'
+                      {/* Section 2: Ảnh */}
+                      <div className="px-4 py-3 space-y-2.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setInfoSections((prev) => ({ ...prev, images: !prev.images }))
+                          }
+                          className="w-full flex items-center justify-between text-xs font-bold"
+                        >
+                          <span>Ảnh ({sharedImages.length})</span>
+                          <ChevronDown
+                            className={`w-4 h-4 ${textMuted} transition-transform ${
+                              infoSections.images ? '' : '-rotate-90'
+                            }`}
+                          />
+                        </button>
+
+                        {infoSections.images && (
+                          <>
+                            {sharedImages.length === 0 ? (
+                              <p className={`text-xs ${textMuted}`}>Chưa có ảnh nào.</p>
+                            ) : (
+                              <>
+                                <div className="grid grid-cols-4 gap-1.5">
+                                  {sharedImages.slice(-8).reverse().map((img) => (
+                                    <div
+                                      key={img.id}
+                                      onClick={() => setLightboxImage(img.tepDinhKem?.url)}
+                                      className={`aspect-square rounded-lg overflow-hidden border cursor-pointer group ${
+                                        darkMode
+                                          ? 'border-slate-700 bg-slate-900'
+                                          : 'border-gray-200 bg-gray-100'
+                                      }`}
+                                    >
+                                      <img
+                                        src={img.tepDinhKem?.url}
+                                        alt={img.noiDung}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition"
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setChatSubTab('images')}
+                                  className={`w-full py-2 rounded-lg text-xs font-semibold transition ${
+                                    darkMode
+                                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                                      : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
                                   }`}
-                                />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="text-xs font-medium truncate">{m.hoTen}</div>
-                                <div className={`text-[10px] truncate ${textMuted}`}>{m.chucVu}</div>
-                              </div>
-                            </div>
-                            {m.vaiTroNhom === 'truong_nhom' && (
-                              <span
-                                className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                  darkMode
-                                    ? 'bg-amber-500/20 text-amber-300'
-                                    : 'bg-amber-100 text-amber-700'
-                                }`}
-                              >
-                                Trưởng nhóm
-                              </span>
+                                >
+                                  Xem tất cả
+                                </button>
+                              </>
                             )}
-                          </div>
-                        ))}
+                          </>
+                        )}
+                      </div>
+
+                      {/* Section 3: File */}
+                      <div className="px-4 py-3 space-y-2.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setInfoSections((prev) => ({ ...prev, files: !prev.files }))
+                          }
+                          className="w-full flex items-center justify-between text-xs font-bold"
+                        >
+                          <span>File</span>
+                          <ChevronDown
+                            className={`w-4 h-4 ${textMuted} transition-transform ${
+                              infoSections.files ? '' : '-rotate-90'
+                            }`}
+                          />
+                        </button>
+
+                        {infoSections.files && (
+                          <>
+                            {sharedFiles.length === 0 ? (
+                              <p className={`text-xs ${textMuted}`}>Chưa có file nào.</p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {sharedFiles.slice(-3).reverse().map((f) => (
+                                  <a
+                                    key={f.id}
+                                    href={f.tepDinhKem?.url}
+                                    download={f.tepDinhKem?.fileName || f.noiDung}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`p-2 rounded-xl border flex items-center gap-2.5 transition ${
+                                      darkMode
+                                        ? 'bg-slate-800/60 hover:bg-slate-800 border-slate-700/70'
+                                        : 'bg-gray-50 hover:bg-gray-100 border-gray-200'
+                                    }`}
+                                  >
+                                    <div
+                                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                                        darkMode ? 'bg-slate-700 text-emerald-400' : 'bg-emerald-50 text-emerald-600'
+                                      }`}
+                                    >
+                                      <FileText className="w-4 h-4" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="text-xs font-semibold truncate">
+                                        {f.tepDinhKem?.fileName || f.noiDung}
+                                      </div>
+                                      <div className={`text-[10px] truncate ${textMuted}`}>
+                                        {formatFileSize(f.tepDinhKem?.fileSize)} • {formatTimeShort(f.taoLuc)}
+                                      </div>
+                                    </div>
+                                  </a>
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() => setChatSubTab('files')}
+                                  className={`w-full py-2 rounded-lg text-xs font-semibold transition ${
+                                    darkMode
+                                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                                      : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
+                                  }`}
+                                >
+                                  Xem tất cả
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      {/* Section 4: Link */}
+                      <div className="px-4 py-3 space-y-2.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setInfoSections((prev) => ({ ...prev, links: !prev.links }))
+                          }
+                          className="w-full flex items-center justify-between text-xs font-bold"
+                        >
+                          <span>Link</span>
+                          <ChevronDown
+                            className={`w-4 h-4 ${textMuted} transition-transform ${
+                              infoSections.links ? '' : '-rotate-90'
+                            }`}
+                          />
+                        </button>
+
+                        {infoSections.links && (
+                          <>
+                            {sharedLinks.length === 0 ? (
+                              <p className={`text-xs ${textMuted}`}>Chưa có link nào.</p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {(showAllLinksInDrawer ? sharedLinks : sharedLinks.slice(0, 3)).map(
+                                  (lnk) => (
+                                    <a
+                                      key={lnk.id}
+                                      href={lnk.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      title={lnk.url}
+                                      className={`p-2 rounded-xl flex items-center gap-2.5 transition ${
+                                        darkMode
+                                          ? 'bg-slate-800/60 hover:bg-slate-800'
+                                          : 'bg-gray-50 hover:bg-gray-100 border border-gray-200/80'
+                                      }`}
+                                    >
+                                      <div
+                                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                          darkMode
+                                            ? 'bg-slate-700/80 text-sky-400'
+                                            : 'bg-sky-50 text-sky-600'
+                                        }`}
+                                      >
+                                        <Link2 className="w-4 h-4" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="text-xs font-bold truncate">
+                                          {lnk.hostname}
+                                        </div>
+                                        <div className={`text-[11px] truncate ${textMuted}`}>
+                                          {lnk.hostname}
+                                        </div>
+                                      </div>
+                                    </a>
+                                  ),
+                                )}
+                                {sharedLinks.length > 3 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowAllLinksInDrawer((v) => !v)}
+                                    className={`w-full py-2 rounded-lg text-xs font-semibold transition ${
+                                      darkMode
+                                        ? 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                                        : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
+                                    }`}
+                                  >
+                                    {showAllLinksInDrawer ? 'Thu gọn' : 'Xem tất cả'}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      {/* Section 5: Xoá cuộc trò chuyện & Rời nhóm */}
+                      <div className="px-3 py-3 space-y-1">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmRoomAction({ type: 'delete_chat' })}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-red-500 transition ${
+                            darkMode ? 'hover:bg-red-500/10' : 'hover:bg-red-50'
+                          }`}
+                        >
+                          <Trash2 className="w-4 h-4 shrink-0" />
+                          <span>Xoá cuộc trò chuyện</span>
+                        </button>
+
+                        {activeRoom.loai === 'nhom' && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmRoomAction({ type: 'leave_group' })}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-red-500 transition ${
+                              darkMode ? 'hover:bg-red-500/10' : 'hover:bg-red-50'
+                            }`}
+                          >
+                            <LogOut className="w-4 h-4 shrink-0" />
+                            <span>Rời nhóm</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2469,16 +2793,123 @@ export default function OfficeWorkspacePage() {
         </div>
       )}
 
+      {/* ─── MODAL 3: XÁC NHẬN XOÁ CUỘC TRÒ CHUYỆN / RỜI NHÓM ────────── */}
+      {confirmRoomAction && activeRoom && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div
+            className={`w-full max-w-md rounded-2xl border shadow-2xl overflow-hidden ${
+              darkMode
+                ? 'bg-[#1a212e] border-slate-700 text-slate-100'
+                : 'bg-white border-gray-200 text-gray-900'
+            }`}
+          >
+            <div
+              className={`px-5 py-4 border-b flex items-center justify-between ${
+                darkMode ? 'border-slate-700/80' : 'border-gray-200'
+              }`}
+            >
+              <h3 className="font-bold text-sm flex items-center gap-2 text-red-500">
+                {confirmRoomAction.type === 'delete_chat' ? (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Xoá cuộc trò chuyện</span>
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="w-4 h-4" />
+                    <span>Rời khỏi nhóm trò chuyện</span>
+                  </>
+                )}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setConfirmRoomAction(null)}
+                className={textMuted}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className={`text-xs leading-relaxed ${textSubtle}`}>
+                {confirmRoomAction.type === 'delete_chat' ? (
+                  <>
+                    Toàn bộ lịch sử tin nhắn trong cuộc trò chuyện{' '}
+                    <strong className="font-bold">{activeRoom.tenPhong}</strong> sẽ bị xoá ở phía bạn
+                    và không thể khôi phục. Các thành viên khác vẫn xem được bình thường.
+                  </>
+                ) : (
+                  <>
+                    Bạn có chắc chắn muốn rời khỏi nhóm{' '}
+                    <strong className="font-bold">{activeRoom.tenPhong}</strong>? Sau khi rời nhóm,
+                    bạn sẽ không nhận được tin nhắn mới trừ khi được thành viên khác mời lại.
+                  </>
+                )}
+              </p>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={processingRoomAction}
+                  onClick={() => setConfirmRoomAction(null)}
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold ${
+                    darkMode ? 'bg-slate-800 text-slate-300' : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={processingRoomAction}
+                  onClick={handleConfirmRoomAction}
+                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-50 text-xs font-semibold text-white"
+                >
+                  {processingRoomAction
+                    ? 'Đang xử lý...'
+                    : confirmRoomAction.type === 'delete_chat'
+                    ? 'Xoá cuộc trò chuyện'
+                    : 'Rời nhóm'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── LIGHTBOX XEM ẢNH PHÓNG TO ───────────────────────────────── */}
       {lightboxImage && (
         <div
           onClick={() => setLightboxImage(null)}
-          className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center z-50 p-6 cursor-zoom-out"
+          className="fixed inset-0 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center z-50 p-4 cursor-zoom-out"
         >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute top-4 right-4 flex items-center gap-2 z-10"
+          >
+            <a
+              href={lightboxImage}
+              download
+              target="_blank"
+              rel="noreferrer"
+              className="px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md transition"
+            >
+              <Download className="w-4 h-4" />
+              <span>Tải về</span>
+            </a>
+            <button
+              type="button"
+              onClick={() => setLightboxImage(null)}
+              className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition"
+              title="Đóng"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
           <img
             src={lightboxImage}
-            alt="Preview"
-            className="max-w-full max-h-full rounded-2xl shadow-2xl border border-slate-700"
+            alt="Xem ảnh phóng to"
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-[92vw] max-h-[88vh] object-contain rounded-2xl shadow-2xl border border-white/10 cursor-default"
           />
         </div>
       )}

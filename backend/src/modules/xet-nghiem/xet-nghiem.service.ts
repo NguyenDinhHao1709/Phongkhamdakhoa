@@ -14,6 +14,7 @@ import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { LuotTiepNhan, TrangThaiTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
+import { MemoryCacheService } from '../../common/cache/memory-cache.service';
 import {
   IsInt, IsPositive, IsOptional, IsString, IsEnum, IsArray, ArrayMinSize,
   ValidateNested, IsNumber, Min,
@@ -71,6 +72,28 @@ export class TimKiemChiDinhDto {
 // ──── SERVICE ──────────────────────────────────────────────
 @Injectable()
 export class XetNghiemService {
+  private locks = new Map<string, Promise<any>>();
+
+  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(key) || Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chain = prev.then(() => next);
+    this.locks.set(key, chain);
+
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.locks.get(key) === chain) {
+        this.locks.delete(key);
+      }
+    }
+  }
+
   constructor(
     @InjectRepository(DichVuXetNghiem)    private dvRepo: Repository<DichVuXetNghiem>,
     @InjectRepository(ChiDinhCanLamSang)  private cdRepo: Repository<ChiDinhCanLamSang>,
@@ -89,91 +112,140 @@ export class XetNghiemService {
 
   // ─── BÁC SĨ CHỈ ĐỊNH XÉT NGHIỆM ──────────────────────────
   async taoChiDinh(nguoiDungId: number, dto: TaoChiDinhDto) {
-    let bacSiId: number | null = null;
-    if (nguoiDungId) {
-      const nv = await this.cdRepo.manager.getRepository(NhanVien).findOne({ where: { nguoiDungId } });
-      if (nv) {
-        const bs = await this.cdRepo.manager.getRepository(BacSi).findOne({ where: { nhanVienId: nv.id } });
-        if (bs) bacSiId = bs.id;
+    return this.withLock(`cls:create:${dto.benhAnKhamId}`, async () => {
+      let bacSiId: number | null = null;
+      if (nguoiDungId) {
+        const nv = await this.cdRepo.manager.getRepository(NhanVien).findOne({ where: { nguoiDungId } });
+        if (nv) {
+          const bs = await this.cdRepo.manager.getRepository(BacSi).findOne({ where: { nhanVienId: nv.id } });
+          if (bs) bacSiId = bs.id;
+        }
       }
-    }
-    if (!bacSiId) {
-      throw new BadRequestException('Không xác định được bác sĩ chỉ định từ tài khoản hiện tại');
-    }
-
-    if (!dto.dsChiDinh || dto.dsChiDinh.length === 0) {
-      throw new BadRequestException('Danh sách chỉ định cận lâm sàng không được để trống');
-    }
-
-    // 1. Kiểm tra trùng lặp ngay trong danh sách gửi lên
-    const seenIds = new Set<number>();
-    for (const item of dto.dsChiDinh) {
-      if (seenIds.has(item.dichVuXetNghiemId)) {
-        throw new BadRequestException('Danh sách chỉ định có dịch vụ bị chọn trùng nhau');
+      if (!bacSiId) {
+        throw new BadRequestException('Không xác định được bác sĩ chỉ định từ tài khoản hiện tại');
       }
-      seenIds.add(item.dichVuXetNghiemId);
 
-      // Kiểm tra trạng thái hoạt động của dịch vụ cận lâm sàng
-      const dv = await this.dvRepo.findOneBy({ id: item.dichVuXetNghiemId });
-      if (!dv) {
-        throw new BadRequestException(`Không tìm thấy dịch vụ y tế với mã ID ${item.dichVuXetNghiemId}`);
+      if (!dto.dsChiDinh || dto.dsChiDinh.length === 0) {
+        throw new BadRequestException('Danh sách chỉ định cận lâm sàng không được để trống');
       }
-      if (dv.trangThai !== 'hoat_dong') {
-        throw new BadRequestException(
-          `Dịch vụ "${dv.tenDichVu}" hiện đang tạm ngừng áp dụng theo chỉ đạo Ban Giám Đốc. Bác sĩ vui lòng không chỉ định dịch vụ này!`,
-        );
-      }
-    }
 
-    // 2. Kiểm tra các dịch vụ đã chỉ định trước đó cho phiếu khám này
-    const existingOrders = await this.cdRepo.find({
-      where: {
-        benhAnKhamId: dto.benhAnKhamId,
-        trangThai: Not(TrangThaiChiDinh.HUY),
-      },
-      relations: ['dichVu'],
-    });
-
-    const existingMap = new Map<number, string>();
-    for (const ord of existingOrders) {
-      existingMap.set(ord.dichVuXetNghiemId, ord.dichVu?.tenDichVu || `Mã ${ord.dichVuXetNghiemId}`);
-    }
-
-    for (const item of dto.dsChiDinh) {
-      if (existingMap.has(item.dichVuXetNghiemId)) {
-        const tenDichVu = existingMap.get(item.dichVuXetNghiemId);
-        throw new BadRequestException(
-          `Dịch vụ cận lâm sàng "${tenDichVu}" đã được chỉ định trong đợt khám này. Không được chỉ định trùng dịch vụ!`,
-        );
-      }
-    }
-
-    const entities = dto.dsChiDinh.map((item) =>
-      this.cdRepo.create({
-        benhAnKhamId: dto.benhAnKhamId,
-        dichVuXetNghiemId: item.dichVuXetNghiemId,
-        bacSiChiDinhId: bacSiId,
-        ghiChuChiDinh: item.ghiChuChiDinh,
-      }),
-    );
-    const saved = await this.cdRepo.save(entities);
-
-    // 3. Tự động chuyển trạng thái của lượt tiếp nhận liên quan sang "dang_cls"
-    try {
+      // 0. Kiểm tra trạng thái phiếu khám bệnh & hóa đơn viện phí (Chốt chặn ERP Y Tế)
       const bak = await this.cdRepo.manager.getRepository(BenhAnKham).findOne({
         where: { id: dto.benhAnKhamId },
       });
-      if (bak?.luotTiepNhanId) {
-        await this.cdRepo.manager.getRepository(LuotTiepNhan).update(
-          { id: bak.luotTiepNhanId },
-          { trangThai: TrangThaiTiepNhan.DANG_CLS },
-        );
+      if (!bak) {
+        throw new NotFoundException('Không tìm thấy phiếu khám bệnh để chỉ định cận lâm sàng');
       }
-    } catch (err) {
-      console.warn('[taoChiDinh] Không thể tự động cập nhật trạng thái dang_cls cho lượt tiếp nhận:', err);
-    }
+      if ((bak as any).trangThai === 'da_hoan_thanh') {
+        throw new BadRequestException({
+          code: 'BENH_AN_DA_DONG_KHONG_THE_CHI_DINH_CLS',
+          message: 'Phiếu khám bệnh này đã đóng/hoàn thành, không thể chỉ định thêm dịch vụ cận lâm sàng!',
+        });
+      }
+      if (bak.luotTiepNhanId) {
+        const paidRows: any[] = await this.cdRepo.manager.query(
+          `SELECT ma_hoa_don FROM hoa_don WHERE luot_tiep_nhan_id = ? AND trang_thai = 'da_thanh_toan' LIMIT 1`,
+          [bak.luotTiepNhanId],
+        );
+        if (paidRows.length > 0) {
+          throw new BadRequestException({
+            code: 'HOA_DON_DA_THU_KHONG_THE_CHI_DINH_CLS',
+            message: `Ca khám này đã thu tiền viện phí (Hóa đơn ${paidRows[0].ma_hoa_don}), không thể chỉ định thêm cận lâm sàng!`,
+          });
+        }
+      }
 
-    return { data: saved, message: `Đã chỉ định ${saved.length} xét nghiệm thành công` };
+      // 1. Kiểm tra trùng lặp ngay trong danh sách gửi lên
+      const seenIds = new Set<number>();
+      for (const item of dto.dsChiDinh) {
+        if (seenIds.has(item.dichVuXetNghiemId)) {
+          throw new BadRequestException('Danh sách chỉ định có dịch vụ bị chọn trùng nhau');
+        }
+        seenIds.add(item.dichVuXetNghiemId);
+
+        // Kiểm tra trạng thái hoạt động của dịch vụ cận lâm sàng
+        const dv = await this.dvRepo.findOneBy({ id: item.dichVuXetNghiemId });
+        if (!dv) {
+          throw new BadRequestException(`Không tìm thấy dịch vụ y tế với mã ID ${item.dichVuXetNghiemId}`);
+        }
+        if (dv.trangThai !== 'hoat_dong') {
+          throw new BadRequestException(
+            `Dịch vụ "${dv.tenDichVu}" hiện đang tạm ngừng áp dụng theo chỉ đạo Ban Giám Đốc. Bác sĩ vui lòng không chỉ định dịch vụ này!`,
+          );
+        }
+      }
+
+      // 2. Kiểm tra các dịch vụ đã chỉ định trước đó cho phiếu khám này
+      const existingOrders = await this.cdRepo.find({
+        where: {
+          benhAnKhamId: dto.benhAnKhamId,
+          trangThai: Not(TrangThaiChiDinh.HUY),
+        },
+        relations: ['dichVu'],
+      });
+
+      const existingMap = new Map<number, string>();
+      for (const ord of existingOrders) {
+        existingMap.set(ord.dichVuXetNghiemId, ord.dichVu?.tenDichVu || `Mã ${ord.dichVuXetNghiemId}`);
+      }
+
+      for (const item of dto.dsChiDinh) {
+        if (existingMap.has(item.dichVuXetNghiemId)) {
+          const tenDichVu = existingMap.get(item.dichVuXetNghiemId);
+          throw new BadRequestException(
+            `Dịch vụ cận lâm sàng "${tenDichVu}" đã được chỉ định trong đợt khám này. Không được chỉ định trùng dịch vụ!`,
+          );
+        }
+      }
+
+      const entities = dto.dsChiDinh.map((item) =>
+        this.cdRepo.create({
+          benhAnKhamId: dto.benhAnKhamId,
+          dichVuXetNghiemId: item.dichVuXetNghiemId,
+          bacSiChiDinhId: bacSiId,
+          ghiChuChiDinh: item.ghiChuChiDinh,
+        }),
+      );
+      const saved = await this.cdRepo.save(entities);
+
+      // 3. Tự động chuyển trạng thái của lượt tiếp nhận liên quan sang "dang_cls"
+      try {
+        if (bak?.luotTiepNhanId) {
+          await this.cdRepo.manager.getRepository(LuotTiepNhan).update(
+            { id: bak.luotTiepNhanId },
+            { trangThai: TrangThaiTiepNhan.DANG_CLS },
+          );
+        }
+      } catch (err) {
+        console.warn('[taoChiDinh] Không thể tự động cập nhật trạng thái dang_cls cho lượt tiếp nhận:', err);
+      }
+
+      try {
+        const bakFull = await this.cdRepo.manager.getRepository(BenhAnKham).findOne({
+          where: { id: dto.benhAnKhamId },
+          relations: ['hoSoBenhAn', 'hoSoBenhAn.benhNhan'],
+        });
+        const bnTen = bakFull?.hoSoBenhAn?.benhNhan?.hoTen || 'Bệnh nhân';
+        await this.thongBaoService.taoThongBaoTheoRole('ky_thuat_vien', {
+          tieuDe: `Chỉ định cận lâm sàng mới: ${bnTen}`,
+          noiDung: `Bác sĩ vừa chỉ định ${saved.length} dịch vụ cận lâm sàng cho bệnh nhân ${bnTen}. Kỹ thuật viên vui lòng tiếp nhận lấy mẫu & xử lý!`,
+          loai: 'xet_nghiem',
+          doiTuongBang: 'chi_dinh_can_lam_sang',
+          doiTuongId: saved[0]?.id,
+        });
+        await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+          tieuDe: `Phí cận lâm sàng mới: ${bnTen}`,
+          noiDung: `Bệnh nhân ${bnTen} vừa được bác sĩ chỉ định ${saved.length} dịch vụ cận lâm sàng. Vui lòng kiểm tra thu viện phí.`,
+          loai: 'can_thanh_toan',
+          doiTuongBang: 'chi_dinh_can_lam_sang',
+          doiTuongId: saved[0]?.id,
+        });
+      } catch (err) {
+        console.warn('Lỗi gửi thông báo taoChiDinh:', err?.message);
+      }
+
+      return { data: saved, message: `Đã chỉ định ${saved.length} xét nghiệm thành công` };
+    });
   }
 
   // ─── DANH SÁCH CHỈ ĐỊNH (cho KTV) ──────────────────────────
@@ -374,8 +446,29 @@ export class XetNghiemService {
     if (cd.trangThai === TrangThaiChiDinh.CO_KET_QUA) {
       throw new BadRequestException('Chỉ định cận lâm sàng này đã có kết quả xét nghiệm, không thể xóa hoặc hủy trực tiếp');
     }
+    if (cd.trangThai === TrangThaiChiDinh.DANG_LAY_MAU || cd.trangThai === TrangThaiChiDinh.DANG_XU_LY) {
+      throw new BadRequestException({
+        code: 'CHI_DINH_CLS_DA_TIEP_NHAN_MAU',
+        message: 'Chỉ định cận lâm sàng này đã được Kỹ thuật viên tiếp nhận lấy mẫu / đang chạy máy xét nghiệm, không thể hủy trực tiếp!',
+      });
+    }
 
     const benhAnKhamId = cd.benhAnKhamId;
+    const bakCheck = await this.cdRepo.manager.getRepository(BenhAnKham).findOne({
+      where: { id: benhAnKhamId },
+    });
+    if (bakCheck?.luotTiepNhanId) {
+      const paidHd: any[] = await this.cdRepo.manager.query(
+        `SELECT ma_hoa_don FROM hoa_don WHERE luot_tiep_nhan_id = ? AND trang_thai = 'da_thanh_toan' LIMIT 1`,
+        [bakCheck.luotTiepNhanId],
+      );
+      if (paidHd.length > 0) {
+        throw new BadRequestException({
+          code: 'HOA_DON_DA_THU_KHONG_THE_HUY_CLS',
+          message: `Bệnh nhân đã đóng tiền viện phí (Hóa đơn ${paidHd[0].ma_hoa_don}), không thể xóa/hủy dịch vụ cận lâm sàng đã thu tiền!`,
+        });
+      }
+    }
 
     // 1. Xóa kết quả xét nghiệm liên quan nếu có
     await this.kqRepo.delete({ chiDinhId: id });

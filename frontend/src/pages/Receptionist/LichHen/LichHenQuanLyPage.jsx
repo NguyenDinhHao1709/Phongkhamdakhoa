@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Calendar,
   Search,
@@ -23,6 +24,7 @@ import {
   Check,
   X,
   RotateCcw,
+  Download,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPatch } from '../../../services/api';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
@@ -443,6 +445,78 @@ export default function LichHenQuanLyPage() {
     });
   }, [list, filterStatus, debouncedKeyword, fromDate, toDate]);
 
+  // Xuất file Excel danh sách lịch hẹn
+  const handleExportExcel = () => {
+    if (!filteredList || filteredList.length === 0) {
+      alert('Không có dữ liệu lịch hẹn để xuất file!');
+      return;
+    }
+
+    const STATUS_MAP = {
+      cho_xac_nhan: 'Chờ duyệt',
+      da_xac_nhan: 'Đã xác nhận',
+      hoan_thanh: 'Đã hoàn thành',
+      da_huy: 'Đã hủy',
+      cho_duyet_huy: 'Chờ duyệt hủy ca',
+      kham_that_bai: 'Không hoàn thành',
+    };
+
+    const NGUON_DAT_MAP = {
+      tai_quay: 'Tại quầy lễ tân',
+      app: 'Ứng dụng di động',
+      website: 'Website phòng khám',
+      kiosk: 'Kiosk tự phục vụ',
+    };
+
+    const rows = filteredList.map((lh, idx) => {
+      const bn = lh.benhNhan || {};
+      const bs = lh.bacSi?.nhanVien || {};
+      const isOnline = lh.hinhThuc === 'truc_tuyen' || lh.hinhThucKham === 'online';
+      const ngayHenStr = lh.ngayHen ? formatDate(lh.ngayHen) : '-';
+      const gioHenStr = lh.gioHen ? String(lh.gioHen).slice(0, 5) : '--:--';
+
+      return {
+        'STT': idx + 1,
+        'Mã Lịch Hẹn': lh.maLichHen || '',
+        'Ngày Hẹn': ngayHenStr,
+        'Khung Giờ': gioHenStr,
+        'Họ Tên Bệnh Nhân': bn.hoTen || lh.hoTen || '',
+        'Số Điện Thoại': bn.soDienThoai || lh.soDienThoai || '',
+        'Chuyên Khoa': lh.chuyenKhoa || '',
+        'Bác Sĩ Khám': bs.hoTen || 'Chưa chỉ định',
+        'Hình Thức Khám': isOnline ? 'Khám Online (Telemedicine)' : 'Khám trực tiếp tại phòng khám',
+        'Lý Do Khám': lh.lyDoKham || '',
+        'Trạng Thái Lịch Hẹn': STATUS_MAP[lh.trangThai] || lh.trangThai || '',
+        'Nguồn Đặt': NGUON_DAT_MAP[lh.nguonDat] || lh.nguonDat || 'Trực tuyến',
+        'Đánh Giá Khám': lh.danhGia ? `${lh.danhGia} ⭐` : 'Chưa có',
+        'Ghi Chú': lh.ghiChu || '',
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 16 }, // Mã Lịch Hẹn
+      { wch: 14 }, // Ngày Hẹn
+      { wch: 12 }, // Khung Giờ
+      { wch: 22 }, // Họ Tên BN
+      { wch: 14 }, // SĐT
+      { wch: 18 }, // Chuyên khoa
+      { wch: 22 }, // Bác sĩ
+      { wch: 26 }, // Hình thức
+      { wch: 28 }, // Lý do khám
+      { wch: 16 }, // Trạng thái
+      { wch: 18 }, // Nguồn đặt
+      { wch: 14 }, // Đánh giá
+      { wch: 25 }, // Ghi chú
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'DanhSachLichHen');
+    const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    XLSX.writeFile(wb, `Danh_Sach_Lich_Hen_${now}.xlsx`);
+  };
+
   // Phân trang
   const totalPages = Math.ceil(filteredList.length / ITEMS_PER_PAGE) || 1;
   const paginatedList = useMemo(() => {
@@ -469,6 +543,15 @@ export default function LichHenQuanLyPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleExportExcel}
+            title="Xuất file Excel danh sách lịch hẹn"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl hover:bg-emerald-100 transition-colors shadow-2xs cursor-pointer"
+          >
+            <Download className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Xuất Excel</span>
+          </button>
+
           <button
             onClick={handleTriggerReminder}
             disabled={sendingReminder}
@@ -925,7 +1008,7 @@ export default function LichHenQuanLyPage() {
                       {/* Tạm Ứng (1/5) */}
                       <td className="py-3 px-4">
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> 40.000 đ
+                          <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> {Number(lh.soTienThanhToan || lh.soTienCoc || 40000).toLocaleString('vi-VN')} đ
                         </span>
                       </td>
 
@@ -1119,8 +1202,10 @@ export default function LichHenQuanLyPage() {
               {/* Tạm ứng cọc */}
               <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-200/70 flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-emerald-800 font-medium">Khoản tạm ứng (1/5 phí khám):</p>
-                  <p className="text-base font-extrabold text-emerald-700">40.000 đ</p>
+                  <p className="text-xs text-emerald-800 font-medium">Khoản tạm ứng giữ chỗ:</p>
+                  <p className="text-base font-extrabold text-emerald-700">
+                    {Number(selectedLichHen.soTienThanhToan || selectedLichHen.soTienCoc || 40000).toLocaleString('vi-VN')} đ
+                  </p>
                 </div>
                 <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full border border-emerald-200">
                   Đã xác nhận cọc

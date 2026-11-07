@@ -27,6 +27,9 @@ export const HOSPITAL_STICKERS = [
 @Injectable()
 export class OfficeService implements OnModuleInit {
   private readonly logger = new Logger(OfficeService.name);
+  private readonly ensuredDefaultUsers = new Set<number>();
+  private staffCache: { rows: any[]; expiresAt: number } | null = null;
+  private staffInFlight: Promise<any[]> | null = null;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -106,6 +109,16 @@ export class OfficeService implements OnModuleInit {
       } catch {
         // Column already exists
       }
+      try {
+        await this.dataSource.query(`ALTER TABLE office_thanh_vien ADD COLUMN da_roi_nhom TINYINT(1) NOT NULL DEFAULT 0`);
+      } catch {
+        // Column already exists
+      }
+      try {
+        await this.dataSource.query(`ALTER TABLE office_thanh_vien ADD COLUMN xoa_den_tin_id INT NOT NULL DEFAULT 0`);
+      } catch {
+        // Column already exists
+      }
       if (Number(existingRooms[0]?.cnt || 0) === 0) {
         await this.seedDefaultHospitalWorkspace();
       }
@@ -138,7 +151,14 @@ export class OfficeService implements OnModuleInit {
   }
 
   private async getAllStaffRaw(): Promise<any[]> {
-    const rows: any[] = await this.dataSource.query(`
+    const now = Date.now();
+    let rows: any[];
+    if (this.staffCache && this.staffCache.expiresAt > now) {
+      rows = this.staffCache.rows;
+    } else {
+      if (!this.staffInFlight) {
+        this.staffInFlight = this.dataSource
+          .query(`
       SELECT
         u.id,
         u.ten_dang_nhap AS tenDangNhap,
@@ -171,7 +191,19 @@ export class OfficeService implements OnModuleInit {
           ELSE 8
         END,
         u.id ASC
-    `);
+    `)
+          .then((res) => {
+            this.staffCache = { rows: res, expiresAt: Date.now() + 10_000 };
+            this.staffInFlight = null;
+            return res;
+          })
+          .catch((err) => {
+            this.staffInFlight = null;
+            throw err;
+          });
+      }
+      rows = await this.staffInFlight;
+    }
 
     const onlineSet = new Set(this.gateway.getOnlineUserIds());
 
@@ -399,7 +431,7 @@ export class OfficeService implements OnModuleInit {
   }
 
   private async ensureUserInDefaultRooms(userId: number) {
-    if (!userId) return;
+    if (!userId || this.ensuredDefaultUsers.has(Number(userId))) return;
     const defaultRooms: any[] = await this.dataSource.query(
       `SELECT id FROM office_phong_chat WHERE ma_nhom IN ('TOAN_VIEN', 'DUOC_THU_NGAN', 'TIEP_DON_SANH')`,
     );
@@ -409,6 +441,7 @@ export class OfficeService implements OnModuleInit {
         [r.id, userId],
       );
     }
+    this.ensuredDefaultUsers.add(Number(userId));
   }
 
   async getWorkspaceInit(userId: number) {
@@ -429,21 +462,52 @@ export class OfficeService implements OnModuleInit {
       `SELECT
          p.*,
          tv.vai_tro AS myRole,
-         tv.da_doc_den_tin_id AS myLastReadId
+         tv.da_doc_den_tin_id AS myLastReadId,
+         tv.xoa_den_tin_id AS myClearedId
        FROM office_phong_chat p
-       INNER JOIN office_thanh_vien tv ON tv.phong_chat_id = p.id AND tv.nguoi_dung_id = ?
+       INNER JOIN office_thanh_vien tv ON tv.phong_chat_id = p.id AND tv.nguoi_dung_id = ? AND tv.da_roi_nhom = 0
        ORDER BY p.cap_nhat_luc DESC, p.id ASC`,
       [userId],
     );
 
     const rooms = [];
+    const roomIds = rawRooms.map((r) => Number(r.id));
+
+    // Truy vấn Batch 1 lần cho toàn bộ thành viên và tin nhắn của tất cả các phòng (Loại bỏ hoàn toàn N+1 Query)
+    const [allMemberRows, allRecentMsgRows]: [any[], any[]] =
+      roomIds.length > 0
+        ? await Promise.all([
+            this.dataSource.query(
+              `SELECT phong_chat_id AS roomId, nguoi_dung_id AS userId, vai_tro AS vaiTro, da_doc_den_tin_id AS lastReadId
+               FROM office_thanh_vien
+               WHERE phong_chat_id IN (${roomIds.join(',')}) AND da_roi_nhom = 0`,
+            ),
+            this.dataSource.query(
+              `SELECT id, phong_chat_id AS roomId, nguoi_gui_id AS nguoiGuiId, loai, noi_dung AS noiDung, da_thu_hoi AS daThuHoi, xoa_boi_ids AS xoaBoiIds, tao_luc AS taoLuc
+               FROM office_tin_nhan
+               WHERE phong_chat_id IN (${roomIds.join(',')})
+               ORDER BY id DESC`,
+            ),
+          ])
+        : [[], []];
+
+    const membersByRoom = new Map<number, any[]>();
+    for (const m of allMemberRows) {
+      const rid = Number(m.roomId);
+      if (!membersByRoom.has(rid)) membersByRoom.set(rid, []);
+      membersByRoom.get(rid)!.push(m);
+    }
+
+    const msgsByRoom = new Map<number, any[]>();
+    for (const msg of allRecentMsgRows) {
+      const rid = Number(msg.roomId);
+      if (!msgsByRoom.has(rid)) msgsByRoom.set(rid, []);
+      msgsByRoom.get(rid)!.push(msg);
+    }
+
     for (const r of rawRooms) {
-      const memberRows: any[] = await this.dataSource.query(
-        `SELECT nguoi_dung_id AS userId, vai_tro AS vaiTro, da_doc_den_tin_id AS lastReadId
-         FROM office_thanh_vien
-         WHERE phong_chat_id = ?`,
-        [r.id],
-      );
+      const rid = Number(r.id);
+      const memberRows = membersByRoom.get(rid) || [];
 
       const members = memberRows.map((m) => {
         const profile = staffMap.get(Number(m.userId)) || {
@@ -460,24 +524,21 @@ export class OfficeService implements OnModuleInit {
         };
       });
 
-      const lastMsgRows: any[] = await this.dataSource.query(
-        `SELECT id, nguoi_gui_id AS nguoiGuiId, loai, noi_dung AS noiDung, da_thu_hoi AS daThuHoi, xoa_boi_ids AS xoaBoiIds, tao_luc AS taoLuc
-         FROM office_tin_nhan
-         WHERE phong_chat_id = ?
-         ORDER BY id DESC
-         LIMIT 20`,
-        [r.id],
-      );
+      const myClearedId = Number(r.myClearedId || 0);
+      const myLastReadThreshold = Math.max(Number(r.myLastReadId || 0), myClearedId);
+      const roomMsgs = (msgsByRoom.get(rid) || []).filter((m) => Number(m.id) > myClearedId);
+
       const lastMsgRaw =
-        lastMsgRows.find((m) => !this.isDeletedForUser(m.xoaBoiIds, userId)) || null;
+        roomMsgs.find((m) => !this.isDeletedForUser(m.xoaBoiIds, userId)) || null;
       const lastSender = lastMsgRaw ? staffMap.get(Number(lastMsgRaw.nguoiGuiId)) : null;
 
-      const unreadRows: any[] = await this.dataSource.query(
-        `SELECT COUNT(*) AS cnt
-         FROM office_tin_nhan
-         WHERE phong_chat_id = ? AND id > ? AND nguoi_gui_id != ? AND da_thu_hoi = 0`,
-        [r.id, Number(r.myLastReadId || 0), userId],
-      );
+      const unreadCount = roomMsgs.filter(
+        (m) =>
+          Number(m.id) > myLastReadThreshold &&
+          Number(m.nguoiGuiId) !== Number(userId) &&
+          !m.daThuHoi &&
+          !this.isDeletedForUser(m.xoaBoiIds, userId),
+      ).length;
 
       let displayTitle = r.ten_phong;
       let directPartner = null;
@@ -487,7 +548,7 @@ export class OfficeService implements OnModuleInit {
       }
 
       rooms.push({
-        id: Number(r.id),
+        id: rid,
         tenPhong: displayTitle,
         moTa: r.mo_ta || (directPartner ? `${directPartner.chucVu} • ${directPartner.khoaPhong}` : ''),
         loai: r.loai,
@@ -497,7 +558,7 @@ export class OfficeService implements OnModuleInit {
         soThanhVien: members.length,
         members,
         tinNhanGhimId: r.tin_nhan_ghim_id ? Number(r.tin_nhan_ghim_id) : null,
-        unreadCount: Number(unreadRows[0]?.cnt || 0),
+        unreadCount,
         lastMessage: lastMsgRaw
           ? {
               id: Number(lastMsgRaw.id),
@@ -544,15 +605,21 @@ export class OfficeService implements OnModuleInit {
     }
     const room = roomRows[0];
 
-    // Đảm bảo user có trong phòng
+    // Đảm bảo user có trong phòng (nếu chưa từng vào)
     await this.dataSource.query(
       `INSERT IGNORE INTO office_thanh_vien (phong_chat_id, nguoi_dung_id, vai_tro) VALUES (?, ?, 'thanh_vien')`,
       [roomId, userId],
     );
 
+    const myMemberRows: any[] = await this.dataSource.query(
+      `SELECT xoa_den_tin_id AS myClearedId FROM office_thanh_vien WHERE phong_chat_id = ? AND nguoi_dung_id = ? LIMIT 1`,
+      [roomId, userId],
+    );
+    const myClearedId = Number(myMemberRows[0]?.myClearedId || 0);
+
     const allRoomMessages: any[] = await this.dataSource.query(
-      `SELECT * FROM office_tin_nhan WHERE phong_chat_id = ? ORDER BY id ASC LIMIT 300`,
-      [roomId],
+      `SELECT * FROM office_tin_nhan WHERE phong_chat_id = ? AND id > ? ORDER BY id ASC LIMIT 300`,
+      [roomId, myClearedId],
     );
     const rawMessages = allRoomMessages.filter(
       (m) => !this.isDeletedForUser(m.xoa_boi_ids, userId),
@@ -591,7 +658,7 @@ export class OfficeService implements OnModuleInit {
     const memberRows: any[] = await this.dataSource.query(
       `SELECT nguoi_dung_id AS userId, vai_tro AS vaiTro, da_doc_den_tin_id AS lastReadId
        FROM office_thanh_vien
-       WHERE phong_chat_id = ?`,
+       WHERE phong_chat_id = ? AND da_roi_nhom = 0`,
       [roomId],
     );
 
@@ -699,7 +766,12 @@ export class OfficeService implements OnModuleInit {
     );
 
     if (existing.length > 0) {
-      return { roomId: Number(existing[0].id), isNew: false };
+      const existingId = Number(existing[0].id);
+      await this.dataSource.query(
+        `UPDATE office_thanh_vien SET da_roi_nhom = 0 WHERE phong_chat_id = ? AND nguoi_dung_id = ?`,
+        [existingId, userId],
+      );
+      return { roomId: existingId, isNew: false };
     }
 
     const res: any = await this.dataSource.query(
@@ -762,8 +834,9 @@ export class OfficeService implements OnModuleInit {
     const cleanIds = (memberIds || []).map((id) => Number(id)).filter(Boolean);
     for (const mid of cleanIds) {
       await this.dataSource.query(
-        `INSERT IGNORE INTO office_thanh_vien (phong_chat_id, nguoi_dung_id, vai_tro)
-         VALUES (?, ?, 'thanh_vien')`,
+        `INSERT INTO office_thanh_vien (phong_chat_id, nguoi_dung_id, vai_tro, da_roi_nhom)
+         VALUES (?, ?, 'thanh_vien', 0)
+         ON DUPLICATE KEY UPDATE da_roi_nhom = 0`,
         [roomId, mid],
       );
     }
@@ -774,7 +847,7 @@ export class OfficeService implements OnModuleInit {
     );
 
     const allMembers: any[] = await this.dataSource.query(
-      `SELECT nguoi_dung_id AS uid FROM office_thanh_vien WHERE phong_chat_id = ?`,
+      `SELECT nguoi_dung_id AS uid FROM office_thanh_vien WHERE phong_chat_id = ? AND da_roi_nhom = 0`,
       [roomId],
     );
     this.gateway.notifyUsers(
@@ -784,6 +857,153 @@ export class OfficeService implements OnModuleInit {
     );
 
     return { roomId, addedCount: cleanIds.length };
+  }
+
+  async deleteConversationForUser(roomId: number, userId: number) {
+    const roomRows: any[] = await this.dataSource.query(
+      `SELECT id FROM office_phong_chat WHERE id = ? LIMIT 1`,
+      [roomId],
+    );
+    if (roomRows.length === 0) {
+      throw new NotFoundException('Không tìm thấy cuộc trò chuyện');
+    }
+
+    const maxMsgRows: any[] = await this.dataSource.query(
+      `SELECT COALESCE(MAX(id), 0) AS maxId FROM office_tin_nhan WHERE phong_chat_id = ?`,
+      [roomId],
+    );
+    const maxId = Number(maxMsgRows[0]?.maxId || 0);
+
+    await this.dataSource.query(
+      `INSERT INTO office_thanh_vien (phong_chat_id, nguoi_dung_id, vai_tro, da_doc_den_tin_id, xoa_den_tin_id)
+       VALUES (?, ?, 'thanh_vien', ?, ?)
+       ON DUPLICATE KEY UPDATE
+         xoa_den_tin_id = GREATEST(xoa_den_tin_id, VALUES(xoa_den_tin_id)),
+         da_doc_den_tin_id = GREATEST(da_doc_den_tin_id, VALUES(da_doc_den_tin_id))`,
+      [roomId, userId, maxId, maxId],
+    );
+
+    return {
+      roomId: Number(roomId),
+      clearedUpToMessageId: maxId,
+      message: 'Đã xóa lịch sử cuộc trò chuyện ở phía bạn',
+    };
+  }
+
+  async leaveGroupRoom(roomId: number, userId: number) {
+    const roomRows: any[] = await this.dataSource.query(
+      `SELECT * FROM office_phong_chat WHERE id = ? LIMIT 1`,
+      [roomId],
+    );
+    if (roomRows.length === 0) {
+      throw new NotFoundException('Không tìm thấy nhóm trò chuyện');
+    }
+    const room = roomRows[0];
+    if (room.loai !== 'nhom') {
+      throw new BadRequestException('Chỉ có thể rời khỏi cuộc trò chuyện nhóm');
+    }
+
+    const memberRows: any[] = await this.dataSource.query(
+      `SELECT id, vai_tro AS vaiTro FROM office_thanh_vien WHERE phong_chat_id = ? AND nguoi_dung_id = ? AND da_roi_nhom = 0 LIMIT 1`,
+      [roomId, userId],
+    );
+    if (memberRows.length === 0) {
+      throw new BadRequestException('Bạn không còn là thành viên của nhóm này');
+    }
+
+    const wasLeader = memberRows[0].vaiTro === 'truong_nhom';
+
+    const maxMsgRows: any[] = await this.dataSource.query(
+      `SELECT COALESCE(MAX(id), 0) AS maxId FROM office_tin_nhan WHERE phong_chat_id = ?`,
+      [roomId],
+    );
+    const maxId = Number(maxMsgRows[0]?.maxId || 0);
+
+    await this.dataSource.query(
+      `UPDATE office_thanh_vien
+       SET da_roi_nhom = 1,
+           vai_tro = 'thanh_vien',
+           xoa_den_tin_id = GREATEST(xoa_den_tin_id, ?),
+           da_doc_den_tin_id = GREATEST(da_doc_den_tin_id, ?)
+       WHERE phong_chat_id = ? AND nguoi_dung_id = ?`,
+      [maxId, maxId, roomId, userId],
+    );
+
+    // Nếu người rời là trưởng nhóm, nhường quyền trưởng nhóm cho thành viên tiếp theo
+    if (wasLeader) {
+      const remainingLeaders: any[] = await this.dataSource.query(
+        `SELECT id FROM office_thanh_vien WHERE phong_chat_id = ? AND da_roi_nhom = 0 AND vai_tro = 'truong_nhom' LIMIT 1`,
+        [roomId],
+      );
+      if (remainingLeaders.length === 0) {
+        const nextMember: any[] = await this.dataSource.query(
+          `SELECT id FROM office_thanh_vien WHERE phong_chat_id = ? AND da_roi_nhom = 0 ORDER BY id ASC LIMIT 1`,
+          [roomId],
+        );
+        if (nextMember.length > 0) {
+          await this.dataSource.query(
+            `UPDATE office_thanh_vien SET vai_tro = 'truong_nhom' WHERE id = ?`,
+            [nextMember[0].id],
+          );
+        }
+      }
+    }
+
+    const staff = await this.getAllStaffRaw();
+    const leaver = staff.find((s) => s.id === Number(userId)) || {
+      id: Number(userId),
+      hoTen: 'Đồng nghiệp',
+      chucVu: 'Nhân viên',
+      khoaPhong: 'Nội bộ',
+    };
+
+    const sysText = `${leaver.hoTen} đã rời khỏi nhóm.`;
+    const sysRes: any = await this.dataSource.query(
+      `INSERT INTO office_tin_nhan (phong_chat_id, nguoi_gui_id, loai, noi_dung)
+       VALUES (?, ?, 'he_thong', ?)`,
+      [roomId, userId, sysText],
+    );
+    const sysMsgId = Number(sysRes.insertId);
+
+    await this.dataSource.query(
+      `UPDATE office_phong_chat SET cap_nhat_luc = NOW() WHERE id = ?`,
+      [roomId],
+    );
+
+    const sysPayload = {
+      id: sysMsgId,
+      phongChatId: Number(roomId),
+      nguoiGuiId: Number(userId),
+      nguoiGui: leaver,
+      loai: 'he_thong',
+      noiDung: sysText,
+      tepDinhKem: null,
+      traLoi: null,
+      mentions: [],
+      daGhim: false,
+      daThuHoi: false,
+      reactions: [],
+      seenBy: [],
+      taoLuc: new Date().toISOString(),
+    };
+
+    this.gateway.broadcastToRoom(Number(roomId), 'office:new_message', sysPayload);
+
+    const remainingMembers: any[] = await this.dataSource.query(
+      `SELECT nguoi_dung_id AS uid FROM office_thanh_vien WHERE phong_chat_id = ? AND da_roi_nhom = 0`,
+      [roomId],
+    );
+    this.gateway.notifyUsers(
+      [Number(userId), ...remainingMembers.map((m) => Number(m.uid))],
+      'office:room_updated',
+      { roomId: Number(roomId) },
+    );
+
+    return {
+      roomId: Number(roomId),
+      left: true,
+      message: `Đã rời khỏi nhóm "${room.ten_phong || ''}"`,
+    };
   }
 
   async sendMessage(
@@ -883,7 +1103,7 @@ export class OfficeService implements OnModuleInit {
     this.gateway.broadcastToRoom(Number(roomId), 'office:new_message', messagePayload);
 
     const memberRows: any[] = await this.dataSource.query(
-      `SELECT nguoi_dung_id AS uid FROM office_thanh_vien WHERE phong_chat_id = ?`,
+      `SELECT nguoi_dung_id AS uid FROM office_thanh_vien WHERE phong_chat_id = ? AND da_roi_nhom = 0`,
       [roomId],
     );
     this.gateway.notifyUsers(

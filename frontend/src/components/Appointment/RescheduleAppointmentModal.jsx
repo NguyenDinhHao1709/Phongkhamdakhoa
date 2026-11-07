@@ -227,7 +227,9 @@ export default function RescheduleAppointmentModal({
             </div>
             <div className="flex items-center gap-1.5 text-emerald-700 pt-0.5 font-semibold">
               <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-              <span>Khoản tạm ứng 40.000đ được bảo lưu nguyên vẹn sang lịch hẹn mới.</span>
+              <span>
+                Khoản tạm ứng {Number(appointment?.soTienThanhToan || appointment?.soTienCoc || 40000).toLocaleString('vi-VN')}đ được bảo lưu nguyên vẹn sang lịch hẹn mới.
+              </span>
             </div>
           </div>
 

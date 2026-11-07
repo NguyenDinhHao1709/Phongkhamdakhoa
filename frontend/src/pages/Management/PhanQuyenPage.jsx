@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGet, apiPatch } from '../../services/api';
+import { apiGet, apiPost, apiPatch } from '../../services/api';
 import {
   Shield,
   Save,
@@ -22,6 +22,11 @@ import {
   CheckCheck,
   Building2,
   Sparkles,
+  Plus,
+  Edit3,
+  X,
+  Calendar,
+  BookOpen,
 } from 'lucide-react';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { MedButton } from '../../design-system/components/Button/MedButton';
@@ -39,6 +44,19 @@ const ROLE_METAS = {
   quan_tri_vien_cap_cao: { label: 'Super Admin Root', color: 'bg-rose-50 text-rose-700 border-rose-200' },
 };
 
+// Module visual icons
+const NHOM_ICONS = {
+  'Lâm Sàng & Khám Bệnh': Stethoscope,
+  'Cận Lâm Sàng & Xét Nghiệm': FlaskConical,
+  'Dược & Nhà Thuốc': Pill,
+  'Tài Chính & Thu Ngân': Receipt,
+  'Tin Tức & Truyền Thông Y Khoa': BookOpen,
+  'Hành Chính, Nhân Sự & Chấm Công': Users,
+  'Báo Cáo, Thống Kê & Dự Báo': BarChart3,
+  'Quản Trị Hệ Thống & Bảo Mật': Shield,
+  'Lịch Làm Việc & Phân Ca': Calendar,
+};
+
 export default function PhanQuyenPage() {
   const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState('detail'); // 'detail' | 'matrix'
@@ -47,6 +65,18 @@ export default function PhanQuyenPage() {
   const [permSearch, setPermSearch] = useState('');
   const [roleSearch, setRoleSearch] = useState('');
   const [successToast, setSuccessToast] = useState('');
+
+  // Modals state
+  const [editRoleModal, setEditRoleModal] = useState({ isOpen: false, role: null });
+  const [editRoleForm, setEditRoleForm] = useState({ tenVaiTro: '', moTa: '' });
+
+  const [addPermModal, setAddPermModal] = useState({ isOpen: false });
+  const [addPermForm, setAddPermForm] = useState({
+    maQuyen: '',
+    tenQuyen: '',
+    nhomChucNang: 'Lâm Sàng & Khám Bệnh',
+    moTa: '',
+  });
 
   // Fetch RBAC Matrix
   const { data: qData, isLoading } = useQuery({
@@ -99,7 +129,7 @@ export default function PhanQuyenPage() {
     return false;
   }, [activePermissions, selectedRoleId, rolePermMap]);
 
-  // Update Mutation
+  // Update Permissions Mutation
   const updateMutation = useMutation({
     mutationFn: async ({ vaiTroId, quyenHanIds }) => {
       await apiPatch(`/quan-ly/phan-quyen/${vaiTroId}`, { quyenHanIds });
@@ -111,6 +141,59 @@ export default function PhanQuyenPage() {
     },
     onError: (err) => {
       alert(err.response?.data?.error?.message || err.message || 'Có lỗi xảy ra khi lưu phân quyền');
+    }
+  });
+
+  // Reset to Default Presets Mutation
+  const resetDefaultMutation = useMutation({
+    mutationFn: async (vaiTroId) => {
+      return await apiPost(`/quan-ly/phan-quyen/${vaiTroId}/mac-dinh`);
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['phan-quyen'] });
+      setSuccessToast(res?.message || 'Đã khôi phục bộ quyền chuẩn mặc định thành công!');
+      setTimeout(() => setSuccessToast(''), 4000);
+    },
+    onError: (err) => {
+      alert(err.response?.data?.error?.message || err.message || 'Không thể khôi phục quyền mặc định');
+    }
+  });
+
+  // Edit Role Info Mutation
+  const editRoleMutation = useMutation({
+    mutationFn: async ({ vaiTroId, data }) => {
+      return await apiPatch(`/quan-ly/vai-tro/${vaiTroId}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phan-quyen'] });
+      setEditRoleModal({ isOpen: false, role: null });
+      setSuccessToast('Cập nhật thông tin vai trò thành công!');
+      setTimeout(() => setSuccessToast(''), 4000);
+    },
+    onError: (err) => {
+      alert(err.response?.data?.error?.message || err.message || 'Không thể cập nhật vai trò');
+    }
+  });
+
+  // Add Dynamic Permission Mutation
+  const addPermMutation = useMutation({
+    mutationFn: async (data) => {
+      return await apiPost('/quan-ly/quyen-han', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['phan-quyen'] });
+      setAddPermModal({ isOpen: false });
+      setAddPermForm({
+        maQuyen: '',
+        tenQuyen: '',
+        nhomChucNang: 'Lâm Sàng & Khám Bệnh',
+        moTa: '',
+      });
+      setSuccessToast('Thêm quyền hạn mới vào hệ thống thành công!');
+      setTimeout(() => setSuccessToast(''), 4000);
+    },
+    onError: (err) => {
+      alert(err.response?.data?.error?.message || err.message || 'Không thể thêm quyền hạn');
     }
   });
 
@@ -164,6 +247,42 @@ export default function PhanQuyenPage() {
       vaiTroId: selectedRole.id,
       quyenHanIds: Array.from(activePermissions),
     });
+  };
+
+  const handleResetToDefaultPreset = () => {
+    if (!selectedRole || selectedRole.laHeThong) return;
+    const confirmed = window.confirm(
+      `Khôi phục quyền mặc định cho vai trò "${selectedRole.tenVaiTro}"?\n\nThao tác này sẽ đặt lại quyền hạn theo bộ preset tiêu chuẩn khuyến nghị của hệ thống phòng khám.`
+    );
+    if (confirmed) {
+      resetDefaultMutation.mutate(selectedRole.id);
+    }
+  };
+
+  const handleOpenEditRole = (role) => {
+    setEditRoleModal({ isOpen: true, role });
+    setEditRoleForm({
+      tenVaiTro: role.tenVaiTro || '',
+      moTa: role.moTa || '',
+    });
+  };
+
+  const handleSaveEditRole = (e) => {
+    e.preventDefault();
+    if (!editRoleModal.role) return;
+    editRoleMutation.mutate({
+      vaiTroId: editRoleModal.role.id,
+      data: editRoleForm,
+    });
+  };
+
+  const handleSaveAddPerm = (e) => {
+    e.preventDefault();
+    if (!addPermForm.maQuyen.trim() || !addPermForm.tenQuyen.trim()) {
+      alert('Vui lòng nhập đầy đủ Mã quyền và Tên quyền hạn');
+      return;
+    }
+    addPermMutation.mutate(addPermForm);
   };
 
   // Matrix cell toggle
@@ -237,17 +356,20 @@ export default function PhanQuyenPage() {
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold text-gray-900 tracking-tight">Phân Quyền & Vai Trò</h1>
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-primary-50 text-primary-700 border border-primary-200">
-                  Chuẩn ERP
+                  Chuẩn ERP Nâng Cao
+                </span>
+                <span className="text-xs font-medium text-gray-500">
+                  ({totalPermCount} quyền hạn • {qData?.vaiTros?.length || 0} vai trò)
                 </span>
               </div>
               <p className="text-xs text-gray-500 mt-0.5">
-                Thiết lập quyền truy cập chức năng cho từng vị trí nhân sự. Quyền hạn có hiệu lực tức thì trên menu và API.
+                Thiết lập quyền truy cập chức năng chi tiết cho từng vị trí nhân sự. Quyền hạn có hiệu lực tức thì trên menu và API.
               </p>
             </div>
           </div>
         </div>
 
-        {/* View Switcher Tabs & Global Save */}
+        {/* View Switcher Tabs & Actions */}
         <div className="flex items-center gap-3">
           <div className="inline-flex rounded-xl bg-gray-100 p-1 border border-gray-200">
             <button
@@ -273,6 +395,15 @@ export default function PhanQuyenPage() {
               Ma trận toàn cảnh
             </button>
           </div>
+
+          <button
+            onClick={() => setAddPermModal({ isOpen: true })}
+            className="px-3 py-1.5 rounded-xl border border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs"
+            title="Thêm quyền hạn mới vào hệ thống"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Thêm quyền hạn
+          </button>
 
           {viewMode === 'detail' && selectedRole && !Boolean(selectedRole.laHeThong) && (
             <div className="flex items-center gap-2">
@@ -404,6 +535,17 @@ export default function PhanQuyenPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <h2 className="text-base font-bold text-gray-900">{selectedRole.tenVaiTro}</h2>
+                        
+                        {!Boolean(selectedRole.laHeThong) && (
+                          <button
+                            onClick={() => handleOpenEditRole(selectedRole)}
+                            className="p-1 rounded-md text-gray-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                            title="Chỉnh sửa tên và mô tả vai trò"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
                         <span className="font-mono text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">
                           {selectedRole.maVaiTro}
                         </span>
@@ -421,34 +563,48 @@ export default function PhanQuyenPage() {
                     </div>
                   </div>
 
-                  {/* Coverage Indicator */}
-                  <div className="flex items-center gap-3 self-end md:self-auto">
-                    <div className="text-right">
-                      <div className="text-xs font-medium text-gray-500">Phạm vi quyền hạn</div>
-                      <div className="text-sm font-bold text-gray-900">
-                        {activePermCount} / {totalPermCount} quyền ({activePercent}%)
+                  {/* Preset Reset & Coverage Indicator */}
+                  <div className="flex items-center gap-4 self-end md:self-auto">
+                    {!Boolean(selectedRole.laHeThong) && (
+                      <button
+                        onClick={handleResetToDefaultPreset}
+                        disabled={resetDefaultMutation.isPending}
+                        className="px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs"
+                        title="Đặt lại quyền hạn theo bộ chuẩn khuyến nghị của hệ thống phòng khám"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                        {resetDefaultMutation.isPending ? 'Đang khôi phục...' : 'Khôi phục quyền mặc định'}
+                      </button>
+                    )}
+
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="text-xs font-medium text-gray-500">Phạm vi quyền hạn</div>
+                        <div className="text-sm font-bold text-gray-900">
+                          {activePermCount} / {totalPermCount} quyền ({activePercent}%)
+                        </div>
                       </div>
-                    </div>
-                    <div className="w-12 h-12 relative flex items-center justify-center">
-                      <svg className="w-12 h-12 transform -rotate-90" viewBox="0 0 36 36">
-                        <path
-                          className="text-gray-200"
-                          strokeWidth="3.5"
-                          stroke="currentColor"
-                          fill="none"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                        />
-                        <path
-                          className="text-primary-600"
-                          strokeDasharray={`${activePercent}, 100`}
-                          strokeWidth="3.5"
-                          strokeLinecap="round"
-                          stroke="currentColor"
-                          fill="none"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                        />
-                      </svg>
-                      <span className="absolute text-[11px] font-bold text-gray-700">{activePercent}%</span>
+                      <div className="w-12 h-12 relative flex items-center justify-center">
+                        <svg className="w-12 h-12 transform -rotate-90" viewBox="0 0 36 36">
+                          <path
+                            className="text-gray-200"
+                            strokeWidth="3.5"
+                            stroke="currentColor"
+                            fill="none"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          />
+                          <path
+                            className="text-primary-600"
+                            strokeDasharray={`${activePercent}, 100`}
+                            strokeWidth="3.5"
+                            strokeLinecap="round"
+                            stroke="currentColor"
+                            fill="none"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          />
+                        </svg>
+                        <span className="absolute text-[11px] font-bold text-gray-700">{activePercent}%</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -496,13 +652,14 @@ export default function PhanQuyenPage() {
                       const allInModuleChecked = quyenList.every(q => activePermissions.has(q.id));
                       const someInModuleChecked = quyenList.some(q => activePermissions.has(q.id));
                       const checkedCount = quyenList.filter(q => activePermissions.has(q.id)).length;
+                      const NhomIcon = NHOM_ICONS[nhom] || Layers;
 
                       return (
                         <div key={nhom} className="bg-white rounded-xl border border-gray-200/80 shadow-2xs overflow-hidden">
                           {/* Module Header */}
                           <div className="px-4 py-3 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <Layers className="w-4 h-4 text-primary-600" />
+                              <NhomIcon className="w-4 h-4 text-primary-600" />
                               <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider">{nhom}</h3>
                               <span className="text-xs font-medium text-gray-500 bg-white px-2 py-0.5 rounded-full border border-gray-200">
                                 {checkedCount}/{quyenList.length}
@@ -639,72 +796,239 @@ export default function PhanQuyenPage() {
               </thead>
 
               <tbody className="divide-y divide-gray-200">
-                {Object.entries(filteredGroupedQuyen).map(([nhom, list]) => (
-                  <Fragment key={`group-${nhom}`}>
-                    {/* Module row header */}
-                    <tr className="bg-slate-100/90 font-bold text-gray-700">
-                      <td
-                        colSpan={(qData?.vaiTros?.length || 0) + 1}
-                        className="p-2.5 text-xs uppercase tracking-wider text-primary-900 bg-primary-50/40 border-y border-primary-100 sticky left-0 font-bold"
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <Layers className="w-3.5 h-3.5 text-primary-600" />
-                          <span>{nhom}</span>
-                        </div>
-                      </td>
-                    </tr>
-
-                    {/* Permissions rows */}
-                    {list.map((qh) => (
-                      <tr key={qh.id} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="p-3 border-r border-gray-100 bg-white sticky left-0 z-10 font-medium text-gray-900 shadow-xs">
-                          <div>{qh.tenQuyen}</div>
-                          <div className="text-[10px] text-gray-400 font-mono">{qh.maQuyen}</div>
+                {Object.entries(filteredGroupedQuyen).map(([nhom, list]) => {
+                  const NhomIcon = NHOM_ICONS[nhom] || Layers;
+                  return (
+                    <Fragment key={`group-${nhom}`}>
+                      {/* Module row header */}
+                      <tr className="bg-slate-100/90 font-bold text-gray-700">
+                        <td
+                          colSpan={(qData?.vaiTros?.length || 0) + 1}
+                          className="p-2.5 text-xs uppercase tracking-wider text-primary-900 bg-primary-50/40 border-y border-primary-100 sticky left-0 font-bold"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <NhomIcon className="w-3.5 h-3.5 text-primary-600" />
+                            <span>{nhom}</span>
+                          </div>
                         </td>
-
-                        {qData?.vaiTros?.map((vt) => {
-                          const permSet = rolePermMap.get(vt.id) || new Set();
-                          const isGranted = permSet.has(qh.id);
-                          const isSystem = Boolean(vt.laHeThong);
-
-                          return (
-                            <td
-                              key={`${qh.id}-${vt.id}`}
-                              className={`p-2.5 text-center border-r border-gray-100 ${
-                                isGranted ? 'bg-primary-50/20' : 'bg-white'
-                              }`}
-                            >
-                              <div className="flex items-center justify-center">
-                                {isSystem ? (
-                                  <div className="w-5 h-5 rounded flex items-center justify-center bg-rose-50 text-rose-600" title="Vai trò hệ thống - Luôn có toàn quyền">
-                                    <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={() => handleMatrixCellToggle(vt, qh.id)}
-                                    disabled={updateMutation.isPending}
-                                    title={`Click để ${isGranted ? 'gỡ' : 'cấp'} quyền "${qh.tenQuyen}" cho "${vt.tenVaiTro}"`}
-                                    className={`w-6 h-6 rounded-lg border flex items-center justify-center transition-all ${
-                                      isGranted
-                                        ? 'bg-primary-600 border-primary-600 text-white shadow-2xs hover:bg-primary-700'
-                                        : 'bg-white border-gray-300 text-transparent hover:border-primary-400 hover:text-gray-300'
-                                    }`}
-                                  >
-                                    <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          );
-                        })}
                       </tr>
-                    ))}
-                  </Fragment>
-                ))}
+
+                      {/* Permissions rows */}
+                      {list.map((qh) => (
+                        <tr key={qh.id} className="hover:bg-gray-50/80 transition-colors">
+                          <td className="p-3 border-r border-gray-100 bg-white sticky left-0 z-10 font-medium text-gray-900 shadow-xs">
+                            <div>{qh.tenQuyen}</div>
+                            <div className="text-[10px] text-gray-400 font-mono">{qh.maQuyen}</div>
+                          </td>
+
+                          {qData?.vaiTros?.map((vt) => {
+                            const permSet = rolePermMap.get(vt.id) || new Set();
+                            const isGranted = permSet.has(qh.id);
+                            const isSystem = Boolean(vt.laHeThong);
+
+                            return (
+                              <td
+                                key={`${qh.id}-${vt.id}`}
+                                className={`p-2.5 text-center border-r border-gray-100 ${
+                                  isGranted ? 'bg-primary-50/20' : 'bg-white'
+                                }`}
+                              >
+                                <div className="flex items-center justify-center">
+                                  {isSystem ? (
+                                    <div className="w-5 h-5 rounded flex items-center justify-center bg-rose-50 text-rose-600" title="Vai trò hệ thống - Luôn có toàn quyền">
+                                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleMatrixCellToggle(vt, qh.id)}
+                                      disabled={updateMutation.isPending}
+                                      title={`Click để ${isGranted ? 'gỡ' : 'cấp'} quyền "${qh.tenQuyen}" cho "${vt.tenVaiTro}"`}
+                                      className={`w-6 h-6 rounded-lg border flex items-center justify-center transition-all ${
+                                        isGranted
+                                          ? 'bg-primary-600 border-primary-600 text-white shadow-2xs hover:bg-primary-700'
+                                          : 'bg-white border-gray-300 text-transparent hover:border-primary-400 hover:text-gray-300'
+                                      }`}
+                                    >
+                                      <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </MedCard>
+      )}
+
+      {/* ─── MODAL CHỈNH SỬA THÔNG TIN VAI TRÒ ───────────────────── */}
+      {editRoleModal.isOpen && editRoleModal.role && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-gray-100 animate-scale-up">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/70">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-primary-600" />
+                <h3 className="text-sm font-bold text-gray-900">Chỉnh Sửa Thông Tin Vai Trò</h3>
+              </div>
+              <button
+                onClick={() => setEditRoleModal({ isOpen: false, role: null })}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditRole} className="p-4 space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Mã định danh vai trò</label>
+                <input
+                  type="text"
+                  disabled
+                  value={editRoleModal.role.maVaiTro}
+                  className="w-full px-3 py-2 text-xs font-mono bg-gray-100 border border-gray-200 rounded-xl text-gray-500 cursor-not-allowed"
+                />
+                <span className="text-[11px] text-gray-400 mt-0.5 block">Mã vai trò hệ thống không được phép thay đổi để đảm bảo tính toàn vẹn.</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Tên vai trò hiển thị *</label>
+                <input
+                  type="text"
+                  required
+                  value={editRoleForm.tenVaiTro}
+                  onChange={(e) => setEditRoleForm({ ...editRoleForm, tenVaiTro: e.target.value })}
+                  className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-xl focus:outline-hidden focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                  placeholder="Ví dụ: Bác sĩ điều trị..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Mô tả chức trách / phạm vi</label>
+                <textarea
+                  rows={3}
+                  value={editRoleForm.moTa}
+                  onChange={(e) => setEditRoleForm({ ...editRoleForm, moTa: e.target.value })}
+                  className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-xl focus:outline-hidden focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                  placeholder="Mô tả nhiệm vụ và phạm vi nghiệp vụ của vị trí này..."
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setEditRoleModal({ isOpen: false, role: null })}
+                  className="px-3.5 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Hủy bỏ
+                </button>
+                <MedButton
+                  type="submit"
+                  loading={editRoleMutation.isPending}
+                  className="text-xs py-1.5 px-4"
+                >
+                  Cập nhật
+                </MedButton>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL TẠO QUYỀN HẠN MỚI DYNAMIC ─────────────────────── */}
+      {addPermModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden border border-gray-100 animate-scale-up">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/70">
+              <div className="flex items-center gap-2">
+                <Plus className="w-4 h-4 text-primary-600" />
+                <h3 className="text-sm font-bold text-gray-900">Thêm Quyền Hạn Mới Vào Hệ Thống</h3>
+              </div>
+              <button
+                onClick={() => setAddPermModal({ isOpen: false })}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAddPerm} className="p-4 space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Mã quyền hạn (Unique Code) *</label>
+                <input
+                  type="text"
+                  required
+                  value={addPermForm.maQuyen}
+                  onChange={(e) => setAddPermForm({ ...addPermForm, maQuyen: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, '_') })}
+                  className="w-full px-3 py-2 text-xs font-mono bg-white border border-gray-300 rounded-xl focus:outline-hidden focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                  placeholder="Ví dụ: he_thong.tinh_nang_moi hoặc bai_viet.xoa"
+                />
+                <span className="text-[11px] text-gray-400 mt-0.5 block">Quy chuẩn định danh: phan_he.hanh_dong (chữ thường, ngăn cách bằng dấu chấm).</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Tên quyền hạn hiển thị *</label>
+                <input
+                  type="text"
+                  required
+                  value={addPermForm.tenQuyen}
+                  onChange={(e) => setAddPermForm({ ...addPermForm, tenQuyen: e.target.value })}
+                  className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-xl focus:outline-hidden focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                  placeholder="Ví dụ: Quản lý tính năng mới"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Nhóm chức năng *</label>
+                <select
+                  value={addPermForm.nhomChucNang}
+                  onChange={(e) => setAddPermForm({ ...addPermForm, nhomChucNang: e.target.value })}
+                  className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-xl focus:outline-hidden focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                >
+                  {qData?.nhomChucNangs?.map((nhom) => (
+                    <option key={nhom} value={nhom}>
+                      {nhom}
+                    </option>
+                  ))}
+                  <option value="Chức Năng Khác">Chức Năng Khác</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Mô tả quyền hạn</label>
+                <textarea
+                  rows={2}
+                  value={addPermForm.moTa}
+                  onChange={(e) => setAddPermForm({ ...addPermForm, moTa: e.target.value })}
+                  className="w-full px-3 py-2 text-xs bg-white border border-gray-300 rounded-xl focus:outline-hidden focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                  placeholder="Giải thích chi tiết quyền hạn này cho phép người dùng thao tác những gì..."
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setAddPermModal({ isOpen: false })}
+                  className="px-3.5 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Hủy bỏ
+                </button>
+                <MedButton
+                  type="submit"
+                  loading={addPermMutation.isPending}
+                  className="text-xs py-1.5 px-4"
+                >
+                  Tạo quyền hạn
+                </MedButton>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

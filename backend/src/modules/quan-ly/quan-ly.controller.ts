@@ -116,6 +116,80 @@ export class QuanLyController {
     return this.quanLyService.capNhatThongTinBenhVien(dto, userId);
   }
 
+  // ─── ADMIN & PUBLIC: DANH MỤC CHUYÊN KHOA Y TẾ ──────────────
+  @Public()
+  @Get('danh-muc-chuyen-khoa')
+  @ApiOperation({ summary: 'Lấy danh mục chuyên khoa y tế dùng chung (Công khai)' })
+  getDanhMucChuyenKhoa() {
+    return this.quanLyService.getDanhMucChuyenKhoa();
+  }
+
+  @Put('danh-muc-chuyen-khoa')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Cập nhật danh mục chuyên khoa y tế' })
+  capNhatDanhMucChuyenKhoa(@Body() dto: any[], @CurrentUser('id') userId: number) {
+    return this.quanLyService.capNhatDanhMucChuyenKhoa(dto, userId);
+  }
+
+  // ─── ADMIN & PUBLIC: DANH MỤC DƯỢC & ĐƠN VỊ TÍNH ─────────────
+  @Public()
+  @Get('danh-muc-duoc')
+  @ApiOperation({ summary: 'Lấy danh mục dược, đơn vị tính và nhóm thuốc (Công khai)' })
+  getDanhMucDuoc() {
+    return this.quanLyService.getDanhMucDuoc();
+  }
+
+  @Put('danh-muc-duoc')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Cập nhật danh mục dược dùng chung' })
+  capNhatDanhMucDuoc(@Body() dto: any, @CurrentUser('id') userId: number) {
+    return this.quanLyService.capNhatDanhMucDuoc(dto, userId);
+  }
+
+  // ─── ADMIN & PUBLIC: MẪU LỜI DẶN Y KHOA BÁC SĨ ───────────────
+  @Public()
+  @Get('mau-loi-dan')
+  @ApiOperation({ summary: 'Lấy danh mục mẫu lời dặn y khoa mặc định' })
+  getMauLoiDanBacSi() {
+    return this.quanLyService.getMauLoiDanBacSi();
+  }
+
+  @Put('mau-loi-dan')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Cập nhật danh mục mẫu lời dặn y khoa' })
+  capNhatMauLoiDanBacSi(@Body() dto: any[], @CurrentUser('id') userId: number) {
+    return this.quanLyService.capNhatMauLoiDanBacSi(dto, userId);
+  }
+
+  // ─── ADMIN: CẤU HÌNH DỊCH VỤ (.ENV, EMAIL, PAYOS, GEMINI, THANH TOÁN) ──
+  @Get('cai-dat-dich-vu')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Lấy cấu hình Email OTP, Cổng PayOS, Gemini AI và Hình thức thanh toán' })
+  getCaiDatDichVu() {
+    return this.quanLyService.getCaiDatDichVu();
+  }
+
+  @Put('cai-dat-dich-vu')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Cập nhật cấu hình dịch vụ hệ thống và đồng bộ file .env' })
+  capNhatCaiDatDichVu(@Body() dto: any, @CurrentUser('id') userId: number) {
+    return this.quanLyService.capNhatCaiDatDichVu(dto, userId);
+  }
+
+  @Post('test-ket-noi-dich-vu')
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Kiểm tra kết nối thử nghiệm Email SMTP, PayOS hoặc Gemini AI' })
+  testKetNoiDichVu(@Body() body: { loai: string; payload: any }) {
+    return this.quanLyService.testKetNoiDichVu(body.loai, body.payload);
+  }
+
+  @Public()
+  @Get('hinh-thuc-thanh-toan')
+  @ApiOperation({ summary: 'Lấy danh sách hình thức thanh toán được kích hoạt (Công khai)' })
+  getHinhThucThanhToanPublic() {
+    return this.quanLyService.getHinhThucThanhToanPublic();
+  }
+
   // ─── ADMIN: THÔNG SỐ CƠ SỞ DỮ LIỆU & BACKUP ─────────────────
   @Get('backup-info')
   @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
@@ -448,6 +522,34 @@ export class QuanLyController {
     @CurrentUser('id') userId: number,
   ) {
     return this.quanLyService.capNhatPhanQuyen(+vaiTroId, quyenHanIds, userId);
+  }
+
+  @Post('phan-quyen/:vaiTroId/mac-dinh')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Khôi phục bộ quyền chuẩn mặc định cho vai trò' })
+  khoiPhucQuyenMacDinh(@Param('vaiTroId', ParseIntPipe) vaiTroId: number, @CurrentUser('id') userId: number) {
+    return this.quanLyService.khoiPhucQuyenMacDinh(vaiTroId, userId);
+  }
+
+  @Patch('vai-tro/:vaiTroId')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Cập nhật tên hiển thị & mô tả nhiệm vụ của vai trò' })
+  capNhatThongTinVaiTro(
+    @Param('vaiTroId', ParseIntPipe) vaiTroId: number,
+    @Body() dto: { tenVaiTro?: string; moTa?: string },
+    @CurrentUser('id') userId: number,
+  ) {
+    return this.quanLyService.capNhatThongTinVaiTro(vaiTroId, dto, userId);
+  }
+
+  @Post('quyen-han')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thêm quyền hạn / chức năng mới vào danh mục' })
+  taoQuyenHan(
+    @Body() dto: { maQuyen: string; tenQuyen: string; nhomChucNang: string },
+    @CurrentUser('id') userId: number,
+  ) {
+    return this.quanLyService.taoQuyenHan(dto, userId);
   }
 
   // ─── BÁO CÁO CÁC BỘ PHẬN GỬI BAN GIÁM ĐỐC ─────────────────────

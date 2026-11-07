@@ -1,11 +1,26 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { X, Pill } from 'lucide-react';
 import { MedButton } from '../../design-system/components/Button/MedButton';
-import { apiPost, apiPatch } from '../../services/api';
+import { apiGet, apiPost, apiPatch } from '../../services/api';
 
 export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
   const isEdit = Boolean(thuoc);
+  const [dvtList, setDvtList] = useState(['Viên', 'Vỉ', 'Hộp', 'Chai', 'Lọ', 'Gói', 'Ống', 'Tuýp', 'Bút tiêm', 'Túi dịch truyền', 'Bình xịt']);
+  const [duongDungList, setDuongDungList] = useState(['Uống', 'Tiêm bắp', 'Tiêm tĩnh mạch', 'Bôi ngoài da', 'Nhỏ mắt', 'Nhỏ tai', 'Khí dung', 'Đặt dưới lưỡi', 'Đặt hậu môn']);
+
+  useEffect(() => {
+    let mounted = true;
+    apiGet('/quan-ly/danh-muc-duoc')
+      .then((res) => {
+        if (!mounted) return;
+        const d = res?.data || res;
+        if (Array.isArray(d?.donViTinh) && d.donViTinh.length > 0) setDvtList(d.donViTinh);
+        if (Array.isArray(d?.duongDung) && d.duongDung.length > 0) setDuongDungList(d.duongDung);
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, []);
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
     defaultValues: {
       maThuoc: '', tenThuoc: '', tenHoatChat: '', donViTinh: 'Viên',
@@ -94,7 +109,7 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
                   {...register('donViTinh')}
                   className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none bg-white"
                 >
-                  {['Viên', 'Chai', 'Lọ', 'Vỉ', 'Hộp', 'Tuýp', 'Gói', 'Ống'].map((item) => (
+                  {dvtList.map((item) => (
                     <option key={item}>{item}</option>
                   ))}
                 </select>
@@ -137,7 +152,7 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
                   {...register('duongDung')}
                   className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none bg-white"
                 >
-                  {['Uống', 'Tiêm tĩnh mạch', 'Tiêm bắp', 'Bôi ngoài da', 'Nhỏ mắt/mũi', 'Đặt hậu môn', 'Khác'].map((item) => (
+                  {duongDungList.map((item) => (
                     <option key={item}>{item}</option>
                   ))}
                 </select>

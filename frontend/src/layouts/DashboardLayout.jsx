@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import useAuthStore from '../store/authStore';
 import useThemeStore from '../store/themeStore';
+import { apiGet } from '../services/api';
 import { VAI_TRO_LABEL } from '../utils/constants';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import {
@@ -12,21 +13,20 @@ import {
   User, Settings, Video, Clock, Send, Bot, Database,
   Shield, Layers, TrendingUp, DollarSign,
   FileSearch, CheckSquare, FileText, ScanFace,
-  Menu, X, PackagePlus, UserCheck, MessageSquare, Sun, Moon
+  Menu, X, PackagePlus, UserCheck, MessageSquare, Sun, Moon, BookOpen
 } from 'lucide-react';
-
 
 const MENU_CONFIG = {
   tiep_tan: [
     { to: '/tiep-tan/hang-doi', icon: ClipboardList, label: 'Hàng đợi phòng khám', perm: 'tiep_nhan.goi_so' },
     { to: '/tiep-tan/lich-hen', icon: Calendar, label: 'Quản lý lịch hẹn', perm: 'lich_hen.xem' },
     { to: '/tiep-tan/benh-nhan', icon: Users, label: 'Hồ sơ bệnh nhân', perm: 'benh_nhan.them' },
-    { to: '/tiep-tan/ai-triage', icon: Bot, label: 'Phân luồng AI Triage', perm: 'benh_nhan.xem' },
-    { to: '/tiep-tan/office', icon: MessageSquare, label: 'Office' },
-    { to: '/tiep-tan/thong-ke', icon: BarChart3, label: 'Báo cáo tiếp đón', perm: 'bao_cao.doanh_thu' },
-    { to: '/tiep-tan/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
-    { to: '/tiep-tan/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
-    { to: '/tiep-tan/gui-don', icon: Send, label: 'Gửi yêu cầu' },
+    { to: '/tiep-tan/ai-triage', icon: Bot, label: 'Phân luồng AI Triage', perm: 'ai_triage.phan_luong' },
+    { to: '/tiep-tan/office', icon: MessageSquare, label: 'Office', perm: 'office.truy_cap' },
+    { to: '/tiep-tan/thong-ke', icon: BarChart3, label: 'Báo cáo tiếp đón', perm: 'tiep_nhan.thong_ke' },
+    { to: '/tiep-tan/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực', perm: 'lich_truc.xem' },
+    { to: '/tiep-tan/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt', perm: 'cham_cong.ca_nhan' },
+    { to: '/tiep-tan/gui-don', icon: Send, label: 'Gửi yêu cầu', perm: 'don_tu.gui' },
     { to: '/tiep-tan/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   bac_si: [
@@ -34,64 +34,65 @@ const MENU_CONFIG = {
     { to: '/bac-si/kham-truc-tuyen', icon: Video, label: 'Tư vấn Online & Đặt lịch', perm: 'kham_benh.truc_tuyen' },
     { to: '/bac-si/ho-so-benh-an', icon: ClipboardList, label: 'Hồ sơ bệnh án (EMR)', perm: 'kham_benh.xem_lich_su' },
     { to: '/bac-si/lich-hen', icon: Calendar, label: 'Quản lý lịch hẹn', perm: 'lich_hen.xem' },
-    { to: '/bac-si/office', icon: MessageSquare, label: 'Office' },
-    { to: '/bac-si/thong-ke', icon: BarChart3, label: 'Báo cáo & Thống kê', perm: 'bao_cao.doanh_thu' },
-    { to: '/bac-si/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
-    { to: '/bac-si/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
-    { to: '/bac-si/gui-don', icon: Send, label: 'Gửi yêu cầu' },
+    { to: '/bac-si/bai-viet', icon: BookOpen, label: 'Cẩm nang & Bài viết y khoa', perm: 'bai_viet.soan_thao' },
+    { to: '/bac-si/office', icon: MessageSquare, label: 'Office', perm: 'office.truy_cap' },
+    { to: '/bac-si/thong-ke', icon: BarChart3, label: 'Báo cáo & Thống kê', perm: 'kham_benh.thong_ke' },
+    { to: '/bac-si/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực', perm: 'lich_truc.xem' },
+    { to: '/bac-si/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt', perm: 'cham_cong.ca_nhan' },
+    { to: '/bac-si/gui-don', icon: Send, label: 'Gửi yêu cầu', perm: 'don_tu.gui' },
     { to: '/bac-si/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   ky_thuat_vien: [
     { to: '/ky-thuat-vien/xet-nghiem', icon: FlaskConical, label: 'Xét nghiệm & CĐHA', perm: 'xet_nghiem.xem' },
-    { to: '/ky-thuat-vien/office', icon: MessageSquare, label: 'Office' },
-    { to: '/ky-thuat-vien/thong-ke', icon: BarChart3, label: 'Báo cáo & Thống kê', perm: 'bao_cao.doanh_thu' },
-    { to: '/ky-thuat-vien/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
-    { to: '/ky-thuat-vien/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
-    { to: '/ky-thuat-vien/gui-don', icon: Send, label: 'Gửi yêu cầu' },
+    { to: '/ky-thuat-vien/office', icon: MessageSquare, label: 'Office', perm: 'office.truy_cap' },
+    { to: '/ky-thuat-vien/thong-ke', icon: BarChart3, label: 'Báo cáo & Thống kê', perm: 'xet_nghiem.thong_ke' },
+    { to: '/ky-thuat-vien/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực', perm: 'lich_truc.xem' },
+    { to: '/ky-thuat-vien/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt', perm: 'cham_cong.ca_nhan' },
+    { to: '/ky-thuat-vien/gui-don', icon: Send, label: 'Gửi yêu cầu', perm: 'don_tu.gui' },
     { to: '/ky-thuat-vien/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   nhan_vien_nha_thuoc: [
     { to: '/nha-thuoc/don-thuoc', icon: Pill, label: 'Cấp phát đơn thuốc', perm: 'thuoc.xuat_kho' },
     { to: '/nha-thuoc/kho-thuoc', icon: Layers, label: 'Kho thuốc & Tồn kho', perm: 'thuoc.xem' },
     { to: '/nha-thuoc/mua-hang', icon: PackagePlus, label: 'Mua hàng & Nhập thuốc', perm: 'thuoc.nhap_kho' },
-    { to: '/nha-thuoc/office', icon: MessageSquare, label: 'Office' },
-    { to: '/nha-thuoc/thong-ke', icon: BarChart3, label: 'Báo cáo & Dự báo nhu cầu', perm: 'bao_cao.doanh_thu' },
-    { to: '/nha-thuoc/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
-    { to: '/nha-thuoc/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
-    { to: '/nha-thuoc/gui-don', icon: Send, label: 'Gửi yêu cầu' },
+    { to: '/nha-thuoc/office', icon: MessageSquare, label: 'Office', perm: 'office.truy_cap' },
+    { to: '/nha-thuoc/thong-ke', icon: BarChart3, label: 'Báo cáo & Dự báo nhu cầu', perm: 'thuoc.thong_ke' },
+    { to: '/nha-thuoc/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực', perm: 'lich_truc.xem' },
+    { to: '/nha-thuoc/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt', perm: 'cham_cong.ca_nhan' },
+    { to: '/nha-thuoc/gui-don', icon: Send, label: 'Gửi yêu cầu', perm: 'don_tu.gui' },
     { to: '/nha-thuoc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   nha_thuoc: [
     { to: '/nha-thuoc/don-thuoc', icon: Pill, label: 'Cấp phát đơn thuốc', perm: 'thuoc.xuat_kho' },
     { to: '/nha-thuoc/kho-thuoc', icon: Layers, label: 'Kho thuốc & Tồn kho', perm: 'thuoc.xem' },
     { to: '/nha-thuoc/mua-hang', icon: PackagePlus, label: 'Mua hàng & Nhập thuốc', perm: 'thuoc.nhap_kho' },
-    { to: '/nha-thuoc/office', icon: MessageSquare, label: 'Office' },
-    { to: '/nha-thuoc/thong-ke', icon: BarChart3, label: 'Báo cáo & Dự báo nhu cầu', perm: 'bao_cao.doanh_thu' },
-    { to: '/nha-thuoc/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
-    { to: '/nha-thuoc/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
-    { to: '/nha-thuoc/gui-don', icon: Send, label: 'Gửi yêu cầu' },
+    { to: '/nha-thuoc/office', icon: MessageSquare, label: 'Office', perm: 'office.truy_cap' },
+    { to: '/nha-thuoc/thong-ke', icon: BarChart3, label: 'Báo cáo & Dự báo nhu cầu', perm: 'thuoc.thong_ke' },
+    { to: '/nha-thuoc/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực', perm: 'lich_truc.xem' },
+    { to: '/nha-thuoc/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt', perm: 'cham_cong.ca_nhan' },
+    { to: '/nha-thuoc/gui-don', icon: Send, label: 'Gửi yêu cầu', perm: 'don_tu.gui' },
     { to: '/nha-thuoc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   thu_ngan: [
     { to: '/thu-ngan/hoa-don', icon: Receipt, label: 'Thu viện phí & Biên lai (AR)', perm: 'hoa_don.xem' },
-    { to: '/thu-ngan/chi-tra-nha-cung-cap', icon: DollarSign, label: 'Sổ chi trả & Chi phí (AP/OPEX)', perm: 'hoa_don.thanh_toan' },
-    { to: '/thu-ngan/office', icon: MessageSquare, label: 'Office' },
+    { to: '/thu-ngan/chi-tra-nha-cung-cap', icon: DollarSign, label: 'Sổ chi trả & Chi phí (AP/OPEX)', perm: 'hoa_don.chi_tra_ncc' },
+    { to: '/thu-ngan/office', icon: MessageSquare, label: 'Office', perm: 'office.truy_cap' },
     { to: '/thu-ngan/thong-ke', icon: BarChart3, label: 'Báo cáo sổ quỹ & Chốt ca', perm: 'hoa_don.chot_ca' },
-    { to: '/thu-ngan/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực' },
-    { to: '/thu-ngan/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt' },
-    { to: '/thu-ngan/gui-don', icon: Send, label: 'Gửi yêu cầu' },
+    { to: '/thu-ngan/lich-lam-viec', icon: Clock, label: 'Lịch làm việc & Ca trực', perm: 'lich_truc.xem' },
+    { to: '/thu-ngan/cham-cong', icon: ScanFace, label: 'Chấm công khuôn mặt', perm: 'cham_cong.ca_nhan' },
+    { to: '/thu-ngan/gui-don', icon: Send, label: 'Gửi yêu cầu', perm: 'don_tu.gui' },
     { to: '/thu-ngan/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   quan_tri_vien: [
-    { to: '/quan-tri/tong-quan', icon: BarChart3, label: 'Tổng quan hệ thống' },
-    { to: '/quan-tri/office', icon: MessageSquare, label: 'Office' },
-    { to: '/quan-tri/nhan-vien', icon: Users, label: 'Quản lý nhân sự' },
-    { to: '/quan-tri/benh-nhan', icon: UserCheck, label: 'Tài khoản bệnh nhân' },
-    { to: '/quan-tri/phan-quyen', icon: Shield, label: 'Phân quyền & Vai trò' },
-    { to: '/quan-tri/danh-muc', icon: Layers, label: 'Danh mục dùng chung' },
-    { to: '/quan-tri/sao-luu', icon: Database, label: 'Sao lưu & CSDL' },
-    { to: '/quan-tri/nhat-ky', icon: FileText, label: 'Nhật ký hệ thống' },
-    { to: '/quan-tri/cai-dat-cham-cong', icon: ScanFace, label: 'Cài đặt chấm công & WiFi' },
+    { to: '/quan-tri/tong-quan', icon: BarChart3, label: 'Tổng quan hệ thống', perm: 'he_thong.tong_quan' },
+    { to: '/quan-tri/office', icon: MessageSquare, label: 'Office', perm: 'office.truy_cap' },
+    { to: '/quan-tri/nhan-vien', icon: Users, label: 'Quản lý nhân sự', perm: 'he_thong.nhan_vien' },
+    { to: '/quan-tri/benh-nhan', icon: UserCheck, label: 'Tài khoản bệnh nhân', perm: 'he_thong.benh_nhan' },
+    { to: '/quan-tri/phan-quyen', icon: Shield, label: 'Phân quyền & Vai trò', perm: 'he_thong.phan_quyen' },
+    { to: '/quan-tri/danh-muc', icon: Layers, label: 'Danh mục dùng chung', perm: 'he_thong.danh_muc' },
+    { to: '/quan-tri/sao-luu', icon: Database, label: 'Sao lưu & CSDL', perm: 'he_thong.sao_luu' },
+    { to: '/quan-tri/nhat-ky', icon: FileText, label: 'Nhật ký hệ thống', perm: 'he_thong.nhat_ky' },
+    { to: '/quan-tri/cai-dat-cham-cong', icon: ScanFace, label: 'Cài đặt chấm công & WiFi', perm: 'he_thong.cai_dat_cham_cong' },
     { to: '/quan-tri/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   quan_tri_vien_cap_cao: [
@@ -107,16 +108,17 @@ const MENU_CONFIG = {
     { to: '/quan-tri/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
   ban_giam_doc: [
-    { to: '/ban-giam-doc/thong-ke', icon: BarChart3, label: 'Dashboard điều hành', perm: 'bao_cao.doanh_thu' },
-    { to: '/ban-giam-doc/office', icon: MessageSquare, label: 'Office' },
-    { to: '/ban-giam-doc/bang-gia-dich-vu', icon: DollarSign, label: 'Quản lý bảng giá dịch vụ', perm: 'bao_cao.doanh_thu' },
+    { to: '/ban-giam-doc/thong-ke', icon: BarChart3, label: 'Dashboard điều hành', perm: 'dieu_hanh.dashboard' },
+    { to: '/ban-giam-doc/office', icon: MessageSquare, label: 'Office', perm: 'office.truy_cap' },
+    { to: '/ban-giam-doc/bang-gia-dich-vu', icon: DollarSign, label: 'Quản lý bảng giá dịch vụ', perm: 'dieu_hanh.bang_gia' },
     { to: '/ban-giam-doc/tai-chinh', icon: FileText, label: 'Báo cáo toàn diện BV', perm: 'bao_cao.doanh_thu' },
-    { to: '/ban-giam-doc/bao-cao-bo-phan', icon: ClipboardList, label: 'Báo cáo bộ phận & Chỉ đạo', perm: 'bao_cao.doanh_thu' },
-    { to: '/ban-giam-doc/du-bao-luong', icon: TrendingUp, label: 'Dự báo lưu lượng', perm: 'bao_cao.doanh_thu' },
-    { to: '/ban-giam-doc/xep-lich', icon: Calendar, label: 'Phân ca làm việc', perm: 'lich_hen.duyet' },
-    { to: '/ban-giam-doc/quan-ly-cham-cong', icon: ScanFace, label: 'Quản lý chấm công', perm: 'lich_hen.duyet' },
-    { to: '/ban-giam-doc/tra-cuu', icon: FileSearch, label: 'Tra cứu tổng hợp', perm: 'benh_nhan.xem' },
-    { to: '/ban-giam-doc/phe-duyet-don', icon: CheckSquare, label: 'Phê duyệt yêu cầu', perm: 'lich_hen.duyet' },
+    { to: '/ban-giam-doc/bao-cao-bo-phan', icon: ClipboardList, label: 'Báo cáo bộ phận & Chỉ đạo', perm: 'dieu_hanh.bao_cao_bo_phan' },
+    { to: '/ban-giam-doc/bai-viet', icon: BookOpen, label: 'Duyệt bài viết y khoa', perm: 'bai_viet.phe_duyet' },
+    { to: '/ban-giam-doc/du-bao-luong', icon: TrendingUp, label: 'Dự báo lưu lượng', perm: 'dieu_hanh.du_bao_ai' },
+    { to: '/ban-giam-doc/xep-lich', icon: Calendar, label: 'Phân ca làm việc', perm: 'lich_truc.phan_ca' },
+    { to: '/ban-giam-doc/quan-ly-cham-cong', icon: ScanFace, label: 'Quản lý chấm công', perm: 'cham_cong.quan_ly' },
+    { to: '/ban-giam-doc/tra-cuu', icon: FileSearch, label: 'Tra cứu tổng hợp', perm: 'dieu_hanh.tra_cuu' },
+    { to: '/ban-giam-doc/phe-duyet-don', icon: CheckSquare, label: 'Phê duyệt yêu cầu', perm: 'don_tu.phe_duyet' },
     { to: '/ban-giam-doc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
 };
@@ -124,21 +126,39 @@ const MENU_CONFIG = {
 export function DashboardLayout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user, logout } = useAuthStore();
+  const { user, logout, updatePermissions } = useAuthStore();
   const { darkMode, toggleTheme } = useThemeStore();
   const navigate = useNavigate();
 
+  // Đồng bộ quyền hạn thực tế từ Backend theo thời gian thực (không cần đăng xuất)
+  useEffect(() => {
+    if (!user || user.vaiTro === 'benh_nhan') return;
+    let isMounted = true;
+    apiGet('/auth/my-permissions')
+      .then((res) => {
+        if (!isMounted) return;
+        const perms = res?.data?.quyenHans || res?.quyenHans;
+        if (Array.isArray(perms) && updatePermissions) {
+          updatePermissions(perms);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id]);
+
   const allMenuItems = MENU_CONFIG[user?.vaiTro] || [];
   const menuItems = allMenuItems.filter(item => {
-    // Nếu item không cấu hình perm thì mọi nhân sự trong vai trò đều truy cập được
+    // Nếu item không cấu hình perm thì mọi nhân sự trong vai trò đều truy cập được (vd: Thông tin cá nhân)
     if (!item.perm) return true;
-    // Super Admin có tất cả quyền
-    if (user?.vaiTro === 'quan_tri_vien_cap_cao' || user?.vaiTro === 'quan_tri_vien') return true;
-    // Kiểm tra danh sách quyền thực tế của nhân sự
+    // Super Admin gốc (Root) luôn có toàn quyền kiểm soát
+    if (user?.vaiTro === 'quan_tri_vien_cap_cao') return true;
+    // Kiểm tra danh sách quyền thực tế của nhân sự được cấp động trong CSDL
     if (Array.isArray(user?.quyenHans)) {
       return user.quyenHans.includes(item.perm);
     }
-    return true;
+    return false;
   });
 
   const getProfileRoute = () => {

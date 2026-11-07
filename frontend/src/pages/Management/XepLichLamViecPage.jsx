@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import * as XLSX from 'xlsx';
 import { apiGet, apiPost, apiDelete } from '../../services/api';
 import {
   Calendar as CalendarIcon, Clock, Plus, Trash2, RefreshCw,
   ChevronLeft, ChevronRight, Users, Check, AlertCircle, Sparkles,
-  Layers, CheckSquare, Square, X, Info
+  Layers, CheckSquare, Square, X, Info, Download
 } from 'lucide-react';
 
 const DAYS_OF_WEEK = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
@@ -254,6 +255,58 @@ export default function XepLichLamViecPage() {
   // Tính trước tổng số ca được tạo
   const totalShiftsToCreate = form.selectedCaIds.length * form.selectedDates.length;
 
+  // Xuất file Excel Bảng phân ca / Lịch trực tuần
+  const handleExportExcel = () => {
+    if (!nvList || nvList.length === 0) {
+      alert('Không có dữ liệu nhân sự để xuất lịch trực!');
+      return;
+    }
+
+    const rows = nvList.map((nv, idx) => {
+      const row = {
+        'STT': idx + 1,
+        'Mã Nhân Viên': nv.maNhanVien || '',
+        'Họ Tên Nhân Viên': nv.hoTen || '',
+        'Chức Vụ / Chuyên Khoa': nv.chucVu || '',
+      };
+
+      let tongSoCa = 0;
+      weekDays.forEach((d) => {
+        const shifts = phanCaList.filter(
+          (p) => p.nhanVienId === nv.id && p.ngayLam === d.dateStr
+        );
+        tongSoCa += shifts.length;
+        const shiftNames = shifts.map((s) => s.tenCa || 'Ca trực').join(', ');
+        row[`${d.name} (${d.display})`] = shiftNames || 'Nghỉ';
+      });
+
+      row['Tổng Ca Trực / Tuần'] = tongSoCa;
+      return row;
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 14 }, // Mã NV
+      { wch: 22 }, // Họ tên
+      { wch: 20 }, // Chức vụ
+      { wch: 22 }, // Thứ 2
+      { wch: 22 }, // Thứ 3
+      { wch: 22 }, // Thứ 4
+      { wch: 22 }, // Thứ 5
+      { wch: 22 }, // Thứ 6
+      { wch: 22 }, // Thứ 7
+      { wch: 22 }, // Chủ nhật
+      { wch: 18 }, // Tổng ca
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'LichTrucTuan');
+    const firstDay = weekDays[0]?.dateStr || '';
+    const lastDay = weekDays[6]?.dateStr || '';
+    XLSX.writeFile(wb, `Lich_Truc_Nhan_Su_${firstDay}_den_${lastDay}.xlsx`);
+  };
+
   return (
     <div className="space-y-4 animate-fade-in max-w-7xl mx-auto pb-10">
       {/* ─── HEADER & ĐIỀU HƯỚNG ──────────────────────────────────── */}
@@ -272,7 +325,17 @@ export default function XepLichLamViecPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-end sm:self-center">
+        <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-bold shadow-2xs transition-colors cursor-pointer whitespace-nowrap"
+            title="Xuất bảng ma trận phân ca ra file Excel"
+          >
+            <Download className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Xuất Lịch Trực (Excel)</span>
+          </button>
+
           <button
             type="button"
             onClick={() => refetch()}

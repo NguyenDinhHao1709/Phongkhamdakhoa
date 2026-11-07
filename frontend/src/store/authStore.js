@@ -60,6 +60,12 @@ const useAuthStore = create(
         set({ user: userData });
       },
 
+      updatePermissions: (quyenHans) => {
+        set((state) => ({
+          user: state.user ? { ...state.user, quyenHans } : null,
+        }));
+      },
+
       getVaiTro: () => get().user?.vai_tro || null,
       getLoaiTaiKhoan: () => get().user?.loai_tai_khoan || null,
     }),

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import * as XLSX from 'xlsx';
 import { apiGet, apiPatch } from '../../services/api';
 import { formatDateTime, formatDate } from '../../utils/formatDate';
 import {
@@ -25,6 +26,7 @@ import {
   CalendarOff,
   Shuffle,
   HelpCircle,
+  Download,
 } from 'lucide-react';
 
 const TRANG_THAI_CONFIG = {
@@ -660,6 +662,58 @@ export default function DuyetYeuCauPage() {
     setCurrentPage(1);
   };
 
+  // Xuất file Excel sổ theo dõi phê duyệt đơn từ & yêu cầu
+  const handleExportExcel = () => {
+    if (!filteredDonList || filteredDonList.length === 0) {
+      alert('Không có dữ liệu đơn từ để xuất file!');
+      return;
+    }
+
+    const rows = filteredDonList.map((d, idx) => {
+      const sender = d.nguoiGui || {};
+      const approver = d.nguoiDuyet || {};
+      const statusLabel = TRANG_THAI_CONFIG[d.trangThai]?.label || d.trangThai || '';
+      const ngayGuiStr = d.ngayGui ? formatDateTime(d.ngayGui) : '-';
+      const ngayDuyetStr = d.ngayDuyet ? formatDateTime(d.ngayDuyet) : '-';
+
+      return {
+        'STT': idx + 1,
+        'Mã Đơn / Yêu Cầu': d.maYeuCau || `DON-${d.id}`,
+        'Loại Đơn / Đề Xuất': d.loaiDon || '',
+        'Người Gửi': sender.hoTen || 'Nhân viên',
+        'Bộ Phận / Chức Vụ': sender.chucVu || sender.tenVaiTro || '',
+        'Thời Gian Gửi': ngayGuiStr,
+        'Nội Dung Yêu Cầu': d.noiDung || '',
+        'Số Tiền / Dự Toán (VNĐ)': d.soTien || d.tongTien || 0,
+        'Trạng Thái Phê Duyệt': statusLabel,
+        'Người Phê Duyệt': approver.hoTen || (d.trangThai === 'da_xu_ly' ? 'Ban Giám Đốc' : '—'),
+        'Thời Gian Phê Duyệt': ngayDuyetStr,
+        'Ý Kiến Chỉ Đạo / Lý Do': d.ghiChuXuLy || '',
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 18 }, // Mã đơn
+      { wch: 28 }, // Loại đơn
+      { wch: 22 }, // Người gửi
+      { wch: 22 }, // Bộ phận
+      { wch: 20 }, // TG gửi
+      { wch: 35 }, // Nội dung
+      { wch: 20 }, // Số tiền
+      { wch: 18 }, // Trạng thái
+      { wch: 20 }, // Người duyệt
+      { wch: 20 }, // TG duyệt
+      { wch: 30 }, // Ý kiến
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'SoTheoDoiPheDuyet');
+    const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    XLSX.writeFile(wb, `So_Theo_Doi_Phe_Duyet_Don_Tu_${nowStr}.xlsx`);
+  };
+
   return (
     <div className="space-y-5 pb-12 animate-fade-in">
       {/* 1. Header tinh gọn */}
@@ -678,7 +732,16 @@ export default function DuyetYeuCauPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleExportExcel}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors shadow-2xs active:scale-95 cursor-pointer"
+            title="Xuất danh sách đơn từ và yêu cầu phê duyệt ra file Excel"
+          >
+            <Download className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Xuất Excel</span>
+          </button>
+
           <button
             onClick={() => refetch()}
             disabled={isFetching}

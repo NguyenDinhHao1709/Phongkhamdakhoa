@@ -38,6 +38,10 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 !backend/uploads/avatars/
 
+# Real patient data - keep local and never commit
+phongkham.sql
+data.sql
+
 # Python
 venv/
 .venv/
@@ -50,3 +54,5 @@ __pycache__/
 
 # E2E test artifacts
 scripts/e2e_screenshots/
+*.sql
+*.sql

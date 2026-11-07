@@ -35,9 +35,13 @@ export default function AppointmentTicketModal({
 
   const isOnline = hinhThuc === 'truc_tuyen';
 
-  // Tên phòng khám và vị trí
-  const tenPhong = phongKham?.tenPhong || phongKham?.ten_phong || (isOnline ? 'Phòng Tư Vấn Video Trực Tuyến (Telehealth 1-1)' : 'Phòng Khám Chuyên Khoa');
-  const viTri = phongKham?.viTri || phongKham?.vi_tri || (isOnline ? 'Trực tuyến từ xa qua Video Call' : 'Tầng 1 - Khu Tiếp Nhận Lâm Sàng');
+  // Tên phòng khám và vị trí (Chỉ áp dụng cho khám trực tiếp tại phòng khám)
+  const tenPhong = isOnline
+    ? 'Khám & Tư vấn trực tuyến từ xa (Telehealth 1-1)'
+    : (phongKham?.tenPhong || phongKham?.ten_phong || 'Phòng Khám Chuyên Khoa');
+  const viTri = isOnline
+    ? 'Phòng gọi Video trực tuyến trên hệ thống (Mở trước 15 phút)'
+    : (phongKham?.viTri || phongKham?.vi_tri || 'Tầng 1 - Khu Tiếp Nhận Lâm Sàng');
 
   // Tên bác sĩ
   const tenBacSi = bacSi?.nhanVien?.hoTen || bacSi?.hoTen || 'Bác sĩ chuyên khoa theo phân công';
@@ -272,19 +276,46 @@ export default function AppointmentTicketModal({
               </div>
             )}
 
-            <div className="flex justify-between items-center border-b border-gray-200 pb-2">
-              <span className="text-gray-500 flex items-center gap-1">
-                {isOnline ? <Video className="h-3.5 w-3.5 text-indigo-600" /> : <Building2 className="h-3.5 w-3.5 text-blue-600" />} Phòng khám:
-              </span>
-              <span className={`font-bold text-right ${isOnline ? 'text-indigo-700' : 'text-blue-700'}`}>{tenPhong}</span>
-            </div>
+            {isOnline ? (
+              <>
+                <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                  <span className="text-gray-500 flex items-center gap-1">
+                    <Video className="h-3.5 w-3.5 text-indigo-600" /> Hình thức khám:
+                  </span>
+                  <span className="font-bold text-right text-indigo-700">{tenPhong}</span>
+                </div>
 
-            <div className="flex justify-between items-center border-b border-gray-200 pb-2">
-              <span className="text-gray-500 flex items-center gap-1">
-                {isOnline ? <Wifi className="h-3.5 w-3.5 text-indigo-600" /> : <MapPin className="h-3.5 w-3.5 text-blue-600" />} {isOnline ? 'Hình thức:' : 'Vị trí phòng:'}
-              </span>
-              <span className="font-semibold text-gray-800">{viTri}</span>
-            </div>
+                <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                  <span className="text-gray-500 flex items-center gap-1">
+                    <Wifi className="h-3.5 w-3.5 text-indigo-600" /> Kênh kết nối:
+                  </span>
+                  <span className="font-semibold text-gray-800 text-right">{viTri}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                  <span className="text-gray-500 flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-blue-600" /> Hình thức khám:
+                  </span>
+                  <span className="font-bold text-right text-blue-700">Khám trực tiếp tại phòng khám</span>
+                </div>
+
+                <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                  <span className="text-gray-500 flex items-center gap-1">
+                    <Building2 className="h-3.5 w-3.5 text-blue-600" /> Phòng khám:
+                  </span>
+                  <span className="font-bold text-right text-blue-700">{tenPhong}</span>
+                </div>
+
+                <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                  <span className="text-gray-500 flex items-center gap-1">
+                    <MapPin className="h-3.5 w-3.5 text-blue-600" /> Vị trí phòng:
+                  </span>
+                  <span className="font-semibold text-gray-800 text-right">{viTri}</span>
+                </div>
+              </>
+            )}
 
             <div className="flex justify-between items-center border-b border-gray-200 pb-2">
               <span className="text-gray-500 flex items-center gap-1">

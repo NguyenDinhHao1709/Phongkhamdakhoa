@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, In, Like, MoreThanOrEqual, IsNull } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -26,13 +26,18 @@ import { NhatKyHeThong, LoaiNhatKy } from './entities/nhat-ky-he-thong.entity';
 import { BaoCaoBoPhan } from './entities/bao-cao-bo-phan.entity';
 import { CauHinhTienCoc } from './entities/cau-hinh-tien-coc.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
+import { MemoryCacheService } from '../../common/cache/memory-cache.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as nodemailer from 'nodemailer';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { PayOS } from '@payos/node';
+import { DEFAULT_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, NHOM_CHUC_NANG_ORDER } from '../auth/rbac-defaults';
 
 @Injectable()
-export class QuanLyService {
+export class QuanLyService implements OnModuleInit {
   constructor(
     @InjectRepository(NhanVien) private nhanVienRepo: Repository<NhanVien>,
     @InjectRepository(NguoiDung) private nguoiDungRepo: Repository<NguoiDung>,
@@ -58,6 +63,7 @@ export class QuanLyService {
     @InjectRepository(CauHinhTienCoc) private tienCocRepo: Repository<CauHinhTienCoc>,
     private readonly thongBaoService: ThongBaoService,
     private readonly httpService: HttpService,
+    private readonly cache: MemoryCacheService,
   ) {}
 
   // ==========================================
@@ -256,6 +262,29 @@ export class QuanLyService {
       relations: ['nguoiDung'],
     });
     if (!nv) throw new NotFoundException('Không tìm thấy nhân viên');
+
+    // Chốt chặn ERP Y Tế: Không cho phép xóa cứng nhân viên nếu đã phát sinh lịch sử khám/hóa đơn/đơn thuốc
+    const bs = await this.bacSiRepo.findOne({ where: { nhanVienId: id } });
+    if (bs) {
+      const [lhCount, bakCount] = await Promise.all([
+        this.lichHenRepo.count({ where: { bacSiId: bs.id } }),
+        this.benhAnRepo.count({ where: { bacSiId: bs.id } }),
+      ]);
+      if (lhCount > 0 || bakCount > 0) {
+        throw new BadRequestException({
+          code: 'NHAN_VIEN_CO_HO_SO_PHAP_LY_Y_TE',
+          message: `Bác sĩ "${nv.hoTen}" đã có ${bakCount} bệnh án khám và ${lhCount} lịch hẹn lưu trữ trong hệ thống. Theo chuẩn lưu trữ hồ sơ y tế, không được xóa cứng nhân sự này — vui lòng chuyển trạng thái sang "Khóa tài khoản"!`,
+        });
+      }
+    }
+
+    const hdCount = await this.hoaDonRepo.count({ where: { thuNganId: id } });
+    if (hdCount > 0) {
+      throw new BadRequestException({
+        code: 'NHAN_VIEN_CO_CHUNG_TU_TAI_CHINH',
+        message: `Nhân viên "${nv.hoTen}" đã đứng tên trên ${hdCount} hóa đơn tài chính. Không được xóa cứng — vui lòng sử dụng chức năng "Khóa tài khoản"!`,
+      });
+    }
 
     await this.bacSiRepo.delete({ nhanVienId: id });
     await this.kyThuatVienRepo.delete({ nhanVienId: id });
@@ -511,6 +540,83 @@ export class QuanLyService {
   // ==========================================
   // PHÂN QUYỀN (VAI TRÒ & QUYỀN HẠN)
   // ==========================================
+
+  // Seed danh mục quyền chuẩn: chỉ thêm quyền còn thiếu & gán mặc định cho quyền mới,
+  // không ghi đè cấu hình Admin đã chỉnh. Lần nâng cấp đầu tiên (chưa có 'he_thong.phan_quyen')
+  // sẽ chuẩn hóa toàn bộ vai trò về bộ quyền mặc định mới.
+  async onModuleInit() {
+    try {
+      const existing = await this.quyenHanRepo.find();
+      const byMa = new Map(existing.map(q => [q.maQuyen, q]));
+      const isFirstUpgrade = !byMa.has('he_thong.phan_quyen');
+      const newCodes = new Set<string>();
+
+      for (const p of DEFAULT_PERMISSIONS) {
+        const cur = byMa.get(p.maQuyen);
+        if (!cur) {
+          byMa.set(p.maQuyen, await this.quyenHanRepo.save(this.quyenHanRepo.create(p)));
+          newCodes.add(p.maQuyen);
+        } else if (cur.tenQuyen !== p.tenQuyen || cur.nhomChucNang !== p.nhomChucNang) {
+          await this.quyenHanRepo.update(cur.id, { tenQuyen: p.tenQuyen, nhomChucNang: p.nhomChucNang });
+        }
+      }
+
+      const vaiTros = await this.vaiTroRepo.find();
+      for (const vt of vaiTros) {
+        const preset = DEFAULT_ROLE_PERMISSIONS[vt.maVaiTro];
+        if (!preset || vt.laHeThong) continue;
+        if (isFirstUpgrade) {
+          await this.ganQuyenTheoMa(vt.id, preset);
+        } else {
+          const toAdd = preset.filter(ma => newCodes.has(ma)).map(ma => byMa.get(ma)!.id);
+          if (toAdd.length) {
+            await this.vaiTroQuyenHanRepo.save(toAdd.map(quyenHanId => ({ vaiTroId: vt.id, quyenHanId })));
+          }
+        }
+      }
+      if (newCodes.size) new Logger('RBAC').log(`Đã bổ sung ${newCodes.size} quyền hạn mới vào danh mục`);
+    } catch (e) {
+      new Logger('RBAC').warn(`Không thể seed danh mục quyền: ${e?.message}`);
+    }
+  }
+
+  private async ganQuyenTheoMa(vaiTroId: number, maQuyens: string[]) {
+    const perms = maQuyens.length ? await this.quyenHanRepo.find({ where: { maQuyen: In(maQuyens) } }) : [];
+    await this.vaiTroQuyenHanRepo.delete({ vaiTroId });
+    if (perms.length) {
+      await this.vaiTroQuyenHanRepo.save(perms.map(p => ({ vaiTroId, quyenHanId: p.id })));
+    }
+    return perms.length;
+  }
+
+  private async ghiNhatKyPhanQuyen(currentUserId: number | undefined, hanhDong: string, moTa: string) {
+    try {
+      const actor = currentUserId ? await this.nguoiDungRepo.findOne({ where: { id: currentUserId } }) : null;
+      await this.nhatKyRepo.save(
+        this.nhatKyRepo.create({
+          nguoiDungId: currentUserId || null,
+          tenNguoiDung: actor?.tenDangNhap || 'Quản trị viên',
+          vaiTro: 'quan_tri_vien',
+          hanhDong,
+          loaiNhatKy: LoaiNhatKy.INFO,
+          moTa,
+          diaChiIp: '127.0.0.1',
+        }),
+      );
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  private async layVaiTroChinhSua(vaiTroId: number) {
+    const role = await this.vaiTroRepo.findOne({ where: { id: vaiTroId } });
+    if (!role) throw new NotFoundException('Vai trò không tồn tại');
+    if (role.laHeThong) {
+      throw new BadRequestException('Không thể chỉnh sửa vai trò hệ thống gốc');
+    }
+    return role;
+  }
+
   async getPhanQuyenData() {
     const vaiTros = await this.vaiTroRepo.find({
       where: { maVaiTro: Not('benh_nhan') },
@@ -531,43 +637,37 @@ export class QuanLyService {
       .getRawMany();
     const countMap = new Map(userCounts.map(u => [Number(u.vaiTroId), Number(u.soNhanSu)]));
 
-    const matrix = vaiTros.map(vt => {
-      let perms = mappings.filter(m => m.vaiTroId === vt.id).map(m => m.quyenHanId);
-      if (vt.maVaiTro === 'quan_tri_vien_cap_cao') {
-        perms = quyenHans.map(q => q.id);
-      }
-      return {
-        vaiTro: {
-          id: vt.id,
-          maVaiTro: vt.maVaiTro,
-          tenVaiTro: vt.tenVaiTro,
-          moTa: vt.moTa,
-          laHeThong: Boolean(vt.laHeThong),
-          soNhanSu: countMap.get(vt.id) || 0,
-        },
-        quyenHanIds: perms,
-      };
-    });
+    const vaiTroDtos = vaiTros.map(vt => ({
+      id: vt.id,
+      maVaiTro: vt.maVaiTro,
+      tenVaiTro: vt.tenVaiTro,
+      moTa: vt.moTa,
+      laHeThong: Boolean(vt.laHeThong),
+      soNhanSu: countMap.get(vt.id) || 0,
+      coMacDinh: Boolean(DEFAULT_ROLE_PERMISSIONS[vt.maVaiTro]),
+    }));
 
-    const groupedQuyen = quyenHans.reduce((acc, qh) => {
-      const nhom = qh.nhomChucNang || 'Khác';
-      if (!acc[nhom]) acc[nhom] = [];
-      acc[nhom].push(qh);
-      return acc;
-    }, {} as Record<string, typeof quyenHans>);
+    const matrix = vaiTroDtos.map(vt => ({
+      vaiTro: vt,
+      quyenHanIds: vt.maVaiTro === 'quan_tri_vien_cap_cao'
+        ? quyenHans.map(q => q.id)
+        : mappings.filter(m => m.vaiTroId === vt.id).map(m => m.quyenHanId),
+    }));
+
+    // Nhóm quyền theo thứ tự nghiệp vụ chuẩn, nhóm tự tạo xếp cuối
+    const groupedQuyen: Record<string, typeof quyenHans> = {};
+    const nhoms = [...new Set([...NHOM_CHUC_NANG_ORDER, ...quyenHans.map(q => q.nhomChucNang || 'Khác')])];
+    nhoms.forEach(nhom => {
+      const list = quyenHans.filter(q => (q.nhomChucNang || 'Khác') === nhom);
+      if (list.length) groupedQuyen[nhom] = list;
+    });
 
     return {
       data: {
-        vaiTros: vaiTros.map(vt => ({
-          id: vt.id,
-          maVaiTro: vt.maVaiTro,
-          tenVaiTro: vt.tenVaiTro,
-          moTa: vt.moTa,
-          laHeThong: Boolean(vt.laHeThong),
-          soNhanSu: countMap.get(vt.id) || 0,
-        })),
+        vaiTros: vaiTroDtos,
         quyenHans: groupedQuyen,
         allQuyenHans: quyenHans,
+        nhomChucNangs: nhoms,
         matrix,
       },
       message: 'Lấy dữ liệu phân quyền thành công'
@@ -575,11 +675,7 @@ export class QuanLyService {
   }
 
   async capNhatPhanQuyen(vaiTroId: number, quyenHanIds: number[], currentUserId?: number) {
-    const role = await this.vaiTroRepo.findOne({ where: { id: vaiTroId } });
-    if (!role) throw new NotFoundException('Vai trò không tồn tại');
-    if (role.laHeThong) {
-      throw new BadRequestException('Không thể chỉnh sửa quyền của vai trò hệ thống này');
-    }
+    const role = await this.layVaiTroChinhSua(vaiTroId);
 
     await this.vaiTroQuyenHanRepo.delete({ vaiTroId });
 
@@ -591,25 +687,62 @@ export class QuanLyService {
       await this.vaiTroQuyenHanRepo.save(newMappings);
     }
 
-    // Ghi nhật ký kiểm toán hệ thống
-    try {
-      const actor = currentUserId ? await this.nguoiDungRepo.findOne({ where: { id: currentUserId } }) : null;
-      await this.nhatKyRepo.save(
-        this.nhatKyRepo.create({
-          nguoiDungId: currentUserId || null,
-          tenNguoiDung: actor?.tenDangNhap || 'Quản trị viên',
-          vaiTro: 'quan_tri_vien',
-          hanhDong: 'CAP_NHAT_PHAN_QUYEN',
-          loaiNhatKy: LoaiNhatKy.INFO,
-          moTa: `Điều chỉnh phân quyền vai trò "${role.tenVaiTro}" (${role.maVaiTro}): Đã cấp ${quyenHanIds?.length || 0} quyền hạn.`,
-          diaChiIp: '127.0.0.1',
-        }),
-      );
-    } catch (e) {
-      // Ignore
-    }
+    await this.ghiNhatKyPhanQuyen(
+      currentUserId,
+      'CAP_NHAT_PHAN_QUYEN',
+      `Điều chỉnh phân quyền vai trò "${role.tenVaiTro}" (${role.maVaiTro}): Đã cấp ${quyenHanIds?.length || 0} quyền hạn.`,
+    );
 
     return { message: 'Cập nhật phân quyền thành công' };
+  }
+
+  async capNhatThongTinVaiTro(vaiTroId: number, dto: { tenVaiTro?: string; moTa?: string }, currentUserId?: number) {
+    const role = await this.layVaiTroChinhSua(vaiTroId);
+    const tenVaiTro = dto.tenVaiTro?.trim();
+    if (dto.tenVaiTro !== undefined && !tenVaiTro) {
+      throw new BadRequestException('Tên vai trò không được để trống');
+    }
+    if (tenVaiTro) role.tenVaiTro = tenVaiTro;
+    if (dto.moTa !== undefined) role.moTa = dto.moTa.trim();
+    await this.vaiTroRepo.save(role);
+
+    await this.ghiNhatKyPhanQuyen(currentUserId, 'CAP_NHAT_VAI_TRO', `Cập nhật thông tin vai trò "${role.tenVaiTro}" (${role.maVaiTro}).`);
+    return { message: 'Cập nhật thông tin vai trò thành công' };
+  }
+
+  async khoiPhucQuyenMacDinh(vaiTroId: number, currentUserId?: number) {
+    const role = await this.layVaiTroChinhSua(vaiTroId);
+    const preset = DEFAULT_ROLE_PERMISSIONS[role.maVaiTro];
+    if (!preset) {
+      throw new BadRequestException('Vai trò này chưa có bộ quyền chuẩn mặc định');
+    }
+    const soQuyen = await this.ganQuyenTheoMa(vaiTroId, preset);
+
+    await this.ghiNhatKyPhanQuyen(
+      currentUserId,
+      'KHOI_PHUC_PHAN_QUYEN',
+      `Khôi phục bộ quyền chuẩn mặc định cho vai trò "${role.tenVaiTro}" (${role.maVaiTro}): ${soQuyen} quyền hạn.`,
+    );
+    return { message: `Đã khôi phục ${soQuyen} quyền chuẩn mặc định` };
+  }
+
+  async taoQuyenHan(dto: { maQuyen: string; tenQuyen: string; nhomChucNang: string }, currentUserId?: number) {
+    const maQuyen = (dto.maQuyen || '').trim().toLowerCase();
+    const tenQuyen = (dto.tenQuyen || '').trim();
+    const nhomChucNang = (dto.nhomChucNang || '').trim();
+    if (!/^[a-z0-9_]+\.[a-z0-9_]+$/.test(maQuyen)) {
+      throw new BadRequestException('Mã quyền phải có dạng "phan_he.hanh_dong" (chữ thường, số, dấu gạch dưới)');
+    }
+    if (!tenQuyen || !nhomChucNang) {
+      throw new BadRequestException('Vui lòng nhập đầy đủ tên quyền và nhóm chức năng');
+    }
+    if (await this.quyenHanRepo.findOne({ where: { maQuyen } })) {
+      throw new ConflictException(`Mã quyền "${maQuyen}" đã tồn tại`);
+    }
+    const saved = await this.quyenHanRepo.save(this.quyenHanRepo.create({ maQuyen, tenQuyen, nhomChucNang }));
+
+    await this.ghiNhatKyPhanQuyen(currentUserId, 'TAO_QUYEN_HAN', `Tạo quyền hạn mới "${tenQuyen}" (${maQuyen}) thuộc nhóm ${nhomChucNang}.`);
+    return { data: saved, message: 'Đã thêm quyền hạn mới' };
   }
 
   // ============================================================
@@ -1841,17 +1974,36 @@ export class QuanLyService {
     if (don.loaiDon !== 'Yêu cầu hủy ca khám') {
       try {
         const nvGui = await this.nhanVienRepo.findOne({ where: { id: don.nguoiGuiId } });
-        const targetUserId = nvGui?.nguoiDungId;
+        let targetUserId = nvGui?.nguoiDungId;
+        if (!targetUserId && don.nguoiGuiId) {
+          const ndDirect = await this.nguoiDungRepo.findOne({ where: { id: don.nguoiGuiId } });
+          if (ndDirect) targetUserId = ndDirect.id;
+        }
+        const statusText = action === 'duyet' ? 'đã được PHÊ DUYỆT' : 'đã bị TỪ CHỐI';
+        const tieuDe = `Kết quả phê duyệt yêu cầu: ${don.loaiDon}`;
+        const noiDung = `Yêu cầu [${don.loaiDon}] của bạn ${statusText}. Ghi chú: ${don.ghiChuXuLy}`;
+
         if (targetUserId) {
-          const statusText = action === 'duyet' ? 'đã được PHÊ DUYỆT' : 'đã bị TỪ CHỐI';
           await this.thongBaoService.taoThongBao({
             nguoiNhanId: targetUserId,
-            tieuDe: `Kết quả phê duyệt yêu cầu: ${don.loaiDon}`,
-            noiDung: `Yêu cầu [${don.loaiDon}] của bạn ${statusText}. Ghi chú: ${don.ghiChuXuLy}`,
+            tieuDe,
+            noiDung,
             loai: 'don_tu',
             doiTuongBang: 'don_gui',
             doiTuongId: don.id,
           });
+        }
+        // Nếu là đơn về thuốc / nhập kho thuốc thì thông báo cho bộ phận nhà thuốc
+        if (don.loaiDon?.toLowerCase().includes('thuốc') || don.loaiDon?.toLowerCase().includes('nhập kho')) {
+          const pharmacyList = await this.thongBaoService.taoThongBaoTheoRole('nhan_vien_nha_thuoc', {
+            tieuDe,
+            noiDung,
+            loai: 'don_tu',
+            doiTuongBang: 'don_gui',
+            doiTuongId: don.id,
+          });
+          // Tránh trùng nếu targetUserId đã nằm trong nhóm nhan_vien_nha_thuoc
+          void pharmacyList;
         }
       } catch (e) {
         console.error('Lỗi gửi thông báo kết quả duyệt đơn:', e);
@@ -2065,7 +2217,18 @@ export class QuanLyService {
         ngayLam: item.ngayLam,
         ghiChu: item.ghiChu || null,
       });
-      await this.lichLamViecRepo.save(newLich);
+      const savedLich = await this.lichLamViecRepo.save(newLich);
+
+      if (nv?.nguoiDungId) {
+        await this.thongBaoService.taoThongBao({
+          nguoiNhanId: nv.nguoiDungId,
+          tieuDe: `Phân ca làm việc mới: ${caTen}`,
+          noiDung: `Ban Giám Đốc vừa xếp lịch trực [${caTen}] cho bạn vào ngày ${item.ngayLam}.`,
+          loai: 'phan_ca',
+          doiTuongBang: 'lich_lam_viec',
+          doiTuongId: savedLich.id,
+        }).catch(() => {});
+      }
     }
 
     return {
@@ -2075,6 +2238,62 @@ export class QuanLyService {
   }
 
   async xoaLichPhanCa(id: number) {
+    const shift = await this.lichLamViecRepo.findOne({
+      where: { id },
+      relations: ['caLamViec', 'nhanVien'],
+    });
+    if (!shift) {
+      throw new NotFoundException('Không tìm thấy ca trực cần xóa');
+    }
+
+    // Chốt chặn ERP Y Tế: Kiểm tra nếu ca trực là của Bác sĩ đang có bệnh nhân đặt lịch hẹn hoặc đang chờ khám
+    const bs = await this.bacSiRepo.findOne({ where: { nhanVienId: shift.nhanVienId } });
+    if (bs && shift.ngayLam) {
+      const ngayStr =
+        typeof shift.ngayLam === 'string'
+          ? shift.ngayLam.slice(0, 10)
+          : new Date(shift.ngayLam).toISOString().slice(0, 10);
+
+      // Xác định khung giờ ca trực (Ca sáng < 12:30, Ca chiều >= 12:30)
+      const tenCa = (shift.caLamViec?.tenCa || '').toLowerCase();
+      const gioBatDau = shift.caLamViec?.gioBatDau || '07:00:00';
+      const isMorningShift = tenCa.includes('sáng') || gioBatDau < '12:00:00';
+      const isAfternoonShift = tenCa.includes('chiều') || (gioBatDau >= '12:00:00' && gioBatDau < '17:30:00');
+
+      let timeCondition = '';
+      if (isMorningShift && !isAfternoonShift) {
+        timeCondition = ` AND gio_hen < '12:30:00'`;
+      } else if (isAfternoonShift && !isMorningShift) {
+        timeCondition = ` AND gio_hen >= '12:30:00'`;
+      }
+
+      const activeAppointments: any[] = await this.lichHenRepo.query(
+        `SELECT COUNT(*) AS cnt FROM lich_hen
+         WHERE bac_si_id = ?
+           AND DATE(ngay_hen) = ?
+           AND trang_thai IN ('cho_thanh_toan', 'cho_xac_nhan', 'da_xac_nhan', 'da_den')
+           ${timeCondition}`,
+        [bs.id, ngayStr],
+      );
+      const soLichHen = Number(activeAppointments?.[0]?.cnt || 0);
+
+      const activeQueue: any[] = await this.tiepNhanRepo.query(
+        `SELECT COUNT(*) AS cnt FROM luot_tiep_nhan
+         WHERE bac_si_id = ?
+           AND DATE(thoi_gian_den) = ?
+           AND trang_thai IN ('cho_kham', 'dang_kham', 'dang_cls', 'da_co_kq_cls')`,
+        [bs.id, ngayStr],
+      );
+      const soDangKham = Number(activeQueue?.[0]?.cnt || 0);
+
+      if (soLichHen > 0 || soDangKham > 0) {
+        throw new BadRequestException({
+          code: 'CA_TRUC_CO_BENH_NHAN_DAT_HEN',
+          message: `Không thể xóa ca trực của BS. ${shift.nhanVien?.hoTen || ''} ngày ${ngayStr} vì đang có ${soLichHen} lịch hẹn đặt trước và ${soDangKham} lượt bệnh nhân chờ/đang khám! Vui lòng điều phối chuyển bác sĩ cho bệnh nhân trước khi hủy ca trực.`,
+        });
+      }
+    }
+
     await this.lichLamViecRepo.delete(id);
     return { success: true, message: 'Đã xóa ca trực' };
   }
@@ -2281,7 +2500,26 @@ export class QuanLyService {
       });
     }
 
-    // 4. Nếu overwrite: Xóa các ca trực trong tuần này để cập nhật đồng bộ
+    // 4. Bảo toàn các ca trực của bác sĩ đã có bệnh nhân đặt lịch hẹn trước trong tuần này (Chốt chặn ERP Y Tế)
+    const bookedDoctorShifts: any[] = await this.lichHenRepo.query(
+      `SELECT DISTINCT bs.nhan_vien_id AS nhanVienId,
+              DATE_FORMAT(lh.ngay_hen, '%Y-%m-%d') AS ngayLam,
+              CASE WHEN lh.gio_hen < '12:30:00' THEN 1 ELSE 2 END AS caLamViecId
+       FROM lich_hen lh
+       JOIN bac_si bs ON bs.id = lh.bac_si_id
+       WHERE DATE(lh.ngay_hen) >= ? AND DATE(lh.ngay_hen) <= ?
+         AND lh.trang_thai IN ('cho_thanh_toan', 'cho_xac_nhan', 'da_xac_nhan', 'da_den')`,
+      [weekDays[0], weekEnd],
+    );
+    for (const bShift of bookedDoctorShifts) {
+      newShifts.push({
+        nhanVienId: Number(bShift.nhanVienId),
+        caLamViecId: Number(bShift.caLamViecId),
+        ngayLam: String(bShift.ngayLam),
+        ghiChu: 'Bảo toàn ca trực đã có bệnh nhân đặt lịch hẹn',
+      });
+    }
+
     if (overwrite) {
       await this.lichLamViecRepo
         .createQueryBuilder()
@@ -2696,6 +2934,88 @@ export class QuanLyService {
         'Khám tư vấn từ xa (Telehealth)',
       ],
       banQuyen: '© 2026 Hệ Thống Quản Lý Phòng Khám Đa Khoa. Bản quyền thuộc về Phòng Khám Đa Khoa.',
+      chinhSachBaoMat: {
+        tieuDeTrang: 'Chính Sách Bảo Mật & Bảo Vệ Dữ Liệu Y Tế Cá Nhân',
+        ngayCapNhat: '05/11/2026',
+        moTaMoDau: 'Phòng khám cam kết bảo vệ tuyệt đối thông tin sức khỏe, hồ sơ bệnh án điện tử (EMR) và quyền riêng tư của mọi bệnh nhân theo chuẩn Nghị định 13/2023/NĐ-CP và Luật Khám bệnh, chữa bệnh.',
+        tieuChuanTuanThu: [
+          'Nghị định 13/2023/NĐ-CP',
+          'Luật Khám bệnh, chữa bệnh 2023',
+          'Thông tư 54/2017/TT-BYT',
+          'Mã hóa AES-256 & TLS 1.3',
+        ],
+        camKetCotLoi: [
+          {
+            tieuDe: 'Bảo mật Bệnh án Điện tử (EMR)',
+            moTa: 'Dữ liệu chẩn đoán, toa thuốc và cận lâm sàng được lưu trữ phân quyền nghiêm ngặt theo đúng mã định danh y tế.',
+          },
+          {
+            tieuDe: 'Không chia sẻ thương mại',
+            moTa: 'Cam kết không cung cấp, mua bán hoặc tiết lộ thông tin bệnh nhân cho bất kỳ bên thứ ba vì mục đích tiếp thị.',
+          },
+          {
+            tieuDe: 'Quyền làm chủ dữ liệu',
+            moTa: 'Người bệnh có quyền tra cứu, trích xuất lịch sử khám bệnh hoặc yêu cầu cập nhật, thu hồi thông tin theo luật định.',
+          },
+        ],
+        danhSachDieuKhoan: [
+          {
+            id: 'muc-dich-thu-thap',
+            tieuDe: '1. Mục đích và Phạm vi Thu thập Dữ liệu',
+            noiDung: 'Chúng tôi chỉ thu thập các dữ liệu cần thiết phục vụ trực tiếp cho công tác khám chữa bệnh, chăm sóc sức khỏe và quản lý tài chính y tế hợp pháp.',
+            danhSachChiTiet: [
+              'Họ và tên, ngày sinh, giới tính, số CCCD/Định danh cá nhân, số thẻ BHYT.',
+              'Số điện thoại liên hệ, địa chỉ cư trú, thông tin thân nhân trong trường hợp khẩn cấp.',
+              'Tiền sử bệnh lý, tiền sử dị ứng thuốc, triệu chứng lâm sàng và chỉ số sinh tồn.',
+              'Kết quả chẩn đoán hình ảnh, xét nghiệm cận lâm sàng, hồ sơ toa thuốc và lịch sử phẫu thuật/thủ thuật.',
+            ],
+          },
+          {
+            id: 'pham-vi-su-dung',
+            tieuDe: '2. Phạm vi Sử dụng Thông tin',
+            noiDung: 'Thông tin cá nhân và dữ liệu y tế chỉ được sử dụng trong phạm vi quy định nhằm mang lại trải nghiệm khám chữa bệnh an toàn nhất.',
+            danhSachChiTiet: [
+              'Chỉ định chẩn đoán, kê đơn thuốc và theo dõi tiến trình hồi phục của bệnh nhân.',
+              'Xác nhận lịch hẹn khám, nhắc lịch tái khám và gửi kết quả cận lâm sàng qua kênh liên lạc được người bệnh chấp thuận.',
+              'Thực hiện giám định chi phí khám chữa bệnh BHYT và nghĩa vụ báo cáo y tế thống kê theo quy định của Bộ Y Tế.',
+              'Phục vụ nghiên cứu khoa học y tế khi và chỉ khi dữ liệu đã được mã hóa, khử định danh hoàn toàn (anonymized).',
+            ],
+          },
+          {
+            id: 'an-toan-bao-mat',
+            tieuDe: '3. Biện pháp An toàn và Bảo vệ Kỹ thuật',
+            noiDung: 'Hệ thống ERP y tế áp dụng kiến trúc an toàn thông tin đa lớp nhằm phòng chống truy cập trái phép, rò rỉ hay mất mát dữ liệu.',
+            danhSachChiTiet: [
+              'Toàn bộ dữ liệu truyền tải giữa trình duyệt, Kiosk và máy chủ được mã hóa qua giao thức HTTPS / TLS 1.3.',
+              'Dữ liệu bệnh án lưu trữ trong CSDL được bảo vệ bằng cơ chế phân quyền RBAC và mã hóa cột nhạy cảm.',
+              'Mọi thao tác xem, sửa, in phiếu của nhân viên y tế đều được ghi nhật ký hệ thống (Audit Log) chống chối bỏ.',
+              'Sao lưu dự phòng tự động định kỳ, cách ly môi trường và kiểm tra rà soát lỗ hổng bảo mật liên tục.',
+            ],
+          },
+          {
+            id: 'quyen-cua-nguoi-benh',
+            tieuDe: '4. Quyền của Người bệnh đối với Dữ liệu Cá nhân',
+            noiDung: 'Theo Nghị định 13/2023/NĐ-CP và Luật Khám bệnh, chữa bệnh, quý người bệnh có toàn quyền đối với dữ liệu cá nhân của mình.',
+            danhSachChiTiet: [
+              'Quyền được biết rõ loại dữ liệu y tế được thu thập và cách thức xử lý.',
+              'Quyền tra cứu, trích xuất tóm tắt hồ sơ bệnh án hoặc tải kết quả xét nghiệm qua tài khoản cá nhân.',
+              'Quyền yêu cầu chỉnh sửa thông tin hành chính khi có sự sai lệch hoặc cập nhật.',
+              'Quyền khiếu nại, phản ánh hoặc yêu cầu tạm ngưng nhận thông báo tiếp thị, chăm sóc qua tin nhắn/email.',
+            ],
+          },
+          {
+            id: 'thoi-gian-luu-tru',
+            tieuDe: '5. Thời hạn Lưu trữ Hồ sơ Y tế',
+            noiDung: 'Thời hạn lưu trữ hồ sơ bệnh án được thực hiện nghiêm ngặt theo Điều 69 Luật Khám bệnh, chữa bệnh 2023 và quy định của Bộ Y Tế (tối thiểu 10 năm đối với bệnh án ngoại trú, 20 năm đối với nội trú/tai nạn và lưu vĩnh viễn theo chỉ định pháp luật đặc biệt). Sau thời hạn luật định, dữ liệu được hủy hoặc khử định danh theo quy trình tiêu hủy an toàn.',
+          },
+        ],
+        thongTinLienHeBaoMat: {
+          donViPhuTrach: 'Ban Bảo Vệ Dữ Liệu Cá Nhân & Phòng Công Nghệ Thông Tin',
+          email: 'dpo@phongkhamdakhoa.vn',
+          hotline: '1900 8888 (Nhánh 4)',
+          diaChiTiepNhan: 'Phòng Tiếp Dân & Pháp Chế Y Tế - Tầng 1, Khu A',
+        },
+      },
     };
 
     const rows = await this.nguoiDungRepo.query(
@@ -2705,7 +3025,14 @@ export class QuanLyService {
       return defaultData;
     }
     const val = typeof rows[0].gia_tri === 'string' ? JSON.parse(rows[0].gia_tri) : rows[0].gia_tri;
-    return { ...defaultData, ...val };
+    return {
+      ...defaultData,
+      ...val,
+      chinhSachBaoMat: {
+        ...defaultData.chinhSachBaoMat,
+        ...(val?.chinhSachBaoMat || {}),
+      },
+    };
   }
 
   async capNhatThongTinBenhVien(dto: any, userId?: number) {
@@ -2725,19 +3052,462 @@ export class QuanLyService {
       );
     }
 
+    // Invalidate cache if exists
+    try {
+      this.cache.del('thong_tin_benh_vien');
+    } catch (_) {}
+
     await this.ghiLog({
       nguoiDungId: userId || 1,
       tenNguoiDung: 'admin',
       vaiTro: 'quan_tri_vien_cap_cao',
       hanhDong: 'CAP_NHAT_THONG_TIN_BENH_VIEN',
       loaiNhatKy: LoaiNhatKy.INFO,
-      moTa: `Cập nhật thông tin bệnh viện / cơ sở y tế: "${dto.tenBenhVien || 'Phòng khám'}"`,
+      moTa: `Cập nhật thông tin bệnh viện / chính sách bảo mật: "${dto.tenBenhVien || 'Phòng khám'}"`,
     });
 
     return {
       message: 'Cập nhật thông tin bệnh viện thành công',
       data: dto,
     };
+  }
+
+  // ─── ADMIN: DANH MỤC CHUYÊN KHOA Y TẾ CHUẨN ───────────────────
+  async getDanhMucChuyenKhoa() {
+    const defaultData = [
+      { id: 'noi_tong_quat', ma: 'CK_NTQ', ten: 'Nội Tổng Quát', moTa: 'Tiếp nhận, khám và điều trị các bệnh lý nội khoa người lớn', trangThai: 'hoat_dong', icon: 'Stethoscope' },
+      { id: 'nhi_khoa', ma: 'CK_NK', ten: 'Nhi Khoa', moTa: 'Khám chữa bệnh, tư vấn dinh dưỡng và chăm sóc sức khỏe trẻ em', trangThai: 'hoat_dong', icon: 'Baby' },
+      { id: 'tim_mach', ma: 'CK_TM', ten: 'Tim Mạch', moTa: 'Chẩn đoán, điều trị tăng huyết áp, rối loạn nhịp tim và bệnh mạch vành', trangThai: 'hoat_dong', icon: 'HeartPulse' },
+      { id: 'tai_mui_hong', ma: 'CK_TMH', ten: 'Tai Mũi Họng', moTa: 'Khám và nội soi điều trị viêm họng, viêm amidan, xoang mũi', trangThai: 'hoat_dong', icon: 'Ear' },
+      { id: 'da_lieu', ma: 'CK_DL', ten: 'Da Liễu', moTa: 'Khám và chăm sóc điều trị các bệnh da mạn tính, dị ứng và thẩm mỹ', trangThai: 'hoat_dong', icon: 'Sparkles' },
+      { id: 'san_phu_khoa', ma: 'CK_SPK', ten: 'Sản Phụ Khoa', moTa: 'Chăm sóc sức khỏe phụ nữ, khám thai kỳ và phụ khoa định kỳ', trangThai: 'hoat_dong', icon: 'HeartHandshake' },
+      { id: 'can_lam_sang', ma: 'CK_CLS', ten: 'Cận Lâm Sàng & Xét Nghiệm', moTa: 'Chẩn đoán hình ảnh X-Quang, siêu âm và phân tích sinh hóa y khoa', trangThai: 'hoat_dong', icon: 'FlaskConical' },
+    ];
+
+    const rows = await this.nguoiDungRepo.query(
+      'SELECT gia_tri FROM cai_dat_he_thong WHERE khoa_cai_dat = "DANH_MUC_CHUYEN_KHOA" LIMIT 1',
+    );
+    if (!rows || rows.length === 0 || !rows[0].gia_tri) {
+      return defaultData;
+    }
+    const val = typeof rows[0].gia_tri === 'string' ? JSON.parse(rows[0].gia_tri) : rows[0].gia_tri;
+    return Array.isArray(val) && val.length > 0 ? val : defaultData;
+  }
+
+  async capNhatDanhMucChuyenKhoa(danhSach: any[], userId?: number) {
+    if (!Array.isArray(danhSach)) {
+      throw new BadRequestException('Dữ liệu danh mục chuyên khoa phải là mảng hợp lệ');
+    }
+    const existing = await this.nguoiDungRepo.query(
+      'SELECT id FROM cai_dat_he_thong WHERE khoa_cai_dat = "DANH_MUC_CHUYEN_KHOA" LIMIT 1',
+    );
+    const jsonStr = JSON.stringify(danhSach);
+    if (existing && existing.length > 0) {
+      await this.nguoiDungRepo.query(
+        'UPDATE cai_dat_he_thong SET gia_tri = ?, cap_nhat_luc = NOW() WHERE khoa_cai_dat = "DANH_MUC_CHUYEN_KHOA"',
+        [jsonStr],
+      );
+    } else {
+      await this.nguoiDungRepo.query(
+        'INSERT INTO cai_dat_he_thong (khoa_cai_dat, gia_tri, ghi_chu, cap_nhat_luc) VALUES ("DANH_MUC_CHUYEN_KHOA", ?, "Danh mục chuyên khoa y tế dùng chung", NOW())',
+        [jsonStr],
+      );
+    }
+
+    await this.ghiLog({
+      nguoiDungId: userId || 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien_cap_cao',
+      hanhDong: 'CAP_NHAT_CHUYEN_KHOA',
+      loaiNhatKy: LoaiNhatKy.INFO,
+      moTa: `Cập nhật danh mục chuyên khoa y tế (${danhSach.length} chuyên khoa)`,
+    });
+
+    return { message: 'Cập nhật danh mục chuyên khoa y tế thành công', data: danhSach };
+  }
+
+  // ─── ADMIN: DANH MỤC DƯỢC & ĐƠN VỊ TÍNH DÙNG CHUNG ─────────────
+  async getDanhMucDuoc() {
+    const defaultData = {
+      donViTinh: ['Viên', 'Vỉ', 'Hộp', 'Chai', 'Lọ', 'Gói', 'Ống', 'Tuýp', 'Bút tiêm', 'Túi dịch truyền', 'Bình xịt'],
+      duongDung: ['Uống', 'Tiêm bắp', 'Tiêm tĩnh mạch', 'Bôi ngoài da', 'Nhỏ mắt', 'Nhỏ tai', 'Khí dung', 'Đặt dưới lưỡi', 'Đặt hậu môn'],
+      nhomDuocLy: [
+        { id: 'khang_sinh', ten: 'Kháng sinh & Kháng khuẩn', moTa: 'Diệt khuẩn, điều trị nhiễm khuẩn đường hô hấp, tiêu hóa, tiết niệu' },
+        { id: 'giam_dau_ha_sot', ten: 'Giảm đau & Hạ sốt (NSAID)', moTa: 'Paracetamol, Ibuprofen, chống viêm và giảm đau các thể' },
+        { id: 'tim_mach_huyet_ap', ten: 'Tim mạch & Hạ huyết áp', moTa: 'Điều hòa huyết áp, trợ tim, chống đông máu' },
+        { id: 'tieu_hoa', ten: 'Tiêu hóa & Dạ dày', moTa: 'Chống loét dạ dày tá tràng, men vi sinh, hỗ trợ tiêu hóa' },
+        { id: 'ho_hap_di_ung', ten: 'Hô hấp & Kháng dị ứng', moTa: 'Giảm ho, long đờm, giãn phế quản, kháng histamin' },
+        { id: 'vitamin_khoang_chat', ten: 'Vitamin & Khoáng chất', moTa: 'Bổ sung dinh dưỡng, tăng cường sức đề kháng, phục hồi thể lực' },
+        { id: 'da_lieu_ngoai_da', ten: 'Thuốc da liễu & bôi ngoài', moTa: 'Sát trùng, kem trị nấm, kháng viêm bôi ngoài da' },
+      ],
+    };
+
+    const rows = await this.nguoiDungRepo.query(
+      'SELECT gia_tri FROM cai_dat_he_thong WHERE khoa_cai_dat = "DANH_MUC_DUOC" LIMIT 1',
+    );
+    if (!rows || rows.length === 0 || !rows[0].gia_tri) {
+      return defaultData;
+    }
+    const val = typeof rows[0].gia_tri === 'string' ? JSON.parse(rows[0].gia_tri) : rows[0].gia_tri;
+    return {
+      donViTinh: Array.isArray(val?.donViTinh) && val.donViTinh.length > 0 ? val.donViTinh : defaultData.donViTinh,
+      duongDung: Array.isArray(val?.duongDung) && val.duongDung.length > 0 ? val.duongDung : defaultData.duongDung,
+      nhomDuocLy: Array.isArray(val?.nhomDuocLy) && val.nhomDuocLy.length > 0 ? val.nhomDuocLy : defaultData.nhomDuocLy,
+    };
+  }
+
+  async capNhatDanhMucDuoc(dto: any, userId?: number) {
+    const existing = await this.nguoiDungRepo.query(
+      'SELECT id FROM cai_dat_he_thong WHERE khoa_cai_dat = "DANH_MUC_DUOC" LIMIT 1',
+    );
+    const jsonStr = JSON.stringify(dto);
+    if (existing && existing.length > 0) {
+      await this.nguoiDungRepo.query(
+        'UPDATE cai_dat_he_thong SET gia_tri = ?, cap_nhat_luc = NOW() WHERE khoa_cai_dat = "DANH_MUC_DUOC"',
+        [jsonStr],
+      );
+    } else {
+      await this.nguoiDungRepo.query(
+        'INSERT INTO cai_dat_he_thong (khoa_cai_dat, gia_tri, ghi_chu, cap_nhat_luc) VALUES ("DANH_MUC_DUOC", ?, "Danh mục dược, đơn vị tính và nhóm dược lý", NOW())',
+        [jsonStr],
+      );
+    }
+
+    await this.ghiLog({
+      nguoiDungId: userId || 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien_cap_cao',
+      hanhDong: 'CAP_NHAT_DANH_MUC_DUOC',
+      loaiNhatKy: LoaiNhatKy.INFO,
+      moTa: `Cập nhật danh mục dược dùng chung (${dto.donViTinh?.length || 0} ĐVT, ${dto.duongDung?.length || 0} đường dùng)`,
+    });
+
+    return { message: 'Cập nhật danh mục dược dùng chung thành công', data: dto };
+  }
+
+  // ─── ADMIN: MẪU LỜI DẶN Y KHOA BÁC SĨ ─────────────────────────
+  async getMauLoiDanBacSi() {
+    const defaultData = [
+      { id: 1, tieuDe: 'Uống sau ăn & kiêng cay nóng', noiDung: 'Uống thuốc đúng liều lượng sau bữa ăn 30 phút. Kiêng đồ ăn cay nóng, chua và chất kích thích.' },
+      { id: 2, tieuDe: 'Uống nhiều nước & nghỉ ngơi', noiDung: 'Uống đủ 2 - 2.5 lít nước mỗi ngày. Nghỉ ngơi hợp lý, tránh thức khuya và làm việc quá sức.' },
+      { id: 3, tieuDe: 'Theo dõi nhiệt độ & tái khám', noiDung: 'Theo dõi thân nhiệt định kỳ. Tái khám ngay nếu sốt cao liên tục trên 39 độ hoặc xuất hiện ban đỏ bất thường.' },
+      { id: 4, tieuDe: 'Kiêng rượu bia khi dùng kháng sinh', noiDung: 'Tuyệt đối không uống rượu bia và đồ uống có cồn trong suốt đợt điều trị kháng sinh.' },
+      { id: 5, tieuDe: 'Tái khám sau 5 - 7 ngày', noiDung: 'Tái khám sau 5 - 7 ngày để đánh giá đáp ứng điều trị hoặc bất kỳ lúc nào nếu triệu chứng nặng hơn.' },
+    ];
+
+    const rows = await this.nguoiDungRepo.query(
+      'SELECT gia_tri FROM cai_dat_he_thong WHERE khoa_cai_dat = "MAU_LOI_DAN_BAC_SI" LIMIT 1',
+    );
+    if (!rows || rows.length === 0 || !rows[0].gia_tri) {
+      return defaultData;
+    }
+    const val = typeof rows[0].gia_tri === 'string' ? JSON.parse(rows[0].gia_tri) : rows[0].gia_tri;
+    return Array.isArray(val) && val.length > 0 ? val : defaultData;
+  }
+
+  async capNhatMauLoiDanBacSi(danhSach: any[], userId?: number) {
+    if (!Array.isArray(danhSach)) {
+      throw new BadRequestException('Dữ liệu mẫu lời dặn phải là mảng hợp lệ');
+    }
+    const existing = await this.nguoiDungRepo.query(
+      'SELECT id FROM cai_dat_he_thong WHERE khoa_cai_dat = "MAU_LOI_DAN_BAC_SI" LIMIT 1',
+    );
+    const jsonStr = JSON.stringify(danhSach);
+    if (existing && existing.length > 0) {
+      await this.nguoiDungRepo.query(
+        'UPDATE cai_dat_he_thong SET gia_tri = ?, cap_nhat_luc = NOW() WHERE khoa_cai_dat = "MAU_LOI_DAN_BAC_SI"',
+        [jsonStr],
+      );
+    } else {
+      await this.nguoiDungRepo.query(
+        'INSERT INTO cai_dat_he_thong (khoa_cai_dat, gia_tri, ghi_chu, cap_nhat_luc) VALUES ("MAU_LOI_DAN_BAC_SI", ?, "Mẫu lời dặn y khoa mặc định", NOW())',
+        [jsonStr],
+      );
+    }
+
+    await this.ghiLog({
+      nguoiDungId: userId || 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien_cap_cao',
+      hanhDong: 'CAP_NHAT_MAU_LOI_DAN',
+      loaiNhatKy: LoaiNhatKy.INFO,
+      moTa: `Cập nhật danh mục mẫu lời dặn y khoa (${danhSach.length} mẫu)`,
+    });
+
+    return { message: 'Cập nhật danh mục mẫu lời dặn thành công', data: danhSach };
+  }
+
+  // ─── ADMIN: CẤU HÌNH DỊCH VỤ DÙNG CHUNG (.ENV & DATABASE) ──────
+  async getCaiDatDichVu() {
+    const defaultData = {
+      email: {
+        mailHost: process.env.MAIL_HOST || 'smtp.gmail.com',
+        mailPort: Number(process.env.MAIL_PORT || 587),
+        mailUser: process.env.MAIL_USER || '',
+        mailPass: process.env.MAIL_PASS || '',
+        mailFrom: process.env.MAIL_FROM || 'Phòng Khám Đa Khoa <nguyendinhhao170909@gmail.com>',
+        otpExpiresMinutes: Number(process.env.OTP_EXPIRES_MINUTES || 5),
+      },
+      payos: {
+        clientId: process.env.PAYOS_CLIENT_ID || '',
+        apiKey: process.env.PAYOS_API_KEY || '',
+        checksumKey: process.env.PAYOS_CHECKSUM_KEY || '',
+        enabled: true,
+      },
+      gemini: {
+        apiKey: process.env.GEMINI_API_KEY || '',
+        model: 'gemini-2.5-flash',
+        enabled: true,
+      },
+      hinhThucThanhToan: [
+        { ma: 'tien_mat', ten: 'Tiền mặt tại quầy', kichHoat: true, icon: 'Banknote', moTa: 'Thanh toán trực tiếp bằng tiền mặt tại quầy thu ngân' },
+        { ma: 'chuyen_khoan', ten: 'Chuyển khoản VietQR', kichHoat: true, icon: 'QrCode', moTa: 'Quét mã VietQR chuyển khoản nhanh 24/7' },
+        { ma: 'payos', ten: 'Cổng PayOS tự động', kichHoat: true, icon: 'CreditCard', moTa: 'Cổng thanh toán tự động đối soát giao dịch thời gian thực' },
+        { ma: 'the_pos', ten: 'Quẹt thẻ POS ngân hàng', kichHoat: false, icon: 'Receipt', moTa: 'Cà thẻ ATM nội địa / Visa / Mastercard tại quầy' },
+        { ma: 'vi_momo', ten: 'Ví điện tử MoMo', kichHoat: false, icon: 'Smartphone', moTa: 'Thanh toán qua ví điện tử MoMo' },
+        { ma: 'vi_zalopay', ten: 'Ví ZaloPay', kichHoat: false, icon: 'Smartphone', moTa: 'Thanh toán qua ví điện tử ZaloPay' },
+        { ma: 'bao_hiem', ten: 'Bảo lãnh viện phí / BHYT', kichHoat: false, icon: 'ShieldCheck', moTa: 'Bảo hiểm sức khỏe tư nhân hoặc bảo lãnh trực tiếp' },
+      ],
+    };
+
+    const rows = await this.nguoiDungRepo.query(
+      'SELECT gia_tri FROM cai_dat_he_thong WHERE khoa_cai_dat = "CAI_DAT_DICH_VU_HE_THONG" LIMIT 1',
+    );
+
+    let val = defaultData;
+    if (rows && rows.length > 0 && rows[0].gia_tri) {
+      val = typeof rows[0].gia_tri === 'string' ? JSON.parse(rows[0].gia_tri) : rows[0].gia_tri;
+    }
+
+    const result = {
+      email: {
+        mailHost: val.email?.mailHost || defaultData.email.mailHost,
+        mailPort: Number(val.email?.mailPort || defaultData.email.mailPort),
+        mailUser: val.email?.mailUser || defaultData.email.mailUser,
+        mailPass: val.email?.mailPass || defaultData.email.mailPass,
+        mailFrom: val.email?.mailFrom || defaultData.email.mailFrom,
+        otpExpiresMinutes: Number(val.email?.otpExpiresMinutes || defaultData.email.otpExpiresMinutes),
+      },
+      payos: {
+        clientId: val.payos?.clientId || defaultData.payos.clientId,
+        apiKey: val.payos?.apiKey || defaultData.payos.apiKey,
+        checksumKey: val.payos?.checksumKey || defaultData.payos.checksumKey,
+        enabled: val.payos?.enabled !== false,
+      },
+      gemini: {
+        apiKey: val.gemini?.apiKey || defaultData.gemini.apiKey,
+        model: val.gemini?.model || defaultData.gemini.model,
+        enabled: val.gemini?.enabled !== false,
+      },
+      hinhThucThanhToan: Array.isArray(val.hinhThucThanhToan) && val.hinhThucThanhToan.length > 0
+        ? val.hinhThucThanhToan
+        : defaultData.hinhThucThanhToan,
+    };
+
+    return result;
+  }
+
+  async capNhatCaiDatDichVu(dto: any, userId?: number) {
+    const current = await this.getCaiDatDichVu();
+
+    const emailPass = dto.email?.mailPass && !dto.email.mailPass.includes('••••') && dto.email.mailPass.trim()
+      ? dto.email.mailPass.trim()
+      : current.email.mailPass;
+
+    const payosApiKey = dto.payos?.apiKey && !dto.payos.apiKey.includes('••••') && dto.payos.apiKey.trim()
+      ? dto.payos.apiKey.trim()
+      : current.payos.apiKey;
+
+    const payosChecksum = dto.payos?.checksumKey && !dto.payos.checksumKey.includes('••••') && dto.payos.checksumKey.trim()
+      ? dto.payos.checksumKey.trim()
+      : current.payos.checksumKey;
+
+    const geminiApiKey = dto.gemini?.apiKey && !dto.gemini.apiKey.includes('••••') && dto.gemini.apiKey.trim()
+      ? dto.gemini.apiKey.trim()
+      : current.gemini.apiKey;
+
+    const merged = {
+      email: {
+        mailHost: dto.email?.mailHost?.trim() || current.email.mailHost,
+        mailPort: Number(dto.email?.mailPort || current.email.mailPort),
+        mailUser: dto.email?.mailUser?.trim() || current.email.mailUser,
+        mailPass: emailPass,
+        mailFrom: dto.email?.mailFrom?.trim() || current.email.mailFrom,
+        otpExpiresMinutes: Number(dto.email?.otpExpiresMinutes || current.email.otpExpiresMinutes),
+      },
+      payos: {
+        clientId: dto.payos?.clientId?.trim() || current.payos.clientId,
+        apiKey: payosApiKey,
+        checksumKey: payosChecksum,
+        enabled: dto.payos?.enabled !== false,
+      },
+      gemini: {
+        apiKey: geminiApiKey,
+        model: dto.gemini?.model?.trim() || 'gemini-2.5-flash',
+        enabled: dto.gemini?.enabled !== false,
+      },
+      hinhThucThanhToan: Array.isArray(dto.hinhThucThanhToan) ? dto.hinhThucThanhToan : current.hinhThucThanhToan,
+    };
+
+    // 1. Lưu cơ sở dữ liệu
+    const existing = await this.nguoiDungRepo.query(
+      'SELECT id FROM cai_dat_he_thong WHERE khoa_cai_dat = "CAI_DAT_DICH_VU_HE_THONG" LIMIT 1',
+    );
+    const jsonStr = JSON.stringify(merged);
+    if (existing && existing.length > 0) {
+      await this.nguoiDungRepo.query(
+        'UPDATE cai_dat_he_thong SET gia_tri = ?, cap_nhat_luc = NOW() WHERE khoa_cai_dat = "CAI_DAT_DICH_VU_HE_THONG"',
+        [jsonStr],
+      );
+    } else {
+      await this.nguoiDungRepo.query(
+        'INSERT INTO cai_dat_he_thong (khoa_cai_dat, gia_tri, ghi_chu, cap_nhat_luc) VALUES ("CAI_DAT_DICH_VU_HE_THONG", ?, "Cấu hình Email OTP, Cổng PayOS, Gemini AI & Hình thức thanh toán", NOW())',
+        [jsonStr],
+      );
+    }
+
+    // 2. Cập nhật process.env ngay lập tức
+    process.env.MAIL_HOST = merged.email.mailHost;
+    process.env.MAIL_PORT = String(merged.email.mailPort);
+    process.env.MAIL_USER = merged.email.mailUser;
+    process.env.MAIL_PASS = merged.email.mailPass;
+    process.env.MAIL_FROM = merged.email.mailFrom;
+    process.env.OTP_EXPIRES_MINUTES = String(merged.email.otpExpiresMinutes);
+
+    process.env.PAYOS_CLIENT_ID = merged.payos.clientId;
+    process.env.PAYOS_API_KEY = merged.payos.apiKey;
+    process.env.PAYOS_CHECKSUM_KEY = merged.payos.checksumKey;
+
+    process.env.GEMINI_API_KEY = merged.gemini.apiKey;
+
+    // 3. Đồng bộ ra file backend/.env
+    this.syncEnvFile(path.resolve(process.cwd(), 'backend', '.env'), {
+      MAIL_HOST: merged.email.mailHost,
+      MAIL_PORT: String(merged.email.mailPort),
+      MAIL_USER: merged.email.mailUser,
+      MAIL_PASS: merged.email.mailPass,
+      MAIL_FROM: merged.email.mailFrom,
+      OTP_EXPIRES_MINUTES: String(merged.email.otpExpiresMinutes),
+      PAYOS_CLIENT_ID: merged.payos.clientId,
+      PAYOS_API_KEY: merged.payos.apiKey,
+      PAYOS_CHECKSUM_KEY: merged.payos.checksumKey,
+      GEMINI_API_KEY: merged.gemini.apiKey,
+    });
+
+    // Đồng bộ GEMINI_API_KEY ra ai-service/.env nếu có
+    const aiEnvPath = path.resolve(process.cwd(), 'ai-service', '.env');
+    if (fs.existsSync(aiEnvPath)) {
+      this.syncEnvFile(aiEnvPath, { GEMINI_API_KEY: merged.gemini.apiKey });
+    }
+
+    await this.ghiLog({
+      nguoiDungId: userId || 1,
+      tenNguoiDung: 'admin',
+      vaiTro: 'quan_tri_vien_cap_cao',
+      hanhDong: 'CAP_NHAT_CAI_DAT_DICH_VU',
+      loaiNhatKy: LoaiNhatKy.INFO,
+      moTa: 'Cập nhật cấu hình Email, PayOS, Gemini API Key và Danh mục hình thức thanh toán',
+    });
+
+    return { message: 'Cập nhật cấu hình dịch vụ và đồng bộ file .env thành công!', data: merged };
+  }
+
+  private syncEnvFile(filePath: string, updates: Record<string, string>) {
+    try {
+      if (!fs.existsSync(filePath)) return;
+      let content = fs.readFileSync(filePath, 'utf8');
+      for (const [key, val] of Object.entries(updates)) {
+        if (!val && val !== '') continue;
+        const regex = new RegExp('^#?\\s*' + key + '=.*$', 'm');
+        const formattedVal = val.includes(' ') && !val.startsWith('"') ? ('"' + val + '"') : val;
+        if (regex.test(content)) {
+          content = content.replace(regex, () => key + '=' + formattedVal);
+        } else {
+          content += '\n' + key + '=' + formattedVal;
+        }
+      }
+      fs.writeFileSync(filePath, content, 'utf8');
+    } catch (err: any) {
+      console.warn('[syncEnvFile] Không thể ghi file ' + filePath + ': ' + err.message);
+    }
+  }
+
+  async testKetNoiDichVu(loai: string, payload: any) {
+    if (loai === 'email') {
+      const cfg = payload || {};
+      const host = cfg.mailHost || process.env.MAIL_HOST || 'smtp.gmail.com';
+      const port = Number(cfg.mailPort || process.env.MAIL_PORT || 587);
+      const user = (cfg.mailUser || process.env.MAIL_USER || '').trim();
+      let pass = (cfg.mailPass || process.env.MAIL_PASS || '').replace(/\s+/g, '');
+      if (pass.includes('••••')) pass = (process.env.MAIL_PASS || '').replace(/\s+/g, '');
+
+      if (!user || !pass) {
+        throw new BadRequestException('Vui lòng nhập Email và Mật khẩu ứng dụng trước khi kiểm tra');
+      }
+
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: { user, pass },
+      });
+
+      await transporter.verify();
+
+      if (cfg.emailTest) {
+        await transporter.sendMail({
+          from: cfg.mailFrom || process.env.MAIL_FROM || `Phòng Khám Đa Khoa <${user}>`,
+          to: cfg.emailTest,
+          subject: '[Phòng Khám Đa Khoa] Kiểm Tra Cấu Hình SMTP Email Thành Công',
+          html: `<div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+            <h2 style="color: #0284c7;">Kiểm Tra Kết Nối SMTP Thành Công!</h2>
+            <p>Hệ thống Phòng Khám Đa Khoa đã kết nối thành công với hòm thư <b>${user}</b>.</p>
+            <p>Hệ thống đã sẵn sàng gửi mã OTP và thông báo lịch khám.</p>
+            <p style="color: #64748b; font-size: 12px;">Thời gian kiểm tra: ${new Date().toLocaleString('vi-VN')}</p>
+          </div>`,
+        });
+      }
+      return { success: true, message: `Kết nối máy chủ SMTP ${host} thành công!` };
+    }
+
+    if (loai === 'payos') {
+      const { clientId, apiKey, checksumKey } = payload || {};
+      const cId = clientId || process.env.PAYOS_CLIENT_ID;
+      let aKey = apiKey || process.env.PAYOS_API_KEY;
+      let cKey = checksumKey || process.env.PAYOS_CHECKSUM_KEY;
+
+      if (aKey && aKey.includes('••••')) aKey = process.env.PAYOS_API_KEY;
+      if (cKey && cKey.includes('••••')) cKey = process.env.PAYOS_CHECKSUM_KEY;
+
+      if (!cId || !aKey || !cKey) {
+        throw new BadRequestException('Vui lòng nhập đầy đủ Client ID, API Key và Checksum Key của PayOS');
+      }
+
+      new PayOS({ clientId: cId, apiKey: aKey, checksumKey: cKey });
+      return { success: true, message: 'Bộ khóa API PayOS hợp lệ và đã sẵn sàng tích hợp đối soát thanh toán!' };
+    }
+
+    if (loai === 'gemini') {
+      let apiKey = (payload?.apiKey || process.env.GEMINI_API_KEY || '').trim();
+      if (apiKey.includes('••••')) apiKey = (process.env.GEMINI_API_KEY || '').trim();
+
+      if (!apiKey) {
+        throw new BadRequestException('Vui lòng nhập Google Gemini API Key');
+      }
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: payload?.model || 'gemini-2.5-flash' });
+      const ping = await model.generateContent('Trả lời ngắn gọn đúng 2 từ: "Sẵn sàng"');
+      const text = ping.response.text();
+      return { success: true, message: `Kết nối Google Gemini thành công (${payload?.model || 'gemini-2.5-flash'}): "${text.trim()}"` };
+    }
+
+    throw new BadRequestException('Loại dịch vụ kiểm tra không hợp lệ');
+  }
+
+  async getHinhThucThanhToanPublic() {
+    const config = await this.getCaiDatDichVu();
+    return (config.hinhThucThanhToan || []).filter(item => item.kichHoat);
   }
 
   // ─── ADMIN: SAO LƯU & DUNG LƯỢNG DATABASE ─────────────────────
@@ -3356,18 +4126,38 @@ export class QuanLyService {
         .filter(c => fs.existsSync(c.anh_path));
 
       // 2. Gọi Python ML kiểm tra tính hợp lệ & chống trùng
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${PYTHON_ML_URL}/check-duplicate-face`,
-          {
-            target_image_path: absolutePath,
-            candidates: candidates,
-          },
-          { timeout: 25000 },
-        ),
-      );
+      let checkResult: any = null;
+      try {
+        const response = await firstValueFrom(
+          this.httpService.post(
+            `${PYTHON_ML_URL}/check-duplicate-face`,
+            {
+              target_image_path: absolutePath,
+              candidates: candidates,
+            },
+            { timeout: 25000 },
+          ),
+        );
+        checkResult = response.data;
+      } catch (mlErr: any) {
+        const errMsg = String(mlErr?.message || '');
+        const isConnErr =
+          mlErr?.code === 'ECONNREFUSED' ||
+          mlErr?.code === 'ETIMEDOUT' ||
+          mlErr?.code === 'ECONNRESET' ||
+          errMsg.includes('ECONNREFUSED') ||
+          errMsg.includes('timeout');
 
-      const checkResult = response.data;
+        if (isConnErr) {
+          console.warn('[AvatarUpload] Dịch vụ Python ML (cổng 5001) tạm thời chưa phản hồi, lưu ảnh theo chế độ dự phòng:', errMsg);
+          return {
+            message: 'Đã cập nhật ảnh nhân sự thành công (Lưu ý: Dịch vụ AI nhận diện khuôn mặt đang tạm tắt nên chưa đối soát sinh trắc học).',
+            data: `/uploads/avatars/${file.filename}`,
+            warning: true,
+          };
+        }
+        throw mlErr;
+      }
 
       // 3. Nếu không có khuôn mặt hợp lệ
       if (!checkResult?.valid_face) {
@@ -3601,27 +4391,36 @@ export class QuanLyService {
 
   // 1. Lấy danh sách dịch vụ cho khách / bệnh nhân (Công khai)
   async getBangGiaPublic(query?: { loai?: string; tuKhoa?: string }) {
-    const qb = this.dichVuRepo.createQueryBuilder('dv')
-      .where('dv.trang_thai = :status', { status: 'hoat_dong' });
+    const cacheKey = `public:bang_gia:${query?.loai || 'ALL'}:${(query?.tuKhoa || '').trim().toLowerCase()}`;
+    return this.cache.getOrSet(cacheKey, 15_000, async () => {
+      const qb = this.dichVuRepo
+        .createQueryBuilder('dv')
+        .where('dv.trang_thai = :status', { status: 'hoat_dong' });
 
-    if (query?.loai && query.loai !== 'tat_ca') {
-      qb.andWhere('dv.loai = :loai', { loai: query.loai });
-    }
+      if (query?.loai && query.loai !== 'tat_ca') {
+        qb.andWhere('dv.loai = :loai', { loai: query.loai });
+      }
 
-    if (query?.tuKhoa && query.tuKhoa.trim()) {
-      const keyword = `%${query.tuKhoa.trim()}%`;
-      qb.andWhere('(dv.ten_dich_vu LIKE :kw OR dv.ma_dich_vu LIKE :kw OR dv.bo_phan_thuc_hien LIKE :kw)', { kw: keyword });
-    }
+      if (query?.tuKhoa && query.tuKhoa.trim()) {
+        const keyword = `%${query.tuKhoa.trim()}%`;
+        qb.andWhere(
+          '(dv.ten_dich_vu LIKE :kw OR dv.ma_dich_vu LIKE :kw OR dv.bo_phan_thuc_hien LIKE :kw)',
+          { kw: keyword },
+        );
+      }
 
-    qb.orderBy('CASE dv.loai WHEN "kham_benh" THEN 1 WHEN "xet_nghiem" THEN 2 WHEN "cdha" THEN 3 ELSE 4 END', 'ASC')
-      .addOrderBy('dv.gia', 'ASC');
+      qb.orderBy(
+        'CASE dv.loai WHEN "kham_benh" THEN 1 WHEN "xet_nghiem" THEN 2 WHEN "cdha" THEN 3 ELSE 4 END',
+        'ASC',
+      ).addOrderBy('dv.gia', 'ASC');
 
-    const data = await qb.getMany();
-    return {
-      success: true,
-      total: data.length,
-      data,
-    };
+      const data = await qb.getMany();
+      return {
+        success: true,
+        total: data.length,
+        data,
+      };
+    });
   }
 
   // 2. Lấy danh sách đầy đủ cho Ban Giám Đốc / Quản trị viên (Kèm thống kê KPI)
@@ -3863,45 +4662,48 @@ export class QuanLyService {
 
   // 1. Lấy thông tin cấu hình tiền cọc công khai (Cho Bệnh nhân & Khách vãng lai xem khi đặt lịch)
   async getCauHinhTienCocPublic() {
-    let items = await this.tienCocRepo.find();
-    if (!items || items.length === 0) {
-      // Tự động khởi tạo nếu chưa có bản ghi
-      await this.tienCocRepo.save([
-        {
-          loaiHinhThuc: 'truc_tiep',
-          tenHinhThuc: 'Đặt lịch khám trực tiếp tại phòng khám',
-          phiKhamMacDinh: 200000,
-          phanTramCoc: 20,
-          soTienCoc: 40000,
-          thoiGianHuyHoanCocGio: 2,
-          phanTramHoanCoc: 100,
-          choPhepDatTruocNgayMin: 1,
-          choPhepDatTruocNgayMax: 30,
-          apDungTuDong: true,
-          moTa: 'Bệnh nhân tạm ứng 20% tiền khám (40.000đ) để giữ chỗ và phân bổ bác sĩ theo khung giờ hẹn.',
-          ghiChuHoanCoc: 'Hủy lịch trước > 2 tiếng: Tự động hoàn lại 100% tiền cọc. Hủy dưới 2 tiếng hoặc vắng mặt không hoàn cọc.',
-        },
-        {
-          loaiHinhThuc: 'truc_tuyen',
-          tenHinhThuc: 'Tư vấn khám bệnh từ xa Telehealth (Video Call 1-1)',
-          phiKhamMacDinh: 200000,
-          phanTramCoc: 100,
-          soTienCoc: 200000,
-          thoiGianHuyHoanCocGio: 24,
-          phanTramHoanCoc: 100,
-          choPhepDatTruocNgayMin: 1,
-          choPhepDatTruocNgayMax: 30,
-          apDungTuDong: true,
-          moTa: 'Thanh toán 100% chi phí tư vấn Telehealth để bác sĩ hội chẩn và mở phòng họp trực tuyến.',
-          ghiChuHoanCoc: 'Hủy lịch trước > 24 tiếng: Hoàn trả 100% phí tư vấn. Hủy trong vòng 24 tiếng được hoàn 50% hoặc bảo lưu lịch hẹn.',
-        },
-      ]);
-      items = await this.tienCocRepo.find();
-    }
-    return {
-      message: 'Lấy cấu hình tiền cọc thành công',
-      data: items,
-    };
+    return this.cache.getOrSet('public:cau_hinh_tien_coc', 15_000, async () => {
+      let items = await this.tienCocRepo.find();
+      if (!items || items.length === 0) {
+        await this.tienCocRepo.save([
+          {
+            loaiHinhThuc: 'truc_tiep',
+            tenHinhThuc: 'Đặt lịch khám trực tiếp tại phòng khám',
+            phiKhamMacDinh: 200000,
+            phanTramCoc: 20,
+            soTienCoc: 40000,
+            thoiGianHuyHoanCocGio: 2,
+            phanTramHoanCoc: 100,
+            choPhepDatTruocNgayMin: 1,
+            choPhepDatTruocNgayMax: 30,
+            apDungTuDong: true,
+            moTa: 'Bệnh nhân tạm ứng 20% tiền khám (40.000đ) để giữ chỗ và phân bổ bác sĩ theo khung giờ hẹn.',
+            ghiChuHoanCoc:
+              'Hủy lịch trước > 2 tiếng: Tự động hoàn lại 100% tiền cọc. Hủy dưới 2 tiếng hoặc vắng mặt không hoàn cọc.',
+          },
+          {
+            loaiHinhThuc: 'truc_tuyen',
+            tenHinhThuc: 'Tư vấn khám bệnh từ xa Telehealth (Video Call 1-1)',
+            phiKhamMacDinh: 200000,
+            phanTramCoc: 100,
+            soTienCoc: 200000,
+            thoiGianHuyHoanCocGio: 24,
+            phanTramHoanCoc: 100,
+            choPhepDatTruocNgayMin: 1,
+            choPhepDatTruocNgayMax: 30,
+            apDungTuDong: true,
+            moTa: 'Thanh toán 100% chi phí tư vấn Telehealth để bác sĩ hội chẩn và mở phòng họp trực tuyến.',
+            ghiChuHoanCoc:
+              'Hủy lịch trước > 24 tiếng: Hoàn trả 100% phí tư vấn. Hủy trong vòng 24 tiếng được hoàn 50% hoặc bảo lưu lịch hẹn.',
+          },
+        ]);
+        items = await this.tienCocRepo.find();
+      }
+      return {
+        message: 'Lấy cấu hình tiền cọc thành công',
+        data: items,
+      };
+    });
   }
 
   // 2. Ban Giám Đốc lấy danh sách cấu hình tiền cọc
@@ -3956,6 +4758,8 @@ export class QuanLyService {
     if (dto.ghiChuHoanCoc !== undefined) item.ghiChuHoanCoc = dto.ghiChuHoanCoc?.trim() || null;
 
     const saved = await this.tienCocRepo.save(item);
+    this.cache.invalidatePrefix('public:');
+    this.cache.invalidatePrefix('master:');
 
     // Tự động đồng bộ ngược sang bảng giá dịch vụ
     try {

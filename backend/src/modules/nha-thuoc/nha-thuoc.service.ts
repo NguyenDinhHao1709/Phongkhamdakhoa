@@ -15,6 +15,47 @@ import { ThongBaoService } from '../thong-bao/thong-bao.service';
 
 @Injectable()
 export class NhaThuocService {
+  private locks = new Map<string, Promise<any>>();
+  private lastMaDtSeq = 0;
+
+  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(key) || Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chain = prev.then(() => next);
+    this.locks.set(key, chain);
+
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.locks.get(key) === chain) {
+        this.locks.delete(key);
+      }
+    }
+  }
+
+  private async generateNextMaDonThuoc(): Promise<string> {
+    return this.withLock('seq:ma_don_thuoc', async () => {
+      const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const prefix = `DT${todayStr}`;
+      if (this.lastMaDtSeq === 0) {
+        const rows: any[] = await this.dataSource.query(
+          `SELECT MAX(CAST(SUBSTRING(ma_don_thuoc, 11) AS UNSIGNED)) AS maxNum FROM don_thuoc WHERE ma_don_thuoc LIKE ?`,
+          [`${prefix}%`],
+        );
+        const dbMax = Number(rows?.[0]?.maxNum || 0);
+        const totalCount = await this.donThuocRepo.count();
+        this.lastMaDtSeq = Math.max(dbMax, totalCount);
+      }
+      this.lastMaDtSeq += 1;
+      return `${prefix}${String(this.lastMaDtSeq).padStart(4, '0')}`;
+    });
+  }
+
   constructor(
     private readonly thongBaoService: ThongBaoService,
     @InjectRepository(Thuoc)
@@ -101,11 +142,32 @@ export class NhaThuocService {
           ghiChu: row.yc_ghi_chu,
           ngayTao: row.yc_tao_luc,
           taoLuc: row.yc_tao_luc,
+          nhaCungCapId: row.ct_nha_cung_cap_id ? Number(row.ct_nha_cung_cap_id) : null,
+          nhaCungCap: row.ncc_ten_nha_cung_cap ? {
+            id: Number(row.ct_nha_cung_cap_id),
+            maNhaCungCap: row.ncc_ma_nha_cung_cap,
+            tenNhaCungCap: row.ncc_ten_nha_cung_cap,
+            soDienThoai: row.ncc_so_dien_thoai,
+            email: row.ncc_email,
+            diaChi: row.ncc_dia_chi,
+          } : null,
           chiTiet: [],
         });
       }
       if (row.ct_id) {
-        grouped.get(id).chiTiet.push({
+        const itemObj = grouped.get(id);
+        if (!itemObj.nhaCungCap && (row.ncc_ten_nha_cung_cap || row.ct_nha_cung_cap_id)) {
+          itemObj.nhaCungCapId = row.ct_nha_cung_cap_id ? Number(row.ct_nha_cung_cap_id) : null;
+          itemObj.nhaCungCap = row.ncc_ten_nha_cung_cap ? {
+            id: Number(row.ct_nha_cung_cap_id),
+            maNhaCungCap: row.ncc_ma_nha_cung_cap,
+            tenNhaCungCap: row.ncc_ten_nha_cung_cap,
+            soDienThoai: row.ncc_so_dien_thoai,
+            email: row.ncc_email,
+            diaChi: row.ncc_dia_chi,
+          } : null;
+        }
+        itemObj.chiTiet.push({
           id: Number(row.ct_id),
           thuocId: row.ct_thuoc_id,
           maThuoc: row.t_ma_thuoc,
@@ -255,6 +317,19 @@ export class NhaThuocService {
       ghiChu: item.ghiChu || null,
     }));
     await this.yeuCauNhapChiTietRepo.save(details);
+
+    try {
+      await this.thongBaoService.taoThongBaoTheoRole('ban_giam_doc', {
+        tieuDe: `Yêu cầu phê duyệt mua thuốc (PR): ${yc.maYeuCau}`,
+        noiDung: `Nhà thuốc vừa trình phiếu yêu cầu mua thuốc ${yc.maYeuCau} (${normalizedDetails.length} mặt hàng, dự toán: ${Number(yc.tongDuToan || 0).toLocaleString('vi-VN')} đ). Vui lòng Ban Giám Đốc xem xét phê duyệt.`,
+        loai: 'phe_duyet',
+        doiTuongBang: 'yeu_cau_nhap_kho',
+        doiTuongId: yc.id,
+      });
+    } catch (e) {
+      console.warn('Lỗi gửi thông báo taoYeuCauNhap:', e?.message);
+    }
+
     return { message: 'Đã gửi yêu cầu mua thuốc chờ Giám đốc duyệt', data: yc };
   }
 
@@ -266,7 +341,40 @@ export class NhaThuocService {
     yc.lyDoTuChoi = duyet ? null : (lyDo || 'Không nêu lý do');
     yc.nguoiDuyetId = nguoiDuyetId;
     yc.ngayDuyet = new Date();
-    return { message: duyet ? 'Đã duyệt yêu cầu mua thuốc' : 'Đã từ chối yêu cầu mua thuốc', data: await this.yeuCauNhapRepo.save(yc) };
+    const saved = await this.yeuCauNhapRepo.save(yc);
+
+    try {
+      const tieuDe = duyet
+        ? `Ban Giám Đốc đã duyệt phiếu mua thuốc: ${saved.maYeuCau}`
+        : `Ban Giám Đốc từ chối phiếu mua thuốc: ${saved.maYeuCau}`;
+      const noiDung = duyet
+        ? `Phiếu yêu cầu mua thuốc (PR) ${saved.maYeuCau} đã được Ban Giám Đốc phê duyệt nhu cầu. Nhà thuốc có thể tiến hành lấy báo giá & chọn nhà cung cấp!`
+        : `Phiếu yêu cầu mua thuốc ${saved.maYeuCau} đã bị từ chối. Lý do: ${lyDo || 'Không nêu lý do'}`;
+
+      const sentRoles = await this.thongBaoService.taoThongBaoTheoRole('nhan_vien_nha_thuoc', {
+        tieuDe,
+        noiDung,
+        loai: 'phe_duyet',
+        doiTuongBang: 'yeu_cau_nhap_kho',
+        doiTuongId: saved.id,
+      });
+
+      const sentIds = new Set((sentRoles || []).map((r: any) => Number(r.nguoiNhanId)));
+      if (saved.nguoiLapId && !sentIds.has(Number(saved.nguoiLapId))) {
+        await this.thongBaoService.taoThongBao({
+          nguoiNhanId: Number(saved.nguoiLapId),
+          tieuDe,
+          noiDung,
+          loai: 'phe_duyet',
+          doiTuongBang: 'yeu_cau_nhap_kho',
+          doiTuongId: saved.id,
+        });
+      }
+    } catch (e) {
+      console.warn('Lỗi gửi thông báo duyetYeuCauNhap:', e?.message);
+    }
+
+    return { message: duyet ? 'Đã duyệt yêu cầu mua thuốc' : 'Đã từ chối yêu cầu mua thuốc', data: saved };
   }
 
   async capNhatBaoGia(id: number, chiTiet: any[]) {
@@ -311,7 +419,19 @@ export class NhaThuocService {
       throw new BadRequestException('Yêu cầu phải được duyệt và chọn nhà cung cấp trước khi đặt hàng PO');
     }
     yc.trangThai = 'dang_giao';
-    return { message: 'Đã phát hành Đơn đặt hàng thuốc (PO) và chuyển trạng thái chờ nhà cung cấp giao hàng', data: await this.yeuCauNhapRepo.save(yc) };
+    const saved = await this.yeuCauNhapRepo.save(yc);
+    try {
+      await this.thongBaoService.taoThongBaoTheoRole('ban_giam_doc', {
+        tieuDe: `Đã phát hành đơn đặt hàng thuốc (PO): ${saved.maYeuCau}`,
+        noiDung: `Nhà thuốc đã chốt báo giá nhà cung cấp và phát hành đơn đặt hàng PO cho phiếu ${saved.maYeuCau} (Dự toán PO: ${Number(saved.tongDuToan || 0).toLocaleString('vi-VN')} đ).`,
+        loai: 'phe_duyet',
+        doiTuongBang: 'yeu_cau_nhap_kho',
+        doiTuongId: saved.id,
+      });
+    } catch (e) {
+      console.warn('Lỗi gửi thông báo datHangNhaCungCap:', e?.message);
+    }
+    return { message: 'Đã phát hành Đơn đặt hàng thuốc (PO) và chuyển trạng thái chờ nhà cung cấp giao hàng', data: saved };
   }
 
   async tiepNhanHang(
@@ -351,7 +471,19 @@ export class NhaThuocService {
       yc.trangThaiChiTra = 'khong_chi';
       yc.ngayKiemNhan = new Date();
       yc.nguoiKiemNhanId = data.nguoiKiemNhanId || 1;
-      return { message: 'Đã lập biên bản từ chối nhận toàn bộ lô hàng và hủy công nợ chi trả', data: await this.yeuCauNhapRepo.save(yc) };
+      const savedReject = await this.yeuCauNhapRepo.save(yc);
+      try {
+        await this.thongBaoService.taoThongBaoTheoRole('ban_giam_doc', {
+          tieuDe: `Từ chối tiếp nhận lô hàng thuốc: ${savedReject.maYeuCau}`,
+          noiDung: `Nhà thuốc đã lập biên bản từ chối nhận lô hàng ${savedReject.maYeuCau} do không đạt tiêu chuẩn GSP. Lý do: ${savedReject.bienBanTraHang}`,
+          loai: 'phe_duyet',
+          doiTuongBang: 'yeu_cau_nhap_kho',
+          doiTuongId: savedReject.id,
+        });
+      } catch (e) {
+        console.warn('Lỗi gửi thông báo tiepNhanHang reject:', e?.message);
+      }
+      return { message: 'Đã lập biên bản từ chối nhận toàn bộ lô hàng và hủy công nợ chi trả', data: savedReject };
     }
 
     // Nhánh 1, 2, 3: Đạt đủ 100%, Đạt một phần (thiếu), hoặc Có hàng hỏng/lỗi cần lập biên bản trả
@@ -409,9 +541,30 @@ export class NhaThuocService {
     yc.ngayKiemNhan = new Date();
     if (yc.tongThucTe > 0) yc.trangThaiChiTra = 'cho_chi';
 
+    const savedAccept = await this.yeuCauNhapRepo.save(yc);
+    try {
+      if (Number(savedAccept.tongThucTe) > 0) {
+        await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+          tieuDe: `Cần đối chiếu & lập phiếu chi mua thuốc: ${savedAccept.maYeuCau}`,
+          noiDung: `Nhà thuốc đã kiểm nhận GSP lô hàng ${savedAccept.maYeuCau} (Giá trị thực nhận: ${Number(savedAccept.tongThucTe || 0).toLocaleString('vi-VN')} đ). Vui lòng Thu ngân đối chiếu 3 bên và lập đề xuất chi!`,
+          loai: 'can_thanh_toan',
+          doiTuongBang: 'yeu_cau_nhap_kho',
+          doiTuongId: savedAccept.id,
+        });
+        await this.thongBaoService.taoThongBaoTheoRole('ban_giam_doc', {
+          tieuDe: `Đã kiểm nhận GSP lô hàng thuốc: ${savedAccept.maYeuCau}`,
+          noiDung: `Nhà thuốc đã hoàn tất kiểm nhận y tế đơn ${savedAccept.maYeuCau} (Thực nhận: ${Number(savedAccept.tongThucTe || 0).toLocaleString('vi-VN')} đ). Hồ sơ đã chuyển sang Thu ngân đối chiếu 3 bên.`,
+          loai: 'phe_duyet',
+          doiTuongBang: 'yeu_cau_nhap_kho',
+          doiTuongId: savedAccept.id,
+        });
+      }
+    } catch (e) {
+      console.warn('Lỗi gửi thông báo tiepNhanHang accept:', e?.message);
+    }
     return {
       message: 'Kiểm nhận y tế hoàn tất (Đã chuyển hồ sơ sang Thu ngân để đối chiếu 3 bên & thanh toán trước khi nạp kho)',
-      data: await this.yeuCauNhapRepo.save(yc),
+      data: savedAccept,
     };
   }
 
@@ -462,20 +615,6 @@ export class NhaThuocService {
     } catch (e) {
       console.warn('Lỗi gửi thông báo ban_giam_doc deNghiChiTra:', e?.message);
     }
-
-    try {
-      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
-        tieuDe: duyet ? `Ban Giám Đốc đã duyệt chi tiền: ${saved.maYeuCau}` : `Ban Giám Đốc từ chối chi: ${saved.maYeuCau}`,
-        noiDung: duyet
-          ? `Khoản chi mua thuốc ${saved.maYeuCau} (${Number(saved.tongThucTe || 0).toLocaleString('vi-VN')} đ) đã được duyệt. Thu ngân có thể xuất quỹ!`
-          : `Khoản chi ${saved.maYeuCau} bị từ chối: ${lyDo || 'Không duyệt'}`,
-        loai: 'phe_duyet',
-        doiTuongBang: 'yeu_cau_nhap_kho',
-        doiTuongId: saved.id,
-      });
-    } catch (e) {
-      console.warn('Lỗi gửi thông báo thu_ngan duyetChiTra:', e?.message);
-    }
     return {
       success: true,
       message: 'Đã gửi đề xuất chi tiền mua thuốc tới Ban Giám Đốc chờ phê duyệt!',
@@ -515,8 +654,17 @@ export class NhaThuocService {
         doiTuongBang: 'yeu_cau_nhap_kho',
         doiTuongId: saved.id,
       });
+      await this.thongBaoService.taoThongBaoTheoRole('nhan_vien_nha_thuoc', {
+        tieuDe: duyet ? `Đã duyệt chi tiền đơn mua thuốc: ${saved.maYeuCau}` : `Từ chối chi tiền đơn mua thuốc: ${saved.maYeuCau}`,
+        noiDung: duyet
+          ? `Ban Giám Đốc đã duyệt chi ${Number(saved.tongThucTe || 0).toLocaleString('vi-VN')} đ cho đơn ${saved.maYeuCau}. Đang chờ Thu ngân xuất quỹ để nạp thuốc vào kho.`
+          : `Khoản chi đơn mua thuốc ${saved.maYeuCau} bị từ chối: ${lyDo || 'Không duyệt'}`,
+        loai: 'phe_duyet',
+        doiTuongBang: 'yeu_cau_nhap_kho',
+        doiTuongId: saved.id,
+      });
     } catch (e) {
-      console.warn('Lỗi gửi thông báo thu_ngan duyetChiTra:', e?.message);
+      console.warn('Lỗi gửi thông báo duyetChiTra:', e?.message);
     }
     return {
       success: true,
@@ -539,83 +687,104 @@ export class NhaThuocService {
     },
     nguoiChiTraId = 1,
   ) {
-    const yc = await this.yeuCauNhapRepo.findOne({ where: { id } });
-    if (!yc) throw new NotFoundException('Không tìm thấy yêu cầu nhập kho');
-    if (!['da_nhap_kho', 'giao_mot_phan', 'da_kiem_nhan'].includes(yc.trangThai) || Number(yc.tongThucTe) <= 0) {
-      throw new BadRequestException('Chỉ được chi trả sau khi hoàn tất kiểm nhận y tế và có thuốc đạt chất lượng');
-    }
-    if (yc.trangThaiChiTra === 'da_chi') throw new BadRequestException('Yêu cầu đã được chi trả');
-    if (yc.trangThaiChiTra !== 'da_duyet_chi') {
-      if (yc.trangThaiChiTra === 'cho_giam_doc_duyet') {
-        throw new BadRequestException('Khoản chi này đang chờ Ban Giám Đốc phê duyệt, chưa được phép xuất quỹ!');
+    return this.withLock(`ncc:pay:${id}`, async () => {
+      const yc = await this.yeuCauNhapRepo.findOne({ where: { id } });
+      if (!yc) throw new NotFoundException('Không tìm thấy yêu cầu nhập kho');
+      if (!['da_nhap_kho', 'giao_mot_phan', 'da_kiem_nhan'].includes(yc.trangThai) || Number(yc.tongThucTe) <= 0) {
+        throw new BadRequestException('Chỉ được chi trả sau khi hoàn tất kiểm nhận y tế và có thuốc đạt chất lượng');
       }
-      if (yc.trangThaiChiTra === 'tu_choi_chi') {
-        throw new BadRequestException('Khoản chi này đã bị Ban Giám Đốc từ chối: ' + (yc.lyDoTuChoiChi || 'Không duyệt') + '. Không thể xuất tiền!');
-      }
-      throw new BadRequestException('Khoản chi này chưa được Ban Giám Đốc phê duyệt. Bắt buộc Kế toán phải gửi Đề nghị duyệt chi trước khi xuất tiền!');
-    }
-    const soTien = Number(data.soTien ?? yc.tongThucTe);
-    if (!Number.isFinite(soTien) || soTien <= 0) throw new BadRequestException('Số tiền chi trả phải lớn hơn 0');
-    if (soTien !== Number(yc.tongThucTe)) throw new BadRequestException('Số tiền chi phải đúng bằng tổng giá trị thực tế');
-    if (!['chuyen_khoan', 'tien_mat', 'the'].includes(data.phuongThucChi || '')) {
-      throw new BadRequestException('Phương thức chi không hợp lệ');
-    }
-    if (data.soChungTuChi) {
-      const duplicate = await this.yeuCauNhapRepo.findOne({ where: { soChungTuChi: data.soChungTuChi } });
-      if (duplicate && duplicate.id !== id) throw new BadRequestException('Số chứng từ chi đã được sử dụng');
-    }
-
-    // ── CHÍNH THỨC NẠP THUỐC VÀO KHO SAU KHI THU NGÂN XÁC NHẬN THANH TOÁN THÀNH CÔNG ──
-    const details = await this.yeuCauNhapChiTietRepo.find({ where: { yeuCauId: id } });
-    for (const detail of details) {
-      const dat = Number(detail.soLuongDatChatLuong || 0);
-      if (dat > 0 && detail.thuocId) {
-        const thuoc = await this.thuocRepo.findOne({ where: { id: detail.thuocId } });
-        if (!thuoc) continue;
-        let lo = detail.maLo
-          ? await this.loThuocRepo.findOne({ where: { thuocId: detail.thuocId, maLo: detail.maLo } })
-          : null;
-        if (!lo) {
-          lo = this.loThuocRepo.create({
-            thuocId: detail.thuocId,
-            maLo: detail.maLo || `LO-${id}-${detail.id}`,
-            ngaySanXuat: null,
-            ngayHetHan: detail.ngayHetHan,
-            soLuongNhap: dat,
-            soLuongTon: dat,
-            giaNhap: Number(detail.donGiaChon || 0),
-            nhaCungCap: detail.nhaCungCapId ? String(detail.nhaCungCapId) : null,
-            trangThai: 'con_hang',
-          });
-        } else {
-          lo.soLuongNhap = Number(lo.soLuongNhap || 0) + dat;
-          lo.soLuongTon = Number(lo.soLuongTon || 0) + dat;
-          lo.giaNhap = Number(detail.donGiaChon || lo.giaNhap || 0);
+      if (yc.trangThaiChiTra === 'da_chi') throw new BadRequestException('Yêu cầu đã được chi trả');
+      if (yc.trangThaiChiTra !== 'da_duyet_chi') {
+        if (yc.trangThaiChiTra === 'cho_giam_doc_duyet') {
+          throw new BadRequestException('Khoản chi này đang chờ Ban Giám Đốc phê duyệt, chưa được phép xuất quỹ!');
         }
-        await this.loThuocRepo.save(lo);
-        thuoc.tonKhoTong = Number(thuoc.tonKhoTong || 0) + dat;
-        thuoc.trangThai = 'con_hang';
-        await this.thuocRepo.save(thuoc);
+        if (yc.trangThaiChiTra === 'tu_choi_chi') {
+          throw new BadRequestException('Khoản chi này đã bị Ban Giám Đốc từ chối: ' + (yc.lyDoTuChoiChi || 'Không duyệt') + '. Không thể xuất tiền!');
+        }
+        throw new BadRequestException('Khoản chi này chưa được Ban Giám Đốc phê duyệt. Bắt buộc Kế toán phải gửi Đề nghị duyệt chi trước khi xuất tiền!');
       }
-    }
+      const soTien = Number(data.soTien ?? yc.tongThucTe);
+      if (!Number.isFinite(soTien) || soTien <= 0) throw new BadRequestException('Số tiền chi trả phải lớn hơn 0');
+      if (soTien !== Number(yc.tongThucTe)) throw new BadRequestException('Số tiền chi phải đúng bằng tổng giá trị thực tế');
+      if (!['chuyen_khoan', 'tien_mat', 'the'].includes(data.phuongThucChi || '')) {
+        throw new BadRequestException('Phương thức chi không hợp lệ');
+      }
+      if (data.soChungTuChi) {
+        const duplicate = await this.yeuCauNhapRepo.findOne({ where: { soChungTuChi: data.soChungTuChi } });
+        if (duplicate && duplicate.id !== id) throw new BadRequestException('Số chứng từ chi đã được sử dụng');
+      }
 
-    yc.trangThai = 'da_nhap_kho';
-    yc.trangThaiChiTra = 'da_chi';
-    yc.soTienChiTra = soTien;
-    yc.phuongThucChi = data.phuongThucChi || 'chuyen_khoan';
-    yc.soChungTuChi = data.soChungTuChi || `PC-${yc.maYeuCau}`;
-    yc.soHoaDonNcc = data.soHoaDonNcc || yc.soHoaDonNcc || null;
-    if (data.ngayHoaDonNcc) {
-      yc.ngayHoaDonNcc = new Date(data.ngayHoaDonNcc);
-    }
-    yc.ghiChuChi = data.ghiChu || null;
-    yc.nguoiChiTraId = nguoiChiTraId;
-    yc.ngayChiTra = new Date();
-    yc.ghiChu = data.ghiChu ? `${yc.ghiChu || ''}\nChi trả: ${data.ghiChu}`.trim() : yc.ghiChu;
-    return {
-      message: 'Thu ngân đã xác nhận thanh toán phiếu chi thành công · Thuốc đạt chuẩn đã được nạp chính thức vào kho!',
-      data: await this.yeuCauNhapRepo.save(yc)
-    };
+      // ── CHÍNH THỨC NẠP THUỐC VÀO KHO SAU KHI THU NGÂN XÁC NHẬN THANH TOÁN THÀNH CÔNG ──
+      const details = await this.yeuCauNhapChiTietRepo.find({ where: { yeuCauId: id } });
+      for (const detail of details) {
+        const dat = Number(detail.soLuongDatChatLuong || 0);
+        if (dat > 0 && detail.thuocId) {
+          const thuoc = await this.thuocRepo.findOne({ where: { id: detail.thuocId } });
+          if (!thuoc) continue;
+          let lo = detail.maLo
+            ? await this.loThuocRepo.findOne({ where: { thuocId: detail.thuocId, maLo: detail.maLo } })
+            : null;
+          if (!lo) {
+            lo = this.loThuocRepo.create({
+              thuocId: detail.thuocId,
+              maLo: detail.maLo || `LO-${id}-${detail.id}`,
+              ngaySanXuat: null,
+              ngayHetHan: detail.ngayHetHan,
+              soLuongNhap: dat,
+              soLuongTon: dat,
+              giaNhap: Number(detail.donGiaChon || 0),
+              nhaCungCap: detail.nhaCungCapId ? String(detail.nhaCungCapId) : null,
+              trangThai: 'con_hang',
+            });
+          } else {
+            lo.soLuongNhap = Number(lo.soLuongNhap || 0) + dat;
+            lo.soLuongTon = Number(lo.soLuongTon || 0) + dat;
+            lo.giaNhap = Number(detail.donGiaChon || lo.giaNhap || 0);
+          }
+          await this.loThuocRepo.save(lo);
+          thuoc.tonKhoTong = Number(thuoc.tonKhoTong || 0) + dat;
+          thuoc.trangThai = 'con_hang';
+          await this.thuocRepo.save(thuoc);
+        }
+      }
+
+      yc.trangThai = 'da_nhap_kho';
+      yc.trangThaiChiTra = 'da_chi';
+      yc.soTienChiTra = soTien;
+      yc.phuongThucChi = data.phuongThucChi || 'chuyen_khoan';
+      yc.soChungTuChi = data.soChungTuChi || `PC-${yc.maYeuCau}`;
+      yc.soHoaDonNcc = data.soHoaDonNcc || yc.soHoaDonNcc || null;
+      if (data.ngayHoaDonNcc) {
+        yc.ngayHoaDonNcc = new Date(data.ngayHoaDonNcc);
+      }
+      yc.ghiChuChi = data.ghiChu || null;
+      yc.nguoiChiTraId = nguoiChiTraId;
+      yc.ngayChiTra = new Date();
+      yc.ghiChu = data.ghiChu ? `${yc.ghiChu || ''}\nChi trả: ${data.ghiChu}`.trim() : yc.ghiChu;
+      const savedPaid = await this.yeuCauNhapRepo.save(yc);
+      try {
+        await this.thongBaoService.taoThongBaoTheoRole('nhan_vien_nha_thuoc', {
+          tieuDe: `Đã xuất quỹ & Nạp thuốc vào kho: ${savedPaid.maYeuCau}`,
+          noiDung: `Thu ngân đã thanh toán ${Number(soTien || 0).toLocaleString('vi-VN')} đ (Phiếu chi ${savedPaid.soChungTuChi}) cho đơn ${savedPaid.maYeuCau}. Thuốc đạt chuẩn đã chính thức cộng vào tồn kho Nhà thuốc!`,
+          loai: 'phe_duyet',
+          doiTuongBang: 'yeu_cau_nhap_kho',
+          doiTuongId: savedPaid.id,
+        });
+        await this.thongBaoService.taoThongBaoTheoRole('ban_giam_doc', {
+          tieuDe: `Hoàn tất xuất quỹ & nhập kho thuốc: ${savedPaid.maYeuCau}`,
+          noiDung: `Thu ngân đã xuất quỹ ${Number(soTien || 0).toLocaleString('vi-VN')} đ (${savedPaid.soChungTuChi}) thanh toán NCC đơn ${savedPaid.maYeuCau}. Thuốc đã nạp vào kho.`,
+          loai: 'phe_duyet',
+          doiTuongBang: 'yeu_cau_nhap_kho',
+          doiTuongId: savedPaid.id,
+        });
+      } catch (e) {
+        console.warn('Lỗi gửi thông báo chiTraNhaCungCap:', e?.message);
+      }
+      return {
+        message: 'Thu ngân đã xác nhận thanh toán phiếu chi thành công · Thuốc đạt chuẩn đã được nạp chính thức vào kho!',
+        data: savedPaid,
+      };
+    });
   }
 
   /**
@@ -636,19 +805,6 @@ export class NhaThuocService {
 
     const saved = await this.yeuCauNhapRepo.save(yc);
 
-    try {
-      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
-        tieuDe: duyet ? `Ban Giám Đốc đã duyệt chi tiền: ${saved.maYeuCau}` : `Ban Giám Đốc từ chối chi: ${saved.maYeuCau}`,
-        noiDung: duyet
-          ? `Khoản chi mua thuốc ${saved.maYeuCau} (${Number(saved.tongThucTe || 0).toLocaleString('vi-VN')} đ) đã được duyệt. Thu ngân có thể xuất quỹ!`
-          : `Khoản chi ${saved.maYeuCau} bị từ chối: ${lyDo || 'Không duyệt'}`,
-        loai: 'phe_duyet',
-        doiTuongBang: 'yeu_cau_nhap_kho',
-        doiTuongId: saved.id,
-      });
-    } catch (e) {
-      console.warn('Lỗi gửi thông báo thu_ngan duyetChiTra:', e?.message);
-    }
     return {
       success: true,
       message: 'Đã hủy hóa đơn / chứng từ thanh toán thành công.',
@@ -689,19 +845,6 @@ export class NhaThuocService {
       console.warn('Lỗi gửi thông báo ban_giam_doc yeuCauHuyChiTra:', e?.message);
     }
 
-    try {
-      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
-        tieuDe: duyet ? `Ban Giám Đốc đã duyệt chi tiền: ${saved.maYeuCau}` : `Ban Giám Đốc từ chối chi: ${saved.maYeuCau}`,
-        noiDung: duyet
-          ? `Khoản chi mua thuốc ${saved.maYeuCau} (${Number(saved.tongThucTe || 0).toLocaleString('vi-VN')} đ) đã được duyệt. Thu ngân có thể xuất quỹ!`
-          : `Khoản chi ${saved.maYeuCau} bị từ chối: ${lyDo || 'Không duyệt'}`,
-        loai: 'phe_duyet',
-        doiTuongBang: 'yeu_cau_nhap_kho',
-        doiTuongId: saved.id,
-      });
-    } catch (e) {
-      console.warn('Lỗi gửi thông báo thu_ngan duyetChiTra:', e?.message);
-    }
     return {
       success: true,
       message: 'Đã gửi yêu cầu hủy phiếu chi mua thuốc lên Ban Giám Đốc xem xét phê duyệt.',
@@ -745,19 +888,6 @@ export class NhaThuocService {
       console.warn('Lỗi gửi thông báo thu_ngan duyetHuyChiTra:', e?.message);
     }
 
-    try {
-      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
-        tieuDe: duyet ? `Ban Giám Đốc đã duyệt chi tiền: ${saved.maYeuCau}` : `Ban Giám Đốc từ chối chi: ${saved.maYeuCau}`,
-        noiDung: duyet
-          ? `Khoản chi mua thuốc ${saved.maYeuCau} (${Number(saved.tongThucTe || 0).toLocaleString('vi-VN')} đ) đã được duyệt. Thu ngân có thể xuất quỹ!`
-          : `Khoản chi ${saved.maYeuCau} bị từ chối: ${lyDo || 'Không duyệt'}`,
-        loai: 'phe_duyet',
-        doiTuongBang: 'yeu_cau_nhap_kho',
-        doiTuongId: saved.id,
-      });
-    } catch (e) {
-      console.warn('Lỗi gửi thông báo thu_ngan duyetChiTra:', e?.message);
-    }
     return {
       success: true,
       message: duyet
@@ -796,19 +926,6 @@ export class NhaThuocService {
       console.warn('Lỗi gửi thông báo ban_giam_doc xacNhanHoanQuyChiTra:', e?.message);
     }
 
-    try {
-      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
-        tieuDe: duyet ? `Ban Giám Đốc đã duyệt chi tiền: ${saved.maYeuCau}` : `Ban Giám Đốc từ chối chi: ${saved.maYeuCau}`,
-        noiDung: duyet
-          ? `Khoản chi mua thuốc ${saved.maYeuCau} (${Number(saved.tongThucTe || 0).toLocaleString('vi-VN')} đ) đã được duyệt. Thu ngân có thể xuất quỹ!`
-          : `Khoản chi ${saved.maYeuCau} bị từ chối: ${lyDo || 'Không duyệt'}`,
-        loai: 'phe_duyet',
-        doiTuongBang: 'yeu_cau_nhap_kho',
-        doiTuongId: saved.id,
-      });
-    } catch (e) {
-      console.warn('Lỗi gửi thông báo thu_ngan duyetChiTra:', e?.message);
-    }
     return {
       success: true,
       message: `Đã xác nhận thu hồi số tiền ${Number(saved.soTienChiTra || saved.tongThucTe || 0).toLocaleString('vi-VN')} đ vào quỹ thành công! Tiền đã tự động hồi về quỹ.`,
@@ -1036,8 +1153,16 @@ export class NhaThuocService {
             ? 'cho_thanh_toan'
             : 'chua_co_hoa_don';
 
+        const tongTienThuoc = (dt.chiTiet || []).reduce((sum, ct) => {
+          const gia = Number(ct.thuoc?.giaBan || 0);
+          const sl = Number(ct.soLuong || 0);
+          return sum + (gia * sl);
+        }, 0);
+
         return {
           id: dt.id,
+          tongTien: Number(hd?.thucThu || hd?.tongTien || tongTienThuoc || 0),
+          tongTienThuoc,
           maDonThuoc: dt.maDonThuoc,
           benhAnKhamId: dt.benhAnKhamId,
           luotTiepNhanId,
@@ -1298,10 +1423,25 @@ export class NhaThuocService {
         }
       }
 
+      const batchTraceByCt = new Map<number, string[]>();
       for (const allocation of allocations) {
         allocation.lo.soLuongTon -= allocation.soLuong;
-        allocation.chiTiet.loThuocId = allocation.lo.id;
+        if (!allocation.chiTiet.loThuocId) {
+          allocation.chiTiet.loThuocId = allocation.lo.id;
+        }
+        const traces = batchTraceByCt.get(allocation.chiTiet.id) || [];
+        traces.push(`${allocation.lo.maLo}:${allocation.soLuong}`);
+        batchTraceByCt.set(allocation.chiTiet.id, traces);
         await loRepo.save(allocation.lo);
+      }
+      for (const ct of dt.chiTiet) {
+        const traces = batchTraceByCt.get(ct.id);
+        if (traces && traces.length > 1) {
+          const traceNote = `[FEFO tách lô: ${traces.join(' + ')}]`;
+          if (!(ct.ghiChu || '').includes('[FEFO tách lô:')) {
+            ct.ghiChu = `${ct.ghiChu || ''} ${traceNote}`.trim();
+          }
+        }
       }
       await ctRepo.save(dt.chiTiet);
 
@@ -1343,74 +1483,150 @@ export class NhaThuocService {
       throw new BadRequestException('Vui lòng cung cấp phiếu khám và ít nhất 1 thuốc');
     }
 
-    // Kiểm tra tồn kho khả dụng (còn hạn dùng theo chuẩn FEFO) tại Nhà thuốc trước khi cho phép Bác sĩ lưu đơn
+    // 1. Kiểm tra không được kê trùng cùng 1 mã thuốc trên nhiều dòng trong cùng 1 đơn
+    const seenThuocIds = new Set<number>();
     for (const item of body.chiTiet) {
-      const reqQty = Number(item.soLuong || 0);
-      if (!Number.isFinite(reqQty) || reqQty <= 0) {
-        throw new BadRequestException('Số lượng thuốc kê trong đơn phải lớn hơn 0');
-      }
-
-      const thuoc = await this.thuocRepo.findOne({ where: { id: Number(item.thuocId) } });
-      if (!thuoc) {
-        throw new BadRequestException(`Không tìm thấy thuốc có mã ID #${item.thuocId} trong danh mục Nhà thuốc`);
-      }
-      if (thuoc.trangThai === 'ngung_kinh_doanh') {
-        throw new BadRequestException(`Thuốc "${thuoc.tenThuoc}" đã ngừng kinh doanh, không thể kê đơn`);
-      }
-
-      const validBatches = await this.loThuocRepo
-        .createQueryBuilder('lo')
-        .where('lo.thuocId = :thuocId', { thuocId: Number(item.thuocId) })
-        .andWhere('lo.soLuongTon > 0')
-        .andWhere('lo.ngayHetHan >= CURRENT_DATE()')
-        .getMany();
-
-      const tonKhoKhaDung = validBatches.reduce((sum, b) => sum + Number(b.soLuongTon || 0), 0);
-
-      if (tonKhoKhaDung <= 0) {
+      const tid = Number(item.thuocId);
+      if (seenThuocIds.has(tid)) {
         throw new BadRequestException(
-          `Thuốc "${thuoc.tenThuoc}" tại Nhà thuốc hiện đã hết tồn kho khả dụng (Còn: 0 ${thuoc.donViTinh}). Vui lòng chọn thuốc khác thay thế!`,
+          `Thuốc ID #${tid} bị kê trùng lặp nhiều dòng trong cùng một đơn thuốc. Vui lòng gộp số lượng vào 1 dòng duy nhất.`,
         );
       }
-
-      if (reqQty > tonKhoKhaDung) {
-        throw new BadRequestException(
-          `Nhà thuốc không đủ thuốc "${thuoc.tenThuoc}" để cấp phát (Bác sĩ đang kê: ${reqQty} ${thuoc.donViTinh}, Tồn kho khả dụng tại Nhà thuốc chỉ còn: ${tonKhoKhaDung} ${thuoc.donViTinh}). Vui lòng giảm số lượng hoặc đổi thuốc khác!`,
-        );
-      }
+      seenThuocIds.add(tid);
     }
 
-    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const count = await this.donThuocRepo.count();
-    const maDonThuoc = `DT${todayStr}${String(count + 1).padStart(4, '0')}`;
-
-    const dt = this.donThuocRepo.create({
-      maDonThuoc,
-      benhAnKhamId: body.benhAnKhamId,
-      bacSiKeId: body.bacSiId || 1,
-      trangThai: 'cho_duyet',
-      ghiChu: body.ghiChu,
+    // 2. Kiểm tra phiếu khám & đối chiếu Tiền sử dị ứng thuốc của bệnh nhân (Chuẩn an toàn dược lâm sàng)
+    const bak = await this.benhAnRepo.findOne({
+      where: { id: Number(body.benhAnKhamId) },
+      relations: ['hoSoBenhAn', 'hoSoBenhAn.benhNhan'],
     });
+    const existingDispensed = await this.donThuocRepo.findOne({
+      where: { benhAnKhamId: Number(body.benhAnKhamId), trangThai: 'da_cap_phat' as any },
+    });
+    if (existingDispensed) {
+      throw new BadRequestException(
+        `Ca khám này đã có đơn thuốc (${existingDispensed.maDonThuoc}) được xuất kho cấp phát cho bệnh nhân. Không thể kê đè đơn thuốc mới làm lệch hồ sơ bệnh án!`,
+      );
+    }
 
-    const savedDon = await this.donThuocRepo.save(dt);
+    const tienSuDiUng = (bak?.hoSoBenhAn?.benhNhan?.diUng || '').trim().toLowerCase();
 
-    const chiTietEntities = body.chiTiet.map((item) =>
-      this.donThuocChiTietRepo.create({
-        donThuocId: savedDon.id,
-        thuocId: item.thuocId,
-        soLuong: item.soLuong,
-        lieuDung: item.lieuDung || '',
-        soNgayDung: item.soNgayDung || 1,
-        ghiChu: item.ghiChu || '',
-      })
-    );
+    // 3. Khóa nguyên tử khi kiểm tra tồn kho khả dụng (Tồn vật lý còn hạn - Số lượng đang giữ chỗ ở các đơn cho_duyet) & lưu đơn
+    const savedDon = await this.withLock('rx:create_prescription', async () => {
+      for (const item of body.chiTiet) {
+        const reqQty = Number(item.soLuong || 0);
+        if (!Number.isFinite(reqQty) || reqQty <= 0) {
+          throw new BadRequestException('Số lượng thuốc kê trong đơn phải lớn hơn 0');
+        }
 
-    await this.donThuocChiTietRepo.save(chiTietEntities);
+        const thuoc = await this.thuocRepo.findOne({ where: { id: Number(item.thuocId) } });
+        if (!thuoc) {
+          throw new BadRequestException(`Không tìm thấy thuốc có mã ID #${item.thuocId} trong danh mục Nhà thuốc`);
+        }
+        if (thuoc.trangThai === 'ngung_kinh_doanh') {
+          throw new BadRequestException(`Thuốc "${thuoc.tenThuoc}" đã ngừng kinh doanh, không thể kê đơn`);
+        }
+
+        // Cảnh báo & chặn nếu thuốc kê trùng với tiền sử dị ứng đã ghi nhận của bệnh nhân
+        if (tienSuDiUng && tienSuDiUng !== 'không' && tienSuDiUng !== 'khong' && tienSuDiUng !== 'không có') {
+          const tenThuocLower = (thuoc.tenThuoc || '').toLowerCase();
+          const hoatChatLower = (thuoc.tenHoatChat || '').toLowerCase();
+          if (
+            (tenThuocLower && tienSuDiUng.includes(tenThuocLower)) ||
+            (hoatChatLower && hoatChatLower.length >= 4 && tienSuDiUng.includes(hoatChatLower))
+          ) {
+            throw new BadRequestException(
+              `[CẢNH BÁO AN TOÀN DƯỢC LÂM SÀNG] Bệnh nhân có tiền sử dị ứng "${bak?.hoSoBenhAn?.benhNhan?.diUng}" trùng với thuốc/hoạt chất "${thuoc.tenThuoc}" (${thuoc.tenHoatChat || ''}). Vui lòng đổi sang thuốc khác an toàn hơn!`,
+            );
+          }
+        }
+
+        const validBatches = await this.loThuocRepo
+          .createQueryBuilder('lo')
+          .where('lo.thuocId = :thuocId', { thuocId: Number(item.thuocId) })
+          .andWhere('lo.soLuongTon > 0')
+          .andWhere('lo.ngayHetHan >= CURRENT_DATE()')
+          .getMany();
+
+        const tonKhoVatLy = validBatches.reduce((sum, b) => sum + Number(b.soLuongTon || 0), 0);
+
+        // Tính lượng thuốc đang được giữ chỗ bởi các đơn thuốc 'cho_duyet' trong ngày (chưa cấp phát & không phải mua ngoài)
+        const reservedRows: any[] = await this.dataSource.query(
+          `SELECT COALESCE(SUM(ct.so_luong), 0) AS reservedQty
+           FROM don_thuoc_chi_tiet ct
+           INNER JOIN don_thuoc dt ON dt.id = ct.don_thuoc_id
+           WHERE ct.thuoc_id = ?
+             AND dt.trang_thai = 'cho_duyet'
+             AND DATE(dt.ngay_ke) = CURDATE()
+             AND (dt.lua_chon_mua IS NULL OR dt.lua_chon_mua != 'mua_ngoai')
+             AND dt.benh_an_kham_id != ?`,
+          [Number(item.thuocId), Number(body.benhAnKhamId)],
+        );
+        const soLuongDangGiuCho = Number(reservedRows?.[0]?.reservedQty || 0);
+        const tonKhoKhaDung = Math.max(0, tonKhoVatLy - soLuongDangGiuCho);
+
+        if (tonKhoKhaDung <= 0) {
+          throw new BadRequestException(
+            `Thuốc "${thuoc.tenThuoc}" tại Nhà thuốc hiện đã hết tồn kho khả dụng (Tồn vật lý: ${tonKhoVatLy}, Đang giữ chỗ chờ phát: ${soLuongDangGiuCho} ${thuoc.donViTinh}). Vui lòng chọn thuốc khác thay thế!`,
+          );
+        }
+
+        if (reqQty > tonKhoKhaDung) {
+          throw new BadRequestException(
+            `Nhà thuốc không đủ thuốc "${thuoc.tenThuoc}" để cấp phát (Bác sĩ đang kê: ${reqQty} ${thuoc.donViTinh}, Khả dụng thực tế sau khi trừ các đơn chờ phát: ${tonKhoKhaDung} ${thuoc.donViTinh}). Vui lòng giảm số lượng hoặc đổi thuốc khác!`,
+          );
+        }
+      }
+
+      const maDonThuoc = await this.generateNextMaDonThuoc();
+      const dt = this.donThuocRepo.create({
+        maDonThuoc,
+        benhAnKhamId: body.benhAnKhamId,
+        bacSiKeId: body.bacSiId || 1,
+        trangThai: 'cho_duyet',
+        ghiChu: body.ghiChu,
+      });
+
+      const saved = await this.donThuocRepo.save(dt);
+
+      const chiTietEntities = body.chiTiet.map((item) =>
+        this.donThuocChiTietRepo.create({
+          donThuocId: saved.id,
+          thuocId: item.thuocId,
+          soLuong: item.soLuong,
+          lieuDung: item.lieuDung || '',
+          soNgayDung: item.soNgayDung || 1,
+          ghiChu: item.ghiChu || '',
+        }),
+      );
+
+      await this.donThuocChiTietRepo.save(chiTietEntities);
+      return saved;
+    });
 
     const result = await this.donThuocRepo.findOne({
       where: { id: savedDon.id },
       relations: ['chiTiet', 'chiTiet.thuoc'],
     });
+
+    try {
+      await this.thongBaoService.taoThongBaoTheoRole('nhan_vien_nha_thuoc', {
+        tieuDe: `Đơn thuốc điện tử mới: ${savedDon.maDonThuoc}`,
+        noiDung: `Bác sĩ vừa kê đơn thuốc ${savedDon.maDonThuoc} (${body.chiTiet.length} mặt hàng). Đang chờ bệnh nhân thanh toán viện phí để cấp phát.`,
+        loai: 'cap_phat_thuoc',
+        doiTuongBang: 'don_thuoc',
+        doiTuongId: savedDon.id,
+      });
+      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+        tieuDe: `Đơn thuốc mới cần thu tiền: ${savedDon.maDonThuoc}`,
+        noiDung: `Bác sĩ vừa kê đơn thuốc ${savedDon.maDonThuoc} (${body.chiTiet.length} mặt hàng). Vui lòng kiểm tra và thu viện phí cho bệnh nhân.`,
+        loai: 'can_thanh_toan',
+        doiTuongBang: 'don_thuoc',
+        doiTuongId: savedDon.id,
+      });
+    } catch (e) {
+      console.warn('Lỗi gửi thông báo taoDonThuoc:', e?.message);
+    }
 
     return {
       message: 'Kê đơn thuốc thành công',
@@ -1752,7 +1968,8 @@ export class NhaThuocService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-      const response = await fetch('http://localhost:5001/forecast-medicine', {
+      const pythonMlUrl = process.env.PYTHON_ML_URL || 'http://localhost:5001';
+      const response = await fetch(`${pythonMlUrl.replace(/\/+$/, '')}/forecast-medicine`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -42,7 +42,9 @@ export function AddNhanVienModal({ isOpen, onClose, onSubmit }) {
         setValue('anhDaiDien', res.data, { shouldDirty: true });
         setAvatarMsg({
           type: 'success',
-          text: 'Khuôn mặt hợp lệ và không trùng lặp! Ảnh đã được ghi nhận.',
+          text: res.warning
+            ? res.message
+            : 'Khuôn mặt hợp lệ và không trùng lặp! Ảnh đã được ghi nhận.',
         });
       }
     } catch (err) {

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { apiGet, apiPost, apiPatch, apiDelete } from '../../../services/api';
 import { formatDateTime, formatDate } from '../../../utils/formatDate';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
@@ -29,6 +30,7 @@ import {
   Activity,
   Phone,
   Scan,
+  Download,
 } from 'lucide-react';
 
 const TAB_FILTERS = [
@@ -509,6 +511,87 @@ export default function XetNghiemListPage() {
   const isFiltered =
     filterStatus !== 'all' || filterLoai !== 'all' || filterNhom !== 'all' || filterDateFrom || filterDateTo || searchKeyword;
 
+  // Xuất file Excel Sổ kết quả xét nghiệm & Cận lâm sàng
+  const handleExportExcel = () => {
+    if (!filteredList || filteredList.length === 0) {
+      alert('Không có chỉ định xét nghiệm nào để xuất file!');
+      return;
+    }
+
+    const STATUS_MAP = {
+      cho_lay_mau: 'Chờ lấy mẫu',
+      dang_lay_mau: 'Đang lấy mẫu',
+      dang_xu_ly: 'Đang xử lý / Chờ kết quả',
+      co_ket_qua: 'Đã có kết quả',
+      da_tra_ket_qua: 'Đã trả kết quả',
+      huy: 'Đã hủy',
+    };
+
+    const rows = filteredList.map((cd, idx) => {
+      const bn = cd.benhAnKham?.hoSoBenhAn?.benhNhan || cd.benhNhan || {};
+      const bs = cd.bacSiChiDinh?.nhanVien || cd.benhAnKham?.bacSi?.nhanVien || {};
+      const ktv = cd.kyThuatVien?.nhanVien || cd.kyThuatVien || {};
+      const isCdha = cd.dichVu?.loai === 'cdha';
+
+      let ketQuaStr = cd.ketQua || '';
+      if (typeof ketQuaStr === 'object') {
+        try {
+          ketQuaStr = JSON.stringify(ketQuaStr);
+        } catch {
+          ketQuaStr = '';
+        }
+      }
+
+      return {
+        'STT': idx + 1,
+        'Mã Chỉ Định': cd.id ? `CD-${cd.id}` : '',
+        'Mã Lượt Tiếp Nhận': cd.benhAnKham?.luotTiepNhanId ? `LTN-${cd.benhAnKham.luotTiepNhanId}` : '',
+        'Mã Bệnh Nhân': bn.maBenhNhan || '',
+        'Họ Tên Bệnh Nhân': bn.hoTen || '',
+        'Năm Sinh': bn.ngaySinh ? String(bn.ngaySinh).slice(0, 4) : '',
+        'Giới Tính': bn.gioiTinh === 'nam' ? 'Nam' : bn.gioiTinh === 'nu' ? 'Nữ' : (bn.gioiTinh || ''),
+        'Số Điện Thoại': bn.soDienThoai || '',
+        'Tên Dịch Vụ CLS': cd.dichVu?.tenDichVu || '',
+        'Phân Loại': isCdha ? 'Chẩn đoán hình ảnh' : 'Xét nghiệm phân tích',
+        'Nhóm Dịch Vụ': getServiceGroup(cd.dichVu) || '',
+        'Bác Sĩ Chỉ Định': bs.hoTen || 'Bác sĩ điều trị',
+        'Thời Gian Chỉ Định': cd.thoiGianChiDinh ? formatDateTime(cd.thoiGianChiDinh) : '-',
+        'Thời Gian Trả Kết Quả': cd.thoiGianCoKetQua ? formatDateTime(cd.thoiGianCoKetQua) : '-',
+        'Kỹ Thuật Viên': ktv.hoTen || 'Kỹ thuật viên Lab',
+        'Kết Quả / Kết Luận': cd.ketLuan || ketQuaStr || 'Chưa nhập',
+        'Đánh Giá Y Khoa': cd.batThuong ? 'Cảnh báo bất thường ⚠️' : 'Trong giới hạn bình thường',
+        'Trạng Thái': STATUS_MAP[cd.trangThai] || cd.trangThai || '',
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 14 }, // Mã CĐ
+      { wch: 18 }, // Mã LTN
+      { wch: 14 }, // Mã BN
+      { wch: 22 }, // Họ tên BN
+      { wch: 10 }, // Năm sinh
+      { wch: 10 }, // Giới tính
+      { wch: 14 }, // SĐT
+      { wch: 30 }, // Tên DV
+      { wch: 20 }, // Phân loại
+      { wch: 20 }, // Nhóm DV
+      { wch: 22 }, // Bác sĩ CĐ
+      { wch: 20 }, // TG chỉ định
+      { wch: 20 }, // TG trả kết quả
+      { wch: 22 }, // KTV
+      { wch: 35 }, // Kết quả / Kết luận
+      { wch: 26 }, // Đánh giá
+      { wch: 18 }, // Trạng thái
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'SoXetNghiemCLS');
+    const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    XLSX.writeFile(wb, `So_Xet_Nghiem_CLS_${now}.xlsx`);
+  };
+
   return (
     <div className="space-y-4 pb-10 animate-fade-in">
       {/* 1. Top Header */}
@@ -528,7 +611,16 @@ export default function XetNghiemListPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleExportExcel}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors shadow-2xs active:scale-95 cursor-pointer"
+            title="Xuất Sổ theo dõi và kết quả xét nghiệm / CĐHA ra file Excel"
+          >
+            <Download className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Xuất Sổ Xét Nghiệm (Excel)</span>
+          </button>
+
           <button
             onClick={() => refetch()}
             disabled={isFetching}

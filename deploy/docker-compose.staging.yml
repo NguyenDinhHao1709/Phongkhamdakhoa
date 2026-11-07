@@ -1,0 +1,152 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../database/phong_kham.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [clinic]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [clinic]
+
+  python-ml:
+    image: ${IMAGE_PREFIX}/python-ml:${IMAGE_TAG}
+    build:
+      context: ../python-ml
+    restart: unless-stopped
+    env_file: ./python-ml.staging.env
+    expose: ["5001"]
+    volumes:
+      - uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks: [clinic]
+
+  ai-service:
+    image: ${IMAGE_PREFIX}/ai-service:${IMAGE_TAG}
+    build:
+      context: ../ai-service
+    restart: unless-stopped
+    env_file: ./ai-service.staging.env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      python-ml:
+        condition: service_healthy
+    expose: ["5002"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5002/api/ai/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks: [clinic]
+
+  office-service:
+    image: ${IMAGE_PREFIX}/office-service:${IMAGE_TAG}
+    build:
+      context: ../office-service
+    restart: unless-stopped
+    env_file: ./office-service.staging.env
+    depends_on:
+      mysql:
+        condition: service_healthy
+    expose: ["5003"]
+    volumes:
+      - uploads:/backend/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5003/api/office/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks: [clinic]
+
+  backend:
+    image: ${IMAGE_PREFIX}/backend:${IMAGE_TAG}
+    build:
+      context: ../backend
+    restart: unless-stopped
+    env_file: ./backend.staging.env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+      office-service:
+        condition: service_healthy
+      python-ml:
+        condition: service_healthy
+    expose: ["5000"]
+    volumes:
+      - uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks: [clinic]
+
+  frontend:
+    image: ${IMAGE_PREFIX}/frontend:${IMAGE_TAG}
+    build:
+      context: ../frontend
+    restart: unless-stopped
+    expose: ["80"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [clinic]
+
+  edge:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
+    networks: [clinic]
+
+volumes:
+  mysql_data:
+  redis_data:
+  uploads:
+  caddy_data:
+  caddy_config:
+
+networks:
+  clinic:
+    driver: bridge

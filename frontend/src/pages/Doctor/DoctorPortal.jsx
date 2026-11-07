@@ -7,6 +7,7 @@ const KhamTrucTuyenPage = lazy(() => import('./KhamTrucTuyen/KhamTrucTuyenPage.j
 const HoSoBenhAnQuanLyPage = lazy(() => import('./HoSoBenhAn/HoSoBenhAnQuanLyPage.jsx'));
 const LichHenBacSiPage = lazy(() => import('./LichHen/LichHenBacSiPage.jsx'));
 const ThongKeBacSiPage = lazy(() => import('./ThongKe/ThongKeBacSiPage.jsx'));
+const BaiVietQuanLyPage = lazy(() => import('../Shared/BaiViet/BaiVietQuanLyPage.jsx'));
 
 // Shared staff pages
 const ThongTinCaNhanPage = lazy(() => import('../Receptionist/NhanVienShared/ThongTinCaNhanPage.jsx'));
@@ -34,6 +35,7 @@ export default function DoctorPortal() {
           <Route path="kham-truc-tuyen" element={<KhamTrucTuyenPage />} />
           <Route path="ho-so-benh-an" element={<HoSoBenhAnQuanLyPage />} />
           <Route path="lich-hen" element={<LichHenBacSiPage />} />
+          <Route path="bai-viet" element={<BaiVietQuanLyPage />} />
           <Route path="thong-ke" element={<ThongKeBacSiPage />} />
           
           {/* Chức năng cơ bản chung */}

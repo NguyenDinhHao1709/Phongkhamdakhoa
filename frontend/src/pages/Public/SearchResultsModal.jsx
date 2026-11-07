@@ -6,18 +6,24 @@ import { MedButton } from '../../design-system/components/Button/MedButton';
 export default function SearchResultsModal({ keyword, onClose, onSelectDoctor, onSelectSpecialty, onSelectArticle }) {
   const [activeTab, setActiveTab] = useState('all');
   const [dbDoctors, setDbDoctors] = useState([]);
+  const [dbArticles, setDbArticles] = useState([]);
   const [loadingDoctors, setLoadingDoctors] = useState(true);
 
-  // Fetch real Doctors from MySQL database API
+  // Fetch real Doctors & Articles from MySQL database API
   useEffect(() => {
-    fetchRealDoctors();
+    fetchRealData();
   }, [keyword]);
 
-  const fetchRealDoctors = async () => {
+  const fetchRealData = async () => {
     setLoadingDoctors(true);
     try {
-      const res = await apiGet(`/nhan-vien/bac-si-public?search=${encodeURIComponent(keyword || '')}`);
-      if (res.data) setDbDoctors(res.data);
+      const [docRes, artRes] = await Promise.all([
+        apiGet(`/nhan-vien/bac-si-public?search=${encodeURIComponent(keyword || '')}`).catch(() => ({ data: [] })),
+        apiGet(`/bai-viet/public?keyword=${encodeURIComponent(keyword || '')}&limit=10`).catch(() => ({ data: { items: [] } })),
+      ]);
+      if (docRes?.data) setDbDoctors(docRes.data);
+      const artList = artRes?.data?.items || artRes?.items || [];
+      setDbArticles(artList);
     } catch (err) {
       console.error(err);
     } finally {
@@ -25,7 +31,7 @@ export default function SearchResultsModal({ keyword, onClose, onSelectDoctor, o
     }
   };
 
-  // Catalog Data for Specialties and Articles
+  // Catalog Data for Specialties
   const CHUYEN_KHOA_LIST = [
     { id: 1, ten: 'Nội tổng quát', moTa: 'Tầm soát & khám điều trị bệnh lý chung, huyết áp, tiểu đường, dạ dày' },
     { id: 2, ten: 'Ngoại khoa', moTa: 'Phẫu thuật, tiểu phẫu khâu rửa vết thương, tư vấn phẫu thuật an toàn' },
@@ -37,25 +43,13 @@ export default function SearchResultsModal({ keyword, onClose, onSelectDoctor, o
     { id: 8, ten: 'Mắt', moTa: 'Đo khúc xạ thị lực, khám điều trị tật cận thị, viễn thị, viêm kết mạc' },
   ];
 
-  const BAI_VIET_LIST = [
-    { id: 1, tieuDe: 'Hướng dẫn chăm sóc sức khỏe cho người bị tăng huyết áp tại nhà', danhMuc: 'Tim mạch', tacGia: 'BS. Lê Hoàng Cường', tomTat: 'Cách kiểm soát chỉ số huyết áp bằng chế độ ăn giảm muối, tập thể dục nhẹ nhàng và dùng thuốc đúng giờ.' },
-    { id: 2, tieuDe: 'Cách phòng ngừa bệnh viêm xoang, viêm họng khi thời tiết chuyển mùa', danhMuc: 'Tai Mũi Họng', tacGia: 'BS. Phạm Minh Đức', tomTat: 'Giữ ấm vùng cổ mặt, rửa mũi bằng nước muối sinh lý hàng ngày để tránh vi khuẩn tấn công.' },
-    { id: 3, tieuDe: 'Chế độ dinh dưỡng khoa học giúp trẻ tăng cường sức đề kháng', danhMuc: 'Nhi khoa', tacGia: 'BS. Trần Thị Bình', tomTat: 'Bổ sung đầy đủ Vitamin C, Zinc, Protein và tiêm ngừa đúng lịch giúp bé luôn khỏe mạnh.' },
-    { id: 4, tieuDe: 'Nhận biết sớm triệu chứng thoát vị đĩa đệm và cách phòng tránh', danhMuc: 'Cơ Xương Khớp', tacGia: 'BS. Vũ Hoàng Nam', tomTat: 'Các bài tập kéo giãn cơ lưng, chú ý tư thế ngồi làm việc đúng cách tránh tổn thương cột sống.' },
-    { id: 5, tieuDe: 'Bệnh dạ dày: Nguyên nhân, triệu chứng và lời khuyên ăn uống', danhMuc: 'Nội tổng quát', tacGia: 'BS. Nguyễn Văn An', tomTat: 'Tránh ăn đồ quá chua cay, không thức khuya và duy trì thói quen ăn uống đúng giờ.' },
-  ];
-
   const term = (keyword || '').toLowerCase().trim();
 
   const filteredChuyenKhoa = CHUYEN_KHOA_LIST.filter(
     (item) => item.ten.toLowerCase().includes(term) || item.moTa.toLowerCase().includes(term)
   );
 
-  const filteredBaiViet = BAI_VIET_LIST.filter(
-    (item) => item.tieuDe.toLowerCase().includes(term) || item.danhMuc.toLowerCase().includes(term) || item.tomTat.toLowerCase().includes(term)
-  );
-
-  const totalResults = filteredChuyenKhoa.length + dbDoctors.length + filteredBaiViet.length;
+  const totalResults = filteredChuyenKhoa.length + dbDoctors.length + dbArticles.length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
@@ -195,13 +189,13 @@ export default function SearchResultsModal({ keyword, onClose, onSelectDoctor, o
               )}
 
               {/* Category 3: Bài Viết Y Học */}
-              {(activeTab === 'all' || activeTab === 'bai_viet') && filteredBaiViet.length > 0 && (
+              {(activeTab === 'all' || activeTab === 'bai_viet') && dbArticles.length > 0 && (
                 <div className="space-y-3">
                   <h4 className="text-xs font-bold uppercase text-gray-500 flex items-center gap-1.5">
-                    <BookOpen className="h-4 w-4 text-primary-600" /> Cẩm nang & Bài viết Y tế ({filteredBaiViet.length})
+                    <BookOpen className="h-4 w-4 text-primary-600" /> Cẩm nang & Bài viết Y tế ({dbArticles.length})
                   </h4>
                   <div className="space-y-2">
-                    {filteredBaiViet.map((bv) => (
+                    {dbArticles.map((bv) => (
                       <div
                         key={bv.id}
                         onClick={() => {
@@ -212,12 +206,12 @@ export default function SearchResultsModal({ keyword, onClose, onSelectDoctor, o
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] font-semibold text-primary-700 bg-primary-50 px-2 py-0.5 rounded border border-primary-200">
-                            {bv.danhMuc}
+                            {bv.chuyenKhoa || bv.danhMuc || 'Đa khoa'}
                           </span>
                           <h5 className="font-bold text-gray-900 text-sm">{bv.tieuDe}</h5>
                         </div>
                         <p className="text-xs text-gray-600 line-clamp-2">{bv.tomTat}</p>
-                        <p className="text-[11px] text-gray-400">Tác giả: {bv.tacGia}</p>
+                        <p className="text-[11px] text-gray-400">Tác giả: {bv.tenTacGia || bv.tacGia || 'Bác sĩ phòng khám'}</p>
                       </div>
                     ))}
                   </div>

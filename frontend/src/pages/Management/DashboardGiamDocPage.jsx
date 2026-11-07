@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { apiGet, apiPatch } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { formatCurrency } from '../../utils/formatCurrency';
@@ -8,7 +9,7 @@ import {
   TrendingUp, Users, Calendar, AlertCircle, Clock, CheckCircle2,
   DollarSign, Stethoscope, FileText, ArrowRight, RefreshCw, BarChart3,
   ShieldCheck, Sparkles, FlaskConical, Pill, Star, MessageSquare,
-  AlertTriangle, Send, X, Filter, CalendarDays, Activity, Check
+  AlertTriangle, Send, X, Filter, CalendarDays, Activity, Check, Download
 } from 'lucide-react';
 import {
   ComposedChart, Bar, Line, PieChart, Pie, Cell, Tooltip, XAxis, YAxis,
@@ -147,6 +148,63 @@ export default function DashboardGiamDocPage() {
     }
   };
 
+  const handleExportExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    // 1. Sheet KPI Điều hành toàn viện
+    const summaryRows = [
+      ['BÁO CÁO ĐIỀU HÀNH TỔNG THỂ TOÀN VIỆN - BAN GIÁM ĐỐC'],
+      ['Kỳ báo cáo:', getRangeLabel()],
+      ['Thời gian xuất:', new Date().toLocaleString('vi-VN')],
+      [],
+      ['CHỈ SỐ ĐIỀU HÀNH CHỦ CHỐT', 'GIÁ TRỊ'],
+      ['Tổng số lượt khám bệnh', kpis.tongLuotKham || 0],
+      ['Tổng số chỉ định cận lâm sàng', kpis.tongChiDinhCls || 0],
+      ['Tổng doanh thu viện phí (VNĐ)', kpis.tongDoanhThu || 0],
+      ['Thời gian khám trung bình', `${kpis.thoiGianKhamTb || 12} phút/ca`],
+      ['Tỷ lệ hủy lịch (No-show)', `${kpis.tyLeNoShow || 0}%`],
+      ['Công suất hoạt động phòng khám', `${kpis.congSuatPhongKham || 85}%`],
+      ['Điểm đánh giá hài lòng toàn viện (CSAT)', `${csat.diemCSATToanVien || 5.0} / 5.0 ⭐`],
+      ['Tỷ lệ bệnh nhân hài lòng', csat.tyLeHaiLong || '100%'],
+    ];
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    wsSummary['!cols'] = [{ wch: 38 }, { wch: 25 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'KPI_Dieu_Hanh');
+
+    // 2. Sheet Hoạt động Cận lâm sàng
+    if (clsList.length > 0) {
+      const clsRows = clsList.map((c, idx) => ({
+        'STT': idx + 1,
+        'Nhóm Dịch Vụ CLS': c.nhomDichVu || c.tenNhom || '',
+        'Số Ca Chỉ Định': c.soCa || c.soLuong || 0,
+        'Số Ca Đã Có Kết Quả': c.daXong || c.hoanThanh || 0,
+        'Tỷ Lệ Hoàn Thành': c.tyLe || '100%',
+      }));
+      const wsCls = XLSX.utils.json_to_sheet(clsRows);
+      wsCls['!cols'] = [{ wch: 6 }, { wch: 30 }, { wch: 18 }, { wch: 22 }, { wch: 18 }];
+      XLSX.utils.book_append_sheet(wb, wsCls, 'Hoat_Dong_CLS');
+    }
+
+    // 3. Sheet CSAT & Bảng xếp hạng Bác sĩ
+    const bxhList = csat.bxhBacSi || [];
+    if (bxhList.length > 0) {
+      const bxhRows = bxhList.map((b, idx) => ({
+        'Hạng': idx + 1,
+        'Bác Sĩ': b.tenBacSi || b.hoTen || '',
+        'Chuyên Khoa': b.chuyenKhoa || '',
+        'Điểm Đánh Giá TB': `${b.diemTrungBinh || 5.0} ⭐`,
+        'Tổng Lượt Đánh Giá': b.soLuotDanhGia || 0,
+        'Tỷ Lệ Đạt 5 Sao': b.tyLe5Sao || '100%',
+      }));
+      const wsBxh = XLSX.utils.json_to_sheet(bxhRows);
+      wsBxh['!cols'] = [{ wch: 8 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 18 }];
+      XLSX.utils.book_append_sheet(wb, wsBxh, 'CSAT_Danh_Gia_Toan_Vien');
+    }
+
+    const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    XLSX.writeFile(wb, `Bao_Cao_Dieu_Hanh_Toan_Vien_${nowStr}.xlsx`);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in pb-12">
       {/* ─── HEADER ĐIỀU HÀNH BAN GIÁM ĐỐC ─────────────────────────────── */}
@@ -167,6 +225,15 @@ export default function DashboardGiamDocPage() {
 
           <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
             <button
+              onClick={handleExportExcel}
+              className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-950/20 transition-all whitespace-nowrap shrink-0 cursor-pointer"
+              title="Xuất báo cáo điều hành toàn viện định dạng Excel"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Xuất Excel Điều Hành</span>
+            </button>
+
+            <button
               onClick={() => { refetch(); refetchCsat(); }}
               disabled={isFetching}
               className="flex items-center gap-2 px-3.5 py-2 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs font-bold backdrop-blur-md transition-all border border-white/15 shadow-sm whitespace-nowrap shrink-0"
@@ -178,7 +245,7 @@ export default function DashboardGiamDocPage() {
 
             <button
               onClick={() => navigate('/ban-giam-doc/tai-chinh')}
-              className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-900/20 transition-all whitespace-nowrap shrink-0"
+              className="flex items-center gap-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-900/20 transition-all whitespace-nowrap shrink-0"
             >
               <FileText className="h-3.5 w-3.5" />
               <span>Báo Cáo Toàn Diện</span>

@@ -1,13 +1,16 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param, Query, ParseIntPipe,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query, ParseIntPipe, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { NhaThuocService } from './nha-thuoc.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 
 @ApiTags('Nhà thuốc & Dược sĩ')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('nha-thuoc')
 export class NhaThuocController {
   constructor(private readonly nhaThuocService: NhaThuocService) {}

@@ -18,6 +18,28 @@ const CHAM_CONG_KEY = 'CHAM_CONG_CONFIG';
 
 @Injectable()
 export class ChamCongService {
+  private locks = new Map<string, Promise<any>>();
+
+  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(key) || Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chain = prev.then(() => next);
+    this.locks.set(key, chain);
+
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.locks.get(key) === chain) {
+        this.locks.delete(key);
+      }
+    }
+  }
+
   constructor(
     @InjectRepository(ChamCong)
     private chamCongRepo: Repository<ChamCong>,
@@ -191,174 +213,178 @@ export class ChamCongService {
   // ─── Check-in ────────────────────────────────────────────────────────────────
 
   async checkIn(userId: number, clientIp: string, frameBase64: string, framesB64?: string[]) {
-    const nv = await this.layNhanVienTheoUserId(userId);
+    return this.withLock(`cham_cong:${userId}`, async () => {
+      const nv = await this.layNhanVienTheoUserId(userId);
 
-    const now = new Date();
-    const ngayCham = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const gioVao = now.toTimeString().slice(0, 8);
+      const now = new Date();
+      const ngayCham = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const gioVao = now.toTimeString().slice(0, 8);
 
-    // 1. Phải xem hôm nay có lịch làm việc không
-    const shifts = await this.timLichLamViecHomNay(nv.id, ngayCham);
-    if (!shifts || shifts.length === 0) {
-      throw new BadRequestException('Hôm nay bạn không có lịch phân ca làm việc nên không thể chấm công.');
-    }
+      // 1. Phải xem hôm nay có lịch làm việc không
+      const shifts = await this.timLichLamViecHomNay(nv.id, ngayCham);
+      if (!shifts || shifts.length === 0) {
+        throw new BadRequestException('Hôm nay bạn không có lịch phân ca làm việc nên không thể chấm công.');
+      }
 
-    // 2. Kiểm tra WiFi
-    const ipCheck = await this.kiemTraIpHopLe(clientIp);
-    if (!ipCheck.hopLe) throw new ForbiddenException(ipCheck.lyDo);
+      // 2. Kiểm tra WiFi
+      const ipCheck = await this.kiemTraIpHopLe(clientIp);
+      if (!ipCheck.hopLe) throw new ForbiddenException(ipCheck.lyDo);
 
-    // 3. Đã check-in chưa
-    const existing = await this.chamCongRepo.findOneBy({ nhanVienId: nv.id, ngayCham });
-    if (existing?.gioVao) {
-      throw new BadRequestException(`Bạn đã check-in ngày hôm nay lúc ${existing.gioVao}`);
-    }
+      // 3. Đã check-in chưa
+      const existing = await this.chamCongRepo.findOneBy({ nhanVienId: nv.id, ngayCham });
+      if (existing?.gioVao) {
+        throw new BadRequestException(`Bạn đã check-in ngày hôm nay lúc ${existing.gioVao}`);
+      }
 
-    // 4. Lấy ảnh mẫu nhân viên (chỉ Admin mới có quyền cập nhật)
-    const refPath = await this.layAnhMauNhanVien(nv);
+      // 4. Lấy ảnh mẫu nhân viên (chỉ Admin mới có quyền cập nhật)
+      const refPath = await this.layAnhMauNhanVien(nv);
 
-    // 5. Xác thực khuôn mặt (ngưỡng ~70%, thực thể sống)
-    const faceCheck = await this.xacThucKhuonMat({
-      frameBase64,
-      refImagePath: refPath,
-      framesB64,
-    });
-    if (!faceCheck.hopLe) throw new BadRequestException(faceCheck.lyDo);
-    const doKhop = faceCheck.doKhop;
-
-    // 6. Tính trạng thái: Đi muộn dựa trên ca sớm nhất trong ngày
-    const caSomNhat = shifts[0];
-    const [hBD, mBD] = (caSomNhat.gio_bat_dau || '08:00:00').split(':').map(Number);
-    const [hVao, mVao] = gioVao.split(':').map(Number);
-    const diffMinutes = (hVao * 60 + mVao) - (hBD * 60 + mBD);
-    const trangThai = diffMinutes > 15 ? 'di_muon' : 'dung_gio';
-
-    const anhFilename = await this.luuAnhChamCong(frameBase64, nv.id, 'in');
-    const moTaCa = shifts.length > 1
-      ? `Lịch làm ${shifts.length} ca: ${shifts.map(s => s.ten_ca).join(', ')}`
-      : `Ca: ${caSomNhat.ten_ca} (${caSomNhat.gio_bat_dau.slice(0, 5)} - ${caSomNhat.gio_ket_thuc.slice(0, 5)})`;
-
-    const record = existing ?? this.chamCongRepo.create({ nhanVienId: nv.id, ngayCham });
-    record.gioVao = gioVao;
-    record.caLamViecId = caSomNhat.ca_lam_viec_id;
-    record.anhCheckin = anhFilename;
-    record.ipChamCong = ipCheck.ip;
-    record.doKhop = doKhop;
-    record.trangThai = trangThai;
-    record.ghiChu = moTaCa;
-
-    await this.chamCongRepo.save(record);
-
-    try {
-      const userObj = await this.dataSource.query('SELECT ten_dang_nhap FROM nguoi_dung WHERE id = ?', [userId]);
-      const log = this.nhatKyRepo.create({
-        nguoiDungId: userId,
-        tenNguoiDung: userObj?.[0]?.ten_dang_nhap || `nv_${nv.id}`,
-        vaiTro: nv.chucVu?.toLowerCase().includes('bác') ? 'bac_si' : 'nhan_vien',
-        hanhDong: 'CHECKIN_CHAM_CONG',
-        loaiNhatKy: LoaiNhatKy.INFO,
-        moTa: `Nhân viên "${nv.hoTen}" check-in ca làm việc lúc ${gioVao} (${trangThai === 'di_muon' ? 'Đi muộn' : 'Đúng giờ'}, độ khớp khuôn mặt ${doKhop}%)`,
-        diaChiIp: ipCheck.ip || '127.0.0.1',
-        userAgent: 'Hệ thống nhận diện AI Face',
+      // 5. Xác thực khuôn mặt (ngưỡng ~70%, thực thể sống)
+      const faceCheck = await this.xacThucKhuonMat({
+        frameBase64,
+        refImagePath: refPath,
+        framesB64,
       });
-      await this.nhatKyRepo.save(log);
-    } catch (logErr) {
-      console.error('Lỗi ghi nhật ký check-in:', logErr);
-    }
+      if (!faceCheck.hopLe) throw new BadRequestException(faceCheck.lyDo);
+      const doKhop = faceCheck.doKhop;
 
-    return {
-      success: true,
-      gioVao,
-      trangThai,
-      doKhop,
-      thongBao: `Check-in thành công! (${moTaCa})`,
-    };
+      // 6. Tính trạng thái: Đi muộn dựa trên ca sớm nhất trong ngày
+      const caSomNhat = shifts[0];
+      const [hBD, mBD] = (caSomNhat.gio_bat_dau || '08:00:00').split(':').map(Number);
+      const [hVao, mVao] = gioVao.split(':').map(Number);
+      const diffMinutes = (hVao * 60 + mVao) - (hBD * 60 + mBD);
+      const trangThai = diffMinutes > 15 ? 'di_muon' : 'dung_gio';
+
+      const anhFilename = await this.luuAnhChamCong(frameBase64, nv.id, 'in');
+      const moTaCa = shifts.length > 1
+        ? `Lịch làm ${shifts.length} ca: ${shifts.map(s => s.ten_ca).join(', ')}`
+        : `Ca: ${caSomNhat.ten_ca} (${caSomNhat.gio_bat_dau.slice(0, 5)} - ${caSomNhat.gio_ket_thuc.slice(0, 5)})`;
+
+      const record = existing ?? this.chamCongRepo.create({ nhanVienId: nv.id, ngayCham });
+      record.gioVao = gioVao;
+      record.caLamViecId = caSomNhat.ca_lam_viec_id;
+      record.anhCheckin = anhFilename;
+      record.ipChamCong = ipCheck.ip;
+      record.doKhop = doKhop;
+      record.trangThai = trangThai;
+      record.ghiChu = moTaCa;
+
+      await this.chamCongRepo.save(record);
+
+      try {
+        const userObj = await this.dataSource.query('SELECT ten_dang_nhap FROM nguoi_dung WHERE id = ?', [userId]);
+        const log = this.nhatKyRepo.create({
+          nguoiDungId: userId,
+          tenNguoiDung: userObj?.[0]?.ten_dang_nhap || `nv_${nv.id}`,
+          vaiTro: nv.chucVu?.toLowerCase().includes('bác') ? 'bac_si' : 'nhan_vien',
+          hanhDong: 'CHECKIN_CHAM_CONG',
+          loaiNhatKy: LoaiNhatKy.INFO,
+          moTa: `Nhân viên "${nv.hoTen}" check-in ca làm việc lúc ${gioVao} (${trangThai === 'di_muon' ? 'Đi muộn' : 'Đúng giờ'}, độ khớp khuôn mặt ${doKhop}%)`,
+          diaChiIp: ipCheck.ip || '127.0.0.1',
+          userAgent: 'Hệ thống nhận diện AI Face',
+        });
+        await this.nhatKyRepo.save(log);
+      } catch (logErr) {
+        console.error('Lỗi ghi nhật ký check-in:', logErr);
+      }
+
+      return {
+        success: true,
+        gioVao,
+        trangThai,
+        doKhop,
+        thongBao: `Check-in thành công! (${moTaCa})`,
+      };
+    });
   }
 
   // ─── Check-out ───────────────────────────────────────────────────────────────
 
   async checkOut(userId: number, clientIp: string, frameBase64: string, framesB64?: string[]) {
-    const nv = await this.layNhanVienTheoUserId(userId);
+    return this.withLock(`cham_cong:${userId}`, async () => {
+      const nv = await this.layNhanVienTheoUserId(userId);
 
-    const now = new Date();
-    const ngayCham = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const gioRa = now.toTimeString().slice(0, 8);
+      const now = new Date();
+      const ngayCham = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const gioRa = now.toTimeString().slice(0, 8);
 
-    // 1. Phải xem hôm nay có lịch làm việc không
-    const shifts = await this.timLichLamViecHomNay(nv.id, ngayCham);
-    if (!shifts || shifts.length === 0) {
-      throw new BadRequestException('Hôm nay bạn không có lịch phân ca làm việc.');
-    }
+      // 1. Phải xem hôm nay có lịch làm việc không
+      const shifts = await this.timLichLamViecHomNay(nv.id, ngayCham);
+      if (!shifts || shifts.length === 0) {
+        throw new BadRequestException('Hôm nay bạn không có lịch phân ca làm việc.');
+      }
 
-    // 2. Phải check-in trước
-    const record = await this.chamCongRepo.findOneBy({ nhanVienId: nv.id, ngayCham });
-    if (!record?.gioVao) {
-      throw new BadRequestException('Bạn chưa check-in hôm nay. Vui lòng check-in vào ca trước.');
-    }
-    if (record.gioRa) {
-      throw new BadRequestException(`Bạn đã check-out ngày hôm nay lúc ${record.gioRa}`);
-    }
+      // 2. Phải check-in trước
+      const record = await this.chamCongRepo.findOneBy({ nhanVienId: nv.id, ngayCham });
+      if (!record?.gioVao) {
+        throw new BadRequestException('Bạn chưa check-in hôm nay. Vui lòng check-in vào ca trước.');
+      }
+      if (record.gioRa) {
+        throw new BadRequestException(`Bạn đã check-out ngày hôm nay lúc ${record.gioRa}`);
+      }
 
-    // 3. Kiểm tra WiFi
-    const ipCheck = await this.kiemTraIpHopLe(clientIp);
-    if (!ipCheck.hopLe) throw new ForbiddenException(ipCheck.lyDo);
+      // 3. Kiểm tra WiFi
+      const ipCheck = await this.kiemTraIpHopLe(clientIp);
+      if (!ipCheck.hopLe) throw new ForbiddenException(ipCheck.lyDo);
 
-    // 4. Lấy ảnh mẫu (chỉ Admin mới có quyền cập nhật)
-    const refPath = await this.layAnhMauNhanVien(nv);
+      // 4. Lấy ảnh mẫu (chỉ Admin mới có quyền cập nhật)
+      const refPath = await this.layAnhMauNhanVien(nv);
 
-    // 5. Xác thực khuôn mặt
-    const faceCheck = await this.xacThucKhuonMat({
-      frameBase64,
-      refImagePath: refPath,
-      framesB64,
-    });
-    if (!faceCheck.hopLe) throw new BadRequestException(faceCheck.lyDo);
-
-    // 6. Tính thời gian về so với ca muộn nhất
-    const gioKetThucMuonNhat = shifts.reduce(
-      (max, s) => (s.gio_ket_thuc > max ? s.gio_ket_thuc : max),
-      shifts[0].gio_ket_thuc,
-    );
-    const [hKT, mKT] = gioKetThucMuonNhat.split(':').map(Number);
-    const [hRa, mRa] = gioRa.split(':').map(Number);
-    const diffOutMinutes = (hKT * 60 + mKT) - (hRa * 60 + mRa);
-
-    let extraNote = '';
-    if (diffOutMinutes > 15) {
-      extraNote = ` (Về sớm ${diffOutMinutes} phút so với ca kết thúc lúc ${gioKetThucMuonNhat.slice(0, 5)})`;
-    }
-
-    const anhFilename = await this.luuAnhChamCong(frameBase64, nv.id, 'out');
-    record.gioRa = gioRa;
-    record.anhCheckout = anhFilename;
-    if (extraNote) {
-      record.ghiChu = (record.ghiChu ? record.ghiChu + ' | ' : '') + extraNote.trim();
-    }
-
-    await this.chamCongRepo.save(record);
-
-    try {
-      const userObj = await this.dataSource.query('SELECT ten_dang_nhap FROM nguoi_dung WHERE id = ?', [userId]);
-      const log = this.nhatKyRepo.create({
-        nguoiDungId: userId,
-        tenNguoiDung: userObj?.[0]?.ten_dang_nhap || `nv_${nv.id}`,
-        vaiTro: nv.chucVu?.toLowerCase().includes('bác') ? 'bac_si' : 'nhan_vien',
-        hanhDong: 'CHECKOUT_CHAM_CONG',
-        loaiNhatKy: LoaiNhatKy.INFO,
-        moTa: `Nhân viên "${nv.hoTen}" check-out ca làm việc lúc ${gioRa} (độ khớp ${faceCheck.doKhop}%)${extraNote}`,
-        diaChiIp: ipCheck.ip || '127.0.0.1',
-        userAgent: 'Hệ thống nhận diện AI Face',
+      // 5. Xác thực khuôn mặt
+      const faceCheck = await this.xacThucKhuonMat({
+        frameBase64,
+        refImagePath: refPath,
+        framesB64,
       });
-      await this.nhatKyRepo.save(log);
-    } catch (logErr) {
-      console.error('Lỗi ghi nhật ký check-out:', logErr);
-    }
+      if (!faceCheck.hopLe) throw new BadRequestException(faceCheck.lyDo);
 
-    return {
-      success: true,
-      gioRa,
-      doKhop: faceCheck.doKhop,
-      thongBao: 'Check-out hoàn tất ca làm việc thành công!',
-    };
+      // 6. Tính thời gian về so với ca muộn nhất
+      const gioKetThucMuonNhat = shifts.reduce(
+        (max, s) => (s.gio_ket_thuc > max ? s.gio_ket_thuc : max),
+        shifts[0].gio_ket_thuc,
+      );
+      const [hKT, mKT] = gioKetThucMuonNhat.split(':').map(Number);
+      const [hRa, mRa] = gioRa.split(':').map(Number);
+      const diffOutMinutes = (hKT * 60 + mKT) - (hRa * 60 + mRa);
+
+      let extraNote = '';
+      if (diffOutMinutes > 15) {
+        extraNote = ` (Về sớm ${diffOutMinutes} phút so với ca kết thúc lúc ${gioKetThucMuonNhat.slice(0, 5)})`;
+      }
+
+      const anhFilename = await this.luuAnhChamCong(frameBase64, nv.id, 'out');
+      record.gioRa = gioRa;
+      record.anhCheckout = anhFilename;
+      if (extraNote) {
+        record.ghiChu = (record.ghiChu ? record.ghiChu + ' | ' : '') + extraNote.trim();
+      }
+
+      await this.chamCongRepo.save(record);
+
+      try {
+        const userObj = await this.dataSource.query('SELECT ten_dang_nhap FROM nguoi_dung WHERE id = ?', [userId]);
+        const log = this.nhatKyRepo.create({
+          nguoiDungId: userId,
+          tenNguoiDung: userObj?.[0]?.ten_dang_nhap || `nv_${nv.id}`,
+          vaiTro: nv.chucVu?.toLowerCase().includes('bác') ? 'bac_si' : 'nhan_vien',
+          hanhDong: 'CHECKOUT_CHAM_CONG',
+          loaiNhatKy: LoaiNhatKy.INFO,
+          moTa: `Nhân viên "${nv.hoTen}" check-out ca làm việc lúc ${gioRa} (độ khớp ${faceCheck.doKhop}%)${extraNote}`,
+          diaChiIp: ipCheck.ip || '127.0.0.1',
+          userAgent: 'Hệ thống nhận diện AI Face',
+        });
+        await this.nhatKyRepo.save(log);
+      } catch (logErr) {
+        console.error('Lỗi ghi nhật ký check-out:', logErr);
+      }
+
+      return {
+        success: true,
+        gioRa,
+        doKhop: faceCheck.doKhop,
+        thongBao: 'Check-out hoàn tất ca làm việc thành công!',
+      };
+    });
   }
 
   // ─── Trạng thái hôm nay ─────────────────────────────────────────────────────

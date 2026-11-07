@@ -329,7 +329,7 @@ export default function DatLichKhamPage() {
                 gioHen: selectedSlot,
                 chuyenKhoa: selectedChuyenKhoa,
                 bacSi: selectedDoctor,
-                phongKham: selectedDoctor?.phongKham,
+                phongKham: hinhThuc === 'truc_tuyen' ? null : (res.data?.phongKham || selectedDoctor?.phongKham),
                 benhNhan: res.data?.benhNhan || { hoTen: user?.hoTen || 'Bệnh nhân', soDienThoai: user?.soDienThoai },
                 hinhThuc: hinhThuc,
                 soTienThanhToan: paymentModal.soTien || res.data?.soTienThanhToan,

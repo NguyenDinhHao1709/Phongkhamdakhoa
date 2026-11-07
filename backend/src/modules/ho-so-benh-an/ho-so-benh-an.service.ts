@@ -53,6 +53,47 @@ export class KetThucKhamDto {
 // ──── SERVICE ──────────────────────────────────────────────
 @Injectable()
 export class HoSoBenhAnService {
+  private locks = new Map<string, Promise<any>>();
+  private lastMaHsSeq = 0;
+
+  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(key) || Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chain = prev.then(() => next);
+    this.locks.set(key, chain);
+
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.locks.get(key) === chain) {
+        this.locks.delete(key);
+      }
+    }
+  }
+
+  private async generateNextMaHoSo(): Promise<string> {
+    return this.withLock('seq:ma_ho_so', async () => {
+      const year = new Date().getFullYear();
+      const prefix = `HS${year}`;
+      if (this.lastMaHsSeq === 0) {
+        const rows: any[] = await this.hoSoRepo.manager.query(
+          `SELECT MAX(CAST(SUBSTRING(ma_ho_so, 7) AS UNSIGNED)) AS maxNum FROM ho_so_benh_an WHERE ma_ho_so LIKE ?`,
+          [`${prefix}%`],
+        );
+        const dbMax = Number(rows?.[0]?.maxNum || 0);
+        const totalCount = await this.hoSoRepo.count();
+        this.lastMaHsSeq = Math.max(dbMax, totalCount);
+      }
+      this.lastMaHsSeq += 1;
+      return MaGeneratorService.generateMaHoSo(this.lastMaHsSeq);
+    });
+  }
+
   constructor(
     @InjectRepository(HoSoBenhAn)        private hoSoRepo: Repository<HoSoBenhAn>,
     @InjectRepository(BenhAnKham)        private benhAnRepo: Repository<BenhAnKham>,
@@ -626,16 +667,18 @@ export class HoSoBenhAnService {
 
   // ─── Lấy/tạo hồ sơ bệnh án cho bệnh nhân ────────────────
   async getOrCreateHoSo(benhNhanId: number): Promise<HoSoBenhAn> {
-    let hoSo = await this.hoSoRepo.findOne({ where: { benhNhanId } });
-    if (!hoSo) {
-      const count = await this.hoSoRepo.count();
-      hoSo = this.hoSoRepo.create({
-        maHoSo: MaGeneratorService.generateMaHoSo(count + 1),
-        benhNhanId,
-      });
-      hoSo = await this.hoSoRepo.save(hoSo);
-    }
-    return hoSo;
+    return this.withLock(`hoso:bn:${benhNhanId}`, async () => {
+      let hoSo = await this.hoSoRepo.findOne({ where: { benhNhanId } });
+      if (!hoSo) {
+        const maHoSo = await this.generateNextMaHoSo();
+        hoSo = this.hoSoRepo.create({
+          maHoSo,
+          benhNhanId,
+        });
+        hoSo = await this.hoSoRepo.save(hoSo);
+      }
+      return hoSo;
+    });
   }
 
   // ─── Xem lịch sử khám của bệnh nhân (Bác sĩ tra cứu EMR) ────
@@ -658,34 +701,36 @@ export class HoSoBenhAnService {
 
   // ─── Tạo phiếu khám mới ──────────────────────────────────
   async taoBenhAnKham(nguoiDungId: number, benhNhanId: number, dto: TaoBenhAnKhamDto) {
-    const hoSo = await this.getOrCreateHoSo(benhNhanId);
+    return this.withLock(`bak:visit:${dto.luotTiepNhanId}`, async () => {
+      const hoSo = await this.getOrCreateHoSo(benhNhanId);
 
-    // Nếu lượt tiếp nhận đã có phiếu khám thì trả về phiếu hiện tại
-    let bak = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: dto.luotTiepNhanId } });
-    if (bak) {
-      return { data: bak, message: 'Lấy phiếu khám hiện tại thành công' };
-    }
-
-    let bacSiTableId: number | null = null;
-    if (nguoiDungId) {
-      const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId } });
-      if (nv) {
-        const bs = await this.bacSiRepo.findOne({ where: { nhanVienId: nv.id } });
-        if (bs) bacSiTableId = bs.id;
-        else bacSiTableId = nv.id;
+      // Nếu lượt tiếp nhận đã có phiếu khám thì trả về phiếu hiện tại
+      let bak = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: dto.luotTiepNhanId } });
+      if (bak) {
+        return { data: bak, message: 'Lấy phiếu khám hiện tại thành công' };
       }
-    }
 
-    bak = this.benhAnRepo.create({
-      hoSoBenhAnId: hoSo.id,
-      luotTiepNhanId: dto.luotTiepNhanId,
-      bacSiId: bacSiTableId || nguoiDungId,
-      trieuChung: dto.trieuChung,
-      chanDoanSoBo: dto.chanDoanSoBo,
-      hinhThucKham: dto.hinhThucKham || 'truc_tiep',
+      let bacSiTableId: number | null = null;
+      if (nguoiDungId) {
+        const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId } });
+        if (nv) {
+          const bs = await this.bacSiRepo.findOne({ where: { nhanVienId: nv.id } });
+          if (bs) bacSiTableId = bs.id;
+          else bacSiTableId = nv.id;
+        }
+      }
+
+      bak = this.benhAnRepo.create({
+        hoSoBenhAnId: hoSo.id,
+        luotTiepNhanId: dto.luotTiepNhanId,
+        bacSiId: bacSiTableId || nguoiDungId,
+        trieuChung: dto.trieuChung,
+        chanDoanSoBo: dto.chanDoanSoBo,
+        hinhThucKham: dto.hinhThucKham || 'truc_tiep',
+      });
+      const saved = await this.benhAnRepo.save(bak);
+      return { data: saved, message: 'Tạo phiếu khám thành công' };
     });
-    const saved = await this.benhAnRepo.save(bak);
-    return { data: saved, message: 'Tạo phiếu khám thành công' };
   }
 
   // ─── Lấy phiếu khám theo lượt tiếp nhận ──────────────────
@@ -726,6 +771,22 @@ export class HoSoBenhAnService {
       throw new BadRequestException({
         code: 'CHUA_NHAP_CHAN_DOAN_XAC_DINH',
         message: 'Bác sĩ bắt buộc phải nhập Chẩn đoán xác định (kèm mã chuẩn ICD-10) trước khi kết thúc ca khám.',
+      });
+    }
+
+    // Chốt chặn an toàn lâm sàng: Kiểm tra các chỉ định Cận lâm sàng (Xét nghiệm/CĐHA) chưa có kết quả
+    const dsCls = await this.clsRepo.find({
+      where: { benhAnKhamId: bak.id },
+      relations: ['dichVu'],
+    });
+    const clsChuaXong = dsCls.filter(
+      (c) => ![TrangThaiChiDinh.CO_KET_QUA, TrangThaiChiDinh.HUY].includes(c.trangThai as TrangThaiChiDinh),
+    );
+    if (clsChuaXong.length > 0) {
+      const tenDv = clsChuaXong.map((c) => c.dichVu?.tenDichVu || `CLS #${c.id}`).join(', ');
+      throw new BadRequestException({
+        code: 'CON_CHI_DINH_CLS_CHUA_CO_KET_QUA',
+        message: `Chưa thể kết thúc khám vì còn ${clsChuaXong.length} chỉ định Cận lâm sàng chưa trả kết quả (${tenDv}). Vui lòng chờ Kỹ thuật viên trả kết quả hoặc hủy chỉ định nếu không thực hiện.`,
       });
     }
 

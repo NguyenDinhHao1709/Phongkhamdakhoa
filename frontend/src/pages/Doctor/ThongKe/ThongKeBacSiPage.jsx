@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import * as XLSX from 'xlsx';
 import useAuthStore from '../../../store/authStore';
 import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
@@ -187,55 +188,77 @@ export default function ThongKeBacSiPage() {
     setSearchReview('');
   };
 
-  // Xuất file CSV báo cáo hiệu suất bác sĩ
-  const handleExportCSV = () => {
-    const rows = [
+  // Xuất file Excel báo cáo hiệu suất bác sĩ (.xlsx)
+  const handleExportExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    // 1. Sheet Tổng quan
+    const summaryRows = [
       ['BÁO CÁO HOẠT ĐỘNG KHÁM BỆNH & HIỆU SUẤT LÂM SÀNG BÁC SĨ'],
-      ['Bác sĩ phụ trách', stats.thongTinBacSi?.hoTen || ''],
-      ['Chuyên khoa', stats.thongTinBacSi?.chuyenKhoa || ''],
-      ['Kỳ báo cáo', timeRangeLabel],
-      ['Hình thức khám', hinhThucLabel],
-      [''],
-      ['1. CHỈ SỐ TỔNG QUAN', 'GIÁ TRỊ'],
-      ['Tổng bệnh nhân đã khám', stats.tongBenhNhanDaKham],
-      ['Số ca đang chờ khám', stats.dangChoKham],
-      ['Thời gian khám trung bình', stats.thoiGianKhamTrungBinh],
-      ['Tổng đơn thuốc đã kê', stats.tongDonThuocKe],
-      ['Tổng chỉ định cận lâm sàng', stats.tongChiDinhCLS],
-      ['Tỷ lệ hoàn thành ca khám', stats.tyLeHoanThanh],
+      ['Bác sĩ phụ trách:', stats.thongTinBacSi?.hoTen || ''],
+      ['Chuyên khoa:', stats.thongTinBacSi?.chuyenKhoa || ''],
+      ['Kỳ báo cáo:', timeRangeLabel],
+      ['Hình thức khám:', hinhThucLabel],
+      ['Ngày xuất báo cáo:', new Date().toLocaleString('vi-VN')],
+      [],
+      ['CHỈ SỐ TỔNG QUAN', 'GIÁ TRỊ'],
+      ['Tổng bệnh nhân đã khám', stats.tongBenhNhanDaKham || 0],
+      ['Số ca đang chờ khám', stats.dangChoKham || 0],
+      ['Thời gian khám trung bình', stats.thoiGianKhamTrungBinh || '0 phút'],
+      ['Tổng đơn thuốc đã kê', stats.tongDonThuocKe || 0],
+      ['Tổng chỉ định cận lâm sàng', stats.tongChiDinhCLS || 0],
+      ['Tỷ lệ hoàn thành ca khám', stats.tyLeHoanThanh || '100%'],
       ['Tỷ lệ bệnh nhân tái khám', stats.tyLeTaiKham || '0.0%'],
       ['Tỷ lệ bệnh nhân hủy lịch (No-show)', stats.tyLeNoShow || '0.0%'],
       ['Điểm đánh giá hài lòng (CSAT)', stats.diemHaiLongCSAT || '5.0/5.0'],
-      [''],
-      ['2. DANH SÁCH CHI TIẾT CÁC CA KHÁM'],
-      ['STT', 'Mã Ca', 'Mã BN', 'Họ Tên Bệnh Nhân', 'Tuổi', 'Giới Tính', 'Thời Gian', 'Hình Thức', 'Chẩn Đoán', 'Trạng Thái', 'Loại Khám'],
     ];
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    wsSummary['!cols'] = [{ wch: 35 }, { wch: 25 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Tong_Quan_Hieu_Suat');
 
-    (stats.danhSachCaKham || []).forEach((c, idx) => {
-      rows.push([
-        idx + 1,
-        c.maCa,
-        c.maBenhNhan,
-        c.tenBenhNhan,
-        c.tuoi,
-        c.gioiTinh,
-        `${c.ngayKham} ${c.gioKham}`,
-        c.hinhThuc,
-        `"${(c.chanDoan || '').replace(/"/g, '""')}"`,
-        c.trangThai,
-        c.taiKham,
-      ]);
-    });
+    // 2. Sheet Danh sách ca khám
+    const caKhamData = (filteredCaKham || []).map((c, idx) => ({
+      'STT': idx + 1,
+      'Mã Ca': c.maCa || '',
+      'Mã BN': c.maBenhNhan || '',
+      'Họ Tên Bệnh Nhân': c.tenBenhNhan || '',
+      'Tuổi': c.tuoi || '',
+      'Giới Tính': c.gioiTinh || '',
+      'Ngày Khám': c.ngayKham || '',
+      'Giờ Khám': c.gioKham || '',
+      'Hình Thức': c.hinhThuc || '',
+      'Chẩn Đoán': c.chanDoan || '',
+      'Trạng Thái': c.trangThai || '',
+      'Loại Khám': c.taiKham || '',
+    }));
+    const wsCaKham = XLSX.utils.json_to_sheet(caKhamData);
+    wsCaKham['!cols'] = [
+      { wch: 6 }, { wch: 16 }, { wch: 14 }, { wch: 22 }, { wch: 8 },
+      { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 35 },
+      { wch: 16 }, { wch: 14 }
+    ];
+    XLSX.utils.book_append_sheet(wb, wsCaKham, 'Danh_Sach_Ca_Kham');
 
-    const csvContent = '\uFEFF' + rows.map((e) => e.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `Bao_Cao_Bac_Si_${stats.thongTinBacSi?.hoTen || 'BS'}_${timeRange}_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // 3. Sheet Đánh giá từ bệnh nhân
+    const reviewData = (filteredNhanXet || []).map((r, idx) => ({
+      'STT': idx + 1,
+      'Bệnh Nhân': r.tenBenhNhan || 'Ẩn danh',
+      'Điểm Đánh Giá BS': r.diemBacSi ? `${r.diemBacSi}/5 ⭐` : '',
+      'Tiêu Chí Hài Lòng': Array.isArray(r.tieuChiHaiLong) ? r.tieuChiHaiLong.join(', ') : '',
+      'Ý Kiến Nhận Xét': r.nhanXet || '',
+      'Thời Gian': r.ngayDanhGia ? new Date(r.ngayDanhGia).toLocaleString('vi-VN') : '',
+      'Phản Hồi Ban Giám Đốc': r.phanHoiGiamDoc || '',
+    }));
+    if (reviewData.length > 0) {
+      const wsReview = XLSX.utils.json_to_sheet(reviewData);
+      wsReview['!cols'] = [
+        { wch: 6 }, { wch: 20 }, { wch: 16 }, { wch: 30 }, { wch: 40 }, { wch: 18 }, { wch: 30 }
+      ];
+      XLSX.utils.book_append_sheet(wb, wsReview, 'Danh_Gia_CSAT');
+    }
+
+    const fileName = `Bao_Cao_Bac_Si_${(stats.thongTinBacSi?.hoTen || 'BS').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
   };
 
   return (
@@ -291,9 +314,9 @@ export default function ThongKeBacSiPage() {
             variant="primary"
             size="sm"
             leftIcon={<FileSpreadsheet className="h-4 w-4" />}
-            onClick={handleExportCSV}
+            onClick={handleExportExcel}
           >
-            Xuất Excel/CSV
+            Xuất Excel
           </MedButton>
         </div>
       </div>

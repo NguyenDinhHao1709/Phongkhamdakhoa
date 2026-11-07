@@ -87,7 +87,9 @@ export function EditNhanVienModal({ isOpen, onClose, onSubmit, nhanVienId }) {
         setValue('anhDaiDien', res.data, { shouldDirty: true });
         setAvatarMsg({
           type: 'success',
-          text: 'Khuôn mặt hợp lệ và không trùng lặp! Bấm "Lưu thay đổi" để áp dụng vào hệ thống.',
+          text: res.warning
+            ? res.message
+            : 'Khuôn mặt hợp lệ và không trùng lặp! Bấm "Lưu thay đổi" để áp dụng vào hệ thống.',
         });
       }
     } catch (err) {

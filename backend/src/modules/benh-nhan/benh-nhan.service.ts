@@ -9,6 +9,47 @@ import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 
 @Injectable()
 export class BenhNhanService {
+  private locks = new Map<string, Promise<any>>();
+  private lastMaBnSeq = 0;
+
+  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(key) || Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chain = prev.then(() => next);
+    this.locks.set(key, chain);
+
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.locks.get(key) === chain) {
+        this.locks.delete(key);
+      }
+    }
+  }
+
+  private async generateNextMaBenhNhan(): Promise<string> {
+    return this.withLock('seq:ma_benh_nhan', async () => {
+      if (this.lastMaBnSeq === 0) {
+        const rows: any[] = await this.repo.manager.query(
+          `SELECT COALESCE(MAX(CAST(SUBSTRING(ma_benh_nhan, 3) AS UNSIGNED)), 0) AS maxNum,
+                  COUNT(*) AS totalCnt
+           FROM benh_nhan
+           WHERE ma_benh_nhan REGEXP '^BN[0-9]+$'`,
+        );
+        const maxNum = Number(rows?.[0]?.maxNum || 0);
+        const totalCnt = Number(rows?.[0]?.totalCnt || 0);
+        this.lastMaBnSeq = Math.max(maxNum, totalCnt);
+      }
+      this.lastMaBnSeq += 1;
+      return MaGeneratorService.generateMaBenhNhan(this.lastMaBnSeq);
+    });
+  }
+
   constructor(
     @InjectRepository(BenhNhan)
     private repo: Repository<BenhNhan>,
@@ -115,25 +156,26 @@ export class BenhNhanService {
 
   // ─── TẠO MỚI ────────────────────────────────────────────────
   async create(dto: TaoBenhNhanDto) {
-    // Kiểm tra CMND trùng
-    if (dto.soCmnd) {
-      const existing = await this.repo.findOne({ where: { soCmnd: dto.soCmnd } });
-      if (existing) {
-        throw new ConflictException({ code: 'CMND_DA_TON_TAI', message: 'Số CMND/CCCD đã được đăng ký' });
+    return this.withLock(`create_bn:${dto.soCmnd || dto.soDienThoai || 'new'}`, async () => {
+      // Kiểm tra CMND trùng
+      if (dto.soCmnd) {
+        const existing = await this.repo.findOne({ where: { soCmnd: dto.soCmnd } });
+        if (existing) {
+          throw new ConflictException({ code: 'CMND_DA_TON_TAI', message: 'Số CMND/CCCD đã được đăng ký' });
+        }
       }
-    }
 
-    // Sinh mã bệnh nhân tự động
-    const count = await this.repo.count();
-    const maBenhNhan = MaGeneratorService.generateMaBenhNhan(count + 1);
+      // Sinh mã bệnh nhân nguyên tử tự động
+      const maBenhNhan = await this.generateNextMaBenhNhan();
 
-    const payload = { ...dto, diUng: dto.diUng ?? dto.diUngThuoc };
-    delete (payload as any).diUngThuoc;
+      const payload = { ...dto, diUng: dto.diUng ?? dto.diUngThuoc };
+      delete (payload as any).diUngThuoc;
 
-    const bn = this.repo.create({ ...payload, maBenhNhan });
-    const saved = await this.repo.save(bn);
+      const bn = this.repo.create({ ...payload, maBenhNhan });
+      const saved = await this.repo.save(bn);
 
-    return { data: saved, message: 'Tạo hồ sơ bệnh nhân thành công' };
+      return { data: saved, message: 'Tạo hồ sơ bệnh nhân thành công' };
+    });
   }
 
   // ─── CẬP NHẬT ───────────────────────────────────────────────

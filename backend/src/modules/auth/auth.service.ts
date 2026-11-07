@@ -39,12 +39,12 @@ export class AuthService {
     private dataSource: DataSource,
   ) {
     this.mailer = nodemailer.createTransport({
-      host: config.get('MAIL_HOST'),
-      port: config.get<number>('MAIL_PORT', 587),
+      host: config.get('MAIL_HOST', 'smtp.gmail.com'),
+      port: Number(config.get('MAIL_PORT', 587)),
       secure: false,
       auth: {
-        user: config.get('MAIL_USER'),
-        pass: config.get('MAIL_PASS'),
+        user: (config.get<string>('MAIL_USER') || '').trim(),
+        pass: (config.get<string>('MAIL_PASS') || '').replace(/\s+/g, ''),
       },
     });
   }
@@ -168,17 +168,7 @@ export class AuthService {
     }
 
     // Lấy danh sách quyền hạn thực tế của vai trò
-    let quyenHans: string[] = [];
-    if (nguoiDung.vaiTro?.maVaiTro === 'quan_tri_vien_cap_cao') {
-      const allPerms = await this.dataSource.getRepository(QuyenHan).find();
-      quyenHans = allPerms.map(p => p.maQuyen);
-    } else if (nguoiDung.vaiTro?.id) {
-      const perms = await this.dataSource.getRepository(VaiTroQuyenHan).find({
-        where: { vaiTroId: nguoiDung.vaiTro.id },
-        relations: ['quyenHan'],
-      });
-      quyenHans = perms.map(p => p.quyenHan?.maQuyen).filter(Boolean);
-    }
+    const quyenHans = await this.layQuyenHanVaiTro(nguoiDung.vaiTro);
 
     const tokens = await this.taoTokens(nguoiDung);
 
@@ -466,6 +456,25 @@ export class AuthService {
   }
 
   // ─── LẤY THÔNG TIN USER HIỆN TẠI (GET ME) ─────────────────────
+  // Danh sách mã quyền thực tế của vai trò (Super Admin gốc luôn có toàn quyền)
+  private async layQuyenHanVaiTro(vaiTro?: { id: number; maVaiTro: string }): Promise<string[]> {
+    if (vaiTro?.maVaiTro === 'quan_tri_vien_cap_cao') {
+      const allPerms = await this.dataSource.getRepository(QuyenHan).find();
+      return allPerms.map(p => p.maQuyen);
+    }
+    if (!vaiTro?.id) return [];
+    const perms = await this.dataSource.getRepository(VaiTroQuyenHan).find({
+      where: { vaiTroId: vaiTro.id },
+      relations: ['quyenHan'],
+    });
+    return perms.map(p => p.quyenHan?.maQuyen).filter(Boolean);
+  }
+
+  async getMyPermissions(userId: number) {
+    const nguoiDung = await this.nguoiDungRepo.findOne({ where: { id: userId }, relations: ['vaiTro'] });
+    return { quyenHans: await this.layQuyenHanVaiTro(nguoiDung?.vaiTro) };
+  }
+
   async getMe(userId: number) {
     const nguoiDung = await this.nguoiDungRepo.findOne({
       where: { id: userId },
@@ -514,17 +523,7 @@ export class AuthService {
     }
 
     // Lấy danh sách quyền hạn thực tế của vai trò
-    let quyenHans: string[] = [];
-    if (nguoiDung.vaiTro?.maVaiTro === 'quan_tri_vien_cap_cao') {
-      const allPerms = await this.dataSource.getRepository(QuyenHan).find();
-      quyenHans = allPerms.map(p => p.maQuyen);
-    } else if (nguoiDung.vaiTro?.id) {
-      const perms = await this.dataSource.getRepository(VaiTroQuyenHan).find({
-        where: { vaiTroId: nguoiDung.vaiTro.id },
-        relations: ['quyenHan'],
-      });
-      quyenHans = perms.map(p => p.quyenHan?.maQuyen).filter(Boolean);
-    }
+    const quyenHans = await this.layQuyenHanVaiTro(nguoiDung.vaiTro);
 
     return {
       id: nguoiDung.id,

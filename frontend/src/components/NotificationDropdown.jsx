@@ -134,7 +134,9 @@ export function NotificationDropdown() {
         navigate(chiDinhId ? `/bac-si/phong-kham?chiDinhId=${chiDinhId}&tab=xn` : '/bac-si/phong-kham');
       }
     } else if (item.loai === 'can_thanh_toan') {
-      if (user?.vaiTro === 'thu_ngan') {
+      if (item.doiTuongBang === 'yeu_cau_nhap_kho' || item.doiTuongBang === 'phieu_chi_hoat_dong') {
+        navigate('/thu-ngan/chi-tra-nha-cung-cap');
+      } else if (user?.vaiTro === 'thu_ngan') {
         navigate('/thu-ngan/hoa-don');
       } else {
         navigate('/thu-ngan/chi-tra-nha-cung-cap');
@@ -153,10 +155,19 @@ export function NotificationDropdown() {
       } else if (user?.vaiTro === 'thu_ngan') {
         // Thu ngân nhận duyệt chi / duyệt hủy -> mở Sổ chi trả & Chi phí vận hành
         navigate('/thu-ngan/chi-tra-nha-cung-cap');
+      } else if (
+        (user?.vaiTro === 'nhan_vien_nha_thuoc' || user?.vaiTro === 'nha_thuoc') &&
+        (item.doiTuongBang === 'yeu_cau_nhap_kho' || item.tieuDe?.includes('YC') || item.tieuDe?.includes('mua thuốc'))
+      ) {
+        // Nhân viên nhà thuốc nhận kết quả duyệt phiếu PR / nhập kho -> mở trang Mua hàng & Nhập thuốc P2P
+        navigate('/nha-thuoc/mua-hang');
       } else {
         const prefix = ROLE_PREFIX[user?.vaiTro] || 'tiep-tan';
         navigate(`/${prefix}/gui-don`);
       }
+    } else if (item.loai === 'phan_ca') {
+      const prefix = ROLE_PREFIX[user?.vaiTro] || 'tiep-tan';
+      navigate(`/${prefix}/lich-lam-viec`);
     } else if (item.loai === 'chi_dao_bao_cao') {
       // Nhân viên / bác sĩ nhận chỉ đạo của Giám đốc -> chuyển đến trang thống kê / báo cáo của bộ phận mình
       const prefix = ROLE_PREFIX[user?.vaiTro] || 'tiep-tan';

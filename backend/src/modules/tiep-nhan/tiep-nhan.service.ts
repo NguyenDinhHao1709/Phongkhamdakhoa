@@ -79,6 +79,63 @@ import { ThongBaoService } from '../thong-bao/thong-bao.service';
 export class TiepNhanService implements OnModuleInit {
   private latestCallEvent: any = null;
   private recentCalls: any[] = [];
+  private locks = new Map<string, Promise<any>>();
+  private lastSttSeq = 0;
+  private lastMaBnSeq = 0;
+  private lastSyncAt = 0;
+
+  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(key) || Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chain = prev.then(() => next);
+    this.locks.set(key, chain);
+
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.locks.get(key) === chain) {
+        this.locks.delete(key);
+      }
+    }
+  }
+
+  private async generateNextSoThuTu(): Promise<string> {
+    return this.withLock('seq:stt_tiep_nhan', async () => {
+      if (this.lastSttSeq === 0) {
+        const rows: any[] = await this.luotRepo.manager.query(
+          `SELECT MAX(CAST(SUBSTRING(ma_so_thu_tu, 5) AS UNSIGNED)) AS maxNum FROM luot_tiep_nhan WHERE ma_so_thu_tu LIKE 'STT-%'`,
+        );
+        const dbMax = Number(rows?.[0]?.maxNum || 0);
+        const totalCount = await this.luotRepo.count();
+        this.lastSttSeq = Math.max(dbMax, totalCount);
+      }
+      this.lastSttSeq += 1;
+      return MaGeneratorService.generateSoThuTu(this.lastSttSeq);
+    });
+  }
+
+  private async generateNextMaBenhNhan(): Promise<string> {
+    return this.withLock('seq:ma_benh_nhan_tn', async () => {
+      const year = new Date().getFullYear();
+      const prefix = `BN${year}`;
+      if (this.lastMaBnSeq === 0) {
+        const rows: any[] = await this.luotRepo.manager.query(
+          `SELECT MAX(CAST(SUBSTRING(ma_benh_nhan, 7) AS UNSIGNED)) AS maxNum FROM benh_nhan WHERE ma_benh_nhan LIKE ?`,
+          [`${prefix}%`],
+        );
+        const dbMax = Number(rows?.[0]?.maxNum || 0);
+        const totalCount = await this.benhNhanRepo.count();
+        this.lastMaBnSeq = Math.max(dbMax, totalCount);
+      }
+      this.lastMaBnSeq += 1;
+      return MaGeneratorService.generateMaBenhNhan(this.lastMaBnSeq);
+    });
+  }
 
   constructor(
     @InjectRepository(LuotTiepNhan) private luotRepo: Repository<LuotTiepNhan>,
@@ -424,35 +481,44 @@ export class TiepNhanService implements OnModuleInit {
   }
 
   private async syncLichHenDenGio() {
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
-    const appointments = await this.lichHenRepo.find({
-      where: {
-        ngayHen: today,
-        trangThai: TrangThaiLichHen.DA_XAC_NHAN,
-        hinhThuc: 'truc_tiep',
-      },
-    });
+    const nowMs = Date.now();
+    // Throttle 5 giây & khóa Mutex để chống tạo trùng phiếu khám khi hàng chục màn hình TV/Bác sĩ gọi cùng lúc
+    if (nowMs - this.lastSyncAt < 5000) return;
 
-    for (const appointment of appointments) {
-      if (appointment.hinhThuc === 'truc_tuyen') continue;
-      if (appointment.gioHen > currentTime) continue;
-      const existing = await this.luotRepo.findOne({ where: { lichHenId: appointment.id } });
-      if (existing) continue;
-      const totalCount = await this.luotRepo.count();
-      const luot = this.luotRepo.create({
-        benhNhanId: appointment.benhNhanId,
-        lichHenId: appointment.id,
-        phongKhamId: appointment.phongKhamId,
-        bacSiId: appointment.bacSiId,
-        maSoThuTu: MaGeneratorService.generateSoThuTu(totalCount + 1),
-        thoiGianDen: new Date(),
-        trangThai: TrangThaiTiepNhan.CHO_KHAM,
-        ghiChu: 'Tự động đưa vào hàng đợi khi đến giờ hẹn',
+    return this.withLock('sync:lich_hen_den_gio', async () => {
+      if (Date.now() - this.lastSyncAt < 5000) return;
+      this.lastSyncAt = Date.now();
+
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+      const appointments = await this.lichHenRepo.find({
+        where: {
+          ngayHen: today,
+          trangThai: TrangThaiLichHen.DA_XAC_NHAN,
+          hinhThuc: 'truc_tiep',
+        },
       });
-      await this.luotRepo.save(luot);
-    }
+
+      for (const appointment of appointments) {
+        if (appointment.hinhThuc === 'truc_tuyen') continue;
+        if (appointment.gioHen > currentTime) continue;
+        const existing = await this.luotRepo.findOne({ where: { lichHenId: appointment.id } });
+        if (existing) continue;
+        const maSoThuTu = await this.generateNextSoThuTu();
+        const luot = this.luotRepo.create({
+          benhNhanId: appointment.benhNhanId,
+          lichHenId: appointment.id,
+          phongKhamId: appointment.phongKhamId,
+          bacSiId: appointment.bacSiId,
+          maSoThuTu,
+          thoiGianDen: new Date(),
+          trangThai: TrangThaiTiepNhan.CHO_KHAM,
+          ghiChu: 'Tự động đưa vào hàng đợi khi đến giờ hẹn',
+        });
+        await this.luotRepo.save(luot);
+      }
+    });
   }
 
   // ─── TẠO LƯỢT TIẾP NHẬN ──────────────────────────────────────
@@ -502,12 +568,21 @@ export class TiepNhanService implements OnModuleInit {
       patient = await this.benhNhanRepo.findOne({ where: { id: dto.benhNhanId } });
     }
     if (!patient && dto.soDienThoai) {
-      patient = await this.benhNhanRepo.findOne({ where: { soDienThoai: dto.soDienThoai.trim() } });
+      patient = await this.withLock(`bn_phone:${dto.soDienThoai.trim()}`, async () => {
+        const found = await this.benhNhanRepo.findOne({ where: { soDienThoai: dto.soDienThoai.trim() } });
+        if (found) return found;
+        const maBn = await this.generateNextMaBenhNhan();
+        return await this.benhNhanRepo.save(this.benhNhanRepo.create({
+          maBenhNhan: maBn,
+          hoTen: dto.hoTen.trim(),
+          soDienThoai: dto.soDienThoai.trim(),
+        }));
+      });
     }
     if (!patient) {
-      const patientCount = await this.benhNhanRepo.count();
+      const maBn = await this.generateNextMaBenhNhan();
       patient = await this.benhNhanRepo.save(this.benhNhanRepo.create({
-        maBenhNhan: MaGeneratorService.generateMaBenhNhan(patientCount + 1),
+        maBenhNhan: maBn,
         hoTen: dto.hoTen.trim(),
         soDienThoai: dto.soDienThoai.trim(),
       }));
@@ -556,7 +631,7 @@ export class TiepNhanService implements OnModuleInit {
         });
       }
 
-      const totalCount = await manager.getRepository(LuotTiepNhan).count();
+      const maSoThuTu = await this.generateNextSoThuTu();
       const luot = manager.getRepository(LuotTiepNhan).create({
         benhNhanId: patient!.id,
         lichHenId: null,
@@ -567,7 +642,7 @@ export class TiepNhanService implements OnModuleInit {
         loaiLuot: isSupplementaryVisit ? 'luot_bo_sung' : 'luot_chinh',
         lyDoTaoLuot: duplicateReason || null,
         luotGocId: dto.luotGocId || existing?.id || null,
-        maSoThuTu: MaGeneratorService.generateSoThuTu(totalCount + 1),
+        maSoThuTu,
         thoiGianDen: new Date(),
         trangThai: TrangThaiTiepNhan.CHO_KHAM,
         ghiChu: `${dto.ghiChu || 'Khám trực tiếp tại quầy'} [Chuyên khoa: ${specialtyName}]`,
@@ -629,9 +704,7 @@ export class TiepNhanService implements OnModuleInit {
   }
 
   async create(dto: TaoTiepNhanDto, tiepTanId: number) {
-    // Đếm tổng số lượt để tạo số thứ tự duy nhất không trùng DB constraint
-    const totalCount = await this.luotRepo.count();
-    const maSoThuTu = MaGeneratorService.generateSoThuTu(totalCount + 1);
+    const maSoThuTu = await this.generateNextSoThuTu();
 
     const luot = this.luotRepo.create({
       ...dto,
@@ -774,6 +847,55 @@ export class TiepNhanService implements OnModuleInit {
         code: 'CHUYEN_TRANG_THAI_KHONG_HOP_LE',
         message: `Không thể chuyển lượt khám từ "${luot.trangThai}" sang "${dto.trangThai}".`,
       });
+    }
+
+    // Chốt chặn ERP Y Tế khi hủy lượt khám: Giải phóng giữ chỗ kho thuốc, hủy CLS nháp & chặn nếu đã thu tiền/xuất thuốc
+    if (dto.trangThai === TrangThaiTiepNhan.DA_HUY) {
+      const paidHdRows: any[] = await this.luotRepo.manager.query(
+        `SELECT ma_hoa_don FROM hoa_don WHERE luot_tiep_nhan_id = ? AND trang_thai = 'da_thanh_toan' LIMIT 1`,
+        [luotId],
+      );
+      if (paidHdRows.length > 0) {
+        throw new BadRequestException({
+          code: 'DA_THANH_TOAN_KHONG_THE_HUY_LUOT',
+          message: `Lượt khám này đã được thu tiền viện phí (Hóa đơn ${paidHdRows[0].ma_hoa_don}), không thể hủy lượt khám!`,
+        });
+      }
+
+      const bakRows: any[] = await this.luotRepo.manager.query(
+        `SELECT id FROM benh_an_kham WHERE luot_tiep_nhan_id = ? LIMIT 1`,
+        [luotId],
+      );
+      if (bakRows.length > 0) {
+        const bakId = bakRows[0].id;
+        const dispensedRows: any[] = await this.luotRepo.manager.query(
+          `SELECT ma_don_thuoc FROM don_thuoc WHERE benh_an_kham_id = ? AND trang_thai = 'da_cap_phat' LIMIT 1`,
+          [bakId],
+        );
+        if (dispensedRows.length > 0) {
+          throw new BadRequestException({
+            code: 'DA_CAP_PHAT_THUOC_KHONG_THE_HUY_LUOT',
+            message: `Lượt khám này đã xuất kho cấp phát đơn thuốc (${dispensedRows[0].ma_don_thuoc}), không thể hủy lượt khám!`,
+          });
+        }
+
+        // Tự động hủy đơn thuốc 'cho_duyet' để giải phóng tồn kho đang giữ chỗ
+        await this.luotRepo.manager.query(
+          `UPDATE don_thuoc SET trang_thai = 'da_huy' WHERE benh_an_kham_id = ? AND trang_thai = 'cho_duyet'`,
+          [bakId],
+        );
+        // Tự động hủy các chỉ định CLS đang chờ lấy mẫu
+        await this.luotRepo.manager.query(
+          `UPDATE chi_dinh_can_lam_sang SET trang_thai = 'huy' WHERE benh_an_kham_id = ? AND trang_thai = 'cho_lay_mau'`,
+          [bakId],
+        );
+      }
+
+      // Tự động hủy hóa đơn nháp chờ thanh toán
+      await this.luotRepo.manager.query(
+        `UPDATE hoa_don SET trang_thai = 'huy' WHERE luot_tiep_nhan_id = ? AND trang_thai = 'cho_thanh_toan'`,
+        [luotId],
+      );
     }
 
     luot.trangThai = dto.trangThai as TrangThaiTiepNhan;

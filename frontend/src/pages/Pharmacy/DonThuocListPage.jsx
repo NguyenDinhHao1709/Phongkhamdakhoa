@@ -18,7 +18,9 @@ import {
   Check,
   Sparkles,
   Printer,
+  Download,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { apiGet } from '../../services/api';
 import { formatDateTime } from '../../utils/formatDate';
 import CapPhatThuocModal from './CapPhatThuocModal';
@@ -155,6 +157,87 @@ export default function DonThuocListPage() {
     Boolean(denNgay) ||
     Boolean(searchTerm.trim());
 
+  const handleExportExcel = () => {
+    if (!filteredList.length) {
+      alert('Không có dữ liệu đơn thuốc để xuất file!');
+      return;
+    }
+
+    const exportRows = filteredList.map((item, idx) => {
+      const statusMap = {
+        cho_cap_phat: 'Chờ cấp phát',
+        da_cap_phat: 'Đã cấp phát',
+        huy: 'Đã hủy',
+      };
+      const paymentMap = {
+        da_thanh_toan: 'Đã thanh toán',
+        chua_thanh_toan: 'Chưa thanh toán',
+        mien_phi: 'Miễn phí',
+      };
+
+      const thuocDetails = (item.chiTiet || [])
+        .map((ct) => {
+          const ten = ct.thuoc?.tenThuoc || ct.tenThuoc || 'Thuốc';
+          const sl = Number(ct.soLuong || 1);
+          const dvt = ct.thuoc?.donViTinh || ct.donViTinh || '';
+          const dg = Number(ct.giaBan ?? ct.thuoc?.giaBan ?? 0);
+          const tt = sl * dg;
+          const cd = ct.cachDung || ct.lieuDung ? ` (${ct.cachDung || ct.lieuDung})` : '';
+          return `${ten}: SL ${sl} ${dvt}${dg > 0 ? ` x ${dg.toLocaleString('vi-VN')} đ = ${tt.toLocaleString('vi-VN')} đ` : ''}${cd}`;
+        })
+        .join('; ');
+
+      const tongTienDon = Number(
+        item.tongTien ||
+        item.hoaDon?.thucThu ||
+        item.hoaDon?.tongTien ||
+        (item.chiTiet || []).reduce((sum, ct) => {
+          const donGia = Number(ct.giaBan ?? ct.thuoc?.giaBan ?? 0);
+          const soLuong = Number(ct.soLuong || 0);
+          return sum + (soLuong * donGia);
+        }, 0),
+      );
+
+      return {
+        'STT': idx + 1,
+        'Mã Đơn Thuốc': item.maDonThuoc || '',
+        'Mã Bệnh Nhân': item.benhNhan?.maBenhNhan || '',
+        'Họ Tên Bệnh Nhân': item.benhNhan?.hoTen || '',
+        'Số Điện Thoại': item.benhNhan?.soDienThoai || '',
+        'Bác Sĩ Kê Đơn': item.bacSi || '',
+        'Ngày Kê Đơn': item.ngayKe ? formatDateTime(item.ngayKe) : '-',
+        'Trạng Thái Cấp Phát': statusMap[item.trangThai] || item.trangThai || '',
+        'Trạng Thái Thanh Toán': paymentMap[item.trangThaiThanhToan] || item.trangThaiThanhToan || '',
+        'Số Loại Thuốc': (item.chiTiet || []).length,
+        'Tổng Tiền Đơn (VNĐ)': tongTienDon,
+        'Chi Tiết Thuốc & Liều Dùng': thuocDetails || '',
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    worksheet['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 15 }, // Mã Đơn
+      { wch: 15 }, // Mã BN
+      { wch: 22 }, // Họ tên BN
+      { wch: 14 }, // SĐT
+      { wch: 20 }, // Bác sĩ
+      { wch: 18 }, // Ngày kê
+      { wch: 16 }, // Cấp phát
+      { wch: 18 }, // Thanh toán
+      { wch: 12 }, // Số loại
+      { wch: 18 }, // Tổng tiền
+      { wch: 50 }, // Chi tiết thuốc
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'SoCapPhatThuoc');
+
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    XLSX.writeFile(workbook, `SoCapPhatThuoc_${dateStr}.xlsx`);
+  };
+
   const handleResetFilters = () => {
     setFilterStatus('all');
     setFilterPayment('all');
@@ -192,6 +275,15 @@ export default function DonThuocListPage() {
           >
             <RefreshCw className={`h-3.5 w-3.5 text-gray-500 ${isRefreshing ? 'animate-spin text-primary-600' : ''}`} />
             <span>Tải lại danh sách</span>
+          </button>
+
+          <button
+            onClick={handleExportExcel}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-xs"
+            title="Xuất bảng Excel sổ cấp phát đơn thuốc"
+          >
+            <Download className="h-4 w-4 text-emerald-600" />
+            <span>Xuất Sổ Cấp Phát</span>
           </button>
         </div>
       </div>

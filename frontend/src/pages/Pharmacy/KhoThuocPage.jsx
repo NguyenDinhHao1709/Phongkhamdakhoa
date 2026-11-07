@@ -19,7 +19,9 @@ import {
   Check,
   TrendingDown,
   AlertTriangle,
+  Download,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { apiGet, apiPatch } from '../../services/api';
 import { formatCurrency } from '../../utils/formatCurrency';
 import AddEditThuocModal from './AddEditThuocModal';
@@ -168,6 +170,93 @@ export default function KhoThuocPage() {
     filterDonViTinh !== 'all' ||
     Boolean(searchTerm.trim());
 
+  const handleExportExcel = () => {
+    if (!filteredList.length) {
+      alert('Không có dữ liệu thuốc để xuất file!');
+      return;
+    }
+
+    const exportRows = filteredList.map((t, idx) => {
+      const stock = Number(t.tonKhoTong) || 0;
+      let statusStr = 'Sẵn sàng cấp';
+      if (t.trangThai === 'ngung_kinh_doanh') statusStr = 'Ngừng kinh doanh';
+      else if (stock <= 0) statusStr = 'Hết hàng';
+      else if (stock <= 20) statusStr = 'Sắp hết hàng (Tồn thấp)';
+      else if (t.coLoHetHan) statusStr = 'Có lô hết hạn';
+      else if (t.coLoCanDate) statusStr = 'Có lô cận date (≤60 ngày)';
+
+      const rawLoList =
+        t.danhSachLo && t.danhSachLo.length > 0
+          ? t.danhSachLo
+          : t.loThuocList && t.loThuocList.length > 0
+          ? t.loThuocList
+          : [];
+
+      let validLoList = rawLoList.filter((lo) => Number(lo.soLuongTon) > 0);
+      if (validLoList.length === 0 && rawLoList.length > 0) {
+        validLoList = rawLoList;
+      }
+
+      let loDetails = validLoList
+        .map(
+          (lo) =>
+            `Lô ${lo.maLo || 'LÔ-CHUNG'}: ${lo.soLuongTon ?? 0} ${t.donViTinh || ''} (HSD: ${
+              lo.ngayHetHan
+                ? String(lo.ngayHetHan).slice(0, 10).split('-').reverse().join('/')
+                : '-'
+            })`,
+        )
+        .join('; ');
+
+      if (!loDetails && t.maLo) {
+        loDetails = `Lô ${t.maLo}: ${t.soLuongTonLo ?? t.tonKhoTong ?? 0} ${t.donViTinh || ''} (HSD: ${
+          t.ngayHetHan ? String(t.ngayHetHan).slice(0, 10).split('-').reverse().join('/') : '-'
+        })`;
+      }
+
+      const soLuongLo =
+        t.tongSoLo ?? (validLoList.length > 0 ? validLoList.length : t.maLo ? 1 : 0);
+
+      return {
+        'STT': idx + 1,
+        'Mã Thuốc': t.maThuoc || '',
+        'Tên Thuốc / Biệt Dược': t.tenThuoc || '',
+        'Hoạt Chất': t.tenHoatChat || t.hoatChat || '',
+        'Hàm Lượng': t.hamLuong || '',
+        'Đường Dùng': t.duongDung || '',
+        'Đơn Vị Tính': t.donViTinh || '',
+        'Đơn Giá Bán (VNĐ)': Number(t.giaBan || 0),
+        'Tổng Tồn Kho Khả Dụng': stock,
+        'Trạng Thái Kho': statusStr,
+        'Số Lượng Lô': soLuongLo,
+        'Chi Tiết Lô & Hạn Dùng (FEFO)': loDetails || 'Chưa nạp lô',
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    worksheet['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 12 }, // Mã Thuốc
+      { wch: 30 }, // Tên Thuốc
+      { wch: 25 }, // Hoạt Chất
+      { wch: 15 }, // Hàm Lượng
+      { wch: 15 }, // Đường Dùng
+      { wch: 10 }, // ĐVT
+      { wch: 16 }, // Đơn Giá
+      { wch: 14 }, // Tồn Kho
+      { wch: 22 }, // Trạng Thái
+      { wch: 12 }, // Số Lượng Lô
+      { wch: 55 }, // Chi Tiết Lô
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'TonKhoDuocPham');
+
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    XLSX.writeFile(workbook, `BaoCao_TonKhoThuoc_${dateStr}.xlsx`);
+  };
+
   const handleResetFilters = () => {
     setFilterStockStatus('all');
     setFilterDuongDung('all');
@@ -202,6 +291,15 @@ export default function KhoThuocPage() {
           >
             <RefreshCw className={`h-3.5 w-3.5 text-gray-500 ${isRefreshing ? 'animate-spin text-primary-600' : ''}`} />
             <span>Tải lại</span>
+          </button>
+
+          <button
+            onClick={handleExportExcel}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-xs"
+            title="Xuất bảng Excel danh mục thuốc & tồn kho chi tiết"
+          >
+            <Download className="h-4 w-4 text-emerald-600" />
+            <span>Xuất Excel</span>
           </button>
 
           <button

@@ -155,7 +155,7 @@ export class AiService {
   private genAI: GoogleGenerativeAI | null = null;
   private triageModel: GenerativeModel | null = null;
   private patientModel: GenerativeModel | null = null;
-  private readonly PYTHON_ML_URL = 'http://localhost:5001';
+  private readonly PYTHON_ML_URL: string;
   private cachedClinicContext: { text: string; thuocList: Thuoc[]; dichVuList: DichVuXetNghiem[]; bacSiList: BacSi[]; expiresAt: number } | null = null;
 
   constructor(
@@ -173,6 +173,9 @@ export class AiService {
     @InjectRepository(Thuoc) private thuocRepo: Repository<Thuoc>,
     @InjectRepository(BacSi) private bacSiRepo: Repository<BacSi>,
   ) {
+    this.PYTHON_ML_URL = (
+      this.configService.get<string>('PYTHON_ML_URL') || 'http://localhost:5001'
+    ).replace(/\/+$/, '');
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     if (apiKey) {
       try {

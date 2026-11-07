@@ -82,6 +82,15 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('my-permissions')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Đồng bộ danh sách quyền hạn hiện tại của người dùng' })
+  async getMyPermissions(@CurrentUser() user: any) {
+    const data = await this.authService.getMyPermissions(user.id || user.userId || user.sub);
+    return { data, message: 'Lấy quyền hạn thành công' };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('change-password')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()

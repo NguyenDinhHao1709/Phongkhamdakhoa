@@ -118,6 +118,18 @@ export class OfficeController {
     return this.officeService.forwardPost(`rooms/${roomId}/read`, { userId: user?.id }, user?.id);
   }
 
+  @Delete('rooms/:id/conversation')
+  @ApiOperation({ summary: 'Xóa lịch sử cuộc trò chuyện ở phía tôi' })
+  deleteConversation(@Param('id', ParseIntPipe) roomId: number, @CurrentUser() user: any) {
+    return this.officeService.forwardDelete(`rooms/${roomId}/conversation`, user?.id);
+  }
+
+  @Post('rooms/:id/leave')
+  @ApiOperation({ summary: 'Rời khỏi nhóm trò chuyện' })
+  leaveGroup(@Param('id', ParseIntPipe) roomId: number, @CurrentUser() user: any) {
+    return this.officeService.forwardPost(`rooms/${roomId}/leave`, { userId: user?.id }, user?.id);
+  }
+
   @Get('patients-search')
   @ApiOperation({ summary: 'Tìm kiếm bệnh nhân để đính kèm thẻ bệnh nhân vào hội thoại' })
   searchPatients(@Query('q') q?: string, @CurrentUser() user?: any) {

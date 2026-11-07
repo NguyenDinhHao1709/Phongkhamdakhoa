@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import * as XLSX from 'xlsx';
 import {
   ScanFace, Calendar, Clock, Plus, Search, Filter, RefreshCw,
   CheckCircle2, AlertTriangle, UserCheck, Edit3, X, Save,
-  Users
+  Users, Download
 } from 'lucide-react';
 import { apiGet, apiPost } from '../../services/api';
 
@@ -188,6 +189,65 @@ export default function QuanLyChamCongPage() {
     nghi_phep: { text: 'Nghỉ phép', color: 'bg-purple-100 text-purple-700 border-purple-200' },
   };
 
+  // Xuất file Excel bảng chấm công nhân viên
+  const handleExportExcel = () => {
+    if (!filteredList || filteredList.length === 0) {
+      alert('Không có dữ liệu chấm công để xuất file!');
+      return;
+    }
+
+    const TRANG_THAI_MAP = {
+      dung_gio: 'Đúng giờ',
+      di_muon: 'Đi muộn',
+      ve_som: 'Về sớm',
+      nghi_phep: 'Nghỉ phép',
+    };
+
+    const PHUONG_THUC_MAP = {
+      khuon_mat: 'Khuôn mặt AI',
+      thu_cong: 'Chấm thủ công',
+    };
+
+    const rows = filteredList.map((item, idx) => {
+      const nv = item.nhanVien || {};
+      const ngayStr = item.ngayCham ? String(item.ngayCham).slice(0, 10) : '';
+
+      return {
+        'STT': idx + 1,
+        'Mã Nhân Viên': nv.maNhanVien || '',
+        'Họ Tên Nhân Viên': nv.hoTen || '',
+        'Chức Vụ / Chuyên Khoa': nv.chucVu || nv.chuyenKhoa || '',
+        'Ngày Chấm Công': ngayStr,
+        'Giờ Vào (Check-in)': item.gioVao ? item.gioVao.slice(0, 5) : '—',
+        'Giờ Ra (Check-out)': item.gioRa ? item.gioRa.slice(0, 5) : (item.gioVao ? 'Đang làm việc' : '—'),
+        'Thời Lượng Làm Việc': tinhThoiLuongLamViec(item.gioVao, item.gioRa),
+        'Trạng Thái': TRANG_THAI_MAP[item.trangThai] || item.trangThai || '—',
+        'Phương Thức': PHUONG_THUC_MAP[item.phuongThuc] || item.phuongThuc || 'Khuôn mặt AI',
+        'Ghi Chú': item.ghiChu || '',
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 6 },  // STT
+      { wch: 14 }, // Mã NV
+      { wch: 22 }, // Họ tên NV
+      { wch: 22 }, // Chức vụ
+      { wch: 14 }, // Ngày chấm
+      { wch: 18 }, // Giờ vào
+      { wch: 18 }, // Giờ ra
+      { wch: 20 }, // Thời lượng
+      { wch: 16 }, // Trạng thái
+      { wch: 16 }, // Phương thức
+      { wch: 25 }, // Ghi chú
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'BangChamCong');
+    const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    XLSX.writeFile(wb, `Bang_Tong_Hop_Cham_Cong_${nowStr}.xlsx`);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
       {/* Header */}
@@ -202,13 +262,24 @@ export default function QuanLyChamCongPage() {
           </p>
         </div>
 
-        <button
-          onClick={handleOpenAddModal}
-          className="flex items-center gap-2 px-5 py-2.5 bg-white text-blue-700 hover:bg-blue-50 font-semibold rounded-xl shadow transition active:scale-95 self-start md:self-auto"
-        >
-          <Plus className="h-5 w-5" />
-          <span>Chấm công thủ công</span>
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap self-start md:self-auto">
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl shadow transition active:scale-95 cursor-pointer text-xs"
+            title="Xuất bảng tổng hợp chấm công ra file Excel"
+          >
+            <Download className="h-4 w-4" />
+            <span>Xuất Excel Chấm Công</span>
+          </button>
+
+          <button
+            onClick={handleOpenAddModal}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white text-blue-700 hover:bg-blue-50 font-semibold rounded-xl shadow transition active:scale-95 cursor-pointer text-xs"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Chấm công thủ công</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
