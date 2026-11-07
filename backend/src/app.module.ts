@@ -61,6 +61,8 @@ import { BaiVietModule } from './modules/bai-viet/bai-viet.module';
         redis: {
           host: config.get('REDIS_HOST', 'localhost'),
           port: config.get<number>('REDIS_PORT', 6379),
+          password: config.get<string>('REDIS_PASSWORD') || undefined,
+          tls: config.get('REDIS_TLS') === 'true' ? {} : undefined,
         },
       }),
       inject: [ConfigService],
