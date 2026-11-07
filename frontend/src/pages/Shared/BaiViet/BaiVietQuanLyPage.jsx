@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '../../../services/api';
 import useAuthStore from '../../../store/authStore';
+import { BACKEND_URL, toBackendUrl } from '../../../utils/backendUrl';
 
 const STATUS_MAP = {
   nhap:      { label: 'Bản nháp',     color: 'bg-slate-100 text-slate-700 border-slate-200' },
@@ -126,7 +127,7 @@ export default function BaiVietQuanLyPage() {
       formData.append('file', file);
 
       const token = useAuthStore.getState().accessToken;
-      const res = await fetch('/api/bai-viet/upload', {
+      const res = await fetch(`${BACKEND_URL}/api/bai-viet/upload`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -140,7 +141,11 @@ export default function BaiVietQuanLyPage() {
       }
 
       const uploadedUrl = data?.data?.url || data?.url;
-      setForm((prev) => ({ ...prev, anhDaiDien: uploadedUrl }));
+      if (!uploadedUrl) {
+        throw new Error('Máy chủ không trả về đường dẫn ảnh');
+      }
+
+      setForm((prev) => ({ ...prev, anhDaiDien: toBackendUrl(uploadedUrl) }));
       showToast('success', 'Đã tải ảnh lên máy chủ thành công!');
     } catch (err) {
       console.error(err);
@@ -191,7 +196,7 @@ export default function BaiVietQuanLyPage() {
       chuyenKhoa: art.chuyenKhoa || 'Nội tổng quát',
       tomTat: art.tomTat || '',
       noiDung: art.noiDung || '',
-      anhDaiDien: art.anhDaiDien || '',
+      anhDaiDien: toBackendUrl(art.anhDaiDien || ''),
       trangThai: art.trangThai || 'nhap',
     });
     setEditModal({ open: true, mode: 'edit', data: art });
@@ -460,7 +465,7 @@ export default function BaiVietQuanLyPage() {
                       <td className="px-6 py-4 max-w-md">
                         <div className="flex items-start gap-3">
                           <img
-                            src={art.anhDaiDien || SAMPLE_COVERS[0].url}
+                            src={toBackendUrl(art.anhDaiDien) || SAMPLE_COVERS[0].url}
                             alt=""
                             className="w-16 h-12 object-cover rounded-xl border border-gray-200 shrink-0"
                             onError={(e) => {
@@ -634,7 +639,7 @@ export default function BaiVietQuanLyPage() {
       {/* ─── MODAL SOẠN THẢO / CHỈNH SỬA ────────────────────────────── */}
       {editModal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-2xs p-4 animate-fade-in overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-gray-100 space-y-4 my-8">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[calc(100vh-2rem)] flex flex-col p-6 shadow-2xl border border-gray-100 space-y-4 my-8">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <div className="flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-primary-600" />
@@ -655,7 +660,7 @@ export default function BaiVietQuanLyPage() {
                 e.preventDefault();
                 handleSave();
               }}
-              className="space-y-4"
+              className="space-y-4 overflow-y-auto pr-1"
             >
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">
@@ -973,7 +978,7 @@ export default function BaiVietQuanLyPage() {
 
             {previewModal.anhDaiDien && (
               <img
-                src={previewModal.anhDaiDien}
+                src={toBackendUrl(previewModal.anhDaiDien)}
                 alt=""
                 className="w-full h-56 object-cover rounded-xl border border-slate-200"
                 onError={(e) => {
