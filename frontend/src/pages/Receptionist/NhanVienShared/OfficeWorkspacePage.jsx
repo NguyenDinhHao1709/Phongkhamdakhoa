@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import useAuthStore from '../../../store/authStore';
 import useThemeStore from '../../../store/themeStore';
 import api, { apiGet, apiPost, apiPatch, apiDelete } from '../../../services/api';
+import { toAttachmentUrl } from '../../../utils/fileAttachments';
 import {
   MessageSquare,
   Users,
@@ -1653,13 +1654,13 @@ export default function OfficeWorkspacePage() {
                                       ) : msg.loai === 'hinh_anh' && msg.tepDinhKem?.url ? (
                                         <div className="relative group/img overflow-hidden rounded-xl">
                                           <img
-                                            src={msg.tepDinhKem.url}
+                                            src={toAttachmentUrl(msg.tepDinhKem.url)}
                                             alt="Hình ảnh đính kèm"
-                                            onClick={() => setLightboxImage(msg.tepDinhKem.url)}
+                                            onClick={() => setLightboxImage(toAttachmentUrl(msg.tepDinhKem.url))}
                                             className="max-h-72 max-w-full sm:max-w-xs rounded-xl object-cover cursor-zoom-in border border-white/10 block"
                                           />
                                           <a
-                                            href={msg.tepDinhKem.url}
+                                            href={toAttachmentUrl(msg.tepDinhKem.url)}
                                             download={msg.tepDinhKem.fileName || msg.noiDung || 'image'}
                                             target="_blank"
                                             rel="noreferrer"
@@ -1672,7 +1673,7 @@ export default function OfficeWorkspacePage() {
                                         </div>
                                       ) : msg.loai === 'tep_tin' && msg.tepDinhKem?.url ? (
                                         <a
-                                          href={msg.tepDinhKem.url}
+                                          href={toAttachmentUrl(msg.tepDinhKem.url)}
                                           download={msg.tepDinhKem.fileName || msg.noiDung}
                                           target="_blank"
                                           rel="noreferrer"
@@ -2154,13 +2155,13 @@ export default function OfficeWorkspacePage() {
                           {sharedImages.map((img) => (
                             <div
                               key={img.id}
-                              onClick={() => setLightboxImage(img.tepDinhKem?.url)}
+                              onClick={() => setLightboxImage(toAttachmentUrl(img.tepDinhKem?.url))}
                               className={`group relative rounded-xl overflow-hidden border aspect-square cursor-pointer ${
                                 darkMode ? 'border-slate-700 bg-slate-900' : 'border-gray-200 bg-gray-100'
                               }`}
                             >
                               <img
-                                src={img.tepDinhKem?.url}
+                                src={toAttachmentUrl(img.tepDinhKem?.url)}
                                 alt={img.noiDung}
                                 className="w-full h-full object-cover group-hover:scale-105 transition"
                               />
@@ -2183,7 +2184,7 @@ export default function OfficeWorkspacePage() {
                         sharedFiles.map((f) => (
                           <a
                             key={f.id}
-                            href={f.tepDinhKem?.url}
+                            href={toAttachmentUrl(f.tepDinhKem?.url)}
                             download={f.tepDinhKem?.fileName || f.noiDung}
                             target="_blank"
                             rel="noreferrer"
@@ -2348,7 +2349,7 @@ export default function OfficeWorkspacePage() {
                                   {sharedImages.slice(-8).reverse().map((img) => (
                                     <div
                                       key={img.id}
-                                      onClick={() => setLightboxImage(img.tepDinhKem?.url)}
+                                      onClick={() => setLightboxImage(toAttachmentUrl(img.tepDinhKem?.url))}
                                       className={`aspect-square rounded-lg overflow-hidden border cursor-pointer group ${
                                         darkMode
                                           ? 'border-slate-700 bg-slate-900'
@@ -2356,7 +2357,7 @@ export default function OfficeWorkspacePage() {
                                       }`}
                                     >
                                       <img
-                                        src={img.tepDinhKem?.url}
+                                        src={toAttachmentUrl(img.tepDinhKem?.url)}
                                         alt={img.noiDung}
                                         className="w-full h-full object-cover group-hover:scale-105 transition"
                                       />
@@ -2406,7 +2407,7 @@ export default function OfficeWorkspacePage() {
                                 {sharedFiles.slice(-3).reverse().map((f) => (
                                   <a
                                     key={f.id}
-                                    href={f.tepDinhKem?.url}
+                                    href={toAttachmentUrl(f.tepDinhKem?.url)}
                                     download={f.tepDinhKem?.fileName || f.noiDung}
                                     target="_blank"
                                     rel="noreferrer"
@@ -2916,4 +2917,3 @@ export default function OfficeWorkspacePage() {
     </div>
   );
 }
-

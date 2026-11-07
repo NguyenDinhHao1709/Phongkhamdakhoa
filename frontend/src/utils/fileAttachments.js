@@ -1,3 +1,5 @@
+import { toBackendUrl, toOfficeUrl } from './backendUrl';
+
 export function parseAttachmentUrls(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value.filter(Boolean);
@@ -14,5 +16,8 @@ export function parseAttachmentUrls(value) {
 }
 
 export function toAttachmentUrl(value) {
-  return value?.startsWith('http') ? value : `http://localhost:5000${value}`;
+  if (typeof value === 'string' && value.startsWith('/uploads/office/')) {
+    return toOfficeUrl(value);
+  }
+  return toBackendUrl(value);
 }
