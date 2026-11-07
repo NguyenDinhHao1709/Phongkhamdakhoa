@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import axios from 'axios';
 import { NguoiDung, TrangThaiNguoiDung, LoaiTaiKhoan } from './entities/nguoi-dung.entity';
 import { VaiTro } from './entities/vai-tro.entity';
 import { QuyenHan } from './entities/quyen-han.entity';
@@ -49,6 +50,54 @@ export class AuthService {
         user: (config.get<string>('MAIL_USER') || '').trim(),
         pass: (config.get<string>('MAIL_PASS') || '').replace(/\s+/g, ''),
       },
+    });
+  }
+
+  private async sendOtpEmail(to: string, subject: string, html: string) {
+    const brevoApiKey = this.config.get<string>('BREVO_API_KEY')?.trim();
+    const senderEmail = (
+      this.config.get<string>('BREVO_SENDER_EMAIL') ||
+      this.config.get<string>('MAIL_USER') ||
+      ''
+    ).trim();
+    const senderName = this.config.get<string>('BREVO_SENDER_NAME', 'Phòng Khám Đa Khoa');
+
+    if (!senderEmail) {
+      throw new Error('Chưa cấu hình email người gửi OTP');
+    }
+
+    if (brevoApiKey) {
+      try {
+        await axios.post(
+          'https://api.brevo.com/v3/smtp/email',
+          {
+            sender: { email: senderEmail, name: senderName },
+            to: [{ email: to }],
+            subject,
+            htmlContent: html,
+          },
+          {
+            headers: {
+              accept: 'application/json',
+              'api-key': brevoApiKey,
+              'content-type': 'application/json',
+            },
+            timeout: 15000,
+          },
+        );
+        return;
+      } catch (err) {
+        const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+        const detail = axios.isAxiosError(err) ? err.response?.data?.message : err.message;
+        throw new Error(`Brevo gửi email thất bại${status ? ` (${status})` : ''}: ${detail || 'unknown error'}`);
+      }
+    }
+
+    await this.mailer.sendMail({
+      from: this.config.get('MAIL_FROM') || senderEmail,
+      to,
+      subject,
+      html,
     });
   }
 
@@ -249,17 +298,8 @@ export class AuthService {
 
     // 2. Gửi qua Email nếu có địa chỉ email
     if (dto.email) {
-      const mailFrom = this.config.get('MAIL_FROM') || this.config.get('MAIL_USER');
-      if (!mailFrom) {
-        throw new BadRequestException('Backend chưa cấu hình địa chỉ email gửi OTP');
-      }
-
       try {
-        await this.mailer.sendMail({
-         from: mailFrom,
-         to: dto.email,
-         subject: 'Mã xác thực OTP - Phòng Khám Đa Khoa',
-         html: `
+        await this.sendOtpEmail(dto.email, 'Mã xác thực OTP - Phòng Khám Đa Khoa', `
             <div style="font-family: Inter, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
               <h2 style="color: #2563EB; margin-bottom: 8px;">Mã xác thực của bạn</h2>
               <p style="color: #6B7280;">Sử dụng mã OTP bên dưới để xác thực. Mã có hiệu lực trong ${hetHanPhut} phút.</p>
@@ -268,8 +308,7 @@ export class AuthService {
               </div>
               <p style="color: #9CA3AF; font-size: 13px;">Nếu bạn không yêu cầu mã này, hãy bỏ qua email này.</p>
             </div>
-          `,
-        });
+          `);
         console.log(`[SendOTP Success] Đã gửi mã OTP thành công tới ${dto.email}`);
       } catch (err) {
         console.error('[SendOTP Error]', err.message);
@@ -404,18 +443,9 @@ export class AuthService {
 
     await this.otpRepo.save({ email, maOtp, loai, hetHanLuc });
 
-    // Gửi email và chỉ trả thành công khi SMTP xác nhận
+    // Gửi email và chỉ trả thành công khi nhà cung cấp xác nhận
     try {
-      const mailFrom = this.config.get('MAIL_FROM') || this.config.get('MAIL_USER');
-      if (!mailFrom) {
-        throw new BadRequestException('Backend chưa cấu hình địa chỉ email gửi OTP');
-      }
-
-      await this.mailer.sendMail({
-        from: mailFrom,
-        to: email,
-        subject: 'Mã xác thực Đặt lại mật khẩu - Phòng Khám Đa Khoa',
-        html: `
+      await this.sendOtpEmail(email, 'Mã xác thực Đặt lại mật khẩu - Phòng Khám Đa Khoa', `
           <div style="font-family: Inter, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
             <h2 style="color: #2563EB; margin-bottom: 8px;">Yêu cầu Đặt lại Mật khẩu</h2>
             <p style="color: #6B7280;">Bạn đã yêu cầu đặt lại mật khẩu cho tài khoản <strong>${email}</strong>. Sử dụng mã OTP bên dưới để xác thực:</p>
@@ -424,8 +454,7 @@ export class AuthService {
             </div>
             <p style="color: #9CA3AF; font-size: 13px;">Mã có hiệu lực trong ${hetHanPhut} phút. Nếu bạn không gửi yêu cầu này, vui lòng bỏ qua email.</p>
           </div>
-        `,
-      });
+        `);
     } catch (err) {
       console.error('Lỗi gửi email OTP đặt lại mật khẩu:', err.message);
       throw new BadRequestException('Không thể gửi mã OTP qua email. Vui lòng kiểm tra cấu hình SMTP trên máy chủ.');
