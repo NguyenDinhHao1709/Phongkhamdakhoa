@@ -42,6 +42,9 @@ export class AuthService {
       host: config.get('MAIL_HOST', 'smtp.gmail.com'),
       port: Number(config.get('MAIL_PORT', 587)),
       secure: false,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       auth: {
         user: (config.get<string>('MAIL_USER') || '').trim(),
         pass: (config.get<string>('MAIL_PASS') || '').replace(/\s+/g, ''),

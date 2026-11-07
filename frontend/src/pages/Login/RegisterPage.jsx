@@ -89,7 +89,7 @@ export default function RegisterPage() {
       setFormData(data);
 
       // Gửi mã OTP xác thực email
-      await apiPost('/auth/send-otp', { email: data.email });
+      await apiPost('/auth/send-otp', { email: data.email }, { timeout: 30000 });
 
       setStep(2);
       setCountdown(60);
@@ -113,7 +113,7 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       setError('');
-      await apiPost('/auth/send-otp', { email: formData.email });
+      await apiPost('/auth/send-otp', { email: formData.email }, { timeout: 30000 });
       setCountdown(60);
       setCanResend(false);
       alert('Đã gửi lại mã OTP đến email của bạn!');
