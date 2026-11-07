@@ -246,12 +246,17 @@ export class AuthService {
 
     // 2. Gửi qua Email nếu có địa chỉ email
     if (dto.email) {
-      this.mailer
-        .sendMail({
-          from: this.config.get('MAIL_FROM'),
-          to: dto.email,
-          subject: 'Mã xác thực OTP - Phòng Khám Đa Khoa',
-          html: `
+      const mailFrom = this.config.get('MAIL_FROM') || this.config.get('MAIL_USER');
+      if (!mailFrom) {
+        throw new BadRequestException('Backend chưa cấu hình địa chỉ email gửi OTP');
+      }
+
+      try {
+        await this.mailer.sendMail({
+         from: mailFrom,
+         to: dto.email,
+         subject: 'Mã xác thực OTP - Phòng Khám Đa Khoa',
+         html: `
             <div style="font-family: Inter, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
               <h2 style="color: #2563EB; margin-bottom: 8px;">Mã xác thực của bạn</h2>
               <p style="color: #6B7280;">Sử dụng mã OTP bên dưới để xác thực. Mã có hiệu lực trong ${hetHanPhut} phút.</p>
@@ -261,9 +266,12 @@ export class AuthService {
               <p style="color: #9CA3AF; font-size: 13px;">Nếu bạn không yêu cầu mã này, hãy bỏ qua email này.</p>
             </div>
           `,
-        })
-        .then(() => console.log(`[SendOTP Success] Đã gửi mã OTP thành công tới ${dto.email}`))
-        .catch((err) => console.error('[SendOTP Error]', err.message));
+        });
+        console.log(`[SendOTP Success] Đã gửi mã OTP thành công tới ${dto.email}`);
+      } catch (err) {
+        console.error('[SendOTP Error]', err.message);
+        throw new BadRequestException('Không thể gửi mã OTP qua email. Vui lòng kiểm tra cấu hình SMTP trên máy chủ.');
+      }
     }
 
     const channelDesc = dto.soDienThoai && dto.email
@@ -393,10 +401,15 @@ export class AuthService {
 
     await this.otpRepo.save({ email, maOtp, loai, hetHanLuc });
 
-    // Gửi email bất đồng bộ
-    this.mailer
-      .sendMail({
-        from: this.config.get('MAIL_FROM'),
+    // Gửi email và chỉ trả thành công khi SMTP xác nhận
+    try {
+      const mailFrom = this.config.get('MAIL_FROM') || this.config.get('MAIL_USER');
+      if (!mailFrom) {
+        throw new BadRequestException('Backend chưa cấu hình địa chỉ email gửi OTP');
+      }
+
+      await this.mailer.sendMail({
+        from: mailFrom,
         to: email,
         subject: 'Mã xác thực Đặt lại mật khẩu - Phòng Khám Đa Khoa',
         html: `
@@ -409,8 +422,11 @@ export class AuthService {
             <p style="color: #9CA3AF; font-size: 13px;">Mã có hiệu lực trong ${hetHanPhut} phút. Nếu bạn không gửi yêu cầu này, vui lòng bỏ qua email.</p>
           </div>
         `,
-      })
-      .catch((err) => console.error('Lỗi gửi email OTP đặt lại mật khẩu:', err));
+      });
+    } catch (err) {
+      console.error('Lỗi gửi email OTP đặt lại mật khẩu:', err.message);
+      throw new BadRequestException('Không thể gửi mã OTP qua email. Vui lòng kiểm tra cấu hình SMTP trên máy chủ.');
+    }
 
     return { message: 'Mã OTP đặt lại mật khẩu đã được gửi đến email của bạn' };
   }
@@ -520,6 +536,7 @@ export class AuthService {
           kyThuatVienInfo = await this.dataSource.getRepository(KyThuatVien).findOne({ where: { nhanVienId: nv.id } });
         }
       }
+
     }
 
     // Lấy danh sách quyền hạn thực tế của vai trò
@@ -566,4 +583,3 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 }
-
