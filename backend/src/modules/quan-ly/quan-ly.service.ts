@@ -32,6 +32,8 @@ import { firstValueFrom } from 'rxjs';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as nodemailer from 'nodemailer';
+import axios from 'axios';
+import { v2 as cloudinary } from 'cloudinary';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { PayOS } from '@payos/node';
 import { DEFAULT_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, NHOM_CHUC_NANG_ORDER } from '../auth/rbac-defaults';
@@ -4107,29 +4109,70 @@ export class QuanLyService implements OnModuleInit {
   async kiemTraVaLuuAvatar(file: Express.Multer.File, nhanVienId?: number) {
     const PYTHON_ML_URL = process.env.PYTHON_ML_URL || 'http://localhost:5001';
     const absolutePath = path.resolve(file.path);
+    const cloudinaryConfigured = Boolean(
+      process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET,
+    );
+
+    if (!cloudinaryConfigured) {
+      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      throw new BadRequestException('Chưa cấu hình Cloudinary trên backend');
+    }
+
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+
+    const uploadToCloudinary = () =>
+      new Promise<string>((resolve, reject) => {
+        const upload = cloudinary.uploader.upload_stream(
+          {
+            folder: 'phongkham/avatars',
+            resource_type: 'image',
+          },
+          (error, result) => {
+            if (error || !result?.secure_url) {
+              reject(error || new Error('Cloudinary không trả về URL ảnh'));
+              return;
+            }
+            resolve(result.secure_url);
+          },
+        );
+        upload.end(file.buffer || fs.readFileSync(absolutePath));
+      });
 
     try {
       // 1. Lấy danh sách nhân viên khác đã có avatar
       const allEmployees = await this.nhanVienRepo.find();
-      const candidates = allEmployees
+      const candidates = (await Promise.all(allEmployees
         .filter(nv => !nhanVienId || nv.id !== nhanVienId)
         .filter(nv => nv.anhDaiDien && typeof nv.anhDaiDien === 'string' && nv.anhDaiDien.trim() !== '')
-        .map(nv => {
+        .map(async nv => {
           const cleanRel = nv.anhDaiDien.replace(/^\/+/, '');
+          const avatarPath = path.join(process.cwd(), cleanRel);
+          let anhBase64: string | undefined;
+          if (nv.anhDaiDien.startsWith('http')) {
+            try {
+              const response = await axios.get(nv.anhDaiDien, { responseType: 'arraybuffer', timeout: 10000 });
+              anhBase64 = Buffer.from(response.data).toString('base64');
+            } catch {
+              anhBase64 = undefined;
+            }
+          } else if (fs.existsSync(avatarPath)) {
+            anhBase64 = fs.readFileSync(avatarPath).toString('base64');
+          }
           return {
             id: nv.id,
             ho_ten: nv.hoTen,
             chuc_vu: nv.chucVu,
-            anh_path: path.join(process.cwd(), cleanRel),
-            anh_base64: (() => {
-              const avatarPath = path.join(process.cwd(), cleanRel);
-              return fs.existsSync(avatarPath)
-                ? fs.readFileSync(avatarPath).toString('base64')
-                : undefined;
-            })(),
+            anh_path: avatarPath,
+            anh_base64: anhBase64,
           };
         })
-        .filter(c => c.anh_base64);
+        .filter(Boolean))).filter(candidate => candidate.anh_base64);
 
       // 2. Gọi Python ML kiểm tra tính hợp lệ & chống trùng
       let checkResult: any = null;
@@ -4158,7 +4201,7 @@ export class QuanLyService implements OnModuleInit {
           console.warn('[AvatarUpload] Dịch vụ Python ML (cổng 5001) tạm thời chưa phản hồi, lưu ảnh theo chế độ dự phòng:', errMsg);
           return {
             message: 'Đã cập nhật ảnh nhân sự thành công (Lưu ý: Dịch vụ AI nhận diện khuôn mặt đang tạm tắt nên chưa đối soát sinh trắc học).',
-            data: `/uploads/avatars/${file.filename}`,
+            data: await uploadToCloudinary(),
             warning: true,
           };
         }
@@ -4182,9 +4225,11 @@ export class QuanLyService implements OnModuleInit {
       }
 
       // 5. Hợp lệ
+      const avatarUrl = await uploadToCloudinary();
+      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
       return {
         message: 'Upload và xác thực khuôn mặt thành công',
-        data: `/uploads/avatars/${file.filename}`,
+        data: avatarUrl,
       };
     } catch (err) {
       if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
