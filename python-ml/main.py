@@ -73,7 +73,8 @@ def verify_face_endpoint(req: FaceVerifyRequest):
 
 
 class CheckDuplicateFaceRequest(BaseModel):
-    target_image_path: str
+    target_image_path: Optional[str] = None
+    target_image_base64: Optional[str] = None
     candidates: Optional[List[Dict[str, Any]]] = []
 
 
@@ -85,6 +86,7 @@ def check_duplicate_face_endpoint(req: CheckDuplicateFaceRequest):
     try:
         return check_duplicate_face(
             target_image_path=req.target_image_path,
+            target_image_base64=req.target_image_base64,
             candidate_list=req.candidates or [],
         )
     except Exception as e:

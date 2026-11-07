@@ -175,26 +175,36 @@ def verify_face(frame_b64: str, ref_image_path: str, frames_b64: list[str] | Non
     }
 
 
-def check_duplicate_face(target_image_path: str, candidate_list: list[dict]) -> dict:
+def check_duplicate_face(
+    target_image_path: str | None = None,
+    target_image_base64: str | None = None,
+    candidate_list: list[dict] | None = None,
+) -> dict:
     """
     Kiểm tra tính hợp lệ và chống trùng lặp khuôn mặt:
     1. Kiểm tra ảnh tải lên có phát hiện được khuôn mặt người rõ nét không.
     2. So khớp Face Embedding với tất cả các nhân viên khác trong candidate_list.
     Ngưỡng phát hiện trùng lặp: >= 70% (~ cosine similarity >= 0.35)
     """
-    if not os.path.exists(target_image_path):
-        return {
-            'valid_face': False,
-            'is_duplicate': False,
-            'reason': f'Không tìm thấy file ảnh tải lên: {target_image_path}',
-        }
+    candidate_list = candidate_list or []
+    target_img = None
+    if target_image_base64:
+        try:
+            target_img = decode_base64_image(target_image_base64)
+        except Exception as exc:
+            return {
+                'valid_face': False,
+                'is_duplicate': False,
+                'reason': f'Không thể giải mã ảnh tải lên: {exc}',
+            }
+    elif target_image_path and os.path.exists(target_image_path):
+        target_img = cv2.imread(target_image_path)
 
-    target_img = cv2.imread(target_image_path)
     if target_img is None:
         return {
             'valid_face': False,
             'is_duplicate': False,
-            'reason': 'Không thể đọc dữ liệu ảnh tải lên',
+            'reason': 'Không thể đọc dữ liệu ảnh tải lên hoặc đường dẫn ảnh không tồn tại',
         }
 
     target_face = get_face_info(target_img)
@@ -207,11 +217,15 @@ def check_duplicate_face(target_image_path: str, candidate_list: list[dict]) -> 
 
     # So sánh với từng ứng viên
     for cand in candidate_list:
-        cand_path = cand.get('anh_path')
-        if not cand_path or not os.path.exists(cand_path):
-            continue
+        cand_img = None
+        if cand.get('anh_base64'):
+            try:
+                cand_img = decode_base64_image(cand['anh_base64'])
+            except Exception:
+                continue
+        elif cand.get('anh_path') and os.path.exists(cand['anh_path']):
+            cand_img = cv2.imread(cand['anh_path'])
 
-        cand_img = cv2.imread(cand_path)
         if cand_img is None:
             continue
 

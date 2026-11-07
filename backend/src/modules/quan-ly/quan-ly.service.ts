@@ -4121,9 +4121,15 @@ export class QuanLyService implements OnModuleInit {
             ho_ten: nv.hoTen,
             chuc_vu: nv.chucVu,
             anh_path: path.join(process.cwd(), cleanRel),
+            anh_base64: (() => {
+              const avatarPath = path.join(process.cwd(), cleanRel);
+              return fs.existsSync(avatarPath)
+                ? fs.readFileSync(avatarPath).toString('base64')
+                : undefined;
+            })(),
           };
         })
-        .filter(c => fs.existsSync(c.anh_path));
+        .filter(c => c.anh_base64);
 
       // 2. Gọi Python ML kiểm tra tính hợp lệ & chống trùng
       let checkResult: any = null;
@@ -4132,7 +4138,7 @@ export class QuanLyService implements OnModuleInit {
           this.httpService.post(
             `${PYTHON_ML_URL}/check-duplicate-face`,
             {
-              target_image_path: absolutePath,
+              target_image_base64: fs.readFileSync(absolutePath).toString('base64'),
               candidates: candidates,
             },
             { timeout: 25000 },
