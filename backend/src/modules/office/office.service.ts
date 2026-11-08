@@ -15,8 +15,21 @@ export class OfficeService {
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
   ) {
-    const baseUrl = this.configService.get<string>('OFFICE_SERVICE_URL') || 'http://localhost:5003';
-    this.OFFICE_SERVICE_URL = `${baseUrl.replace(/\/+$/, '')}/api/office`;
+    const configuredUrl = this.configService.get<string>('OFFICE_SERVICE_URL');
+    const defaultUrl = this.configService.get<string>('NODE_ENV') === 'production'
+      ? 'https://phongkham-office.onrender.com'
+      : 'http://localhost:5003';
+    const configuredIsLocal = configuredUrl
+      && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(?:\/|$)/i.test(configuredUrl.trim());
+    const baseUrl = configuredIsLocal && this.configService.get<string>('NODE_ENV') === 'production'
+      ? defaultUrl
+      : (configuredUrl || defaultUrl);
+    const normalizedBaseUrl = baseUrl
+      .trim()
+      .replace(/\/+$/, '')
+      .replace(/\/api\/office$/i, '')
+      .replace(/\/api$/i, '');
+    this.OFFICE_SERVICE_URL = `${normalizedBaseUrl}/api/office`;
     this.logger.log(`🏢 Office Gateway connected to microservice: ${this.OFFICE_SERVICE_URL}`);
   }
 
@@ -35,7 +48,11 @@ export class OfficeService {
       return res.data;
     } catch (err: any) {
       this.logger.error(`[Office Gateway GET /${path}] ${err.message}`);
-      if (err.response?.data) return err.response.data;
+      const responseData = err.response?.data;
+      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
+      if (responseData && !isHtmlError && (err.response?.status || 500) < 500) {
+        return responseData;
+      }
       throw new ServiceUnavailableException('Dịch vụ Office Microservice (cổng 5003) hiện đang bảo trì.');
     }
   }
@@ -50,7 +67,11 @@ export class OfficeService {
       return res.data;
     } catch (err: any) {
       this.logger.error(`[Office Gateway POST /${path}] ${err.message}`);
-      if (err.response?.data) return err.response.data;
+      const responseData = err.response?.data;
+      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
+      if (responseData && !isHtmlError && (err.response?.status || 500) < 500) {
+        return responseData;
+      }
       throw new ServiceUnavailableException('Dịch vụ Office Microservice (cổng 5003) hiện đang bảo trì.');
     }
   }
@@ -65,7 +86,11 @@ export class OfficeService {
       return res.data;
     } catch (err: any) {
       this.logger.error(`[Office Gateway PATCH /${path}] ${err.message}`);
-      if (err.response?.data) return err.response.data;
+      const responseData = err.response?.data;
+      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
+      if (responseData && !isHtmlError && (err.response?.status || 500) < 500) {
+        return responseData;
+      }
       throw new ServiceUnavailableException('Dịch vụ Office Microservice (cổng 5003) hiện đang bảo trì.');
     }
   }
@@ -80,9 +105,12 @@ export class OfficeService {
       return res.data;
     } catch (err: any) {
       this.logger.error(`[Office Gateway DELETE /${path}] ${err.message}`);
-      if (err.response?.data) return err.response.data;
+      const responseData = err.response?.data;
+      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
+      if (responseData && !isHtmlError && (err.response?.status || 500) < 500) {
+        return responseData;
+      }
       throw new ServiceUnavailableException('Dịch vụ Office Microservice (cổng 5003) hiện đang bảo trì.');
     }
   }
 }
-
