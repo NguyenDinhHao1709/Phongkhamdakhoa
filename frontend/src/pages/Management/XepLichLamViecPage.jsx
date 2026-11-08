@@ -25,6 +25,13 @@ function formatDateISO(d) {
   return `${year}-${month}-${day}`;
 }
 
+function normalizeDateOnly(value) {
+  const text = String(value || '');
+  if (!text.includes('T')) return text.slice(0, 10);
+  const date = new Date(text);
+  return formatDateISO(new Date(date.getTime() + 7 * 60 * 60 * 1000));
+}
+
 function formatTimeShort(timeStr) {
   if (!timeStr) return '';
   return timeStr.slice(0, 5);
@@ -233,7 +240,7 @@ export default function XepLichLamViecPage() {
           (p) =>
             Number(p.nhanVienId) === nvIdNum &&
             Number(p.caLamViecId) === caIdNum &&
-            String(p.ngayLam).slice(0, 10) === d
+            normalizeDateOnly(p.ngayLam) === d
         );
 
         if (isDuplicate) {
@@ -278,7 +285,7 @@ export default function XepLichLamViecPage() {
       let tongSoCa = 0;
       weekDays.forEach((d) => {
         const shifts = phanCaList.filter(
-          (p) => Number(p.nhanVienId) === Number(nv.id) && String(p.ngayLam).slice(0, 10) === d.dateStr
+          (p) => Number(p.nhanVienId) === Number(nv.id) && normalizeDateOnly(p.ngayLam) === d.dateStr
         );
         tongSoCa += shifts.length;
         const shiftNames = shifts.map((s) => s.tenCa || 'Ca trực').join(', ');
@@ -430,7 +437,7 @@ export default function XepLichLamViecPage() {
                     {/* 7 ngày */}
                     {weekDays.map((d, i) => {
                       const shifts = phanCaList.filter(
-                        (p) => Number(p.nhanVienId) === Number(nv.id) && String(p.ngayLam).slice(0, 10) === d.dateStr
+                        (p) => Number(p.nhanVienId) === Number(nv.id) && normalizeDateOnly(p.ngayLam) === d.dateStr
                       );
                       return (
                         <td key={i} className="px-1.5 py-1.5 border-r border-gray-100 align-top">

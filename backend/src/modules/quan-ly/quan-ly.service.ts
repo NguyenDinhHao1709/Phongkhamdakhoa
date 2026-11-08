@@ -33,6 +33,11 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as nodemailer from 'nodemailer';
 import axios from 'axios';
+
+function toDateOnly(value: string | Date): string {
+  if (typeof value === 'string') return value.slice(0, 10);
+  return new Date(value.getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
 import { v2 as cloudinary } from 'cloudinary';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { PayOS } from '@payos/node';
@@ -2160,7 +2165,7 @@ export class QuanLyService implements OnModuleInit {
         chucVu: l.nhanVien?.chucVu,
         caLamViecId: l.caLamViecId,
         tenCa: l.caLamViec?.tenCa,
-        ngayLam: l.ngayLam,
+        ngayLam: toDateOnly(l.ngayLam),
         ghiChu: l.ghiChu,
       })),
     };
