@@ -57,11 +57,23 @@ export default function TelehealthVideoModal({
   const socketRef = useRef(null);
   const broadcastChannelRef = useRef(null);
   const audioContextRef = useRef(null);
+  const remoteAudioContextRef = useRef(null);
   const animFrameRef = useRef(null);
+  const remoteAnimFrameRef = useRef(null);
   const fileInputRef = useRef(null);
   const seenSignalsRef = useRef(new Set());
+  const pendingCandidatesRef = useRef([]);
+  const webrtcConnectedRef = useRef(false);
+  const handshakeIntervalRef = useRef(null);
+  const frameRelayIntervalRef = useRef(null);
+  const audioRecorderRef = useRef(null);
+  const makingOfferRef = useRef(false);
+  const micOnRef = useRef(true);
+  const videoOnRef = useRef(true);
+  const speakerMutedRef = useRef(false);
+  const [remoteFallbackFrame, setRemoteFallbackFrame] = useState(null);
 
-  const roomId = appointmentInfo?.maLichHen || appointmentInfo?.id || 'telehealth_general';
+  const roomId = String(appointmentInfo?.maLichHen || appointmentInfo?.id || 'telehealth_general');
 
   const MAX_CALL_DURATION = 3600; // 60 phút tối đa (1 tiếng)
   const WARNING_THRESHOLD = 3000; // Cảnh báo trước 10 phút (khi đã gọi 50 phút)
@@ -120,7 +132,7 @@ export default function TelehealthVideoModal({
     }
   }, [isOpen, activeMinimized]);
 
-  // Đồng bộ và gắn lại luồng video khi chuyển đổi giữa Cửa sổ nổi và Toàn màn hình
+  // Đồng bộ và gắn lại luồng video khi chuyển đổi giữa Cửa sổ nổi, Toàn màn hình và khi có luồng mới
   useEffect(() => {
     if (mediaStreamRef.current && localVideoRef.current) {
       if (localVideoRef.current.srcObject !== mediaStreamRef.current) {
@@ -132,9 +144,10 @@ export default function TelehealthVideoModal({
       if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
         remoteVideoRef.current.srcObject = remoteStreamRef.current;
       }
+      remoteVideoRef.current.muted = speakerMuted;
       remoteVideoRef.current.play().catch(() => {});
     }
-  }, [activeMinimized]);
+  }, [activeMinimized, isPeerConnected, hasRemoteVideo, speakerMuted]);
 
   // Phím ESC đóng phóng to ảnh
   useEffect(() => {
@@ -188,19 +201,36 @@ export default function TelehealthVideoModal({
         // Setup Local Audio Meter
         setupAudioAnalyser(localStream, (level) => {
           if (isMounted) setLocalAudioLevel(level);
-        });
+        }, false);
 
-        // B. Tạo RTCPeerConnection chuẩn WebRTC với STUN servers Google & Mozilla
+        // B. Tạo RTCPeerConnection chuẩn WebRTC với STUN + TURN servers (xuyên NAT/Firewall/4G)
         const pcConfig = {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun.services.mozilla.com' },
+            { urls: 'stun:stun.cloudflare.com:3478' },
+            {
+              urls: 'turn:openrelay.metered.ca:80',
+              username: 'openrelayproject',
+              credential: 'openrelayproject',
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443',
+              username: 'openrelayproject',
+              credential: 'openrelayproject',
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+              username: 'openrelayproject',
+              credential: 'openrelayproject',
+            },
           ],
+          iceCandidatePoolSize: 10,
         };
         const pc = new RTCPeerConnection(pcConfig);
         peerConnectionRef.current = pc;
+        remoteStreamRef.current = new MediaStream();
 
         // Thêm tracks từ local stream sang PeerConnection
         if (localStream) {
@@ -211,23 +241,45 @@ export default function TelehealthVideoModal({
 
         // Nhận remote stream từ đối phương
         pc.ontrack = (event) => {
-          console.log('[WebRTC] Nhận được remote track:', event.track.kind);
-          const [remoteStream] = event.streams;
-          if (remoteStream) {
-            remoteStreamRef.current = remoteStream;
-            if (remoteVideoRef.current) {
-              remoteVideoRef.current.srcObject = remoteStream;
-              remoteVideoRef.current.play().catch((playErr) => {
-                console.warn('[WebRTC] Tự động phát âm thanh bị giới hạn bởi trình duyệt:', playErr);
-              });
-            }
-            setIsPeerConnected(true);
-            setHasRemoteVideo(remoteStream.getVideoTracks().length > 0);
-
-            // Setup Remote Audio Meter
-            setupAudioAnalyser(remoteStream, (level) => {
-              if (isMounted) setRemoteAudioLevel(level);
+          console.log('[WebRTC] Nhận được remote track:', event.track?.kind);
+          if (!remoteStreamRef.current) {
+            remoteStreamRef.current = new MediaStream();
+          }
+          const incomingStream = event.streams && event.streams[0];
+          if (incomingStream) {
+            incomingStream.getTracks().forEach((t) => {
+              if (!remoteStreamRef.current.getTracks().some((ex) => ex.id === t.id)) {
+                remoteStreamRef.current.addTrack(t);
+              }
             });
+          } else if (event.track) {
+            if (!remoteStreamRef.current.getTracks().some((ex) => ex.id === event.track.id)) {
+              remoteStreamRef.current.addTrack(event.track);
+            }
+          }
+
+          webrtcConnectedRef.current = true;
+          setRemoteFallbackFrame(null);
+
+          if (remoteVideoRef.current) {
+            if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+              remoteVideoRef.current.srcObject = remoteStreamRef.current;
+            }
+            remoteVideoRef.current.muted = speakerMutedRef.current;
+            remoteVideoRef.current.play().catch((playErr) => {
+              console.warn('[WebRTC] Tự động phát âm thanh bị giới hạn bởi trình duyệt:', playErr);
+            });
+          }
+          setIsPeerConnected(true);
+          if (event.track?.kind === 'video' || remoteStreamRef.current.getVideoTracks().length > 0) {
+            setHasRemoteVideo(true);
+          }
+
+          // Setup Remote Audio Meter khi nhận track audio
+          if (event.track?.kind === 'audio' || remoteStreamRef.current.getAudioTracks().length > 0) {
+            setupAudioAnalyser(remoteStreamRef.current, (level) => {
+              if (isMounted) setRemoteAudioLevel(level);
+            }, true);
           }
         };
 
@@ -238,14 +290,33 @@ export default function TelehealthVideoModal({
           }
         };
 
-        pc.onconnectionstatechange = () => {
-          console.log('[WebRTC] Connection state:', pc.connectionState);
-          if (pc.connectionState === 'connected') {
+        const handleConnState = () => {
+          const state = pc.connectionState || pc.iceConnectionState;
+          console.log('[WebRTC] Connection/ICE state:', pc.connectionState, pc.iceConnectionState);
+          if (
+            pc.connectionState === 'connected' ||
+            pc.iceConnectionState === 'connected' ||
+            pc.iceConnectionState === 'completed'
+          ) {
+            webrtcConnectedRef.current = true;
             setIsPeerConnected(true);
-          } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-            setIsPeerConnected(false);
+            if (remoteStreamRef.current && remoteStreamRef.current.getVideoTracks().length > 0) {
+              setHasRemoteVideo(true);
+            }
+            if (remoteVideoRef.current && remoteStreamRef.current) {
+              remoteVideoRef.current.srcObject = remoteStreamRef.current;
+              remoteVideoRef.current.play().catch(() => {});
+            }
+          } else if (state === 'failed') {
+            webrtcConnectedRef.current = false;
+            if (role === 'doctor') {
+              createAndSendOffer(true);
+            }
           }
         };
+
+        pc.onconnectionstatechange = handleConnState;
+        pc.oniceconnectionstatechange = handleConnState;
 
         // C. Kênh truyền tin (Signaling) đa kênh: BroadcastChannel (cùng máy/tab) + Socket.io (khác máy)
         const channelName = `telehealth_${roomId}`;
@@ -256,14 +327,11 @@ export default function TelehealthVideoModal({
           handleIncomingSignal(e.data);
         };
 
-        // Socket.io signaling: Kết nối qua cùng origin (https) với path /socket.io (thông qua proxy của Vite)
-        // hoặc fallback tới cổng 5000 để tránh bị trình duyệt di động chặn Mixed Content (HTTPS -> HTTP)
         let socket;
         try {
           if (import.meta.env.VITE_WS_URL) {
             socket = io(import.meta.env.VITE_WS_URL, { transports: ['websocket', 'polling'] });
           } else {
-            // Sử dụng window.location.origin và path /socket.io để cùng giao thức HTTPS
             socket = io(BACKEND_URL || window.location.origin, {
               path: '/socket.io',
               transports: ['websocket', 'polling'],
@@ -278,6 +346,14 @@ export default function TelehealthVideoModal({
         socket.on('connect', () => {
           console.log('[Socket] Đã kết nối Socket.IO thành công, id =', socket.id);
           socket.emit('call:join', { roomId, role, userName: role === 'doctor' ? 'Bác sĩ' : participantName });
+          // Sau 400ms (khi server đã join room xong), phát tín hiệu thông báo có mặt
+          setTimeout(() => {
+            if (!isMounted) return;
+            sendSignal({ type: 'peer_joined', role, senderRole: role });
+            if (role === 'doctor') {
+              createAndSendOffer();
+            }
+          }, 400);
         });
 
         socket.on('connect_error', (err) => {
@@ -287,9 +363,11 @@ export default function TelehealthVideoModal({
         socket.on('call:peer_joined', async (data) => {
           console.log('[Signaling] Peer joined:', data);
           setIsPeerConnected(true);
-          // Vai trò Doctor khởi tạo Offer khi có người tham gia
           if (role === 'doctor') {
-            await createAndSendOffer();
+            await createAndSendOffer(true);
+          } else {
+            // Bệnh nhân báo lại ngay cho Bác sĩ để Bác sĩ gửi Offer
+            sendSignal({ type: 'peer_ready', role: 'patient', senderRole: role });
           }
         });
 
@@ -308,21 +386,108 @@ export default function TelehealthVideoModal({
         });
 
         socket.on('call:peer_left', () => {
+          webrtcConnectedRef.current = false;
           setIsPeerConnected(false);
           setHasRemoteVideo(false);
+          setRemoteFallbackFrame(null);
         });
 
         // Báo cho các tab khác biết mình đã tham gia
         sendSignal({ type: 'peer_joined', role, senderRole: role });
 
-        // Nếu là Doctor, tự động tạo offer sau 800ms
-        if (role === 'doctor') {
-          setTimeout(() => {
-            if (isMounted && pc.signalingState === 'stable') {
-              createAndSendOffer();
+        // Bộ định thời tự động bắt tay lại (Auto-Handshake Retry) mỗi 3 giây nếu WebRTC chưa thông
+        handshakeIntervalRef.current = setInterval(() => {
+          if (!isMounted) return;
+          if (socketRef.current && socketRef.current.connected) {
+            socketRef.current.emit('call:join', {
+              roomId,
+              role,
+              userName: role === 'doctor' ? 'Bác sĩ' : participantName,
+            });
+          }
+          if (!webrtcConnectedRef.current) {
+            if (role === 'doctor') {
+              createAndSendOffer(true);
+            } else {
+              sendSignal({ type: 'peer_ready', role: 'patient', senderRole: role });
             }
-          }, 800);
-        }
+          }
+        }, 3000);
+
+        // Kênh truyền Hình ảnh & Âm thanh dự phòng qua Socket khi tường lửa/4G chặn UDP WebRTC trực tiếp
+        const relayCanvas = document.createElement('canvas');
+        relayCanvas.width = 320;
+        relayCanvas.height = 240;
+        const relayCtx = relayCanvas.getContext('2d');
+
+        frameRelayIntervalRef.current = setInterval(() => {
+          if (!isMounted || webrtcConnectedRef.current) return;
+          if (!videoOnRef.current || !localVideoRef.current) return;
+          try {
+            if (localVideoRef.current.readyState >= 2) {
+              relayCtx.drawImage(localVideoRef.current, 0, 0, 320, 240);
+              const frameDataUrl = relayCanvas.toDataURL('image/jpeg', 0.45);
+              if (frameDataUrl && frameDataUrl.length > 100) {
+                sendSignal({ type: 'video_frame', frame: frameDataUrl });
+              }
+            }
+          } catch (e) {}
+        }, 280);
+
+        // Ghi âm các đoạn ngắn 700ms gửi qua Socket nếu WebRTC UDP chưa thông
+        try {
+          const audioTracks = localStream ? localStream.getAudioTracks() : [];
+          if (audioTracks.length > 0 && typeof MediaRecorder !== 'undefined') {
+            const audioOnlyStream = new MediaStream([audioTracks[0]]);
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+              ? 'audio/webm;codecs=opus'
+              : MediaRecorder.isTypeSupported('audio/webm')
+                ? 'audio/webm'
+                : '';
+            const startChunkCycle = () => {
+              if (!isMounted || webrtcConnectedRef.current) return;
+              if (!micOnRef.current) {
+                setTimeout(startChunkCycle, 750);
+                return;
+              }
+              try {
+                const recorder = mimeType
+                  ? new MediaRecorder(audioOnlyStream, { mimeType, audioBitsPerSecond: 24000 })
+                  : new MediaRecorder(audioOnlyStream);
+                audioRecorderRef.current = recorder;
+                const chunks = [];
+                recorder.ondataavailable = (ev) => {
+                  if (ev.data && ev.data.size > 0) chunks.push(ev.data);
+                };
+                recorder.onstop = () => {
+                  if (!isMounted || webrtcConnectedRef.current || chunks.length === 0) return;
+                  const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    if (reader.result && !webrtcConnectedRef.current && micOnRef.current) {
+                      sendSignal({
+                        type: 'audio_chunk',
+                        chunk: reader.result,
+                        level: Math.max(25, Math.min(95, Math.round(blob.size / 40))),
+                      });
+                    }
+                  };
+                  reader.readAsDataURL(blob);
+                  if (isMounted && !webrtcConnectedRef.current) {
+                    setTimeout(startChunkCycle, 50);
+                  }
+                };
+                recorder.start();
+                setTimeout(() => {
+                  if (recorder.state === 'recording') {
+                    recorder.stop();
+                  }
+                }, 700);
+              } catch (recErr) {}
+            };
+            setTimeout(startChunkCycle, 1500);
+          }
+        } catch (audioRelayErr) {}
 
       } catch (err) {
         console.error('Lỗi thiết lập cuộc gọi WebRTC:', err);
@@ -367,18 +532,29 @@ export default function TelehealthVideoModal({
   };
 
   // Tạo và gửi Offer
-  const createAndSendOffer = async () => {
+  const createAndSendOffer = async (iceRestart = false) => {
     const pc = peerConnectionRef.current;
-    if (!pc) return;
+    if (!pc || makingOfferRef.current) return;
+    makingOfferRef.current = true;
     try {
+      if (pc.signalingState !== 'stable') {
+        if (pc.signalingState === 'have-local-offer' && pc.localDescription && !iceRestart) {
+          sendSignal({ type: 'offer', sdp: pc.localDescription });
+          return;
+        }
+        await pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
+      }
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: true,
+        iceRestart,
       });
       await pc.setLocalDescription(offer);
       sendSignal({ type: 'offer', sdp: pc.localDescription });
     } catch (err) {
       console.warn('Lỗi tạo Offer:', err);
+    } finally {
+      makingOfferRef.current = false;
     }
   };
 
@@ -390,43 +566,88 @@ export default function TelehealthVideoModal({
     if (data.msgId) {
       if (seenSignalsRef.current.has(data.msgId)) return;
       seenSignalsRef.current.add(data.msgId);
-      if (seenSignalsRef.current.size > 200) {
-        const firstKeys = Array.from(seenSignalsRef.current).slice(0, 50);
+      if (seenSignalsRef.current.size > 400) {
+        const firstKeys = Array.from(seenSignalsRef.current).slice(0, 100);
         firstKeys.forEach((k) => seenSignalsRef.current.delete(k));
       }
     }
 
+    // Bất kỳ tín hiệu nào từ đối phương cũng xác nhận đối phương đang ở trong phòng
+    setIsPeerConnected(true);
+
     const pc = peerConnectionRef.current;
     if (!pc) return;
 
+    const flushPendingCandidates = async () => {
+      while (pendingCandidatesRef.current.length > 0) {
+        const cand = pendingCandidatesRef.current.shift();
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(cand));
+        } catch (e) {
+          console.warn('Lỗi nạp queued ICE Candidate:', e);
+        }
+      }
+    };
+
     try {
-      if (data.type === 'peer_joined') {
+      if (data.type === 'peer_joined' || data.type === 'peer_ready') {
         if (role === 'doctor') {
-          await createAndSendOffer();
+          await createAndSendOffer(true);
+        } else if (data.type === 'peer_joined') {
+          sendSignal({ type: 'peer_ready', role: 'patient', senderRole: role });
         }
       } else if (data.type === 'offer') {
+        if (pc.signalingState !== 'stable') {
+          await pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
+        }
         await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        await flushPendingCandidates();
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         sendSignal({ type: 'answer', sdp: pc.localDescription });
       } else if (data.type === 'answer') {
-        if (pc.signalingState !== 'stable') {
+        if (pc.signalingState === 'have-local-offer') {
           await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+          await flushPendingCandidates();
         }
       } else if (data.type === 'candidate' && data.candidate) {
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch (e) {
-          console.warn('Lỗi thêm ICE Candidate:', e);
+        if (pc.remoteDescription && pc.remoteDescription.type) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+          } catch (e) {
+            console.warn('Lỗi thêm ICE Candidate:', e);
+          }
+        } else {
+          pendingCandidatesRef.current.push(data.candidate);
+        }
+      } else if (data.type === 'video_frame' && data.frame) {
+        if (!webrtcConnectedRef.current) {
+          setRemoteFallbackFrame(data.frame);
+          setHasRemoteVideo(true);
+        }
+      } else if (data.type === 'audio_chunk' && data.chunk) {
+        if (!webrtcConnectedRef.current) {
+          setRemoteAudioLevel(data.level || 65);
+          setTimeout(() => setRemoteAudioLevel(12), 650);
+          if (!speakerMutedRef.current) {
+            try {
+              const audioEl = new Audio(data.chunk);
+              audioEl.play().catch(() => {});
+            } catch (e) {}
+          }
         }
       } else if (data.type === 'track_state') {
         if (data.kind === 'video') {
           setHasRemoteVideo(!!data.enabled);
+          if (!data.enabled) setRemoteFallbackFrame(null);
         }
       } else if (data.type === 'chat_msg') {
         setInCallMessages((prev) => [...prev, data.message]);
         if (!showChat) {
           setUnreadChatCount((prev) => prev + 1);
+        }
+        if (!webrtcConnectedRef.current && role === 'doctor') {
+          createAndSendOffer(true);
         }
       } else if (data.type === 'voice_test' && data.text) {
         setRemoteAudioLevel(85);
@@ -493,12 +714,25 @@ export default function TelehealthVideoModal({
   };
 
   // Đo mức âm lượng Micro / Audio stream thời gian thực
-  const setupAudioAnalyser = (stream, onLevelChange) => {
+  const setupAudioAnalyser = (stream, onLevelChange, isRemote = false) => {
     try {
+      if (!stream || stream.getAudioTracks().length === 0) return;
       const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtxClass) return;
+
+      const targetCtxRef = isRemote ? remoteAudioContextRef : audioContextRef;
+      const targetFrameRef = isRemote ? remoteAnimFrameRef : animFrameRef;
+
+      if (targetFrameRef.current) cancelAnimationFrame(targetFrameRef.current);
+      if (targetCtxRef.current && targetCtxRef.current.state !== 'closed') {
+        targetCtxRef.current.close().catch(() => {});
+      }
+
       const audioCtx = new AudioCtxClass();
-      audioContextRef.current = audioCtx;
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
+      targetCtxRef.current = audioCtx;
 
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
@@ -517,7 +751,7 @@ export default function TelehealthVideoModal({
         const avg = sum / bufferLength;
         const normalized = Math.min(100, Math.round((avg / 128) * 100));
         onLevelChange(normalized);
-        animFrameRef.current = requestAnimationFrame(updateLevel);
+        targetFrameRef.current = requestAnimationFrame(updateLevel);
       };
       updateLevel();
     } catch (e) {
@@ -527,9 +761,27 @@ export default function TelehealthVideoModal({
 
   // Dọn dẹp tài nguyên
   const cleanupCall = () => {
+    if (handshakeIntervalRef.current) {
+      clearInterval(handshakeIntervalRef.current);
+      handshakeIntervalRef.current = null;
+    }
+    if (frameRelayIntervalRef.current) {
+      clearInterval(frameRelayIntervalRef.current);
+      frameRelayIntervalRef.current = null;
+    }
+    if (audioRecorderRef.current && audioRecorderRef.current.state === 'recording') {
+      try {
+        audioRecorderRef.current.stop();
+      } catch (e) {}
+      audioRecorderRef.current = null;
+    }
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (remoteAnimFrameRef.current) cancelAnimationFrame(remoteAnimFrameRef.current);
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close().catch(() => {});
+    }
+    if (remoteAudioContextRef.current && remoteAudioContextRef.current.state !== 'closed') {
+      remoteAudioContextRef.current.close().catch(() => {});
     }
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -548,23 +800,29 @@ export default function TelehealthVideoModal({
       socketRef.current.disconnect();
       socketRef.current = null;
     }
+    pendingCandidatesRef.current = [];
+    webrtcConnectedRef.current = false;
     setIsPeerConnected(false);
     setHasRemoteVideo(false);
+    setRemoteFallbackFrame(null);
   };
 
   // Bật/tắt mic
   const toggleMic = () => {
+    const nextMic = !micOn;
+    micOnRef.current = nextMic;
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getAudioTracks().forEach((track) => {
-        track.enabled = !micOn;
+        track.enabled = nextMic;
       });
     }
-    setMicOn(!micOn);
+    setMicOn(nextMic);
   };
 
   // Bật/tắt video
   const toggleVideo = () => {
     const nextState = !videoOn;
+    videoOnRef.current = nextState;
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getVideoTracks().forEach((track) => {
         track.enabled = nextState;
@@ -590,10 +848,12 @@ export default function TelehealthVideoModal({
 
   // Bật/tắt âm lượng loa người đối diện (hữu ích khi test 2 tab trên cùng 1 máy tính để tránh hú âm thanh)
   const toggleSpeaker = () => {
+    const nextMuted = !speakerMuted;
+    speakerMutedRef.current = nextMuted;
     if (remoteVideoRef.current) {
-      remoteVideoRef.current.muted = !speakerMuted;
+      remoteVideoRef.current.muted = nextMuted;
     }
-    setSpeakerMuted(!speakerMuted);
+    setSpeakerMuted(nextMuted);
   };
 
   // Xử lý kéo thả bằng Pointer Events (chuẩn W3C: hỗ trợ 100% cả Chuột máy tính, Touch điện thoại và Bút cảm ứng)
@@ -748,8 +1008,16 @@ export default function TelehealthVideoModal({
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            className={`w-full h-full object-cover pointer-events-none ${hasRemoteVideo ? 'block' : 'hidden'}`}
+            muted={speakerMuted}
+            className={`w-full h-full object-cover pointer-events-none ${hasRemoteVideo && !remoteFallbackFrame ? 'opacity-100 block' : 'opacity-0 pointer-events-none absolute inset-0'}`}
           />
+          {hasRemoteVideo && remoteFallbackFrame && (
+            <img
+              src={remoteFallbackFrame}
+              alt={participantName}
+              className="w-full h-full object-cover pointer-events-none"
+            />
+          )}
           {!hasRemoteVideo && (
             <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-950 p-2 text-center pointer-events-none">
               <div className="h-10 w-10 sm:h-14 sm:w-14 rounded-full bg-primary-600/30 border border-primary-500/40 flex items-center justify-center text-white mb-1 shadow-inner">
@@ -1013,14 +1281,25 @@ export default function TelehealthVideoModal({
         <div className="absolute inset-0 sm:relative sm:flex-1 h-full w-full bg-black overflow-hidden flex">
           {/* Vùng Video Người Đối Diện (Remote) */}
           <div className="flex-1 relative h-full w-full flex items-center justify-center bg-black overflow-hidden">
-            {/* Video element phát remote stream thực tế (nếu có WebRTC P2P) */}
+            {/* Video element phát remote stream thực tế (luôn mount, không dùng display:none để trình duyệt không chặn phát âm thanh/video) */}
             <video
               ref={remoteVideoRef}
               autoPlay
               playsInline
               muted={speakerMuted}
-              className={`w-full h-full object-cover sm:object-contain transition-opacity duration-500 ${isPeerConnected && hasRemoteVideo ? 'opacity-100 block' : 'hidden'}`}
+              className={`w-full h-full object-cover sm:object-contain transition-opacity duration-300 ${
+                isPeerConnected && hasRemoteVideo && !remoteFallbackFrame
+                  ? 'opacity-100 block'
+                  : 'opacity-0 pointer-events-none absolute inset-0'
+              }`}
             />
+            {isPeerConnected && hasRemoteVideo && remoteFallbackFrame && (
+              <img
+                src={remoteFallbackFrame}
+                alt={participantName}
+                className="w-full h-full object-cover sm:object-contain transition-opacity duration-150"
+              />
+            )}
 
             {/* Hiển thị avatar nếu đối phương kết nối nhưng tắt camera */}
             {isPeerConnected && !hasRemoteVideo && (

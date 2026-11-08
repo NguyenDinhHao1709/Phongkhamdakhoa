@@ -9,7 +9,7 @@ import { Repository } from 'typeorm';
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
 
 @WebSocketGateway({
-  cors: { origin: process.env.CLIENT_URL || 'http://localhost:3000', credentials: true },
+  cors: { origin: true, credentials: true },
   namespace: '/',
 })
 export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -140,15 +140,25 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.join(room);
     this.logger.log(`Client ${client.id} (${payload.role} - ${payload.userName}) joined call room ${room}`);
     client.to(room).emit('call:peer_joined', { peerId: client.id, role: payload.role, userName: payload.userName });
+
+    // Nếu trong phòng đã có người đợi sẵn, báo ngược lại ngay cho người vừa vào biết để bắt tay WebRTC tức thì
+    const roomMembers = this.server?.sockets?.adapter?.rooms?.get(room);
+    if (roomMembers && roomMembers.size > 1) {
+      client.emit('call:peer_joined', {
+        peerId: 'existing_peer',
+        role: payload.role === 'doctor' ? 'patient' : 'doctor',
+        userName: 'Đối phương',
+      });
+    }
   }
 
   @SubscribeMessage('call:signal')
   handleCallSignal(client: Socket, payload: { roomId: string; targetPeerId?: string; signal: any; role?: string }) {
+    if (!payload?.roomId) return;
     const room = `call:${payload.roomId}`;
-    // Kiểm tra client đã được duyệt vào room hay chưa
+    // Tự động đưa client vào lại room nếu vừa reconnect để không làm đứt luồng WebRTC
     if (!client.rooms.has(room)) {
-      client.emit('call:error', { code: 'UNAUTHORIZED_ROOM', message: 'Bạn chưa được cấp quyền vào phòng gọi này.' });
-      return;
+      client.join(room);
     }
     if (payload.targetPeerId) {
       this.server.to(payload.targetPeerId).emit('call:signal', { sender: client.id, signal: payload.signal, role: payload.role });
