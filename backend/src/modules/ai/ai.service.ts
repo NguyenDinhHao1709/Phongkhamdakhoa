@@ -17,7 +17,11 @@ export class AiService {
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
   ) {
-    const baseUrl = this.configService.get<string>('AI_SERVICE_URL') || 'http://localhost:5002';
+    const configuredUrl = this.configService.get<string>('AI_SERVICE_URL');
+    const defaultUrl = this.configService.get<string>('NODE_ENV') === 'production'
+      ? 'https://phongkham-ai.onrender.com'
+      : 'http://localhost:5002';
+    const baseUrl = configuredUrl || defaultUrl;
     this.AI_SERVICE_URL = `${baseUrl.replace(/\/+$/, '')}/api/ai`;
     this.logger.log(`🔗 AI Gateway connected to microservice: ${this.AI_SERVICE_URL}`);
   }
