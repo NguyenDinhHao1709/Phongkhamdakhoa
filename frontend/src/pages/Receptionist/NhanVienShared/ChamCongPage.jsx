@@ -28,6 +28,18 @@ function tinhThoiLuongLamViec(gioVao, gioRa) {
   return `${mins} phút`;
 }
 
+function layThongBaoLoi(error) {
+  const message =
+    error?.error?.message ||
+    error?.message ||
+    error?.response?.data?.error?.message ||
+    error?.response?.data?.message;
+
+  if (Array.isArray(message)) return message.join('; ');
+  if (typeof message === 'string' && message.trim()) return message;
+  return 'Không thể xác thực khuôn mặt. Vui lòng thử lại hoặc liên hệ quản trị viên.';
+}
+
 export default function ChamCongPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -173,8 +185,7 @@ export default function ChamCongPage() {
       stopCamera();
     },
     onError: (err) => {
-      const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err?.message || (typeof err === 'string' ? err : 'Xác thực thất bại');
-      setErrorMsg(msg);
+      setErrorMsg(typeof err === 'string' ? err : layThongBaoLoi(err));
       setStep('error');
       stopCamera();
     },
