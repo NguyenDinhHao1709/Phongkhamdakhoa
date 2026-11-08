@@ -1079,7 +1079,12 @@ export class LichHenService implements OnModuleInit {
         hanThanhToan,
         datBoiNhanVienId,
       });
-      return await this.repo.save(lh);
+      const savedAppointment = await this.repo.save(lh);
+      await this.repo.query(
+        'UPDATE lich_hen SET ngay_hen = ? WHERE id = ?',
+        [dto.ngayHen, savedAppointment.id],
+      );
+      return savedAppointment;
     });
 
     // Xóa ngay cache danh sách bác sĩ còn ca trống để giao diện cập nhật tức thì
@@ -1680,7 +1685,12 @@ export class LichHenService implements OnModuleInit {
       lh.ghiChu = lh.ghiChu ? `${lh.ghiChu} | ${noteDoiLich}` : noteDoiLich;
       lh.capNhatLuc = new Date();
 
-      return await this.repo.save(lh);
+      const savedAppointment = await this.repo.save(lh);
+      await this.repo.query(
+        'UPDATE lich_hen SET ngay_hen = ? WHERE id = ?',
+        [dto.ngayHen, savedAppointment.id],
+      );
+      return savedAppointment;
     });
 
     this.cache.invalidatePrefix('lich_hen:bac_si_ca_trong');

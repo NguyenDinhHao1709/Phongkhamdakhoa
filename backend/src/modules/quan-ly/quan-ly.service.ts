@@ -2228,6 +2228,10 @@ export class QuanLyService implements OnModuleInit {
         ghiChu: item.ghiChu || null,
       });
       const savedLich = await this.lichLamViecRepo.save(newLich);
+      await this.lichLamViecRepo.query(
+        'UPDATE lich_lam_viec SET ngay_lam = ? WHERE id = ?',
+        [item.ngayLam, savedLich.id],
+      );
 
       if (nv?.nguoiDungId) {
         await this.thongBaoService.taoThongBao({
