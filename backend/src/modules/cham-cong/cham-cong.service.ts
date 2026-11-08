@@ -8,6 +8,8 @@ import { firstValueFrom } from 'rxjs';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import axios from 'axios';
+import { v2 as cloudinary } from 'cloudinary';
 import { ChamCong } from './entities/cham-cong.entity';
 import { CaiDatHeThong } from './entities/cai-dat-he-thong.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
@@ -65,11 +67,29 @@ export class ChamCongService {
 
   // ─── Lấy ảnh mẫu nhân viên (chỉ Admin mới có quyền cập nhật ảnh) ─────────────
 
-  async layAnhMauNhanVien(nv: NhanVien): Promise<string> {
+  async layAnhMauNhanVien(nv: NhanVien): Promise<{ path: string; temporary: boolean }> {
     if (!nv.anhDaiDien) {
       throw new BadRequestException(
         'Hồ sơ của bạn chưa có ảnh khuôn mặt mẫu trong hệ thống. Vui lòng liên hệ Quản trị viên (Admin) để cập nhật ảnh nhận diện trước khi chấm công.',
       );
+    }
+
+    if (/^https?:\/\//i.test(nv.anhDaiDien)) {
+      const tempPath = path.join(os.tmpdir(), `face-ref-${nv.id}-${Date.now()}.jpg`);
+      try {
+        const response = await axios.get(nv.anhDaiDien, {
+          responseType: 'arraybuffer',
+          timeout: 15000,
+        });
+        fs.writeFileSync(tempPath, response.data);
+        return { path: tempPath, temporary: true };
+      } catch (error) {
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        const detail = error?.response?.status
+          ? `HTTP ${error.response.status}`
+          : error?.message || 'không xác định';
+        throw new BadRequestException(`Không thể tải ảnh khuôn mặt mẫu từ kho lưu trữ (${detail}).`);
+      }
     }
 
     const cleanRel = nv.anhDaiDien.replace(/^\/+/, '');
@@ -80,7 +100,7 @@ export class ChamCongService {
       );
     }
 
-    return fullPath;
+    return { path: fullPath, temporary: false };
   }
 
   // ─── Lấy lịch phân ca của nhân viên hôm nay ────────────────────────────────
@@ -237,14 +257,18 @@ export class ChamCongService {
       }
 
       // 4. Lấy ảnh mẫu nhân viên (chỉ Admin mới có quyền cập nhật)
-      const refPath = await this.layAnhMauNhanVien(nv);
-
-      // 5. Xác thực khuôn mặt (ngưỡng ~70%, thực thể sống)
-      const faceCheck = await this.xacThucKhuonMat({
-        frameBase64,
-        refImagePath: refPath,
-        framesB64,
-      });
+      const refImage = await this.layAnhMauNhanVien(nv);
+      let faceCheck;
+      try {
+        // 5. Xác thực khuôn mặt (ngưỡng ~70%, thực thể sống)
+        faceCheck = await this.xacThucKhuonMat({
+          frameBase64,
+          refImagePath: refImage.path,
+          framesB64,
+        });
+      } finally {
+        if (refImage.temporary && fs.existsSync(refImage.path)) fs.unlinkSync(refImage.path);
+      }
       if (!faceCheck.hopLe) throw new BadRequestException(faceCheck.lyDo);
       const doKhop = faceCheck.doKhop;
 
@@ -328,14 +352,18 @@ export class ChamCongService {
       if (!ipCheck.hopLe) throw new ForbiddenException(ipCheck.lyDo);
 
       // 4. Lấy ảnh mẫu (chỉ Admin mới có quyền cập nhật)
-      const refPath = await this.layAnhMauNhanVien(nv);
-
-      // 5. Xác thực khuôn mặt
-      const faceCheck = await this.xacThucKhuonMat({
-        frameBase64,
-        refImagePath: refPath,
-        framesB64,
-      });
+      const refImage = await this.layAnhMauNhanVien(nv);
+      let faceCheck;
+      try {
+        // 5. Xác thực khuôn mặt
+        faceCheck = await this.xacThucKhuonMat({
+          frameBase64,
+          refImagePath: refImage.path,
+          framesB64,
+        });
+      } finally {
+        if (refImage.temporary && fs.existsSync(refImage.path)) fs.unlinkSync(refImage.path);
+      }
       if (!faceCheck.hopLe) throw new BadRequestException(faceCheck.lyDo);
 
       // 6. Tính thời gian về so với ca muộn nhất
@@ -520,11 +548,48 @@ export class ChamCongService {
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
   private async luuAnhChamCong(base64: string, nhanVienId: number, loai: 'in' | 'out'): Promise<string> {
+    const cloudinaryConfigured = Boolean(
+      process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET,
+    );
     const uploadsDir = path.join(process.cwd(), 'uploads', 'cham-cong');
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
     const filename = `cc_${nhanVienId}_${loai}_${Date.now()}.jpg`;
     const data = base64.replace(/^data:image\/\w+;base64,/, '');
+
+    if (cloudinaryConfigured) {
+      cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+      });
+
+      try {
+        return await new Promise<string>((resolve, reject) => {
+          const upload = cloudinary.uploader.upload_stream(
+            {
+              folder: 'phongkham/cham-cong',
+              public_id: filename.replace(/\.jpg$/, ''),
+              resource_type: 'image',
+            },
+            (error, result) => {
+              if (error || !result?.secure_url) {
+                reject(error || new Error('Cloudinary không trả về URL ảnh chấm công'));
+                return;
+              }
+              resolve(result.secure_url);
+            },
+          );
+          upload.end(Buffer.from(data, 'base64'));
+        });
+      } catch (error) {
+        throw new BadRequestException(
+          `Không thể lưu ảnh chấm công lên kho lưu trữ: ${error?.message || 'lỗi Cloudinary'}`,
+        );
+      }
+    }
+
+    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
     fs.writeFileSync(path.join(uploadsDir, filename), Buffer.from(data, 'base64'));
     return `/uploads/cham-cong/${filename}`;
   }
