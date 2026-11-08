@@ -86,11 +86,11 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       setError('');
-      setFormData(data);
 
       // Gửi mã OTP xác thực email
       await apiPost('/auth/send-otp', { email: data.email }, { timeout: 30000 });
 
+      setFormData(data);
       setStep(2);
       setCountdown(60);
       setCanResend(false);

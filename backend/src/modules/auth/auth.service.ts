@@ -53,6 +53,28 @@ export class AuthService {
     });
   }
 
+  private async assertRegistrationEmailAvailable(email: string): Promise<string> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingUser = await this.nguoiDungRepo.findOne({
+      where: { tenDangNhap: normalizedEmail },
+    });
+    const existingPatient = await this.benhNhanRepo.findOne({
+      where: { email: normalizedEmail },
+    });
+    const existingStaff = await this.dataSource.getRepository(NhanVien).findOne({
+      where: { email: normalizedEmail },
+    });
+
+    if (existingUser || existingPatient || existingStaff) {
+      throw new ConflictException({
+        code: 'EMAIL_EXISTS',
+        message: 'Email này đã được đăng ký, vui lòng sử dụng email khác.',
+      });
+    }
+
+    return normalizedEmail;
+  }
+
   private async sendOtpEmail(to: string, subject: string, html: string) {
     const brevoApiKey = this.config.get<string>('BREVO_API_KEY')?.trim();
     const senderEmail = (
@@ -103,13 +125,7 @@ export class AuthService {
 
   // ─── ĐĂNG KÝ BỆNH NHÂN TỰ DO ──────────────────────────────
   async registerPatient(dto: RegisterPatientDto) {
-    const username = (dto.tenDangNhap || dto.email || '').trim().toLowerCase();
-    const existingUser = await this.nguoiDungRepo.findOne({
-      where: [{ tenDangNhap: username }],
-    });
-    if (existingUser) {
-      throw new ConflictException({ code: 'USERNAME_EXISTS', message: 'Email đăng ký này đã tồn tại trong hệ thống' });
-    }
+    const username = await this.assertRegistrationEmailAvailable(dto.email);
 
     const role = await this.vaiTroRepo.findOne({ where: { maVaiTro: 'benh_nhan' } });
     if (!role) {
@@ -126,7 +142,18 @@ export class AuthService {
       trangThai: TrangThaiNguoiDung.HOAT_DONG,
       emailDaXacThuc: true as any,
     });
-    const savedUser = await this.nguoiDungRepo.save(newUser);
+    let savedUser: NguoiDung;
+    try {
+      savedUser = await this.nguoiDungRepo.save(newUser);
+    } catch (error) {
+      if (error?.code === 'ER_DUP_ENTRY') {
+        throw new ConflictException({
+          code: 'EMAIL_EXISTS',
+          message: 'Email này đã được đăng ký, vui lòng sử dụng email khác.',
+        });
+      }
+      throw error;
+    }
     savedUser.vaiTro = role;
 
     const bnCount = await this.benhNhanRepo.count();
@@ -277,6 +304,9 @@ export class AuthService {
 
     if (!receiver) {
       throw new BadRequestException('Vui lòng cung cấp email hoặc số điện thoại nhận mã OTP');
+    }
+    if (dto.email) {
+      await this.assertRegistrationEmailAvailable(dto.email);
     }
 
     // Vô hiệu hóa OTP cũ chưa dùng
