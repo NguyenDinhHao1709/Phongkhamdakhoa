@@ -50,7 +50,8 @@ def health():
 # ─── Endpoint: Face Verification + Liveness Detection ─────────────────
 class FaceVerifyRequest(BaseModel):
     frame_base64: str               # Frame chụp hiện tại (base64)
-    ref_image_path: str             # Đường dẫn ảnh mẫu nhân viên trên server
+    ref_image_path: Optional[str] = None
+    ref_image_base64: Optional[str] = None
     frames_b64: Optional[List[str]] = None  # Danh sách frame cho liveness (10-20 frames)
 
 
@@ -65,6 +66,7 @@ def verify_face_endpoint(req: FaceVerifyRequest):
         result = verify_face(
             frame_b64=req.frame_base64,
             ref_image_path=req.ref_image_path,
+            ref_image_base64=req.ref_image_base64,
             frames_b64=req.frames_b64,
         )
         return result

@@ -67,7 +67,7 @@ export class ChamCongService {
 
   // ─── Lấy ảnh mẫu nhân viên (chỉ Admin mới có quyền cập nhật ảnh) ─────────────
 
-  async layAnhMauNhanVien(nv: NhanVien): Promise<{ path: string; temporary: boolean }> {
+  async layAnhMauNhanVien(nv: NhanVien): Promise<{ path?: string; base64: string }> {
     if (!nv.anhDaiDien) {
       throw new BadRequestException(
         'Hồ sơ của bạn chưa có ảnh khuôn mặt mẫu trong hệ thống. Vui lòng liên hệ Quản trị viên (Admin) để cập nhật ảnh nhận diện trước khi chấm công.',
@@ -75,16 +75,15 @@ export class ChamCongService {
     }
 
     if (/^https?:\/\//i.test(nv.anhDaiDien)) {
-      const tempPath = path.join(os.tmpdir(), `face-ref-${nv.id}-${Date.now()}.jpg`);
       try {
         const response = await axios.get(nv.anhDaiDien, {
           responseType: 'arraybuffer',
           timeout: 15000,
         });
-        fs.writeFileSync(tempPath, response.data);
-        return { path: tempPath, temporary: true };
+        return {
+          base64: Buffer.from(response.data).toString('base64'),
+        };
       } catch (error) {
-        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
         const detail = error?.response?.status
           ? `HTTP ${error.response.status}`
           : error?.message || 'không xác định';
@@ -100,7 +99,10 @@ export class ChamCongService {
       );
     }
 
-    return { path: fullPath, temporary: false };
+    return {
+      path: fullPath,
+      base64: fs.readFileSync(fullPath).toString('base64'),
+    };
   }
 
   // ─── Lấy lịch phân ca của nhân viên hôm nay ────────────────────────────────
@@ -194,7 +196,8 @@ export class ChamCongService {
 
   async xacThucKhuonMat(params: {
     frameBase64: string;
-    refImagePath: string;
+    refImagePath?: string;
+    refImageBase64: string;
     framesB64?: string[];
   }): Promise<{ hopLe: boolean; doKhop: number; liveness: boolean; lyDo?: string }> {
     try {
@@ -204,6 +207,7 @@ export class ChamCongService {
           {
             frame_base64: params.frameBase64,
             ref_image_path: params.refImagePath,
+            ref_image_base64: params.refImageBase64,
             frames_b64: params.framesB64 && params.framesB64.length >= 2 ? params.framesB64 : null,
           },
           { timeout: 25000 },
@@ -258,17 +262,13 @@ export class ChamCongService {
 
       // 4. Lấy ảnh mẫu nhân viên (chỉ Admin mới có quyền cập nhật)
       const refImage = await this.layAnhMauNhanVien(nv);
-      let faceCheck;
-      try {
-        // 5. Xác thực khuôn mặt (ngưỡng ~70%, thực thể sống)
-        faceCheck = await this.xacThucKhuonMat({
-          frameBase64,
-          refImagePath: refImage.path,
-          framesB64,
-        });
-      } finally {
-        if (refImage.temporary && fs.existsSync(refImage.path)) fs.unlinkSync(refImage.path);
-      }
+      // 5. Xác thực khuôn mặt (ngưỡng ~70%, thực thể sống)
+      const faceCheck = await this.xacThucKhuonMat({
+        frameBase64,
+        refImagePath: refImage.path,
+        refImageBase64: refImage.base64,
+        framesB64,
+      });
       if (!faceCheck.hopLe) throw new BadRequestException(faceCheck.lyDo);
       const doKhop = faceCheck.doKhop;
 
@@ -353,17 +353,13 @@ export class ChamCongService {
 
       // 4. Lấy ảnh mẫu (chỉ Admin mới có quyền cập nhật)
       const refImage = await this.layAnhMauNhanVien(nv);
-      let faceCheck;
-      try {
-        // 5. Xác thực khuôn mặt
-        faceCheck = await this.xacThucKhuonMat({
-          frameBase64,
-          refImagePath: refImage.path,
-          framesB64,
-        });
-      } finally {
-        if (refImage.temporary && fs.existsSync(refImage.path)) fs.unlinkSync(refImage.path);
-      }
+      // 5. Xác thực khuôn mặt
+      const faceCheck = await this.xacThucKhuonMat({
+        frameBase64,
+        refImagePath: refImage.path,
+        refImageBase64: refImage.base64,
+        framesB64,
+      });
       if (!faceCheck.hopLe) throw new BadRequestException(faceCheck.lyDo);
 
       // 6. Tính thời gian về so với ca muộn nhất

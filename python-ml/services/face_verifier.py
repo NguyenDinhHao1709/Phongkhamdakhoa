@@ -88,22 +88,38 @@ def check_live_entity(frame_img: np.ndarray, frames_b64: list[str] | None = None
     }
 
 
-def verify_face(frame_b64: str, ref_image_path: str, frames_b64: list[str] | None = None) -> dict:
+def verify_face(
+    frame_b64: str,
+    ref_image_path: str | None = None,
+    ref_image_base64: str | None = None,
+    frames_b64: list[str] | None = None,
+) -> dict:
     """
     Xác thực khuôn mặt:
     1. Kiểm tra thực thể sống trước camera (Live Entity)
     2. Đối sánh khuôn mặt với ảnh đại diện theo ngưỡng ~70%
     """
     # ── 1. Đọc và kiểm tra ảnh mẫu ──
-    if not os.path.exists(ref_image_path):
+    if ref_image_base64:
+        try:
+            ref_img = decode_base64_image(ref_image_base64)
+        except Exception as e:
+            return {
+                'verified': False,
+                'liveness': False,
+                'similarity': 0.0,
+                'reason': f'Lỗi giải mã ảnh mẫu nhân viên: {e}',
+            }
+    elif ref_image_path and os.path.exists(ref_image_path):
+        ref_img = cv2.imread(ref_image_path)
+    else:
         return {
             'verified': False,
             'liveness': False,
             'similarity': 0.0,
-            'reason': f'Không tìm thấy ảnh mẫu nhân viên: {ref_image_path}',
+            'reason': 'Không nhận được ảnh mẫu nhân viên từ backend',
         }
 
-    ref_img = cv2.imread(ref_image_path)
     if ref_img is None:
         return {
             'verified': False,
