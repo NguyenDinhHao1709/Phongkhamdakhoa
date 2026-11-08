@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { apiGet, apiPost, apiPatch, apiDelete } from '../../../services/api';
 import { formatDateTime, formatDate } from '../../../utils/formatDate';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
+import { toBackendUrl } from '../../../utils/backendUrl';
 import {
   FlaskConical,
   Send,
@@ -1572,7 +1573,7 @@ function ChiDinhDetailPanel({ id }) {
               {attachments.length > 0 && (
                 <div className="space-y-2 mt-1.5">
                   {attachments.map((url) => {
-                    const fileUrl = url.startsWith('http') ? url : `http://localhost:5000${url}`;
+                    const fileUrl = toBackendUrl(url);
                     const isImage = /\.(jpeg|jpg|gif|png|webp)$/i.test(url);
                     return (
                       <div key={url} className="p-2 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-between gap-2">

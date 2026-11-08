@@ -3,6 +3,7 @@ import { Printer, X, FlaskConical, ExternalLink, Image as ImageIcon, FileText } 
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { formatDate, formatDateTime } from '../../utils/formatDate';
 import { parseResultConfig, getFallbackServiceConfig, evaluateLabValue } from '../../utils/labConfig';
+import { toBackendUrl } from '../../utils/backendUrl';
 
 const parseAttachments = (value) => {
   if (!value) return [];
@@ -388,7 +389,7 @@ export default function InKetQuaXetNghiemModal({
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {listItems.flatMap((c, i) => parseAttachments(c.ketQua?.fileDinhKem || c.ketQua?.file_dinh_kem).map((file, fileIndex) => {
-                    const fileUrl = file.startsWith('http') ? file : `http://localhost:5000${file}`;
+                    const fileUrl = toBackendUrl(file);
                     const isImage = /\.(jpeg|jpg|gif|png|webp)$/i.test(file);
                     return (
                       <div key={`${i}-${fileIndex}`} className="border border-gray-300 rounded-lg p-3 bg-gray-50 space-y-2">

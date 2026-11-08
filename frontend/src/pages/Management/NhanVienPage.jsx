@@ -10,6 +10,7 @@ import {
 import { AddNhanVienModal } from './AddNhanVienModal';
 import { EditNhanVienModal } from './EditNhanVienModal';
 import { ResetPasswordModal } from './ResetPasswordModal';
+import { toBackendUrl } from '../../utils/backendUrl';
 
 export default function NhanVienPage() {
   const queryClient = useQueryClient();
@@ -413,7 +414,7 @@ export default function NhanVienPage() {
                           <div className="relative">
                             {hasAvatar ? (
                               <img
-                                src={nv.anhDaiDien.startsWith('http') ? nv.anhDaiDien : `http://localhost:5000${nv.anhDaiDien}`}
+                                src={toBackendUrl(nv.anhDaiDien)}
                                 alt=""
                                 className="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-2xs"
                               />

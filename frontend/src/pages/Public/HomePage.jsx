@@ -16,6 +16,7 @@ import SearchResultsModal from './SearchResultsModal';
 import SpecialtyDetailModal from './SpecialtyDetailModal';
 import AiTriageChatbot from './AiTriageChatbot';
 import BangGiaDichVuSection from './BangGiaDichVuSection';
+import { toBackendUrl } from '../../utils/backendUrl';
 import CapNhatHoSoModal from '../../components/Patient/CapNhatHoSoModal';
 import MedButton from '../../design-system/components/Button/MedButton';
 
@@ -1149,7 +1150,7 @@ export default function HomePage() {
                             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-100 text-primary-800 font-black text-sm flex-shrink-0 overflow-hidden">
                               {bs.anhDaiDien ? (
                                 <img 
-                                  src={bs.anhDaiDien.startsWith('http') ? bs.anhDaiDien : `http://localhost:5000${bs.anhDaiDien}`} 
+                                  src={toBackendUrl(bs.anhDaiDien)}
                                   alt={bs.hoTen} 
                                   className="w-full h-full object-cover" 
                                   onError={(e) => {

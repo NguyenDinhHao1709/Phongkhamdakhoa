@@ -5,6 +5,7 @@ import {
   Building2, Users, ArrowRight, CheckCircle2, BellRing, Sparkles
 } from 'lucide-react';
 import { apiGet } from '../../services/api';
+import { BACKEND_URL } from '../../utils/backendUrl';
 
 /**
  * Phát tiếng chuông Ding-Dong y tế hai âm sắc bằng Web Audio API
@@ -94,7 +95,7 @@ export default function ManHinhGoiSoPage() {
     fetchTvData();
     const interval = setInterval(fetchTvData, 4000);
 
-    const wsUrl = import.meta.env.VITE_WS_URL || 'http://localhost:5000';
+    const wsUrl = BACKEND_URL || window.location.origin;
     const s = io(wsUrl, { transports: ['websocket', 'polling'] });
     socketRef.current = s;
 

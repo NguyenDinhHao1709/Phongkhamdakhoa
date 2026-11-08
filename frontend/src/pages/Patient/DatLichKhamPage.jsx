@@ -10,6 +10,8 @@ import { apiGet, apiPost, apiPatch } from '../../services/api';
 import useAuthStore from '../../store/authStore';
 import AppointmentTicketModal from '../../components/Appointment/AppointmentTicketModal';
 import PaymentCountdownModal from '../../components/Appointment/PaymentCountdownModal';
+import { toBackendUrl } from '../../utils/backendUrl';
+import { getLocalDateString } from '../../utils/formatDate';
 
 const CHUYEN_KHOA_LIST = [
   'Nội tổng quát & Tim mạch',
@@ -81,13 +83,13 @@ export default function DatLichKhamPage() {
   const minDate = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + minDays);
-    return d.toISOString().split('T')[0];
+    return getLocalDateString(d);
   }, [minDays]);
 
   const maxDate = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + maxDays);
-    return d.toISOString().split('T')[0];
+    return getLocalDateString(d);
   }, [maxDays]);
 
   const { register, handleSubmit, reset, watch, setValue } = useForm({
@@ -158,8 +160,6 @@ export default function DatLichKhamPage() {
         if (!isMounted) return;
 
         const doctors = res.data || [];
-        setDoctorsOnDate(doctors);
-
         setDoctorsOnDate(doctors);
 
         if (doctors.length > 0) {
@@ -702,7 +702,7 @@ export default function DatLichKhamPage() {
                                 <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-800 font-bold text-xs shrink-0 overflow-hidden border border-blue-200">
                                   {doc.anhDaiDien ? (
                                     <img
-                                      src={doc.anhDaiDien.startsWith('http') ? doc.anhDaiDien : `http://localhost:5000${doc.anhDaiDien}`}
+                                      src={toBackendUrl(doc.anhDaiDien)}
                                       alt={doc.hoTen}
                                       className="h-full w-full object-cover"
                                     />

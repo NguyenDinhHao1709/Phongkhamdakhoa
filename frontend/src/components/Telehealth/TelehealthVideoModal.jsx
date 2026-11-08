@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
+import { BACKEND_URL } from '../../utils/backendUrl';
 import {
   Mic, MicOff, Video, VideoOff, PhoneOff, Maximize2,
   Minimize2, Volume2, VolumeX, ShieldCheck, MessageSquare,
-  Send, Radio, Activity, CheckCircle2, User, Sparkles,
+  Send, Radio, Activity, CheckCircle2, User, Sparkles, Clock,
   Paperclip, Image as ImageIcon, Download, FileText, ExternalLink,
   Move, RotateCcw, RotateCw, ZoomIn, ZoomOut, X, ChevronDown
 } from 'lucide-react';
@@ -263,15 +264,14 @@ export default function TelehealthVideoModal({
             socket = io(import.meta.env.VITE_WS_URL, { transports: ['websocket', 'polling'] });
           } else {
             // Sử dụng window.location.origin và path /socket.io để cùng giao thức HTTPS
-            socket = io(window.location.origin, {
+            socket = io(BACKEND_URL || window.location.origin, {
               path: '/socket.io',
               transports: ['websocket', 'polling'],
             });
           }
         } catch (sockErr) {
-          console.warn('[Socket] Lỗi tạo kết nối socket, fallback port 5000:', sockErr);
-          const socketHost = window.location.hostname || 'localhost';
-          socket = io(`http://${socketHost}:5000`, { transports: ['websocket', 'polling'] });
+          console.warn('[Socket] Lỗi tạo kết nối socket:', sockErr);
+          socket = io(BACKEND_URL || window.location.origin, { transports: ['websocket', 'polling'] });
         }
         socketRef.current = socket;
 
@@ -281,7 +281,7 @@ export default function TelehealthVideoModal({
         });
 
         socket.on('connect_error', (err) => {
-          console.warn('[Socket] Lỗi kết nối Socket.IO qua HTTPS proxy, thử fallback trực tiếp port 5000:', err);
+          console.warn('[Socket] Lỗi kết nối Socket.IO:', err);
         });
 
         socket.on('call:peer_joined', async (data) => {

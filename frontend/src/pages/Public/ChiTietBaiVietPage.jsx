@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { apiGet } from '../../services/api';
 import useHospitalStore from '../../store/hospitalStore';
+import { toBackendUrl } from '../../utils/backendUrl';
 
 export default function ChiTietBaiVietPage() {
   const { idOrSlug } = useParams();
@@ -138,7 +139,7 @@ export default function ChiTietBaiVietPage() {
               <div className="w-12 h-12 rounded-2xl bg-primary-100 text-primary-700 flex items-center justify-center font-black text-base overflow-hidden shrink-0">
                 {article.avatarTacGia ? (
                   <img
-                    src={article.avatarTacGia.startsWith('http') ? article.avatarTacGia : `http://localhost:5000${article.avatarTacGia}`}
+                    src={toBackendUrl(article.avatarTacGia)}
                     alt=""
                     className="w-full h-full object-cover"
                     onError={(e) => {
@@ -264,4 +265,3 @@ export default function ChiTietBaiVietPage() {
     </div>
   );
 }
-

@@ -6,6 +6,7 @@ import useThemeStore from '../store/themeStore';
 import { apiGet } from '../services/api';
 import { VAI_TRO_LABEL } from '../utils/constants';
 import { NotificationDropdown } from '../components/NotificationDropdown';
+import { toBackendUrl } from '../utils/backendUrl';
 import {
   Stethoscope, Users, Calendar, ClipboardList,
   FlaskConical, Pill, Receipt, BarChart3,
@@ -394,7 +395,7 @@ export function DashboardLayout({ children }) {
             >
               {user?.anhDaiDien ? (
                 <img
-                  src={user.anhDaiDien.startsWith('http') ? user.anhDaiDien : `http://localhost:5000${user.anhDaiDien}`}
+                  src={toBackendUrl(user.anhDaiDien)}
                   alt={user?.hoTen || user?.tenDangNhap}
                   className="h-full w-full object-cover"
                 />

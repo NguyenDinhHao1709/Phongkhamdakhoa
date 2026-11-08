@@ -4,7 +4,7 @@ import {
   X, Building2, ChevronRight, Check, RefreshCw, AlertTriangle, Search, Video
 } from 'lucide-react';
 import { apiGet, apiPatch } from '../../services/api';
-import { formatDate } from '../../utils/formatDate';
+import { formatDate, getLocalDateString } from '../../utils/formatDate';
 
 export default function RescheduleAppointmentModal({
   isOpen,
@@ -58,13 +58,13 @@ export default function RescheduleAppointmentModal({
   const minDate = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + minDays);
-    return d.toISOString().split('T')[0];
+    return getLocalDateString(d);
   }, [minDays]);
 
   const maxDate = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + maxDays);
-    return d.toISOString().split('T')[0];
+    return getLocalDateString(d);
   }, [maxDays]);
 
   // Khởi tạo ngày và hình thức khi mở modal

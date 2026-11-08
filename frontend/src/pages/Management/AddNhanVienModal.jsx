@@ -4,6 +4,7 @@ import { MedButton } from '../../design-system/components/Button/MedButton';
 import { X, Camera, Trash2, User, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../../services/api';
+import { toBackendUrl } from '../../utils/backendUrl';
 
 export function AddNhanVienModal({ isOpen, onClose, onSubmit }) {
   const { register, handleSubmit, watch, reset, setValue, formState: { errors } } = useForm();
@@ -150,7 +151,7 @@ export function AddNhanVienModal({ isOpen, onClose, onSubmit }) {
                     {watch('anhDaiDien') ? (
                       <div className="relative group flex-shrink-0">
                         <img
-                          src={watch('anhDaiDien').startsWith('http') ? watch('anhDaiDien') : `http://localhost:5000${watch('anhDaiDien')}`}
+                          src={toBackendUrl(watch('anhDaiDien'))}
                           alt="Avatar nhân viên"
                           className="w-24 h-24 rounded-xl object-cover border-2 border-primary-200 shadow-sm bg-white"
                         />
@@ -290,4 +291,3 @@ export function AddNhanVienModal({ isOpen, onClose, onSubmit }) {
     </div>
   );
 }
-

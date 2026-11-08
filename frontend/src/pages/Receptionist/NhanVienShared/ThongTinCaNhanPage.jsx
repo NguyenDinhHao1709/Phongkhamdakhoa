@@ -4,6 +4,7 @@ import useAuthStore from '../../../store/authStore';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { VAI_TRO_LABEL } from '../../../utils/constants';
 import { apiGet, apiPost } from '../../../services/api';
+import { toBackendUrl } from '../../../utils/backendUrl';
 
 const formatDateVN = (val) => {
   if (!val) return 'Chưa cập nhật';
@@ -104,7 +105,7 @@ export default function ThongTinCaNhanPage() {
   const avatarUrl = rawAvatar
     ? rawAvatar.startsWith('http')
       ? rawAvatar
-      : `http://localhost:5000${rawAvatar}`
+      : toBackendUrl(rawAvatar)
     : '';
   const maNhanVien =
     profile?.maNhanVien ||

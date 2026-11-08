@@ -11,6 +11,7 @@ import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
 import { Clock, AlertTriangle, User2, Tv, Volume2, Loader2, Download } from 'lucide-react';
 import useAuthStore from '../../../store/authStore';
+import { BACKEND_URL } from '../../../utils/backendUrl';
 
 let socket = null;
 
@@ -31,7 +32,7 @@ export default function HangDoiPage() {
   // Kết nối WebSocket để nhận cập nhật real-time
   useEffect(() => {
     if (!socket) {
-      socket = io(import.meta.env.VITE_WS_URL || 'http://localhost:5000', {
+      socket = io(BACKEND_URL || window.location.origin, {
         auth: { token: accessToken },
         transports: ['websocket'],
       });
@@ -284,4 +285,3 @@ function QueueRow({ luot, onGoiLoa, isCalling }) {
     </div>
   );
 }
-
