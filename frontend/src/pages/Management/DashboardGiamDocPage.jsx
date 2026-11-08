@@ -208,14 +208,14 @@ export default function DashboardGiamDocPage() {
   return (
     <div className="space-y-6 animate-fade-in pb-12">
       {/* ─── HEADER ĐIỀU HÀNH BAN GIÁM ĐỐC ─────────────────────────────── */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 rounded-3xl p-6 md:p-8 text-white shadow-xl border border-slate-800">
+      <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-7 text-white shadow-xl border border-slate-800">
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 rounded-full bg-blue-500/10 blur-3xl pointer-events-none"></div>
-        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-300/20 text-amber-300 text-xs font-bold uppercase tracking-wider">
-              <ShieldCheck className="h-4 w-4" /> Ban Giám Đốc • Trung Tâm Điều Hành Toàn Viện
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 sm:gap-6">
+          <div className="space-y-1.5 sm:space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-300/20 text-amber-300 text-[11px] sm:text-xs font-bold uppercase tracking-wider">
+              <ShieldCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Ban Giám Đốc • Trung Tâm Điều Hành Toàn Viện
             </div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-white">
               Executive Hospital Dashboard
             </h1>
             <p className="text-blue-200/90 text-xs sm:text-sm max-w-2xl leading-relaxed">
@@ -223,7 +223,7 @@ export default function DashboardGiamDocPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
             <button
               onClick={handleExportExcel}
               className="flex items-center gap-2 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-950/20 transition-all whitespace-nowrap shrink-0 cursor-pointer"
@@ -276,7 +276,7 @@ export default function DashboardGiamDocPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Các nút bấm Preset */}
-          <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+          <div className="inline-flex flex-wrap sm:flex-nowrap rounded-xl bg-slate-100 p-1 border border-slate-200 gap-0.5 max-w-full">
             <button
               onClick={() => handlePresetSelect('hom_nay')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${

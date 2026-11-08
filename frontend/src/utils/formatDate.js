@@ -116,8 +116,8 @@ export const checkTelehealthAccess = (ngay, gio, ghiChu = '') => {
       timePart = timePart.slice(0, 8);
     }
 
-    // Tạo thời điểm hẹn khám
-    const apptDateTime = new Date(`${dateStr}T${timePart}`);
+    // Tạo thời điểm hẹn khám theo chuẩn múi giờ Việt Nam (GMT+7)
+    const apptDateTime = new Date(`${dateStr}T${timePart}+07:00`);
     if (isNaN(apptDateTime.getTime())) {
       return { canJoin: true, isTooEarly: false, isExpired: false, statusMessage: 'Sẵn sàng' };
     }

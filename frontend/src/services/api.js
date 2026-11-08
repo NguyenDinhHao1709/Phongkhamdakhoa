@@ -9,6 +9,14 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+api.interceptors.request.use((config) => {
+  const requestUrl = config.url || '';
+  if (config.timeout === 15000 && /^\/(ai|office)\//.test(requestUrl)) {
+    config.timeout = 90000;
+  }
+  return config;
+});
+
 // Request interceptor — gắn Bearer token và xử lý FormData
 api.interceptors.request.use(
   (config) => {

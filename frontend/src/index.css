@@ -84,12 +84,15 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
+    overflow-x: hidden;
   }
 
   body {
     background-color: #F9FAFB;
     color: #111827;
     min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
   }
 
   /* Remove default button styles */
@@ -217,6 +220,35 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  /* Dynamic viewport height helper for mobile browsers */
+  .h-dvh-safe {
+    height: 100vh;
+    height: 100dvh;
+  }
+}
+
+/* ============================================================
+   Responsive Cross-Device Enhancements (Mobile, Tablet, Laptop)
+   ============================================================ */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 767px) {
+  /* Compact table spacing on mobile while preserving full columns */
+  table th,
+  table td {
+    padding-left: 0.625rem !important;
+    padding-right: 0.625rem !important;
+  }
+
+  /* Prevent fixed modals from overflowing mobile browser viewports */
+  .fixed.inset-0 > div:not(.absolute) {
+    max-height: 92dvh;
+    overflow-y: auto;
   }
 }
 

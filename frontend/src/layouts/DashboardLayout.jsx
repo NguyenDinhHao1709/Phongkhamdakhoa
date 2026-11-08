@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
 import useAuthStore from '../store/authStore';
 import useThemeStore from '../store/themeStore';
@@ -125,11 +125,33 @@ const MENU_CONFIG = {
 };
 
 export function DashboardLayout({ children }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 768 && window.innerWidth < 1024;
+    }
+    return false;
+  });
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, logout, updatePermissions } = useAuthStore();
   const { darkMode, toggleTheme } = useThemeStore();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Tự động đóng menu mobile khi nhấn phím Esc hoặc khi xoay ngang sang màn hình lớn
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && mobileOpen) setMobileOpen(false);
+    };
+    const handleResize = () => {
+      if (window.innerWidth >= 768 && mobileOpen) setMobileOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [mobileOpen]);
 
   // Đồng bộ quyền hạn thực tế từ Backend theo thời gian thực (không cần đăng xuất)
   useEffect(() => {
@@ -161,6 +183,9 @@ export function DashboardLayout({ children }) {
     }
     return false;
   });
+
+  const activeMenuItem = menuItems.find((item) => location.pathname.startsWith(item.to)) || menuItems[0];
+  const ActivePageIcon = activeMenuItem?.icon || Stethoscope;
 
   const getProfileRoute = () => {
     switch (user?.vaiTro) {
@@ -194,7 +219,7 @@ export function DashboardLayout({ children }) {
   };
 
   return (
-    <div className="flex h-screen bg-medical-bg overflow-hidden relative print:h-auto print:overflow-visible print:bg-white">
+    <div className="flex h-dvh-safe bg-medical-bg overflow-hidden relative print:h-auto print:overflow-visible print:bg-white">
       {/* ─── MOBILE BACKDROP ──────────────────────────────────────── */}
       {mobileOpen && (
         <div
@@ -206,19 +231,19 @@ export function DashboardLayout({ children }) {
       {/* ─── MOBILE DRAWER (Điện thoại & Tablet nhỏ < 768px) ──────── */}
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 w-64 bg-white z-50 md:hidden flex flex-col shadow-2xl transition-transform duration-300 ease-in-out print:hidden',
+          'fixed inset-y-0 left-0 w-64 max-w-[82vw] bg-white z-50 md:hidden flex flex-col shadow-2xl transition-transform duration-300 ease-in-out print:hidden',
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         {/* Drawer Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 h-16 px-4">
-          <div className="flex items-center gap-3">
-            <div className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-xl bg-primary-600 shadow-xs">
-              <Stethoscope className="h-5 w-5 text-white" />
+        <div className="flex items-center justify-between border-b border-gray-100 h-14 px-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-xl bg-primary-600 shadow-xs">
+              <Stethoscope className="h-4 w-4 text-white" />
             </div>
             <div>
               <p className="text-sm font-bold text-gray-900 leading-tight">Phòng Khám</p>
-              <p className="text-xs text-gray-500">Đa Khoa</p>
+              <p className="text-[11px] text-gray-500">Đa Khoa</p>
             </div>
           </div>
           <button
@@ -231,7 +256,7 @@ export function DashboardLayout({ children }) {
         </div>
 
         {/* Drawer Menu */}
-        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+        <nav className="flex-1 overflow-y-auto med-scrollbar py-2.5 px-2 space-y-0.5">
           {menuItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
@@ -251,7 +276,7 @@ export function DashboardLayout({ children }) {
         </nav>
 
         {/* Drawer Footer */}
-        <div className="border-t border-gray-100 p-3 bg-gray-50/50">
+        <div className="border-t border-gray-100 p-3 bg-gray-50/50 pb-safe">
           <div
             onClick={() => { setMobileOpen(false); navigate(getProfileRoute()); }}
             className="px-3 py-2 mb-2 rounded-xl bg-white border border-gray-200/80 hover:border-primary-300 cursor-pointer transition-colors shadow-2xs"
@@ -274,12 +299,12 @@ export function DashboardLayout({ children }) {
       <aside
         className={clsx(
           'hidden md:flex flex-col bg-white border-r border-gray-200 shadow-sidebar transition-all duration-200 flex-shrink-0 print:hidden',
-          collapsed ? 'w-16' : 'w-56',
+          collapsed ? 'w-16' : 'w-56 lg:w-60',
         )}
       >
         {/* Logo */}
         <div className={clsx(
-          'flex items-center border-b border-gray-100 h-16 px-4',
+          'flex items-center border-b border-gray-100 h-14 px-4',
           collapsed ? 'justify-center' : 'gap-3',
         )}>
           <div className="flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 shadow-xs">
@@ -294,14 +319,14 @@ export function DashboardLayout({ children }) {
         </div>
 
         {/* Menu */}
-        <nav className="flex-1 overflow-y-auto py-3 px-2">
+        <nav className="flex-1 overflow-y-auto med-scrollbar py-2.5 px-2 space-y-0.5">
           {menuItems.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
               className={({ isActive }) => clsx(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors mb-0.5',
-                collapsed && 'justify-center',
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition-colors',
+                collapsed && 'justify-center px-2',
                 isActive
                   ? 'bg-primary-50 text-primary-700 font-semibold'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
@@ -323,14 +348,14 @@ export function DashboardLayout({ children }) {
               title="Xem thông tin cá nhân"
             >
               <p className="text-xs font-semibold text-gray-800 truncate hover:text-primary-600">{user?.hoTen || user?.tenDangNhap}</p>
-              <p className="text-xs text-gray-500">{VAI_TRO_LABEL[user?.vaiTro] || user?.vaiTro}</p>
+              <p className="text-[11px] text-gray-500 truncate">{VAI_TRO_LABEL[user?.vaiTro] || user?.vaiTro}</p>
             </div>
           )}
           <button
             onClick={handleLogout}
             className={clsx(
-              'flex items-center gap-3 w-full rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-red-50 hover:text-danger-main transition-colors',
-              collapsed && 'justify-center',
+              'flex items-center gap-3 w-full rounded-lg px-3 py-2 text-xs font-medium text-gray-600 hover:bg-red-50 hover:text-danger-main transition-colors',
+              collapsed && 'justify-center px-2',
             )}
             title="Đăng xuất"
           >
@@ -343,12 +368,12 @@ export function DashboardLayout({ children }) {
       {/* ─── MAIN CONTENT ─────────────────────────────────────────── */}
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden print:overflow-visible print:h-auto">
         {/* Header */}
-        <header className="flex items-center justify-between h-16 bg-white border-b border-gray-200 px-3 sm:px-6 flex-shrink-0 print:hidden">
-          <div className="flex items-center gap-2">
+        <header className="flex items-center justify-between h-14 bg-white border-b border-gray-200 px-3 sm:px-5 flex-shrink-0 print:hidden">
+          <div className="flex items-center gap-2 min-w-0">
             {/* Nút Hamburger trên điện thoại (< 768px) */}
             <button
               onClick={() => setMobileOpen(true)}
-              className="md:hidden flex items-center justify-center h-9 w-9 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+              className="md:hidden flex items-center justify-center h-9 w-9 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors flex-shrink-0"
               title="Mở menu"
             >
               <Menu className="h-5 w-5" />
@@ -357,23 +382,31 @@ export function DashboardLayout({ children }) {
             {/* Nút Thu gọn / Mở rộng Sidebar trên Laptop & Máy tính bảng (≥ 768px) */}
             <button
               onClick={() => setCollapsed((c) => !c)}
-              className="hidden md:flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+              className="hidden md:flex items-center justify-center h-8 w-8 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors flex-shrink-0"
               title={collapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
             >
               {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
             </button>
 
-            {/* Tiêu đề ngắn trên điện thoại */}
-            <div className="md:hidden flex items-center gap-1.5 ml-1">
-              <span className="text-xs font-bold text-gray-900 truncate">Phòng Khám Đa Khoa</span>
+            {/* Ngữ cảnh Trang Hiện Tại (Breadcrumb trực quan trên mọi thiết bị) */}
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="hidden sm:flex h-7 w-7 items-center justify-center rounded-lg bg-primary-50 text-primary-600 flex-shrink-0">
+                <ActivePageIcon className="h-3.5 w-3.5" />
+              </div>
+              <span className="text-xs sm:text-sm font-bold text-gray-900 truncate">
+                {activeMenuItem?.label || 'Phòng Khám Đa Khoa'}
+              </span>
+              <span className="hidden lg:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200/80">
+                {VAI_TRO_LABEL[user?.vaiTro] || user?.vaiTro}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
             {/* Nút Chuyển đổi Giao diện Sáng / Tối Toàn hệ thống */}
             <button
               onClick={toggleTheme}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors cursor-pointer"
+              className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors cursor-pointer"
               title={darkMode ? 'Chuyển sang Giao diện Sáng' : 'Chuyển sang Giao diện Tối'}
             >
               {darkMode ? (
@@ -386,28 +419,41 @@ export function DashboardLayout({ children }) {
             {/* Notification Dropdown */}
             <NotificationDropdown />
 
-            {/* Icon Người - Bấm để chuyển vào xem và chỉnh sửa thông tin cá nhân */}
-            <button
+            {/* Thông tin nhanh & Icon Người */}
+            <div
               onClick={() => navigate(getProfileRoute())}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-100 text-primary-700 hover:bg-primary-200 transition-colors shadow-2xs overflow-hidden"
+              className="flex items-center gap-2 pl-1 sm:pl-2 sm:border-l sm:border-gray-200 cursor-pointer group"
               title="Xem thông tin cá nhân"
-              data-testid="btn-header-profile"
             >
-              {user?.anhDaiDien ? (
-                <img
-                  src={toBackendUrl(user.anhDaiDien)}
-                  alt={user?.hoTen || user?.tenDangNhap}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <User className="h-4 w-4" />
-              )}
-            </button>
+              <div className="hidden sm:block text-right">
+                <p className="text-xs font-semibold text-gray-800 leading-tight truncate max-w-[140px] group-hover:text-primary-600 transition-colors">
+                  {user?.hoTen || user?.tenDangNhap}
+                </p>
+                <p className="text-[10px] text-gray-500 leading-tight">
+                  {VAI_TRO_LABEL[user?.vaiTro] || user?.vaiTro}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-primary-100 text-primary-700 group-hover:bg-primary-200 transition-colors shadow-2xs overflow-hidden flex-shrink-0"
+                data-testid="btn-header-profile"
+              >
+                {user?.anhDaiDien ? (
+                  <img
+                    src={toBackendUrl(user.anhDaiDien)}
+                    alt={user?.hoTen || user?.tenDangNhap}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <User className="h-4 w-4" />
+                )}
+              </button>
+            </div>
           </div>
         </header>
 
         {/* Page Content với padding linh hoạt tương thích điện thoại & máy tính */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 print:p-0 print:overflow-visible print:h-auto">
+        <main className="flex-1 overflow-y-auto med-scrollbar p-2.5 sm:p-4 md:p-5 print:p-0 print:overflow-visible print:h-auto">
           {children}
         </main>
       </div>

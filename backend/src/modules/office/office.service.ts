@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 
+const OFFICE_SERVICE_TIMEOUT_MS = 90000;
+
 /**
  * Office Gateway Client (Core Monolith :5000 -> Office Microservice :5003)
  */
@@ -43,6 +45,7 @@ export class OfficeService {
         this.httpService.get(`${this.OFFICE_SERVICE_URL}/${path}`, {
           params,
           headers: this.headersFor(userId),
+          timeout: OFFICE_SERVICE_TIMEOUT_MS,
         }),
       );
       return res.data;
@@ -62,6 +65,7 @@ export class OfficeService {
       const res = await firstValueFrom(
         this.httpService.post(`${this.OFFICE_SERVICE_URL}/${path}`, body, {
           headers: this.headersFor(userId),
+          timeout: OFFICE_SERVICE_TIMEOUT_MS,
         }),
       );
       return res.data;
@@ -81,6 +85,7 @@ export class OfficeService {
       const res = await firstValueFrom(
         this.httpService.patch(`${this.OFFICE_SERVICE_URL}/${path}`, body, {
           headers: this.headersFor(userId),
+          timeout: OFFICE_SERVICE_TIMEOUT_MS,
         }),
       );
       return res.data;
@@ -100,6 +105,7 @@ export class OfficeService {
       const res = await firstValueFrom(
         this.httpService.delete(`${this.OFFICE_SERVICE_URL}/${path}`, {
           headers: this.headersFor(userId),
+          timeout: OFFICE_SERVICE_TIMEOUT_MS,
         }),
       );
       return res.data;

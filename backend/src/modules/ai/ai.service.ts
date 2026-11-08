@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 
+const AI_SERVICE_TIMEOUT_MS = 90000;
+
 /**
  * AI Gateway Client (Core Monolith -> Standalone AI Microservice :5002)
  * Chuyển tiếp toàn bộ tác vụ Gemini LLM, Clinical RAG, Triage và ML Forecasting
@@ -37,7 +39,10 @@ export class AiService {
   private async forwardPost<T = any>(path: string, body: any, headers?: Record<string, string>): Promise<T> {
     try {
       const response = await firstValueFrom(
-        this.httpService.post<T>(`${this.AI_SERVICE_URL}/${path}`, body, { headers }),
+        this.httpService.post<T>(`${this.AI_SERVICE_URL}/${path}`, body, {
+          headers,
+          timeout: AI_SERVICE_TIMEOUT_MS,
+        }),
       );
       return response.data;
     } catch (err: any) {
@@ -54,7 +59,11 @@ export class AiService {
   private async forwardGet<T = any>(path: string, params?: Record<string, any>, headers?: Record<string, string>): Promise<T> {
     try {
       const response = await firstValueFrom(
-        this.httpService.get<T>(`${this.AI_SERVICE_URL}/${path}`, { params, headers }),
+        this.httpService.get<T>(`${this.AI_SERVICE_URL}/${path}`, {
+          params,
+          headers,
+          timeout: AI_SERVICE_TIMEOUT_MS,
+        }),
       );
       return response.data;
     } catch (err: any) {

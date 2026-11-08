@@ -806,23 +806,23 @@ export default function DanhMucDungChungPage() {
     });
   }, [loiDanList, searchTerm]);
 
-    const tabs = [
+  const tabs = [
     { id: 'phong_ban', label: 'Khoa / Phòng Ban', icon: Building2, count: data.phongBans?.length || 0 },
     { id: 'phong_kham', label: 'Phòng Khám Thực Tế', icon: DoorOpen, count: data.phongKhams?.length || 0 },
     { id: 'chuyen_khoa', label: 'Chuyên Khoa Y Tế', icon: Stethoscope, count: chuyenKhoas?.length || 0 },
     { id: 'danh_muc_duoc', label: 'Dược & Đơn Vị Tính', icon: Pill, badge: `${duocConfig.donViTinh?.length || 0} ĐVT` },
     { id: 'mau_loi_dan', label: 'Mẫu Lời Dặn Bác Sĩ', icon: HeartPulse, count: loiDanList?.length || 0 },
-    { id: 'cai_dat_dich_vu', label: 'Cấu Hình .ENV & Dịch Vụ', icon: Sliders, badge: 'Email, PayOS, AI, TT' },
+    { id: 'cai_dat_dich_vu', label: 'Cấu Hình .ENV & Dịch Vụ', icon: Sliders, badge: 'Email, PayOS, AI' },
     { id: 'thong_tin_benh_vien', label: 'Thông Tin Bệnh Viện', icon: Building, badge: 'Footer & Liên hệ' },
-    { id: 'chinh_sach_bao_mat', label: 'Chính Sách & Bảo Mật Dữ Liệu', icon: ShieldCheck, badge: 'Nghị định 13 / EMR' },
+    { id: 'chinh_sach_bao_mat', label: 'Chính Sách & Bảo Mật Dữ Liệu', icon: ShieldCheck, badge: 'NĐ 13 / EMR' },
   ];
 
   return (
-    <div className="space-y-6 animate-fade-in p-2 md:p-4 max-w-7xl mx-auto">
+    <div className="space-y-4 sm:space-y-5 animate-fade-in max-w-7xl mx-auto">
       {/* Toast Notice */}
       {toast && (
         <div
-          className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-3 transition-all animate-bounce-in ${
+          className={`fixed top-4 right-4 left-4 sm:left-auto z-50 px-4 py-3 rounded-2xl shadow-lg border flex items-center gap-3 transition-all animate-bounce-in ${
             toast.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : 'bg-rose-50 border-rose-200 text-rose-800'
@@ -833,34 +833,34 @@ export default function DanhMucDungChungPage() {
           ) : (
             <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
           )}
-          <span className="text-sm font-semibold">{toast.message}</span>
+          <span className="text-xs sm:text-sm font-semibold">{toast.message}</span>
         </div>
       )}
 
       {/* Header */}
-      <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold mb-2">
-            <Layers className="h-3.5 w-3.5" /> MASTER DATA MANAGEMENT
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-gray-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+        <div className="min-w-0">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-semibold mb-1.5">
+            <Layers className="h-3 w-3" /> MASTER DATA MANAGEMENT
           </div>
-          <h1 className="text-2xl font-black text-gray-900">Quản Lý Danh Mục Dùng Chung</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Quản trị cơ cấu phòng khám: Chuyên khoa, buồng khám thực tế và thông tin pháp lý, tổng đài, đường dây nóng cấp cứu.
+          <h1 className="text-lg sm:text-xl md:text-2xl font-black text-gray-900 leading-tight">Quản Lý Danh Mục Dùng Chung</h1>
+          <p className="text-gray-500 text-xs sm:text-sm mt-1">
+            Quản trị cơ cấu phòng khám: Chuyên khoa, buồng khám thực tế, cấu hình dịch vụ và thông tin pháp lý, bảo mật dữ liệu.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-                    <button
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0">
+          <button
             onClick={() => { fetchDanhMuc(); fetchHospitalInfo(); fetchChuyenKhoas(); fetchDanhMucDuoc(); fetchMauLoiDan(); fetchServiceConfig(); }}
-            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer"
+            className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Làm mới
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Làm mới
           </button>
 
           {activeTab === 'phong_ban' && (
             <button
               onClick={handleOpenCreatePB}
-              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+              className="px-3.5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="h-4 w-4" /> Thêm Khoa / Phòng Ban
             </button>
@@ -869,17 +869,17 @@ export default function DanhMucDungChungPage() {
           {activeTab === 'phong_kham' && (
             <button
               onClick={handleOpenCreatePK}
-              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+              className="px-3.5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="h-4 w-4" /> Thêm Phòng Khám
             </button>
           )}
 
           {activeTab === 'chuyen_khoa' && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={handleResetDefaultCK}
-                className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer border border-gray-200"
+                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer border border-gray-200"
                 title="Khôi phục danh mục chuyên khoa theo chuẩn Bộ Y Tế"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-gray-600" />
@@ -887,7 +887,7 @@ export default function DanhMucDungChungPage() {
               </button>
               <button
                 onClick={handleOpenCreateCK}
-                className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+                className="px-3.5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="h-4 w-4" /> Thêm Chuyên Khoa
               </button>
@@ -898,7 +898,7 @@ export default function DanhMucDungChungPage() {
             <button
               onClick={handleSaveDuocConfig}
               disabled={savingDuoc}
-              className="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
               <span>{savingDuoc ? 'Đang lưu...' : 'Lưu Danh Mục Dược'}</span>
@@ -908,7 +908,7 @@ export default function DanhMucDungChungPage() {
           {activeTab === 'mau_loi_dan' && (
             <button
               onClick={handleOpenCreateLoiDan}
-              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+              className="px-3.5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="h-4 w-4" /> Thêm Mẫu Lời Dặn
             </button>
@@ -918,7 +918,7 @@ export default function DanhMucDungChungPage() {
             <button
               onClick={handleSaveServiceConfig}
               disabled={savingServiceConfig}
-              className="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
               <span>{savingServiceConfig ? 'Đang lưu & Đồng bộ...' : 'Lưu & Đồng Bộ .ENV'}</span>
@@ -926,12 +926,12 @@ export default function DanhMucDungChungPage() {
           )}
 
           {activeTab === 'chinh_sach_bao_mat' && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <a
                 href="/chinh-sach-bao-mat"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
                 <span>Xem Trang Công Khai</span>
@@ -939,7 +939,7 @@ export default function DanhMucDungChungPage() {
               <button
                 onClick={handleSaveHospitalInfo}
                 disabled={savingHospital}
-                className="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <Save className="h-4 w-4" />
                 <span>{savingHospital ? 'Đang lưu...' : 'Lưu Chính Sách'}</span>
@@ -951,7 +951,7 @@ export default function DanhMucDungChungPage() {
             <button
               onClick={handleSaveHospitalInfo}
               disabled={savingHospital}
-              className="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
               <span>{savingHospital ? 'Đang lưu...' : 'Lưu Thay Đổi'}</span>
@@ -960,8 +960,8 @@ export default function DanhMucDungChungPage() {
         </div>
       </div>
 
-      {/* Tabs Navigation */}
-      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3">
+      {/* Tabs Navigation — Cuộn ngang mượt trên điện thoại, hiển thị lưới gọn gàng trên PC */}
+      <div className="bg-white p-1.5 rounded-2xl border border-gray-200 shadow-2xs flex items-center gap-1.5 overflow-x-auto lg:flex-wrap">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -969,20 +969,20 @@ export default function DanhMucDungChungPage() {
             <button
               key={tab.id}
               onClick={() => { setActiveTab(tab.id); setSearchTerm(''); }}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs sm:text-[13px] whitespace-nowrap shrink-0 transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-primary-600 text-white shadow-sm'
-                  : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  ? 'bg-primary-600 text-white shadow-xs'
+                  : 'bg-gray-50/70 text-gray-600 hover:bg-gray-100 hover:text-gray-900 border border-transparent'
               }`}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="h-3.5 w-3.5 flex-shrink-0" />
               <span>{tab.label}</span>
               {tab.count !== undefined ? (
-                <span className={`px-2 py-0.5 rounded-full text-xs ${isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                <span className={`px-1.5 py-0.2 rounded-full text-[11px] ${isActive ? 'bg-white/20 text-white' : 'bg-gray-200/80 text-gray-700'}`}>
                   {tab.count}
                 </span>
               ) : (
-                <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${isActive ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-semibold ${isActive ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
                   {tab.badge}
                 </span>
               )}

@@ -37,6 +37,7 @@ export default function PhongKhamPage() {
 
   const { data, isLoading } = useHangDoi();
   const [selectedLuot, setSelectedLuot] = useState(null);
+  const [mobileQueueExpanded, setMobileQueueExpanded] = useState(false);
   const items = data?.data || [];
   const dangKham = items.filter((i) => i.trangThai === 'dang_kham');
   const daCoKq = items.filter((i) => i.trangThai === 'da_co_kq_cls');
@@ -58,6 +59,7 @@ export default function PhongKhamPage() {
 
   const handleSelectLuot = (luot) => {
     setSelectedLuot(luot);
+    setMobileQueueExpanded(false);
     if (luot?.id) {
       sessionStorage.setItem('phong_kham_selected_luot_id', String(luot.id));
     } else {
@@ -98,25 +100,39 @@ export default function PhongKhamPage() {
     : (dangKham[0] || daCoKq[0] || choKham[0] || dangCls[0] || null);
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 lg:h-[calc(100vh-7rem)] animate-fade-in pb-2">
+    <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 lg:gap-5 lg:h-[calc(100dvh-5.5rem)] animate-fade-in pb-2">
       {/* Left: Patient Queue */}
-      <div className="w-full lg:w-80 flex-shrink-0 flex flex-col">
-        <div className="flex items-center justify-between mb-3 lg:mb-4">
-          <h2 className="text-base lg:text-lg font-bold text-gray-900 flex items-center gap-2">
-            <ClipboardList className="h-5 w-5 text-primary-600" /> Hàng đợi
-          </h2>
-          <a
-            href="/man-hinh-goi-so"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition-colors"
-            title="Mở màn hình TV gọi số sang tab mới"
-          >
-            <Tv className="w-3.5 h-3.5 text-blue-600" /> TV Sảnh
-          </a>
+      <div className="w-full lg:w-72 xl:w-80 flex-shrink-0 flex flex-col">
+        <div className="flex items-center justify-between mb-2.5 lg:mb-3 bg-white lg:bg-transparent p-2.5 lg:p-0 rounded-xl border border-gray-200 lg:border-none shadow-2xs lg:shadow-none">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm sm:text-base lg:text-lg font-bold text-gray-900 flex items-center gap-1.5">
+              <ClipboardList className="h-4 w-4 sm:h-5 sm:w-5 text-primary-600" /> Hàng đợi
+              <span className="px-2 py-0.5 rounded-full text-xs bg-primary-50 text-primary-700 font-extrabold">
+                {items.length}
+              </span>
+            </h2>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setMobileQueueExpanded((prev) => !prev)}
+              className="lg:hidden px-2.5 py-1 rounded-lg bg-primary-50 text-primary-700 text-xs font-bold border border-primary-200 transition-colors"
+            >
+              {mobileQueueExpanded ? 'Thu gọn' : 'Đổi bệnh nhân'}
+            </button>
+            <a
+              href="/man-hinh-goi-so"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition-colors"
+              title="Mở màn hình TV gọi số sang tab mới"
+            >
+              <Tv className="w-3.5 h-3.5 text-blue-600" /> TV Sảnh
+            </a>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-3 pr-1 max-h-56 lg:max-h-none">
+        <div className={`${mobileQueueExpanded || !currentLuot ? 'block' : 'hidden'} lg:block flex-1 overflow-y-auto med-scrollbar space-y-3 pr-1 max-h-64 lg:max-h-none`}>
           {isLoading && <p className="text-center text-sm text-gray-400 py-8">Đang tải danh sách...</p>}
 
           {/* 1. Đang khám */}

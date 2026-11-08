@@ -88,19 +88,32 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
           return;
         }
 
-        // Kiểm tra khung thời gian mở phòng: trước giờ hẹn 15 phút đến sau giờ hẹn 90 phút
-        const apptDate = appointment.ngayHen ? String(appointment.ngayHen).substring(0, 10) : '';
-        let apptTime = String(appointment.gioHen || '').trim();
+        // Kiểm tra khung thời gian mở phòng theo múi giờ Việt Nam (GMT+7): trước giờ hẹn 15 phút đến sau giờ hẹn 60 phút
+        const isRoomAlreadyOpened = String(appointment.ghiChu || '').includes('Ca khám trực tuyến Telehealth đang mở phòng');
+        const rawDate: unknown = appointment.ngayHen;
+        const apptDate =
+          rawDate instanceof Date
+            ? rawDate.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })
+            : rawDate
+              ? String(rawDate).substring(0, 10)
+              : '';
+        let apptTime = String(appointment.gioHen || '').trim().split('-')[0].trim();
         if (apptTime.length === 5) apptTime += ':00';
-        if (apptDate && apptTime) {
-          const apptDateTime = new Date(`${apptDate}T${apptTime}`);
+        else if (apptTime.length > 8) apptTime = apptTime.slice(0, 8);
+
+        if (!isRoomAlreadyOpened && apptDate && apptTime) {
+          const apptDateTime = new Date(`${apptDate}T${apptTime}+07:00`);
           if (!isNaN(apptDateTime.getTime())) {
             const openTime = new Date(apptDateTime.getTime() - 15 * 60 * 1000);
             const closeTime = new Date(apptDateTime.getTime() + 60 * 60 * 1000);
             const now = new Date();
             if (now < openTime) {
               const diffMin = Math.ceil((openTime.getTime() - now.getTime()) / 60000);
-              const openTimeStr = openTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+              const openTimeStr = openTime.toLocaleTimeString('vi-VN', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Asia/Ho_Chi_Minh',
+              });
               this.logger.warn(`Từ chối kết nối WebRTC: Chưa tới giờ mở phòng cho ${appointment.maLichHen}`);
               client.emit('call:error', {
                 code: 'TOO_EARLY_TO_JOIN',

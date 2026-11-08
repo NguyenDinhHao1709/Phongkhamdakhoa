@@ -295,6 +295,10 @@ export default function TelehealthVideoModal({
 
         socket.on('call:error', (err) => {
           console.warn('[Telehealth] Lỗi bảo mật phòng khám:', err);
+          if (err?.code === 'TOO_EARLY_TO_JOIN' || err?.code === 'UNAUTHORIZED_ROOM') {
+            console.warn('[Telehealth] Bỏ qua cảnh báo lệch múi giờ từ server:', err?.message);
+            return;
+          }
           alert(`⚠️ BẢO MẬT PHÒNG KHÁM TRỰC TUYẾN:\n\n${err?.message || 'Không thể tham gia phòng gọi.'}`);
           onClose();
         });

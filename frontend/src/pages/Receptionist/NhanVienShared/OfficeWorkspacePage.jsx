@@ -34,6 +34,7 @@ import {
   Moon,
   FolderOpen,
   Bell,
+  ChevronLeft,
   ChevronRight,
   ChevronDown,
   ExternalLink,
@@ -149,6 +150,7 @@ export default function OfficeWorkspacePage() {
   const [convFilter, setConvFilter] = useState('all'); // 'all' | 'group' | 'direct' | 'unread'
   const [chatSubTab, setChatSubTab] = useState('messages'); // 'messages' | 'pinned' | 'images' | 'files' | 'patients'
   const [showRightInfo, setShowRightInfo] = useState(false);
+  const [mobileShowChat, setMobileShowChat] = useState(false);
 
   // Workspace Data
   const [loadingInit, setLoadingInit] = useState(true);
@@ -723,6 +725,7 @@ export default function OfficeWorkspacePage() {
         await fetchWorkspaceInit(true);
         setSelectedRoomId(Number(data.roomId));
         setLeftNav('chat');
+        setMobileShowChat(true);
       }
     } catch (err) {
       console.error('Lỗi mở chat 1-1:', err);
@@ -746,6 +749,7 @@ export default function OfficeWorkspacePage() {
       await fetchWorkspaceInit(true);
       if (data?.roomId) {
         setSelectedRoomId(Number(data.roomId));
+        setMobileShowChat(true);
       }
     } catch (err) {
       console.error('Lỗi tạo nhóm mới:', err);
@@ -868,7 +872,7 @@ export default function OfficeWorkspacePage() {
     : 'bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold';
 
   return (
-    <div className={`flex flex-col h-[calc(100vh-76px)] -m-4 sm:-m-6 overflow-hidden select-none ${bgMain}`}>
+    <div className={`flex flex-col h-[calc(100dvh-56px)] -m-2.5 sm:-m-4 md:-m-5 overflow-hidden select-none ${bgMain}`}>
       {/* ─── TOP HEADER BAR (NEXTX AI OFFICE STYLE) ───────────────────── */}
       <div className={`h-12 px-4 flex items-center justify-between border-b shrink-0 ${bgHeader}`}>
         <div className="flex items-center gap-6">
@@ -1093,7 +1097,7 @@ export default function OfficeWorkspacePage() {
         </div>
 
         {/* ═══ COLUMN 2: CONVERSATION LIST OR STAFF DIRECTORY ═══ */}
-        <div className={`w-80 shrink-0 border-r flex flex-col min-h-0 ${bgMiddleCol}`}>
+        <div className={`${mobileShowChat ? 'hidden md:flex' : 'flex'} w-full md:w-72 lg:w-80 shrink-0 border-r flex-col min-h-0 ${bgMiddleCol}`}>
           {/* Column 2 Header */}
           <div
             className={`p-3.5 border-b space-y-3 ${
@@ -1260,7 +1264,7 @@ export default function OfficeWorkspacePage() {
                 return (
                   <div
                     key={room.id}
-                    onClick={() => setSelectedRoomId(room.id)}
+                    onClick={() => { setSelectedRoomId(room.id); setMobileShowChat(true); }}
                     className={`px-3.5 py-3 flex items-center gap-3 cursor-pointer transition relative ${
                       isSelected
                         ? darkMode
@@ -1357,7 +1361,7 @@ export default function OfficeWorkspacePage() {
         </div>
 
         {/* ═══ COLUMN 3: ACTIVE CHAT WINDOW ═══ */}
-        <div className={`flex-1 flex flex-col min-w-0 ${bgChatArea}`}>
+        <div className={`${mobileShowChat ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-w-0 relative ${bgChatArea}`}>
           {!activeRoom ? (
             <div className={`flex-1 flex flex-col items-center justify-center p-8 space-y-3 ${textMuted}`}>
               <MessageSquare className="w-12 h-12 text-emerald-500/40" />
@@ -1366,10 +1370,18 @@ export default function OfficeWorkspacePage() {
           ) : (
             <>
               {/* 1. Chat Window Header */}
-              <div className={`px-5 py-3 border-b flex items-center justify-between shrink-0 ${bgHeader}`}>
-                <div className="flex items-center gap-3 min-w-0">
+              <div className={`px-3 sm:px-5 py-2.5 sm:py-3 border-b flex items-center justify-between shrink-0 ${bgHeader}`}>
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setMobileShowChat(false)}
+                    className={`md:hidden p-1.5 -ml-1 rounded-lg transition shrink-0 ${textSubtle} ${hoverItem}`}
+                    title="Quay lại danh sách trò chuyện"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
                   <div
-                    className={`w-10 h-10 rounded-full bg-gradient-to-br ${getAvatarGradient(
+                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br ${getAvatarGradient(
                       activeRoom.id,
                     )} flex items-center justify-center text-white font-bold text-xs shrink-0 relative`}
                   >
@@ -2217,7 +2229,7 @@ export default function OfficeWorkspacePage() {
 
                 {/* Right Room Info & Member List Drawer */}
                 {showRightInfo && (
-                  <div className={`w-80 border-l flex flex-col overflow-hidden shrink-0 ${bgMiddleCol}`}>
+                  <div className={`absolute inset-y-0 right-0 z-30 w-full sm:w-80 xl:static xl:z-auto border-l flex flex-col overflow-hidden shrink-0 shadow-2xl xl:shadow-none ${bgMiddleCol}`}>
                     {/* Header */}
                     <div
                       className={`flex items-center justify-between px-4 py-3.5 border-b shrink-0 ${

@@ -56,44 +56,45 @@ export default function PatientPortal() {
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans relative">
       {/* ─── HEADER ──────────────────────────────────────────────── */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-5">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-4">
           {/* Logo & Mobile Menu Toggle */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors"
+              className="md:hidden p-2 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors shrink-0"
               title="Mở menu"
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
 
             <div
-              className="flex items-center gap-2 cursor-pointer shrink-0"
+              className="flex items-center gap-2 cursor-pointer min-w-0"
               onClick={() => navigate('/')}
               title="Về Trang chủ giới thiệu phòng khám & Bảng giá"
             >
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs">
+              <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs shrink-0">
                 <Stethoscope className="h-4 w-4" />
               </div>
-              <span className="text-[14px] sm:text-[15px] font-bold text-gray-900 truncate">
+              <span className="text-[13px] sm:text-[15px] font-bold text-gray-900 truncate max-w-[160px] lg:max-w-none">
                 {hospitalInfo.tenBenhVien || 'Phòng Khám Đa Khoa'}
               </span>
             </div>
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center flex-nowrap">
-            {NAV_LINKS.map(({ to, end, icon: Icon, label }) => (
+          <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center flex-nowrap overflow-x-auto no-scrollbar">
+            {NAV_LINKS.map(({ to, end, icon: Icon, label, shortLabel }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
-                className={({ isActive }) => `flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-[13px] whitespace-nowrap shrink-0 transition-colors ${
+                className={({ isActive }) => `flex items-center gap-1.5 px-2 lg:px-2.5 py-2 rounded-lg text-xs lg:text-[13px] whitespace-nowrap shrink-0 transition-colors ${
                   isActive ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                 }`}
               >
-                <Icon className="h-4 w-4" />
-                {label}
+                <Icon className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
+                <span className="hidden lg:inline">{label}</span>
+                <span className="lg:hidden">{shortLabel || label}</span>
               </NavLink>
             ))}
           </nav>

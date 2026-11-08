@@ -1,3 +1,6 @@
+// Cố định múi giờ Việt Nam (GMT+7) cho toàn bộ tiến trình Backend (Render/Cloud mặc định là UTC)
+process.env.TZ = 'Asia/Ho_Chi_Minh';
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
