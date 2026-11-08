@@ -7,6 +7,14 @@ import { map } from 'rxjs/operators';
 import { Aes256Transformer } from '../transformers/aes-256.transformer';
 
 const aes = new Aes256Transformer();
+const DATE_ONLY_FIELDS = new Set(['ngay', 'ngayHen', 'ngayKham', 'ngayLam', 'tuNgay', 'denNgay']);
+
+function normalizeDateOnly(value: Date | string): string {
+  const date = value instanceof Date
+    ? new Date(value.getTime() + 7 * 60 * 60 * 1000)
+    : new Date(value);
+  return date.toISOString().slice(0, 10);
+}
 
 function decryptPayload(val: any, depth = 0): any {
   if (depth > 15) return val;
@@ -23,7 +31,10 @@ function decryptPayload(val: any, depth = 0): any {
   if (typeof val === 'object' && !(val instanceof Date) && !(val instanceof RegExp) && !(val instanceof Buffer)) {
     const res: any = {};
     for (const key of Object.keys(val)) {
-      res[key] = decryptPayload(val[key], depth + 1);
+      const field = val[key];
+      res[key] = DATE_ONLY_FIELDS.has(key) && (field instanceof Date || typeof field === 'string')
+        ? normalizeDateOnly(field)
+        : decryptPayload(field, depth + 1);
     }
     return res;
   }
@@ -73,4 +84,3 @@ export class ResponseTransformInterceptor<T>
     );
   }
 }
-

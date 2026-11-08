@@ -5,7 +5,7 @@ import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { apiGet, apiPost, apiPatch } from '../../../services/api';
-import { formatDateTime, formatDate, checkTelehealthAccess } from '../../../utils/formatDate';
+import { formatDateTime, formatDate, normalizeDateOnly, checkTelehealthAccess } from '../../../utils/formatDate';
 import useTelehealthStore from '../../../store/telehealthStore';
 import {
   Video, Calendar, Clock, User,
@@ -21,8 +21,7 @@ const getTodayKey = () => {
 const getAppointmentDateKey = (item) => {
   const date = item?.ngayHen || item?.ngayKham;
   if (!date) return '';
-  if (date instanceof Date) return date.toISOString().slice(0, 10);
-  return String(date).slice(0, 10);
+  return normalizeDateOnly(date);
 };
 
 export default function KhamTrucTuyenPage() {

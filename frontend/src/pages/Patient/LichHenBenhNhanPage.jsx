@@ -3,7 +3,7 @@ import { Calendar, Clock, RefreshCw, Stethoscope, AlertTriangle, ShieldAlert, XC
 import { apiGet, apiPost, apiPatch } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../design-system/components/Badge/StatusBadge';
-import { formatDate, checkTelehealthAccess } from '../../utils/formatDate';
+import { formatDate, normalizeDateOnly, checkTelehealthAccess } from '../../utils/formatDate';
 import useTelehealthStore from '../../store/telehealthStore';
 import AppointmentTicketModal from '../../components/Appointment/AppointmentTicketModal';
 import DanhGiaCaKhamModal from '../../components/Appointment/DanhGiaCaKhamModal';
@@ -144,7 +144,7 @@ export default function LichHenBenhNhanPage() {
     }
 
     const now = new Date();
-    const bookingDateTime = new Date(`${lh.ngayHen}T${lh.gioHen}`);
+    const bookingDateTime = new Date(`${normalizeDateOnly(lh.ngayHen)}T${lh.gioHen}`);
     const diffHours = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
     const soTienLhStr = formatVND(getAppointmentAmount(lh));
 
@@ -464,7 +464,7 @@ export default function LichHenBenhNhanPage() {
                             onClick={() => {
                               const now = new Date();
                               const [h, m] = (lh.gioHen || '00:00').split(':').map(Number);
-                              const bookingDate = new Date(lh.ngayHen);
+                              const bookingDate = new Date(normalizeDateOnly(lh.ngayHen));
                               bookingDate.setHours(h, m, 0, 0);
                               const diffHours = (bookingDate.getTime() - now.getTime()) / (1000 * 60 * 60);
 

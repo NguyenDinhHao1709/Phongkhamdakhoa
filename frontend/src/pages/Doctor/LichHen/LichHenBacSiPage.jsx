@@ -4,7 +4,7 @@ import useAuthStore from '../../../store/authStore';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { apiGet, apiPost } from '../../../services/api';
-import { formatDate } from '../../../utils/formatDate';
+import { formatDate, normalizeDateOnly } from '../../../utils/formatDate';
 import {
   Calendar, Clock, Phone, Search,
   AlertTriangle, X, CheckCircle2,
@@ -83,7 +83,7 @@ export default function LichHenBacSiPage() {
       return { allowed: false, reason: 'Ca khám đã hoàn thành, không thể hủy.' };
     }
 
-    const itemDate = item.ngayHen || item.ngayKham;
+    const itemDate = normalizeDateOnly(item.ngayHen || item.ngayKham);
     const itemTime = item.gioHen || item.gioKham || '00:00';
     if (!itemDate) return { allowed: false, reason: 'Không xác định ngày hẹn.' };
 
@@ -153,7 +153,7 @@ export default function LichHenBacSiPage() {
     return rawItems.filter((item) => {
       const isOnline = item.hinhThuc === 'truc_tuyen' || item.hinhThucKham === 'online';
       const patient = item.benhNhan || {};
-      const dateKey = item.ngayHen || item.ngayKham || '';
+      const dateKey = normalizeDateOnly(item.ngayHen || item.ngayKham);
       const itemDate = dateKey ? new Date(`${dateKey}T00:00:00`) : null;
       const gioKham = item.gioHen || item.gioKham || '';
 

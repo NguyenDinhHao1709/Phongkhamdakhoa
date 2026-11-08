@@ -1,6 +1,19 @@
 import { format, formatDistance, parseISO } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
+export const normalizeDateOnly = (value) => {
+  if (!value) return '';
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return '';
+    return getLocalDateString(new Date(value.getTime() + 7 * 60 * 60 * 1000));
+  }
+  const text = String(value);
+  if (!text.includes('T')) return text.slice(0, 10);
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text.slice(0, 10);
+  return getLocalDateString(new Date(date.getTime() + 7 * 60 * 60 * 1000));
+};
+
 export const getLocalDateString = (date = new Date()) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -11,7 +24,10 @@ export const getLocalDateString = (date = new Date()) => {
 /** 01/09/2026 */
 export const formatDate = (date) => {
   if (!date) return '—';
-  return format(typeof date === 'string' ? parseISO(date) : date, 'dd/MM/yyyy', { locale: vi });
+  const dateOnly = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}(T|$)/.test(date)
+    ? normalizeDateOnly(date)
+    : date;
+  return format(typeof dateOnly === 'string' ? parseISO(dateOnly) : dateOnly, 'dd/MM/yyyy', { locale: vi });
 };
 
 /** 01/09/2026 09:30 */
