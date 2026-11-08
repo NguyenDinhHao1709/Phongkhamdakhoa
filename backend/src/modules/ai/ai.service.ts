@@ -21,8 +21,16 @@ export class AiService {
     const defaultUrl = this.configService.get<string>('NODE_ENV') === 'production'
       ? 'https://phongkham-ai.onrender.com'
       : 'http://localhost:5002';
-    const baseUrl = configuredUrl || defaultUrl;
-    this.AI_SERVICE_URL = `${baseUrl.replace(/\/+$/, '')}/api/ai`;
+    const configuredIsLocal = configuredUrl && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(?:\/|$)/i.test(configuredUrl.trim());
+    const baseUrl = configuredIsLocal && this.configService.get<string>('NODE_ENV') === 'production'
+      ? defaultUrl
+      : (configuredUrl || defaultUrl);
+    const normalizedBaseUrl = baseUrl
+      .trim()
+      .replace(/\/+$/, '')
+      .replace(/\/api\/ai$/i, '')
+      .replace(/\/api$/i, '');
+    this.AI_SERVICE_URL = `${normalizedBaseUrl}/api/ai`;
     this.logger.log(`🔗 AI Gateway connected to microservice: ${this.AI_SERVICE_URL}`);
   }
 
@@ -34,7 +42,11 @@ export class AiService {
       return response.data;
     } catch (err: any) {
       this.logger.error(`[AI Gateway POST /${path}] ${err.message}`);
-      if (err.response?.data) return err.response.data;
+      const responseData = err.response?.data;
+      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
+      if (responseData && !isHtmlError && (err.response?.status || 500) < 500) {
+        return responseData;
+      }
       throw new ServiceUnavailableException('Dịch vụ AI Microservice (cổng 5002) hiện đang bảo trì hoặc chưa khởi động.');
     }
   }
@@ -47,7 +59,11 @@ export class AiService {
       return response.data;
     } catch (err: any) {
       this.logger.error(`[AI Gateway GET /${path}] ${err.message}`);
-      if (err.response?.data) return err.response.data;
+      const responseData = err.response?.data;
+      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
+      if (responseData && !isHtmlError && (err.response?.status || 500) < 500) {
+        return responseData;
+      }
       throw new ServiceUnavailableException('Dịch vụ AI Microservice (cổng 5002) hiện đang bảo trì hoặc chưa khởi động.');
     }
   }
