@@ -96,10 +96,7 @@ export class AppModule implements OnModuleInit {
   constructor(private readonly dataSource: DataSource) {}
 
   async onModuleInit() {
-    // 1. Nâng giới hạn kết nối tối đa của MySQL Server lên 1.000 để chịu tải cao
-    await this.dataSource.query(`SET GLOBAL max_connections = 1000`).catch(() => {});
-
-    // 2. Tạo các chỉ mục gộp (Composite Indexes) cho các bảng truy vấn tần suất cao (kiểm tra trước để không báo lỗi Duplicate)
+    // Tạo các chỉ mục gộp (Composite Indexes) cho các bảng truy vấn tần suất cao (kiểm tra trước để không báo lỗi Duplicate)
     const indexDefs: Array<{ table: string; name: string; columns: string }> = [
       { table: 'lich_hen', name: 'idx_lh_ngay_tt_bs', columns: '(ngay_hen, trang_thai, bac_si_id)' },
       { table: 'lich_lam_viec', name: 'idx_llv_ngay_nv', columns: '(ngay_lam, nhan_vien_id)' },

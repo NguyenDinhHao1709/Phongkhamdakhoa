@@ -63,6 +63,9 @@ export default function TelehealthVideoModal({
   const fileInputRef = useRef(null);
   const seenSignalsRef = useRef(new Set());
   const pendingCandidatesRef = useRef([]);
+  const localCandidatesRef = useRef([]);
+  const lastOfferTimeRef = useRef(0);
+  const peerJoinedAtRef = useRef(0);
   const webrtcConnectedRef = useRef(false);
   const handshakeIntervalRef = useRef(null);
   const frameRelayIntervalRef = useRef(null);
@@ -283,10 +286,12 @@ export default function TelehealthVideoModal({
           }
         };
 
-        // Gửi ICE candidates khi tìm thấy
+        // Gửi ICE candidates khi tìm thấy và lưu lại để gửi kèm nếu cần phát lại Offer/Answer
         pc.onicecandidate = (event) => {
           if (event.candidate) {
-            sendSignal({ type: 'candidate', candidate: event.candidate });
+            const candObj = event.candidate.toJSON ? event.candidate.toJSON() : event.candidate;
+            localCandidatesRef.current.push(candObj);
+            sendSignal({ type: 'candidate', candidate: candObj });
           }
         };
 
@@ -346,14 +351,10 @@ export default function TelehealthVideoModal({
         socket.on('connect', () => {
           console.log('[Socket] Đã kết nối Socket.IO thành công, id =', socket.id);
           socket.emit('call:join', { roomId, role, userName: role === 'doctor' ? 'Bác sĩ' : participantName });
-          // Sau 400ms (khi server đã join room xong), phát tín hiệu thông báo có mặt
           setTimeout(() => {
             if (!isMounted) return;
             sendSignal({ type: 'peer_joined', role, senderRole: role });
-            if (role === 'doctor') {
-              createAndSendOffer();
-            }
-          }, 400);
+          }, 350);
         });
 
         socket.on('connect_error', (err) => {
@@ -362,9 +363,10 @@ export default function TelehealthVideoModal({
 
         socket.on('call:peer_joined', async (data) => {
           console.log('[Signaling] Peer joined:', data);
+          if (!peerJoinedAtRef.current) peerJoinedAtRef.current = Date.now();
           setIsPeerConnected(true);
           if (role === 'doctor') {
-            await createAndSendOffer(true);
+            await createAndSendOffer(false);
           } else {
             // Bệnh nhân báo lại ngay cho Bác sĩ để Bác sĩ gửi Offer
             sendSignal({ type: 'peer_ready', role: 'patient', senderRole: role });
@@ -387,6 +389,7 @@ export default function TelehealthVideoModal({
 
         socket.on('call:peer_left', () => {
           webrtcConnectedRef.current = false;
+          peerJoinedAtRef.current = 0;
           setIsPeerConnected(false);
           setHasRemoteVideo(false);
           setRemoteFallbackFrame(null);
@@ -395,26 +398,17 @@ export default function TelehealthVideoModal({
         // Báo cho các tab khác biết mình đã tham gia
         sendSignal({ type: 'peer_joined', role, senderRole: role });
 
-        // Bộ định thời tự động bắt tay lại (Auto-Handshake Retry) mỗi 3 giây nếu WebRTC chưa thông
+        // Bộ định thời tự động kiểm tra bắt tay lại mỗi 8 giây (không gọi lại call:join để tránh bão sự kiện)
         handshakeIntervalRef.current = setInterval(() => {
-          if (!isMounted) return;
-          if (socketRef.current && socketRef.current.connected) {
-            socketRef.current.emit('call:join', {
-              roomId,
-              role,
-              userName: role === 'doctor' ? 'Bác sĩ' : participantName,
-            });
+          if (!isMounted || webrtcConnectedRef.current) return;
+          if (role === 'doctor') {
+            createAndSendOffer(false);
+          } else {
+            sendSignal({ type: 'peer_ready', role: 'patient', senderRole: role });
           }
-          if (!webrtcConnectedRef.current) {
-            if (role === 'doctor') {
-              createAndSendOffer(true);
-            } else {
-              sendSignal({ type: 'peer_ready', role: 'patient', senderRole: role });
-            }
-          }
-        }, 3000);
+        }, 8000);
 
-        // Kênh truyền Hình ảnh & Âm thanh dự phòng qua Socket khi tường lửa/4G chặn UDP WebRTC trực tiếp
+        // Kênh truyền Hình ảnh & Âm thanh dự phòng qua Socket (chỉ kích hoạt nếu sau 6 giây WebRTC UDP bị chặn)
         const relayCanvas = document.createElement('canvas');
         relayCanvas.width = 320;
         relayCanvas.height = 240;
@@ -422,6 +416,7 @@ export default function TelehealthVideoModal({
 
         frameRelayIntervalRef.current = setInterval(() => {
           if (!isMounted || webrtcConnectedRef.current) return;
+          if (!peerJoinedAtRef.current || Date.now() - peerJoinedAtRef.current < 6000) return;
           if (!videoOnRef.current || !localVideoRef.current) return;
           try {
             if (localVideoRef.current.readyState >= 2) {
@@ -432,9 +427,9 @@ export default function TelehealthVideoModal({
               }
             }
           } catch (e) {}
-        }, 280);
+        }, 350);
 
-        // Ghi âm các đoạn ngắn 700ms gửi qua Socket nếu WebRTC UDP chưa thông
+        // Ghi âm các đoạn ngắn 750ms gửi qua Socket nếu sau 6 giây WebRTC UDP vẫn bị chặn
         try {
           const audioTracks = localStream ? localStream.getAudioTracks() : [];
           if (audioTracks.length > 0 && typeof MediaRecorder !== 'undefined') {
@@ -446,8 +441,8 @@ export default function TelehealthVideoModal({
                 : '';
             const startChunkCycle = () => {
               if (!isMounted || webrtcConnectedRef.current) return;
-              if (!micOnRef.current) {
-                setTimeout(startChunkCycle, 750);
+              if (!micOnRef.current || !peerJoinedAtRef.current || Date.now() - peerJoinedAtRef.current < 6000) {
+                setTimeout(startChunkCycle, 1000);
                 return;
               }
               try {
@@ -474,7 +469,7 @@ export default function TelehealthVideoModal({
                   };
                   reader.readAsDataURL(blob);
                   if (isMounted && !webrtcConnectedRef.current) {
-                    setTimeout(startChunkCycle, 50);
+                    setTimeout(startChunkCycle, 80);
                   }
                 };
                 recorder.start();
@@ -482,10 +477,10 @@ export default function TelehealthVideoModal({
                   if (recorder.state === 'recording') {
                     recorder.stop();
                   }
-                }, 700);
+                }, 750);
               } catch (recErr) {}
             };
-            setTimeout(startChunkCycle, 1500);
+            setTimeout(startChunkCycle, 6500);
           }
         } catch (audioRelayErr) {}
 
@@ -531,25 +526,40 @@ export default function TelehealthVideoModal({
     }
   };
 
-  // Tạo và gửi Offer
-  const createAndSendOffer = async (iceRestart = false) => {
+  // Tạo và gửi Offer (có khóa chống trùng lặp Offer Storm trong 7 giây)
+  const createAndSendOffer = async (forceIceRestart = false) => {
     const pc = peerConnectionRef.current;
     if (!pc || makingOfferRef.current) return;
+    const now = Date.now();
+
+    // Nếu vừa tạo Offer trong vòng 7 giây và đang ở trạng thái chờ Answer (have-local-offer),
+    // phát lại đúng bản Offer hiện tại + các ICE candidates thay vì rollback tạo Offer mới (tránh lệch ice-ufrag)
+    if (
+      !forceIceRestart &&
+      pc.signalingState === 'have-local-offer' &&
+      pc.localDescription &&
+      now - lastOfferTimeRef.current < 7000
+    ) {
+      sendSignal({ type: 'offer', sdp: pc.localDescription });
+      localCandidatesRef.current.forEach((cand) => {
+        sendSignal({ type: 'candidate', candidate: cand });
+      });
+      return;
+    }
+
     makingOfferRef.current = true;
     try {
       if (pc.signalingState !== 'stable') {
-        if (pc.signalingState === 'have-local-offer' && pc.localDescription && !iceRestart) {
-          sendSignal({ type: 'offer', sdp: pc.localDescription });
-          return;
-        }
         await pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
       }
+      localCandidatesRef.current = [];
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: true,
-        iceRestart,
+        iceRestart: forceIceRestart,
       });
       await pc.setLocalDescription(offer);
+      lastOfferTimeRef.current = Date.now();
       sendSignal({ type: 'offer', sdp: pc.localDescription });
     } catch (err) {
       console.warn('Lỗi tạo Offer:', err);
@@ -573,6 +583,7 @@ export default function TelehealthVideoModal({
     }
 
     // Bất kỳ tín hiệu nào từ đối phương cũng xác nhận đối phương đang ở trong phòng
+    if (!peerJoinedAtRef.current) peerJoinedAtRef.current = Date.now();
     setIsPeerConnected(true);
 
     const pc = peerConnectionRef.current;
@@ -592,14 +603,28 @@ export default function TelehealthVideoModal({
     try {
       if (data.type === 'peer_joined' || data.type === 'peer_ready') {
         if (role === 'doctor') {
-          await createAndSendOffer(true);
+          await createAndSendOffer(false);
         } else if (data.type === 'peer_joined') {
           sendSignal({ type: 'peer_ready', role: 'patient', senderRole: role });
         }
       } else if (data.type === 'offer') {
+        // Nếu nhận lại đúng bản Offer SDP đã xử lý và đã có Answer, chỉ cần gửi lại Answer + ICE candidates
+        if (
+          pc.signalingState === 'stable' &&
+          pc.remoteDescription &&
+          pc.remoteDescription.sdp === data.sdp?.sdp &&
+          pc.localDescription
+        ) {
+          sendSignal({ type: 'answer', sdp: pc.localDescription });
+          localCandidatesRef.current.forEach((cand) => {
+            sendSignal({ type: 'candidate', candidate: cand });
+          });
+          return;
+        }
         if (pc.signalingState !== 'stable') {
           await pc.setLocalDescription({ type: 'rollback' }).catch(() => {});
         }
+        localCandidatesRef.current = [];
         await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
         await flushPendingCandidates();
         const answer = await pc.createAnswer();
@@ -801,6 +826,9 @@ export default function TelehealthVideoModal({
       socketRef.current = null;
     }
     pendingCandidatesRef.current = [];
+    localCandidatesRef.current = [];
+    lastOfferTimeRef.current = 0;
+    peerJoinedAtRef.current = 0;
     webrtcConnectedRef.current = false;
     setIsPeerConnected(false);
     setHasRemoteVideo(false);
