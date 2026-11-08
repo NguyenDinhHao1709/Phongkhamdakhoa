@@ -19,7 +19,10 @@ function getMonday(d) {
 }
 
 function formatDateISO(d) {
-  return d.toISOString().slice(0, 10);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function formatTimeShort(timeStr) {
@@ -86,11 +89,13 @@ export default function XepLichLamViecPage() {
     mutationFn: (bodyList) => apiPost('/quan-ly/lich-lam-viec', bodyList),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['quan-ly-lich-lam-viec'] });
+      refetch();
       setAddModalOpen(false);
       alert(res?.message || 'Đã phân công ca trực thành công!');
     },
     onError: (err) => {
-      alert(`⚠️ KHÔNG THỂ PHÂN CA:\n${err?.response?.data?.message || err?.message || 'Có lỗi xung đột lịch làm việc'}`);
+      const message = err?.error?.message || err?.response?.data?.error?.message || err?.message || 'Có lỗi xung đột lịch làm việc';
+      alert(`⚠️ KHÔNG THỂ PHÂN CA:\n${Array.isArray(message) ? message.join('\n') : message}`);
     },
   });
 
@@ -228,7 +233,7 @@ export default function XepLichLamViecPage() {
           (p) =>
             Number(p.nhanVienId) === nvIdNum &&
             Number(p.caLamViecId) === caIdNum &&
-            p.ngayLam === d
+            String(p.ngayLam).slice(0, 10) === d
         );
 
         if (isDuplicate) {
@@ -273,7 +278,7 @@ export default function XepLichLamViecPage() {
       let tongSoCa = 0;
       weekDays.forEach((d) => {
         const shifts = phanCaList.filter(
-          (p) => p.nhanVienId === nv.id && p.ngayLam === d.dateStr
+          (p) => Number(p.nhanVienId) === Number(nv.id) && String(p.ngayLam).slice(0, 10) === d.dateStr
         );
         tongSoCa += shifts.length;
         const shiftNames = shifts.map((s) => s.tenCa || 'Ca trực').join(', ');
@@ -425,7 +430,7 @@ export default function XepLichLamViecPage() {
                     {/* 7 ngày */}
                     {weekDays.map((d, i) => {
                       const shifts = phanCaList.filter(
-                        (p) => p.nhanVienId === nv.id && p.ngayLam === d.dateStr
+                        (p) => Number(p.nhanVienId) === Number(nv.id) && String(p.ngayLam).slice(0, 10) === d.dateStr
                       );
                       return (
                         <td key={i} className="px-1.5 py-1.5 border-r border-gray-100 align-top">
@@ -776,4 +781,3 @@ export default function XepLichLamViecPage() {
     </div>
   );
 }
-

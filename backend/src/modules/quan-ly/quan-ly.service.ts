@@ -2197,7 +2197,7 @@ export class QuanLyService implements OnModuleInit {
         });
       }
 
-      // 2. Kiểm tra giới hạn tối đa 2 ca/ngày để đảm bảo sức khỏe y tế
+      // 2. Kiểm tra giới hạn tối đa 3 ca/ngày để cho phép đủ ca sáng, chiều và tối
       const existingShifts = await this.lichLamViecRepo.find({
         where: {
           nhanVienId: item.nhanVienId,
@@ -2205,10 +2205,13 @@ export class QuanLyService implements OnModuleInit {
         },
       });
 
-      if (existingShifts.length >= 2) {
+      if (existingShifts.length >= 3) {
+        const existingShiftNames = existingShifts
+          .map((shift) => shift.caLamViecId)
+          .join(', ');
         throw new BadRequestException({
           code: 'VUOT_QUA_SO_CA_TOI_DA',
-          message: `Cảnh báo quá tải: Nhân viên "${nvTen}" đã có ${existingShifts.length} ca trực trong ngày ${item.ngayLam}. Quy chế y tế giới hạn tối đa 2 ca/ngày để đảm bảo an toàn khám chữa bệnh.`,
+          message: `Không thể phân công ca "${caTen}": Nhân viên "${nvTen}" đã có đủ 3 ca trong ngày ${item.ngayLam} (ca đã có: ${existingShiftNames}). Hệ thống không cho phép vượt quá 3 ca/ngày.`,
         });
       }
 
