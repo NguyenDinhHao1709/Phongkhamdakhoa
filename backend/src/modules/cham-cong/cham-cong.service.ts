@@ -17,6 +17,26 @@ import { NhatKyHeThong, LoaiNhatKy } from '../quan-ly/entities/nhat-ky-he-thong.
 
 const PYTHON_ML_URL = process.env.PYTHON_ML_URL || 'http://localhost:5001';
 const CHAM_CONG_KEY = 'CHAM_CONG_CONFIG';
+const VIETNAM_TIME_ZONE = 'Asia/Ho_Chi_Minh';
+
+function getVietnamNow(): { ngayCham: string; gio: string } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: VIETNAM_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+
+  return {
+    ngayCham: `${values.year}-${values.month}-${values.day}`,
+    gio: `${values.hour}:${values.minute}:${values.second}`,
+  };
+}
 
 @Injectable()
 export class ChamCongService {
@@ -240,9 +260,7 @@ export class ChamCongService {
     return this.withLock(`cham_cong:${userId}`, async () => {
       const nv = await this.layNhanVienTheoUserId(userId);
 
-      const now = new Date();
-      const ngayCham = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const gioVao = now.toTimeString().slice(0, 8);
+      const { ngayCham, gio: gioVao } = getVietnamNow();
 
       // 1. Phải xem hôm nay có lịch làm việc không
       const shifts = await this.timLichLamViecHomNay(nv.id, ngayCham);
@@ -328,9 +346,7 @@ export class ChamCongService {
     return this.withLock(`cham_cong:${userId}`, async () => {
       const nv = await this.layNhanVienTheoUserId(userId);
 
-      const now = new Date();
-      const ngayCham = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const gioRa = now.toTimeString().slice(0, 8);
+      const { ngayCham, gio: gioRa } = getVietnamNow();
 
       // 1. Phải xem hôm nay có lịch làm việc không
       const shifts = await this.timLichLamViecHomNay(nv.id, ngayCham);
@@ -417,8 +433,7 @@ export class ChamCongService {
     const nv = await this.nhanVienRepo.findOneBy({ nguoiDungId: userId });
     if (!nv) return null;
 
-    const now = new Date();
-    const ngayCham = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const { ngayCham } = getVietnamNow();
 
     const chamCong = await this.chamCongRepo.findOne({
       where: { nhanVienId: nv.id, ngayCham },
