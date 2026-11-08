@@ -50,6 +50,7 @@ import { BaiVietModule } from './modules/bai-viet/bai-viet.module';
           connectTimeout: 15000,
           enableKeepAlive: true,
           keepAliveInitialDelay: 10000,
+          dateStrings: ['DATE'],
         },
       }),
       inject: [ConfigService],
