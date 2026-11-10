@@ -11,7 +11,7 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const requestUrl = config.url || '';
-  if (config.timeout === 15000 && /^\/(ai\/|office\/|cham-cong\/check-(in|out)$)/.test(requestUrl)) {
+  if (config.timeout === 15000 && /^\/(ai\/|office\/|cham-cong\/check-(in|out)$|quan-ly\/upload-avatar)/.test(requestUrl)) {
     config.timeout = 90000;
   }
   return config;

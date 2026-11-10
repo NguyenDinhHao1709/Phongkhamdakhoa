@@ -2,10 +2,9 @@ import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { withColdStartRetry } from '../../common/utils/cold-start-retry.util';
 
 const AI_SERVICE_TIMEOUT_MS = 90000;
-const AI_SERVICE_WAKE_WINDOW_MS = 75000; // Render free cold start mất ~20-60s, frontend chờ tối đa 90s
-const AI_SERVICE_RETRY_DELAY_MS = 5000;
 
 /**
  * AI Gateway Client (Core Monolith -> Standalone AI Microservice :5002)
@@ -43,35 +42,28 @@ export class AiService {
     path: string,
     options: { data?: any; params?: Record<string, any>; headers?: Record<string, string> } = {},
   ): Promise<T> {
-    const startedAt = Date.now();
-    for (let attempt = 0; ; attempt++) {
-      try {
-        const response = await firstValueFrom(
+    try {
+      const response = await withColdStartRetry(
+        () => firstValueFrom(
           this.httpService.request<T>({
             method,
             url: `${this.AI_SERVICE_URL}/${path}`,
             ...options,
             timeout: AI_SERVICE_TIMEOUT_MS,
           }),
-        );
-        return response.data;
-      } catch (err: any) {
-        // Render free tier trả 502/503/504 hoặc từ chối kết nối khi AI service đang cold start / redeploy
-        const status = err.response?.status;
-        const isWakingUp = [502, 503, 504].includes(status) || ['ECONNREFUSED', 'ECONNRESET'].includes(err.code);
-        if (isWakingUp && Date.now() - startedAt + AI_SERVICE_RETRY_DELAY_MS < AI_SERVICE_WAKE_WINDOW_MS) {
-          this.logger.warn(`[AI Gateway ${method} /${path}] ${err.message} — thử lại lần ${attempt + 1}`);
-          await new Promise((resolve) => setTimeout(resolve, AI_SERVICE_RETRY_DELAY_MS));
-          continue;
-        }
-        this.logger.error(`[AI Gateway ${method} /${path}] ${err.message}`);
-        const responseData = err.response?.data;
-        const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
-        if (responseData && !isHtmlError && (status || 500) < 500) {
-          return responseData;
-        }
-        throw new ServiceUnavailableException('Dịch vụ AI Microservice (cổng 5002) hiện đang bảo trì hoặc chưa khởi động.');
+        ),
+        (err, attempt) => this.logger.warn(`[AI Gateway ${method} /${path}] ${err.message} — thử lại lần ${attempt}`),
+      );
+      return response.data;
+    } catch (err: any) {
+      this.logger.error(`[AI Gateway ${method} /${path}] ${err.message}`);
+      const status = err.response?.status;
+      const responseData = err.response?.data;
+      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
+      if (responseData && !isHtmlError && (status || 500) < 500) {
+        return responseData;
       }
+      throw new ServiceUnavailableException('Dịch vụ AI Microservice (cổng 5002) hiện đang bảo trì hoặc chưa khởi động.');
     }
   }
 

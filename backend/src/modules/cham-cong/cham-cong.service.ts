@@ -14,11 +14,10 @@ import { ChamCong } from './entities/cham-cong.entity';
 import { CaiDatHeThong } from './entities/cai-dat-he-thong.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { NhatKyHeThong, LoaiNhatKy } from '../quan-ly/entities/nhat-ky-he-thong.entity';
+import { withColdStartRetry, isServiceWakingUp } from '../../common/utils/cold-start-retry.util';
 
 const PYTHON_ML_URL = process.env.PYTHON_ML_URL || 'http://localhost:5001';
-const PYTHON_ML_TIMEOUT_MS = 60000;
-const PYTHON_ML_MAX_RETRIES = 2;
-const PYTHON_ML_RETRY_DELAY_MS = 5000;
+const PYTHON_ML_TIMEOUT_MS = 75000;
 const CHAM_CONG_KEY = 'CHAM_CONG_CONFIG';
 const VIETNAM_TIME_ZONE = 'Asia/Ho_Chi_Minh';
 
@@ -236,27 +235,17 @@ export class ChamCongService {
       frames_b64: params.framesB64 && params.framesB64.length >= 2 ? params.framesB64 : null,
     };
     let data: any;
-    for (let attempt = 0; ; attempt++) {
-      try {
-        const response = await firstValueFrom(
-          this.httpService.post(`${PYTHON_ML_URL}/verify-face`, body, { timeout: PYTHON_ML_TIMEOUT_MS }),
-        );
-        data = response.data;
-        break;
-      } catch (err) {
-        // Render free tier trả 502/503/504, từ chối kết nối hoặc phản hồi rất chậm khi Python ML đang cold start
-        const isWakingUp = [502, 503, 504].includes(err?.response?.status)
-          || ['ECONNREFUSED', 'ECONNRESET'].includes(err?.code);
-        if (isWakingUp && attempt < PYTHON_ML_MAX_RETRIES) {
-          await new Promise((resolve) => setTimeout(resolve, PYTHON_ML_RETRY_DELAY_MS));
-          continue;
-        }
-        if (isWakingUp || err?.code === 'ECONNABORTED') {
-          throw new BadRequestException('Dịch vụ nhận diện khuôn mặt đang khởi động, vui lòng thử lại sau ít phút.');
-        }
-        const msg = err?.response?.data?.detail || err.message;
-        throw new BadRequestException('Lỗi dịch vụ phân tích khuôn mặt (Python ML): ' + msg);
+    try {
+      const response = await withColdStartRetry(() => firstValueFrom(
+        this.httpService.post(`${PYTHON_ML_URL}/verify-face`, body, { timeout: PYTHON_ML_TIMEOUT_MS }),
+      ));
+      data = response.data;
+    } catch (err) {
+      if (isServiceWakingUp(err) || err?.code === 'ECONNABORTED') {
+        throw new BadRequestException('Dịch vụ nhận diện khuôn mặt đang khởi động, vui lòng thử lại sau ít phút.');
       }
+      const msg = err?.response?.data?.detail || err.message;
+      throw new BadRequestException('Lỗi dịch vụ phân tích khuôn mặt (Python ML): ' + msg);
     }
 
     const verified = data.verified === true;

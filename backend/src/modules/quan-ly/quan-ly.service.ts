@@ -9,6 +9,7 @@ import { VaiTro } from '../auth/entities/vai-tro.entity';
 import { QuyenHan } from '../auth/entities/quyen-han.entity';
 import { VaiTroQuyenHan } from '../auth/entities/vai-tro-quyen-han.entity';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
+import { withColdStartRetry, isServiceWakingUp } from '../../common/utils/cold-start-retry.util';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { KyThuatVien } from '../nhan-vien/entities/ky-thuat-vien.entity';
 import { DonGui, TrangThaiDonGui } from '../nhan-vien/entities/don-gui.entity';
@@ -4185,20 +4186,20 @@ export class QuanLyService implements OnModuleInit {
       // 2. Gọi Python ML kiểm tra tính hợp lệ & chống trùng
       let checkResult: any = null;
       try {
-        const response = await firstValueFrom(
+        const targetImageBase64 = fs.readFileSync(absolutePath).toString('base64');
+        // Python ML trên Render free cần ~50s để thức dậy → chờ & thử lại thay vì bỏ qua đối soát
+        const response = await withColdStartRetry(() => firstValueFrom(
           this.httpService.post(
             `${PYTHON_ML_URL}/check-duplicate-face`,
-            {
-              target_image_base64: fs.readFileSync(absolutePath).toString('base64'),
-              candidates: candidates,
-            },
-            { timeout: 25000 },
+            { target_image_base64: targetImageBase64, candidates },
+            { timeout: 75000 },
           ),
-        );
+        ));
         checkResult = response.data;
       } catch (mlErr: any) {
         const errMsg = String(mlErr?.message || '');
         const isConnErr =
+          isServiceWakingUp(mlErr) ||
           mlErr?.code === 'ECONNREFUSED' ||
           mlErr?.code === 'ETIMEDOUT' ||
           mlErr?.code === 'ECONNRESET' ||
