@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { DataSource } from 'typeorm';
 import { MemoryCacheModule } from './common/cache/memory-cache.module';
+import { createVnTimezoneDataSource } from './common/utils/vn-session-timezone.util';
 import { AuthModule } from './modules/auth/auth.module';
 import { NhanVienModule } from './modules/nhan-vien/nhan-vien.module';
 import { BenhNhanModule } from './modules/benh-nhan/benh-nhan.module';
@@ -54,6 +55,7 @@ import { BaiVietModule } from './modules/bai-viet/bai-viet.module';
         },
       }),
       inject: [ConfigService],
+      dataSourceFactory: (options) => createVnTimezoneDataSource(options!),
     }),
 
     BullModule.forRootAsync({

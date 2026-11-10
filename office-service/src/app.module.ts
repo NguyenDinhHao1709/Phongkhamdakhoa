@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { OfficeController } from './office.controller';
 import { OfficeService } from './office.service';
 import { OfficeGateway } from './office.gateway';
+import { createVnTimezoneDataSource } from './common/vn-session-timezone.util';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { OfficeGateway } from './office.gateway';
         },
       }),
       inject: [ConfigService],
+      dataSourceFactory: (options) => createVnTimezoneDataSource(options!),
     }),
   ],
   controllers: [OfficeController],
