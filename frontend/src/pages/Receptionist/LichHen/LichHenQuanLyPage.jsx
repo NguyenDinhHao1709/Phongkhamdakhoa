@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../../utils/xuatFile';
 import {
   Calendar,
   Search,
@@ -514,7 +515,7 @@ export default function LichHenQuanLyPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'DanhSachLichHen');
     const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    XLSX.writeFile(wb, `Danh_Sach_Lich_Hen_${now}.xlsx`);
+    xuatExcel(wb, `Danh_Sach_Lich_Hen_${now}.xlsx`);
   };
 
   // Phân trang

@@ -24,6 +24,7 @@ import { ChiDinhCanLamSang, DichVuXetNghiem } from '../xet-nghiem/entities/xet-n
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
 import { NhatKyHeThong, LoaiNhatKy } from './entities/nhat-ky-he-thong.entity';
+import { auditModuleLabel } from '../../common/audit/audit-log.config';
 import { BaoCaoBoPhan } from './entities/bao-cao-bo-phan.entity';
 import { CauHinhTienCoc } from './entities/cau-hinh-tien-coc.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
@@ -3663,6 +3664,13 @@ export class QuanLyService implements OnModuleInit {
     const act = (hanhDong || '').toUpperCase();
     const desc = (moTa || '').toLowerCase();
 
+    // 0. Ghi tự động (AuditLogInterceptor): moTa = "<thao tác> · <kết quả> · <METHOD đường dẫn>"
+    if (act.startsWith('TT_')) return { chucNang: auditModuleLabel(act), thaoTac: (moTa || '').split(' · ')[0] || act };
+    if (act === 'XUAT_FILE') return { chucNang: 'Xuất dữ liệu', thaoTac: (moTa || '').split(' · ')[0] || 'Xuất file' };
+    if (act === 'DANG_XUAT') return { chucNang: 'Xác thực & Bảo mật', thaoTac: 'Đăng xuất · Auth' };
+    if (act === 'DOI_MAT_KHAU') return { chucNang: 'Xác thực & Bảo mật', thaoTac: 'Đổi mật khẩu · Tài khoản' };
+    if (act === 'QUEN_MAT_KHAU') return { chucNang: 'Xác thực & Bảo mật', thaoTac: 'Quên mật khẩu (gửi OTP) · Tài khoản' };
+
     // 1. Chấm công & Điểm danh
     if (act.includes('CHAM_CONG') || act.includes('CHECKIN') || act.includes('CHECKOUT')) {
       if (act === 'CHECKIN_CHAM_CONG') return { chucNang: 'Chấm công & Điểm danh', thaoTac: 'Check-in · Chấm công' };
@@ -3761,6 +3769,7 @@ export class QuanLyService implements OnModuleInit {
     search?: string;
     tuNgay?: string;
     denNgay?: string;
+    loaiNguoiDung?: string; // NHAN_VIEN (mặc định) | BENH_NHAN | TAT_CA
   }) {
     await this.seedInitialLogs();
 
@@ -3771,6 +3780,7 @@ export class QuanLyService implements OnModuleInit {
     const qb = this.nhatKyRepo.createQueryBuilder('log')
       .leftJoin('nguoi_dung', 'nd', '(nd.id = log.nguoi_dung_id OR nd.ten_dang_nhap = log.ten_nguoi_dung)')
       .leftJoin('nhan_vien', 'nv', 'nv.nguoi_dung_id = nd.id')
+      .leftJoin('benh_nhan', 'bn', 'bn.nguoi_dung_id = nd.id')
       .select([
         'log.id AS id',
         'log.nguoi_dung_id AS nguoiDungId',
@@ -3784,10 +3794,16 @@ export class QuanLyService implements OnModuleInit {
         'log.thoi_gian AS thoiGian',
         'nv.ho_ten AS hoTenNhanVien',
         'nv.email AS emailNhanVien',
+        'bn.ho_ten AS hoTenBenhNhan',
+        'bn.email AS emailBenhNhan',
       ]);
 
-    // BẮT BUỘC: CHỈ LƯU VÀ HIỂN THỊ NHẬT KÝ CỦA GIÁM ĐỐC, QUẢN TRỊ VIÊN, BÁC SĨ, NHÂN VIÊN NỘI BỘ
-    qb.andWhere("log.vai_tro NOT IN ('benh_nhan', 'khach', 'guest')");
+    // Mặc định chỉ hiện nhật ký nội bộ (nhân viên, bác sĩ, giám đốc, admin); bệnh nhân xem riêng qua bộ lọc
+    if (query.loaiNguoiDung === 'BENH_NHAN') {
+      qb.andWhere("log.vai_tro = 'benh_nhan'");
+    } else if (query.loaiNguoiDung !== 'TAT_CA') {
+      qb.andWhere("log.vai_tro NOT IN ('benh_nhan', 'khach', 'guest')");
+    }
 
     if (query.loaiNhatKy && query.loaiNhatKy !== 'TAT_CA') {
       qb.andWhere('log.loai_nhat_ky = :loai', { loai: query.loaiNhatKy });
@@ -3829,7 +3845,7 @@ export class QuanLyService implements OnModuleInit {
       const { chucNang, thaoTac } = this.xacDinhChucNangVaThaoTac(row.hanhDong, row.moTa);
 
       // 1. Tên nhân viên
-      let tenNV = row.hoTenNhanVien;
+      let tenNV = row.hoTenNhanVien || row.hoTenBenhNhan;
       if (!tenNV) {
         if (row.tenNguoiDung === 'admin') tenNV = 'Quản Trị Viên Hệ Thống';
         else if (row.tenNguoiDung === 'giamdoc') tenNV = 'BS.CKII Nguyễn Văn Giám Đốc';
@@ -3840,11 +3856,12 @@ export class QuanLyService implements OnModuleInit {
       }
 
       // 2. Email nhân viên
-      let emailNV = row.emailNhanVien;
+      let emailNV = row.emailNhanVien || row.emailBenhNhan;
       if (!emailNV) {
         if (row.tenNguoiDung === 'admin') emailNV = 'admin@phongkham.vn';
         else if (row.tenNguoiDung === 'giamdoc') emailNV = 'giamdoc@phongkham.vn';
         else if (row.tenNguoiDung === 'he_thong') emailNV = 'system@phongkham.vn';
+        else if ((row.tenNguoiDung || '').includes('@')) emailNV = row.tenNguoiDung;
         else emailNV = `${row.tenNguoiDung}@phongkham.vn`;
       }
 

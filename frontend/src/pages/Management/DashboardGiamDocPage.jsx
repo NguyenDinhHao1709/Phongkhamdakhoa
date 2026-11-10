@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../utils/xuatFile';
 import { apiGet, apiPatch } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { formatCurrency } from '../../utils/formatCurrency';
@@ -202,7 +203,7 @@ export default function DashboardGiamDocPage() {
     }
 
     const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    XLSX.writeFile(wb, `Bao_Cao_Dieu_Hanh_Toan_Vien_${nowStr}.xlsx`);
+    xuatExcel(wb, `Bao_Cao_Dieu_Hanh_Toan_Vien_${nowStr}.xlsx`);
   };
 
   return (

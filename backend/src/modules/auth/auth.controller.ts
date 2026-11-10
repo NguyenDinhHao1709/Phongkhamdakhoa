@@ -90,6 +90,16 @@ export class AuthController {
     return { data, message: 'Lấy quyền hạn thành công' };
   }
 
+  // Token JWT không lưu phía server nên chỉ để AuditLogInterceptor ghi nhật ký đăng xuất
+  @UseGuards(JwtAuthGuard)
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Đăng xuất hệ thống' })
+  logout() {
+    return { message: 'Đăng xuất thành công' };
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('change-password')
   @HttpCode(HttpStatus.OK)

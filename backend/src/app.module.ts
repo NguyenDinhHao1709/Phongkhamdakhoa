@@ -5,6 +5,9 @@ import { BullModule } from '@nestjs/bull';
 import { DataSource } from 'typeorm';
 import { MemoryCacheModule } from './common/cache/memory-cache.module';
 import { createVnTimezoneDataSource } from './common/utils/vn-session-timezone.util';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { AuditLogInterceptor } from './common/audit/audit-log.interceptor';
+import { NhatKyAuditSubscriber } from './common/audit/nhat-ky-audit.subscriber';
 import { AuthModule } from './modules/auth/auth.module';
 import { NhanVienModule } from './modules/nhan-vien/nhan-vien.module';
 import { BenhNhanModule } from './modules/benh-nhan/benh-nhan.module';
@@ -90,6 +93,11 @@ import { BaiVietModule } from './modules/bai-viet/bai-viet.module';
     PayosModule,        // Cổng thanh toán VietQR ngân hàng phòng khám PayOS
     OfficeModule,       // MediCare Digital Office Gateway (Microservice :5003)
     BaiVietModule,      // Cẩm nang y khoa & Bài viết giáo dục sức khỏe
+  ],
+  providers: [
+    // Nhật ký hệ thống tự động cho mọi thao tác thêm/sửa/xóa
+    { provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor },
+    NhatKyAuditSubscriber,
   ],
 })
 export class AppModule implements OnModuleInit {

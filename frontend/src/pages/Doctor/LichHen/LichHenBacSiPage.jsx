@@ -11,6 +11,7 @@ import {
   ChevronDown, RotateCcw, AlertCircle, Info, Send, Star, Download
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../../utils/xuatFile';
 import DanhGiaCaKhamModal from '../../../components/Appointment/DanhGiaCaKhamModal';
 
 const getTodayKey = () => {
@@ -315,7 +316,7 @@ export default function LichHenBacSiPage() {
 
     const now = new Date();
     const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-    XLSX.writeFile(workbook, `LichHen_BacSi_${dateStr}.xlsx`);
+    xuatExcel(workbook, `LichHen_BacSi_${dateStr}.xlsx`);
   };
 
   return (

@@ -11,6 +11,7 @@ import {
   ChevronUp, RotateCcw, X, Filter, Stethoscope, AlertTriangle, Download
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../../utils/xuatFile';
 import { parseAttachmentUrls, toAttachmentUrl } from '../../../utils/fileAttachments';
 import InPhieuKhamModal from '../../../components/Print/InPhieuKhamModal';
 import InDonThuocModal from '../../../components/Print/InDonThuocModal';
@@ -285,7 +286,7 @@ export default function HoSoBenhAnQuanLyPage() {
     const bnName = (activeBn?.hoTen || 'BenhNhan').replace(/\s+/g, '_');
     const now = new Date();
     const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-    XLSX.writeFile(workbook, `SoBenhAn_${bnName}_${dateStr}.xlsx`);
+    xuatExcel(workbook, `SoBenhAn_${bnName}_${dateStr}.xlsx`);
   };
 
   const hasActiveFilter =

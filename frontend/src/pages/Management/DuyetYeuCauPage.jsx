@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../utils/xuatFile';
 import { apiGet, apiPatch } from '../../services/api';
 import { formatDateTime, formatDate } from '../../utils/formatDate';
 import {
@@ -711,7 +712,7 @@ export default function DuyetYeuCauPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SoTheoDoiPheDuyet');
     const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    XLSX.writeFile(wb, `So_Theo_Doi_Phe_Duyet_Don_Tu_${nowStr}.xlsx`);
+    xuatExcel(wb, `So_Theo_Doi_Phe_Duyet_Don_Tu_${nowStr}.xlsx`);
   };
 
   return (

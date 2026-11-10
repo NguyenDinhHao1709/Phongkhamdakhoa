@@ -4,6 +4,7 @@ import {
   Server, AlertCircle, FileSpreadsheet, Lock
 } from 'lucide-react';
 import { apiGet } from '../../services/api';
+import { ghiNhanXuatFile } from '../../utils/xuatFile';
 
 export default function SaoLuuDuLieuPage() {
   const [data, setData] = useState(null);
@@ -42,6 +43,7 @@ export default function SaoLuuDuLieuPage() {
       downloadAnchor.click();
       downloadAnchor.remove();
       window.URL.revokeObjectURL(url);
+      ghiNhanXuatFile(downloadAnchor.download);
 
       setBackupSuccess('Đã xuất và tải xuống bản sao lưu toàn diện Cơ sở dữ liệu (.sql) thành công!');
       setTimeout(() => setBackupSuccess(''), 6000);

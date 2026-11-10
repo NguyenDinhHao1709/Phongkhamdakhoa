@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../utils/xuatFile';
 import {
   Check, ClipboardList, PackageCheck, Plus, RefreshCw, Wallet,
   FileCheck2, CircleCheck, X, Send, Truck, ClipboardCheck,
@@ -480,7 +481,7 @@ export default function MuaHangThuocPage() {
     const ws = XLSX.utils.json_to_sheet(templateData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'BangGia');
-    XLSX.writeFile(wb, `Mau_BaoGia_${supplierName ? supplierName.replace(/\s+/g, '_') : 'NCC'}.xlsx`);
+    xuatExcel(wb, `Mau_BaoGia_${supplierName ? supplierName.replace(/\s+/g, '_') : 'NCC'}.xlsx`);
   };
 
   // 2. Tải về bảng giá hiện tại của NCC ra file Excel
@@ -502,7 +503,7 @@ export default function MuaHangThuocPage() {
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'BangGia');
-    XLSX.writeFile(wb, supplier.fileBangGiaTen || `BangGia_${supplier.tenNhaCungCap}.xlsx`);
+    xuatExcel(wb, supplier.fileBangGiaTen || `BangGia_${supplier.tenNhaCungCap}.xlsx`);
   };
 
   // 3. Xử lý upload file Excel bảng giá
@@ -928,7 +929,7 @@ export default function MuaHangThuocPage() {
       2,
       '0',
     )}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-    XLSX.writeFile(workbook, `SoTheoDoi_MuaHangDuocPham_${dateStr}.xlsx`);
+    xuatExcel(workbook, `SoTheoDoi_MuaHangDuocPham_${dateStr}.xlsx`);
   };
 
   return (

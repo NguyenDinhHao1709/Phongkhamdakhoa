@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../utils/xuatFile';
 import {
   DollarSign, Search, Filter, Plus, Edit3, Trash2, CheckCircle2,
   AlertCircle, RefreshCw, Layers, Stethoscope, FlaskConical,
@@ -338,7 +339,7 @@ export default function QuanLyBangGiaDichVuPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'BangGiaDichVu');
     const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    XLSX.writeFile(wb, `Bang_Gia_Dich_Vu_Kham_Chua_Benh_${nowStr}.xlsx`);
+    xuatExcel(wb, `Bang_Gia_Dich_Vu_Kham_Chua_Benh_${nowStr}.xlsx`);
   };
 
   return (

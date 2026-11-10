@@ -223,6 +223,7 @@ export class QuanLyController {
     @Query('search') search?: string,
     @Query('tuNgay') tuNgay?: string,
     @Query('denNgay') denNgay?: string,
+    @Query('loaiNguoiDung') loaiNguoiDung?: string,
   ) {
     return this.quanLyService.getDanhSachNhatKy({
       page,
@@ -232,7 +233,16 @@ export class QuanLyController {
       search,
       tuNgay,
       denNgay,
+      loaiNguoiDung,
     });
+  }
+
+  // Mọi người dùng đã đăng nhập: báo lại việc xuất file (file Excel/CSV tạo ở trình duyệt).
+  // Nội dung nhật ký do AuditLogInterceptor ghi (hành động XUAT_FILE, kèm tên file & trang).
+  @Post('nhat-ky/xuat-file')
+  @ApiOperation({ summary: 'Ghi nhận thao tác xuất file dữ liệu' })
+  ghiNhanXuatFile() {
+    return { ok: true };
   }
 
   @Get('nhat-ky/thong-ke')

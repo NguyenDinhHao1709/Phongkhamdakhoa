@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../utils/xuatFile';
 import { useAuthStore } from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
@@ -154,7 +155,7 @@ export default function ThongKeXetNghiemPage() {
     XLSX.utils.book_append_sheet(wb, wsDetail, 'Danh_Sach_Chi_Dinh');
 
     const fileName = `Bao_Cao_Xet_Nghiem_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    xuatExcel(wb, fileName);
   };
 
   const todayStr = new Date().toISOString().split('T')[0];

@@ -39,6 +39,16 @@ const useAuthStore = create(
       },
 
       logout: () => {
+        // Ghi nhật ký đăng xuất: gửi trước khi xóa token, keepalive để không bị hủy khi chuyển trang.
+        // (Gọi fetch trực tiếp vì services/api.js import store này)
+        const token = get().accessToken;
+        if (token) {
+          fetch(`${import.meta.env.VITE_API_URL || '/api'}/auth/logout`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            keepalive: true,
+          }).catch(() => {});
+        }
         try {
           queryClient.clear();
         } catch (e) {

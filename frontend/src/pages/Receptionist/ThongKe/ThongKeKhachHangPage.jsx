@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../../utils/xuatFile';
 import {
   Users,
   CalendarCheck,
@@ -219,7 +220,7 @@ export default function ThongKeKhachHangPage() {
     XLSX.utils.book_append_sheet(wb, wsDetail, 'Danh_Sach_Chi_Tiet');
 
     const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 8);
-    XLSX.writeFile(wb, `Bao_Cao_Tiep_Don_${timestamp}.xlsx`);
+    xuatExcel(wb, `Bao_Cao_Tiep_Don_${timestamp}.xlsx`);
   };
 
   // Helper render badge trạng thái

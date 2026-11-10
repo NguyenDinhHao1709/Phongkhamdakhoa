@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../../utils/xuatFile';
 import {
   Search, Plus, ChevronLeft, ChevronRight, Phone, Calendar,
   AlertTriangle, Eye, Edit3, SlidersHorizontal, X, RotateCcw,
@@ -144,7 +145,7 @@ export default function BenhNhanListPage() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'DanhSachBenhNhan');
       const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      XLSX.writeFile(wb, `Danh_Sach_Benh_Nhan_${now}.xlsx`);
+      xuatExcel(wb, `Danh_Sach_Benh_Nhan_${now}.xlsx`);
     } catch (err) {
       console.error('Lỗi xuất Excel:', err);
       alert('Có lỗi khi kết xuất danh sách bệnh nhân.');

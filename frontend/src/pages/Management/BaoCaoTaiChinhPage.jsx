@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../utils/xuatFile';
 import { apiGet } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { formatCurrency } from '../../utils/formatCurrency';
@@ -394,7 +395,7 @@ export default function BaoCaoTaiChinhPage() {
     }
 
     const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    XLSX.writeFile(wb, `Bao_Cao_Tai_Chinh_Giam_Doc_${nowStr}.xlsx`);
+    xuatExcel(wb, `Bao_Cao_Tai_Chinh_Giam_Doc_${nowStr}.xlsx`);
   };
 
   const getTimeRangeStr = () => {

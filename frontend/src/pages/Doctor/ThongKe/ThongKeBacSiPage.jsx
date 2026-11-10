@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../../utils/xuatFile';
 import useAuthStore from '../../../store/authStore';
 import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
@@ -258,7 +259,7 @@ export default function ThongKeBacSiPage() {
     }
 
     const fileName = `Bao_Cao_Bac_Si_${(stats.thongTinBacSi?.hoTen || 'BS').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    xuatExcel(wb, fileName);
   };
 
   return (

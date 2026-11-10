@@ -3,6 +3,7 @@ import {
   FileText, RefreshCw, Search, Download, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { apiGet } from '../../services/api';
+import { ghiNhanXuatFile } from '../../utils/xuatFile';
 
 export default function NhatKyHeThongPage() {
   const [logs, setLogs] = useState([]);
@@ -11,6 +12,7 @@ export default function NhatKyHeThongPage() {
   const [loaiNhatKy, setLoaiNhatKy] = useState('TAT_CA');
   const [hanhDong, setHanhDong] = useState('TAT_CA');
   const [timeRange, setTimeRange] = useState('TAT_CA');
+  const [loaiNguoiDung, setLoaiNguoiDung] = useState('NHAN_VIEN'); // NHAN_VIEN | BENH_NHAN | TAT_CA
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -19,7 +21,7 @@ export default function NhatKyHeThongPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      let params = `?page=1&limit=100`;
+      let params = `?page=1&limit=100&loaiNguoiDung=${loaiNguoiDung}`;
       if (loaiNhatKy !== 'TAT_CA') params += `&loaiNhatKy=${loaiNhatKy}`;
       if (hanhDong !== 'TAT_CA') params += `&hanhDong=${hanhDong}`;
       if (search.trim()) params += `&search=${encodeURIComponent(search.trim())}`;
@@ -47,7 +49,7 @@ export default function NhatKyHeThongPage() {
 
   useEffect(() => {
     fetchData();
-  }, [loaiNhatKy, hanhDong, timeRange]);
+  }, [loaiNhatKy, hanhDong, timeRange, loaiNguoiDung]);
 
   // Client search filter
   const filteredLogs = useMemo(() => {
@@ -95,6 +97,7 @@ export default function NhatKyHeThongPage() {
     document.body.appendChild(link);
     link.click();
     link.remove();
+    ghiNhanXuatFile(link.download);
   };
 
   // Format thời gian dd/MM/yyyy HH:mm
@@ -170,6 +173,17 @@ export default function NhatKyHeThongPage() {
 
       {/* ─── BỘ LỌC ────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
+        {/* Filter Loại người dùng (mặc định chỉ nội bộ để không lẫn thao tác của bệnh nhân) */}
+        <select
+          value={loaiNguoiDung}
+          onChange={(e) => { setLoaiNguoiDung(e.target.value); setPage(1); }}
+          className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+        >
+          <option value="NHAN_VIEN">👨‍⚕️ Nhân viên nội bộ</option>
+          <option value="BENH_NHAN">🧑 Bệnh nhân</option>
+          <option value="TAT_CA">Tất cả người dùng</option>
+        </select>
+
         {/* Filter Mức độ */}
         <select
           value={loaiNhatKy}
@@ -202,25 +216,46 @@ export default function NhatKyHeThongPage() {
           className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
         >
           <option value="TAT_CA">-- Mọi loại hành động --</option>
-          <option value="DANG_NHAP_THANH_CONG">Đăng nhập thành công</option>
-          <option value="DANG_NHAP_THAT_BAI">Đăng nhập thất bại</option>
-          <option value="DAT_LAI_MAT_KHAU">Đặt lại mật khẩu</option>
-          <option value="KHOA_TAI_KHOAN">Khóa tài khoản</option>
-          <option value="CAP_NHAT_PHAN_QUYEN">Cập nhật phân quyền</option>
-          <option value="SAO_LUU_CSDL">Sao lưu CSDL</option>
-          <option value="PHE_DUYET_DON">Phê duyệt đơn</option>
-          <option value="PHAN_CA_LAM_VIEC">Phân ca làm việc</option>
-          <option value="TIEP_NHAN_BENH_NHAN">Tiếp nhận bệnh nhân</option>
+          <optgroup label="Xác thực & Bảo mật">
+            <option value="DANG_NHAP_THANH_CONG">Đăng nhập thành công</option>
+            <option value="DANG_NHAP_THAT_BAI">Đăng nhập thất bại</option>
+            <option value="DANG_XUAT">Đăng xuất</option>
+            <option value="DOI_MAT_KHAU">Đổi mật khẩu</option>
+            <option value="QUEN_MAT_KHAU">Quên mật khẩu (gửi OTP)</option>
+            <option value="DAT_LAI_MAT_KHAU">Đặt lại mật khẩu</option>
+            <option value="KHOA_TAI_KHOAN">Khóa tài khoản</option>
+          </optgroup>
+          <optgroup label="Nghiệp vụ khám chữa bệnh">
+            <option value="TT_LICH_HEN">Lịch hẹn & Đặt khám</option>
+            <option value="TT_TIEP_NHAN">Tiếp đón & Hàng đợi</option>
+            <option value="TT_HO_SO_BENH_AN">Khám bệnh & Bệnh án</option>
+            <option value="TT_XET_NGHIEM">Cận lâm sàng & Xét nghiệm</option>
+            <option value="TT_NHA_THUOC">Nhà thuốc & Kho</option>
+            <option value="TT_THANH_TOAN">Thu ngân & Viện phí</option>
+            <option value="TT_BENH_NHAN">Hồ sơ bệnh nhân</option>
+          </optgroup>
+          <optgroup label="Quản trị & Nội bộ">
+            <option value="TT_QUAN_LY">Quản trị hệ thống</option>
+            <option value="TT_NHAN_VIEN">Nhân sự & Đơn từ</option>
+            <option value="TT_BAI_VIET">Bài viết y khoa</option>
+            <option value="TT_OFFICE">Office nội bộ</option>
+            <option value="CAP_NHAT_PHAN_QUYEN">Cập nhật phân quyền</option>
+            <option value="PHE_DUYET_DON">Phê duyệt đơn</option>
+            <option value="PHAN_CA_LAM_VIEC">Phân ca làm việc</option>
+            <option value="SAO_LUU_CSDL">Sao lưu CSDL</option>
+            <option value="XUAT_FILE">Xuất file dữ liệu</option>
+          </optgroup>
         </select>
 
         {/* Xóa bộ lọc */}
-        {(search || loaiNhatKy !== 'TAT_CA' || hanhDong !== 'TAT_CA' || timeRange !== 'TAT_CA') && (
+        {(search || loaiNhatKy !== 'TAT_CA' || hanhDong !== 'TAT_CA' || timeRange !== 'TAT_CA' || loaiNguoiDung !== 'NHAN_VIEN') && (
           <button
             onClick={() => {
               setSearch('');
               setLoaiNhatKy('TAT_CA');
               setHanhDong('TAT_CA');
               setTimeRange('TAT_CA');
+              setLoaiNguoiDung('NHAN_VIEN');
               setPage(1);
             }}
             className="text-sm text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"

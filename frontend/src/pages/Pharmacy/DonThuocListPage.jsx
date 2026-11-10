@@ -21,6 +21,7 @@ import {
   Download,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../utils/xuatFile';
 import { apiGet } from '../../services/api';
 import { formatDateTime } from '../../utils/formatDate';
 import CapPhatThuocModal from './CapPhatThuocModal';
@@ -235,7 +236,7 @@ export default function DonThuocListPage() {
 
     const now = new Date();
     const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-    XLSX.writeFile(workbook, `SoCapPhatThuoc_${dateStr}.xlsx`);
+    xuatExcel(workbook, `SoCapPhatThuoc_${dateStr}.xlsx`);
   };
 
   const handleResetFilters = () => {

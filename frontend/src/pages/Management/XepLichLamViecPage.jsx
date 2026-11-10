@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../utils/xuatFile';
 import { apiGet, apiPost, apiDelete } from '../../services/api';
 import {
   Calendar as CalendarIcon, Clock, Plus, Trash2, RefreshCw,
@@ -316,7 +317,7 @@ export default function XepLichLamViecPage() {
     XLSX.utils.book_append_sheet(wb, ws, 'LichTrucTuan');
     const firstDay = weekDays[0]?.dateStr || '';
     const lastDay = weekDays[6]?.dateStr || '';
-    XLSX.writeFile(wb, `Lich_Truc_Nhan_Su_${firstDay}_den_${lastDay}.xlsx`);
+    xuatExcel(wb, `Lich_Truc_Nhan_Su_${firstDay}_den_${lastDay}.xlsx`);
   };
 
   return (

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../utils/xuatFile';
 import {
   ScanFace, Calendar, Clock, Plus, Search, Filter, RefreshCw,
   CheckCircle2, AlertTriangle, UserCheck, Edit3, X, Save,
@@ -245,7 +246,7 @@ export default function QuanLyChamCongPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'BangChamCong');
     const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    XLSX.writeFile(wb, `Bang_Tong_Hop_Cham_Cong_${nowStr}.xlsx`);
+    xuatExcel(wb, `Bang_Tong_Hop_Cham_Cong_${nowStr}.xlsx`);
   };
 
   return (

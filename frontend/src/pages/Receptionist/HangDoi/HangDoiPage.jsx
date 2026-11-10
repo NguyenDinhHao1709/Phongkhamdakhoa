@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../../utils/xuatFile';
 import { DashboardLayout } from '../../../layouts/DashboardLayout';
 import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
@@ -119,7 +120,7 @@ export default function HangDoiPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SoTiepDonHangDoi');
     const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    XLSX.writeFile(wb, `So_Tiep_Don_Hang_Doi_${now}.xlsx`);
+    xuatExcel(wb, `So_Tiep_Don_Hang_Doi_${now}.xlsx`);
   };
 
   const dangKham = items.filter((i) => ['dang_kham', 'dang_cls', 'da_co_kq_cls'].includes(i.trangThai));

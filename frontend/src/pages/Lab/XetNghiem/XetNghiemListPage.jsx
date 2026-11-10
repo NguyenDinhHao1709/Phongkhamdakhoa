@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { xuatExcel } from '../../../utils/xuatFile';
 import { apiGet, apiPost, apiPatch, apiDelete } from '../../../services/api';
 import { formatDateTime, formatDate } from '../../../utils/formatDate';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
@@ -590,7 +591,7 @@ export default function XetNghiemListPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SoXetNghiemCLS');
     const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    XLSX.writeFile(wb, `So_Xet_Nghiem_CLS_${now}.xlsx`);
+    xuatExcel(wb, `So_Xet_Nghiem_CLS_${now}.xlsx`);
   };
 
   return (
