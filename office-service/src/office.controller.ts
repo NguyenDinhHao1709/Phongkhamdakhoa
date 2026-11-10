@@ -9,21 +9,9 @@ import {
   Query,
   Headers,
   ParseIntPipe,
-  UseInterceptors,
-  UploadedFile,
-  BadRequestException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { diskStorage } from 'multer';
-import * as path from 'path';
-import * as fs from 'fs';
 import { OfficeService } from './office.service';
-
-const uploadDir = process.env.UPLOAD_DIR || path.resolve(process.cwd(), 'uploads/office');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
 
 @ApiTags('🏢 MediCare Digital Office Microservice (Port 5003)')
 @Controller('office')
@@ -180,64 +168,5 @@ export class OfficeController {
   @ApiOperation({ summary: 'Tìm kiếm nhanh bệnh nhân để gắn thẻ hồ sơ y tế vào cuộc trò chuyện' })
   searchPatients(@Query('q') q?: string) {
     return this.officeService.searchPatientsForCard(q);
-  }
-
-  @Post('upload')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-          }
-          cb(null, uploadDir);
-        },
-        filename: (_req, file, cb) => {
-          const ext = path.extname(file.originalname || '').toLowerCase();
-          const safeName = `${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
-          cb(null, safeName);
-        },
-      }),
-      limits: { fileSize: 25 * 1024 * 1024 },
-    }),
-  )
-  @ApiOperation({ summary: 'Upload ảnh hoặc tệp đính kèm trong Office' })
-  uploadFile(@UploadedFile() file: Express.Multer.File) {
-    if (!file) {
-      throw new BadRequestException('Không nhận được tệp tải lên');
-    }
-    const isImage = /^image\//i.test(file.mimetype || '');
-    return {
-      url: `/uploads/office/${file.filename}`,
-      fileName: Buffer.from(file.originalname, 'latin1').toString('utf8'),
-      fileSize: file.size,
-      mimeType: file.mimetype,
-      loai: isImage ? 'hinh_anh' : 'tep_tin',
-    };
-  }
-
-  @Post('upload-base64')
-  @ApiOperation({ summary: 'Upload ảnh hoặc tệp qua Base64 JSON (hỗ trợ API Gateway)' })
-  uploadBase64(
-    @Body() body: { fileName: string; mimeType?: string; base64Data: string; fileSize?: number },
-  ) {
-    if (!body?.base64Data) {
-      throw new BadRequestException('Thiếu dữ liệu tệp tải lên');
-    }
-    const rawBase64 = body.base64Data.replace(/^data:[^;]+;base64,/, '');
-    const buffer = Buffer.from(rawBase64, 'base64');
-    const ext = path.extname(body.fileName || '').toLowerCase() || '.bin';
-    const safeName = `${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
-    const fullPath = path.join(uploadDir, safeName);
-    fs.writeFileSync(fullPath, buffer);
-
-    const isImage = /^image\//i.test(body.mimeType || '') || ['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext);
-    return {
-      url: `/uploads/office/${safeName}`,
-      fileName: body.fileName || safeName,
-      fileSize: body.fileSize || buffer.length,
-      mimeType: body.mimeType || 'application/octet-stream',
-      loai: isImage ? 'hinh_anh' : 'tep_tin',
-    };
   }
 }

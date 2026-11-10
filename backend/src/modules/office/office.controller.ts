@@ -19,6 +19,8 @@ import { OfficeService } from './office.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { uploadToCloudinary } from '../../common/utils/cloudinary-upload.util';
+import { extname } from 'path';
 
 @ApiTags('🏢 MediCare Digital Office (Gateway)')
 @ApiBearerAuth()
@@ -143,29 +145,46 @@ export class OfficeController {
     }),
   )
   @ApiOperation({ summary: 'Tải lên hình ảnh hoặc tệp đính kèm trong Office' })
-  uploadFile(@UploadedFile() file: Express.Multer.File, @CurrentUser() user: any) {
+  uploadFile(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('Không tìm thấy tệp tải lên');
     }
     const fileName = Buffer.from(file.originalname || 'attachment', 'latin1').toString('utf8');
-    return this.officeService.forwardPost(
-      'upload-base64',
-      {
-        fileName,
-        mimeType: file.mimetype,
-        fileSize: file.size,
-        base64Data: file.buffer.toString('base64'),
-      },
-      user?.id,
-    );
+    return this.saveToCloudinary(file.buffer, fileName, file.mimetype);
   }
 
   @Post('upload-base64')
   @ApiOperation({ summary: 'Tải lên hình ảnh hoặc tệp đính kèm qua Base64 JSON' })
-  uploadBase64(
-    @Body() body: { fileName: string; mimeType?: string; base64Data: string; fileSize?: number },
-    @CurrentUser() user: any,
-  ) {
-    return this.officeService.forwardPost('upload-base64', body, user?.id);
+  uploadBase64(@Body() body: { fileName: string; mimeType?: string; base64Data: string }) {
+    if (!body?.base64Data) {
+      throw new BadRequestException('Thiếu dữ liệu tệp tải lên');
+    }
+    const buffer = Buffer.from(body.base64Data.replace(/^data:[^;]+;base64,/, ''), 'base64');
+    return this.saveToCloudinary(buffer, body.fileName || 'attachment', body.mimeType || 'application/octet-stream');
+  }
+
+  // Lưu tệp Office lên Cloudinary (ổ đĩa Render bị xóa mỗi lần deploy lại)
+  private async saveToCloudinary(buffer: Buffer, fileName: string, mimeType: string) {
+    const isImage = /^image\//i.test(mimeType);
+    const isVideo = /^video\//i.test(mimeType);
+    if (!isVideo && buffer.length > 10 * 1024 * 1024) {
+      throw new BadRequestException('Ảnh/tệp đính kèm tối đa 10MB');
+    }
+    // Tệp không phải ảnh/video lưu dạng raw, giữ đuôi file để tải về mở được
+    const ext = extname(fileName).toLowerCase();
+    const publicId = isImage || isVideo ? undefined : `${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
+    const url = await uploadToCloudinary(
+      buffer,
+      'phongkham/office',
+      isImage ? 'image' : isVideo ? 'video' : 'raw',
+      publicId,
+    );
+    return {
+      url,
+      fileName,
+      fileSize: buffer.length,
+      mimeType,
+      loai: isImage ? 'hinh_anh' : 'tep_tin',
+    };
   }
 }

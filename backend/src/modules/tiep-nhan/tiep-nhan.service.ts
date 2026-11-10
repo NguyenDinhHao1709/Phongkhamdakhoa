@@ -18,7 +18,7 @@ import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { LichLamViec } from '../nhan-vien/entities/lich-lam-viec.entity';
 import { OnModuleInit } from '@nestjs/common';
 import * as https from 'https';
-import { v2 as cloudinary } from 'cloudinary';
+import { uploadToCloudinary } from '../../common/utils/cloudinary-upload.util';
 import { Aes256Transformer } from '../../common/transformers/aes-256.transformer';
 
 // DTO nội tuyến cho module này
@@ -1484,28 +1484,6 @@ export class TiepNhanService implements OnModuleInit {
   // Upload video gửi trong chat khám trực tuyến lên Cloudinary, trả về URL
   async uploadTelehealthVideo(file: Express.Multer.File) {
     if (!file) throw new BadRequestException('Vui lòng chọn video hợp lệ');
-    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
-      throw new BadRequestException('Chưa cấu hình Cloudinary trên backend');
-    }
-
-    cloudinary.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,
-    });
-
-    try {
-      const url = await new Promise<string>((resolve, reject) => {
-        cloudinary.uploader
-          .upload_stream({ folder: 'phongkham/telehealth', resource_type: 'video' }, (error, result) => {
-            if (error || !result?.secure_url) return reject(error || new Error('Cloudinary không trả về URL video'));
-            resolve(result.secure_url);
-          })
-          .end(file.buffer);
-      });
-      return { url };
-    } catch (error) {
-      throw new BadRequestException(`Không thể tải video lên: ${error?.message || 'lỗi Cloudinary'}`);
-    }
+    return { url: await uploadToCloudinary(file.buffer, 'phongkham/telehealth', 'video') };
   }
 }
