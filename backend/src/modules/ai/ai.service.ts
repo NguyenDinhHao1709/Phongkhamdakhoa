@@ -4,6 +4,8 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 
 const AI_SERVICE_TIMEOUT_MS = 90000;
+const AI_SERVICE_MAX_RETRIES = 2;
+const AI_SERVICE_RETRY_DELAY_MS = 5000;
 
 /**
  * AI Gateway Client (Core Monolith -> Standalone AI Microservice :5002)
@@ -36,45 +38,48 @@ export class AiService {
     this.logger.log(`🔗 AI Gateway connected to microservice: ${this.AI_SERVICE_URL}`);
   }
 
-  private async forwardPost<T = any>(path: string, body: any, headers?: Record<string, string>): Promise<T> {
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post<T>(`${this.AI_SERVICE_URL}/${path}`, body, {
-          headers,
-          timeout: AI_SERVICE_TIMEOUT_MS,
-        }),
-      );
-      return response.data;
-    } catch (err: any) {
-      this.logger.error(`[AI Gateway POST /${path}] ${err.message}`);
-      const responseData = err.response?.data;
-      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
-      if (responseData && !isHtmlError && (err.response?.status || 500) < 500) {
-        return responseData;
+  private async forward<T = any>(
+    method: 'GET' | 'POST',
+    path: string,
+    options: { data?: any; params?: Record<string, any>; headers?: Record<string, string> } = {},
+  ): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const response = await firstValueFrom(
+          this.httpService.request<T>({
+            method,
+            url: `${this.AI_SERVICE_URL}/${path}`,
+            ...options,
+            timeout: AI_SERVICE_TIMEOUT_MS,
+          }),
+        );
+        return response.data;
+      } catch (err: any) {
+        // Render free tier trả 502/503/504 hoặc từ chối kết nối khi AI service đang cold start / redeploy
+        const status = err.response?.status;
+        const isWakingUp = [502, 503, 504].includes(status) || ['ECONNREFUSED', 'ECONNRESET'].includes(err.code);
+        if (isWakingUp && attempt < AI_SERVICE_MAX_RETRIES) {
+          this.logger.warn(`[AI Gateway ${method} /${path}] ${err.message} — thử lại lần ${attempt + 1}`);
+          await new Promise((resolve) => setTimeout(resolve, AI_SERVICE_RETRY_DELAY_MS));
+          continue;
+        }
+        this.logger.error(`[AI Gateway ${method} /${path}] ${err.message}`);
+        const responseData = err.response?.data;
+        const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
+        if (responseData && !isHtmlError && (status || 500) < 500) {
+          return responseData;
+        }
+        throw new ServiceUnavailableException('Dịch vụ AI Microservice (cổng 5002) hiện đang bảo trì hoặc chưa khởi động.');
       }
-      throw new ServiceUnavailableException('Dịch vụ AI Microservice (cổng 5002) hiện đang bảo trì hoặc chưa khởi động.');
     }
   }
 
-  private async forwardGet<T = any>(path: string, params?: Record<string, any>, headers?: Record<string, string>): Promise<T> {
-    try {
-      const response = await firstValueFrom(
-        this.httpService.get<T>(`${this.AI_SERVICE_URL}/${path}`, {
-          params,
-          headers,
-          timeout: AI_SERVICE_TIMEOUT_MS,
-        }),
-      );
-      return response.data;
-    } catch (err: any) {
-      this.logger.error(`[AI Gateway GET /${path}] ${err.message}`);
-      const responseData = err.response?.data;
-      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
-      if (responseData && !isHtmlError && (err.response?.status || 500) < 500) {
-        return responseData;
-      }
-      throw new ServiceUnavailableException('Dịch vụ AI Microservice (cổng 5002) hiện đang bảo trì hoặc chưa khởi động.');
-    }
+  private forwardPost<T = any>(path: string, data: any, headers?: Record<string, string>): Promise<T> {
+    return this.forward<T>('POST', path, { data, headers });
+  }
+
+  private forwardGet<T = any>(path: string, params?: Record<string, any>, headers?: Record<string, string>): Promise<T> {
+    return this.forward<T>('GET', path, { params, headers });
   }
 
   async patientChat(userId: number, sessionId: string, message: string) {
