@@ -4,6 +4,8 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 
 const OFFICE_SERVICE_TIMEOUT_MS = 90000;
+const OFFICE_SERVICE_MAX_RETRIES = 2;
+const OFFICE_SERVICE_RETRY_DELAY_MS = 5000;
 
 /**
  * Office Gateway Client (Core Monolith :5000 -> Office Microservice :5003)
@@ -39,84 +41,57 @@ export class OfficeService {
     return userId ? { 'x-user-id': String(userId) } : {};
   }
 
-  async forwardGet(path: string, params?: Record<string, any>, userId?: number) {
-    try {
-      const res = await firstValueFrom(
-        this.httpService.get(`${this.OFFICE_SERVICE_URL}/${path}`, {
-          params,
-          headers: this.headersFor(userId),
-          timeout: OFFICE_SERVICE_TIMEOUT_MS,
-        }),
-      );
-      return res.data;
-    } catch (err: any) {
-      this.logger.error(`[Office Gateway GET /${path}] ${err.message}`);
-      const responseData = err.response?.data;
-      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
-      if (responseData && !isHtmlError && (err.response?.status || 500) < 500) {
-        return responseData;
+  private async forward(
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    path: string,
+    options: { data?: any; params?: Record<string, any>; userId?: number } = {},
+  ) {
+    const { userId, ...rest } = options;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await firstValueFrom(
+          this.httpService.request({
+            method,
+            url: `${this.OFFICE_SERVICE_URL}/${path}`,
+            ...rest,
+            headers: this.headersFor(userId),
+            timeout: OFFICE_SERVICE_TIMEOUT_MS,
+          }),
+        );
+        return res.data;
+      } catch (err: any) {
+        // Render free tier trả 502/503/504 hoặc từ chối kết nối khi Office service đang cold start / redeploy
+        const status = err.response?.status;
+        const isWakingUp = [502, 503, 504].includes(status) || ['ECONNREFUSED', 'ECONNRESET'].includes(err.code);
+        if (isWakingUp && attempt < OFFICE_SERVICE_MAX_RETRIES) {
+          this.logger.warn(`[Office Gateway ${method} /${path}] ${err.message} — thử lại lần ${attempt + 1}`);
+          await new Promise((resolve) => setTimeout(resolve, OFFICE_SERVICE_RETRY_DELAY_MS));
+          continue;
+        }
+        this.logger.error(`[Office Gateway ${method} /${path}] ${err.message}`);
+        const responseData = err.response?.data;
+        const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
+        if (responseData && !isHtmlError && (status || 500) < 500) {
+          return responseData;
+        }
+        throw new ServiceUnavailableException('Dịch vụ Office Microservice (cổng 5003) hiện đang bảo trì.');
       }
-      throw new ServiceUnavailableException('Dịch vụ Office Microservice (cổng 5003) hiện đang bảo trì.');
     }
   }
 
-  async forwardPost(path: string, body?: any, userId?: number) {
-    try {
-      const res = await firstValueFrom(
-        this.httpService.post(`${this.OFFICE_SERVICE_URL}/${path}`, body, {
-          headers: this.headersFor(userId),
-          timeout: OFFICE_SERVICE_TIMEOUT_MS,
-        }),
-      );
-      return res.data;
-    } catch (err: any) {
-      this.logger.error(`[Office Gateway POST /${path}] ${err.message}`);
-      const responseData = err.response?.data;
-      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
-      if (responseData && !isHtmlError && (err.response?.status || 500) < 500) {
-        return responseData;
-      }
-      throw new ServiceUnavailableException('Dịch vụ Office Microservice (cổng 5003) hiện đang bảo trì.');
-    }
+  forwardGet(path: string, params?: Record<string, any>, userId?: number) {
+    return this.forward('GET', path, { params, userId });
   }
 
-  async forwardPatch(path: string, body?: any, userId?: number) {
-    try {
-      const res = await firstValueFrom(
-        this.httpService.patch(`${this.OFFICE_SERVICE_URL}/${path}`, body, {
-          headers: this.headersFor(userId),
-          timeout: OFFICE_SERVICE_TIMEOUT_MS,
-        }),
-      );
-      return res.data;
-    } catch (err: any) {
-      this.logger.error(`[Office Gateway PATCH /${path}] ${err.message}`);
-      const responseData = err.response?.data;
-      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
-      if (responseData && !isHtmlError && (err.response?.status || 500) < 500) {
-        return responseData;
-      }
-      throw new ServiceUnavailableException('Dịch vụ Office Microservice (cổng 5003) hiện đang bảo trì.');
-    }
+  forwardPost(path: string, body?: any, userId?: number) {
+    return this.forward('POST', path, { data: body, userId });
   }
 
-  async forwardDelete(path: string, userId?: number) {
-    try {
-      const res = await firstValueFrom(
-        this.httpService.delete(`${this.OFFICE_SERVICE_URL}/${path}`, {
-          headers: this.headersFor(userId),
-          timeout: OFFICE_SERVICE_TIMEOUT_MS,
-        }),
-      );
-      return res.data;
-    } catch (err: any) {
-      this.logger.error(`[Office Gateway DELETE /${path}] ${err.message}`);
-      const responseData = err.response?.data;
-      const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
-      if (responseData && !isHtmlError && (err.response?.status || 500) < 500) {
-        return responseData;
-      }
-      throw new ServiceUnavailableException('Dịch vụ Office Microservice (cổng 5003) hiện đang bảo trì.');
-    }
+  forwardPatch(path: string, body?: any, userId?: number) {
+    return this.forward('PATCH', path, { data: body, userId });
+  }
+
+  forwardDelete(path: string, userId?: number) {
+    return this.forward('DELETE', path, { userId });
   }
 }
