@@ -11,6 +11,7 @@ import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity'
 @WebSocketGateway({
   cors: { origin: true, credentials: true },
   namespace: '/',
+  maxHttpBufferSize: 8e6, // cho phép gửi ảnh/tệp (≤5MB, base64) trong chat cuộc gọi
 })
 export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;

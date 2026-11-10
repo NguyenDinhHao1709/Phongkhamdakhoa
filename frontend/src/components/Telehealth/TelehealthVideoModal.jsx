@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { BACKEND_URL } from '../../utils/backendUrl';
+import api from '../../services/api';
 import {
   Mic, MicOff, Video, VideoOff, PhoneOff, Maximize2,
   Minimize2, Volume2, VolumeX, ShieldCheck, MessageSquare,
@@ -8,6 +9,25 @@ import {
   Paperclip, Image as ImageIcon, Download, FileText, ExternalLink,
   Move, RotateCcw, RotateCw, ZoomIn, ZoomOut, X, ChevronDown
 } from 'lucide-react';
+
+// Thu nhỏ ảnh về cạnh dài tối đa maxSize và nén JPEG để gửi nhẹ qua Socket.io
+const compressImage = (dataUrl, maxSize = 1600, quality = 0.8) =>
+  new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff'; // nền trắng cho ảnh PNG trong suốt
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
 
 export default function TelehealthVideoModal({
   isOpen,
@@ -41,6 +61,7 @@ export default function TelehealthVideoModal({
 
   // Xem phóng to hình ảnh đính kèm
   const [previewImage, setPreviewImage] = useState(null);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(null); // null = không upload, 0-100 = %
   const [zoomLevel, setZoomLevel] = useState(1);
   const [rotation, setRotation] = useState(0);
 
@@ -938,54 +959,92 @@ export default function TelehealthVideoModal({
     setShowChat(!showChat);
   };
 
+  // Thêm tin nhắn vào khung chat của mình và gửi sang bên kia
+  const sendChatMessage = (content) => {
+    const msg = {
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      sender: role === 'doctor' ? 'Bác sĩ' : 'Bệnh nhân',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      ...content,
+    };
+    setInCallMessages((prev) => [...prev, msg]);
+    sendSignal({ type: 'chat_msg', message: msg });
+  };
+
   // Gửi tin nhắn văn bản nhanh trong cuộc gọi
   const handleSendChat = (e) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
-    const msg = {
-      id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      sender: role === 'doctor' ? 'Bác sĩ' : 'Bệnh nhân',
-      text: chatInput,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-    setInCallMessages((prev) => [...prev, msg]);
-    sendSignal({ type: 'chat_msg', message: msg });
+    sendChatMessage({ text: chatInput });
     setChatInput('');
   };
 
-  // Chọn và gửi file / ảnh trực tiếp trong cuộc gọi
+  // Video: upload lên server (Cloudinary), chỉ gửi URL qua socket
+  const sendVideo = async (file) => {
+    if (file.size > 50 * 1024 * 1024) {
+      alert('Video quá lớn! Vui lòng chọn video dưới 50MB.');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    setVideoUploadProgress(0);
+    try {
+      const res = await api.post('/tiep-nhan/telehealth/upload', formData, {
+        timeout: 0,
+        onUploadProgress: (ev) => ev.total && setVideoUploadProgress(Math.round((ev.loaded * 100) / ev.total)),
+      });
+      sendChatMessage({
+        text: '🎬 Đã gửi một video',
+        file: {
+          name: file.name,
+          size: (file.size / 1024 / 1024).toFixed(1) + ' MB',
+          type: file.type,
+          isVideo: true,
+          url: res.data.url,
+        },
+      });
+    } catch (err) {
+      alert(err?.response?.data?.message || err?.message || 'Gửi video thất bại, vui lòng thử lại.');
+    } finally {
+      setVideoUploadProgress(null);
+    }
+  };
+
+  // Chọn và gửi file / ảnh / video trực tiếp trong cuộc gọi
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Tệp tin quá lớn! Vui lòng chọn tệp tin hoặc ảnh có dung lượng dưới 5MB.');
+    if (file.type.startsWith('video/')) {
+      e.target.value = '';
+      sendVideo(file);
+      return;
+    }
+
+    const isImage = file.type.startsWith('image/');
+    // Ảnh sẽ được nén nên không giới hạn; tệp khác giới hạn 5MB
+    if (!isImage && file.size > 5 * 1024 * 1024) {
+      alert('Tệp tin quá lớn! Vui lòng chọn tệp tin có dung lượng dưới 5MB.');
       e.target.value = '';
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const dataUrl = uploadEvent.target.result;
-      const isImage = file.type.startsWith('image/');
-      const filePayload = {
-        name: file.name,
-        size: (file.size / 1024).toFixed(1) + ' KB',
-        type: file.type,
-        isImage,
-        dataUrl,
-      };
-
-      const msg = {
-        id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        sender: role === 'doctor' ? 'Bác sĩ' : 'Bệnh nhân',
+    reader.onload = async (uploadEvent) => {
+      const dataUrl = isImage
+        ? await compressImage(uploadEvent.target.result)
+        : uploadEvent.target.result;
+      const byteSize = Math.round((dataUrl.length - dataUrl.indexOf(',') - 1) * 0.75);
+      sendChatMessage({
         text: isImage ? '📷 Đã gửi một hình ảnh' : `📎 Đã gửi tệp: ${file.name}`,
-        file: filePayload,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-
-      setInCallMessages((prev) => [...prev, msg]);
-      sendSignal({ type: 'chat_msg', message: msg });
+        file: {
+          name: isImage ? file.name.replace(/\.[^.]+$/, '') + '.jpg' : file.name,
+          size: (byteSize / 1024).toFixed(1) + ' KB',
+          type: isImage ? 'image/jpeg' : file.type,
+          isImage,
+          dataUrl,
+        },
+      });
       e.target.value = '';
     };
 
@@ -1506,7 +1565,30 @@ export default function TelehealthVideoModal({
                     {/* Hiển thị File / Hình ảnh đính kèm */}
                     {m.file && (
                       <div className="mt-2">
-                        {m.file.isImage ? (
+                        {m.file.isVideo ? (
+                          <div className="rounded-xl overflow-hidden border border-white/20 bg-black/40">
+                            <video
+                              src={m.file.url}
+                              controls
+                              playsInline
+                              preload="metadata"
+                              className="max-h-56 w-full rounded-lg bg-black"
+                            />
+                            <div className="p-1.5 flex items-center justify-between text-[10px] opacity-90 bg-black/60">
+                              <span className="truncate max-w-[120px]">{m.file.name} · {m.file.size}</span>
+                              <a
+                                href={m.file.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download={m.file.name}
+                                className="text-primary-300 hover:underline flex items-center gap-0.5"
+                                title="Tải video về máy"
+                              >
+                                <Download className="h-3 w-3" /> Tải về
+                              </a>
+                            </div>
+                          </div>
+                        ) : m.file.isImage ? (
                           <div className="rounded-xl overflow-hidden border border-white/20 bg-black/40 group relative">
                             <div
                               onClick={() => {
@@ -1580,19 +1662,25 @@ export default function TelehealthVideoModal({
               </div>
 
               {/* Form Chat và Nút Gửi File (Ô nhập text-[16px] ngăn chặn triệt để Safari iOS auto-zoom) */}
+              {videoUploadProgress !== null && (
+                <div className="px-3 py-1.5 text-[11px] text-primary-300 bg-gray-900 border-t border-gray-800 shrink-0">
+                  Đang gửi video… {videoUploadProgress}%
+                </div>
+              )}
               <form onSubmit={handleSendChat} className="p-2.5 sm:p-3 pb-safe border-t border-gray-800 flex items-center gap-2 bg-gray-900 shrink-0">
                 <input
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileSelect}
                   className="hidden"
-                  accept="image/*,.pdf,.doc,.docx"
+                  accept="image/*,video/*,.pdf,.doc,.docx"
                 />
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="p-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition cursor-pointer shrink-0"
-                  title="Gửi hình ảnh hoặc tài liệu kết quả/đơn thuốc (< 5MB)"
+                  disabled={videoUploadProgress !== null}
+                  className="p-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 disabled:opacity-40 text-gray-300 hover:text-white transition cursor-pointer shrink-0"
+                  title="Gửi hình ảnh, video (< 50MB) hoặc tài liệu kết quả/đơn thuốc (< 5MB)"
                 >
                   <Paperclip className="h-4 w-4" />
                 </button>

@@ -1,8 +1,10 @@
 import {
   Controller, Get, Post, Patch, Body, Param,
   Query, ParseIntPipe, UseGuards, Res,
+  UseInterceptors, UploadedFile, BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import {
   TiepNhanService,
   TaoTiepNhanDto, TiepNhanTaiQuayDto, GhiSinhHieuDto, DieuPhoiPhongDto, CapNhatTrangThaiTiepNhanDto,
@@ -54,6 +56,25 @@ export class TiepNhanController {
   @ApiOperation({ summary: 'Lấy thông tin phiếu khám và hàng đợi thời gian thực của bệnh nhân' })
   getPhieuKhamBenhNhan(@CurrentUser() user: any) {
     return this.service.getPhieuKhamBenhNhan(user);
+  }
+
+  @Post('telehealth/upload')
+  @Roles('bac_si', 'benh_nhan')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 50 * 1024 * 1024 }, // Tối đa 50MB
+      fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('video/')) {
+          return cb(new BadRequestException('Chỉ chấp nhận file video'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Tải video gửi trong chat khám trực tuyến lên Cloudinary' })
+  uploadTelehealthVideo(@UploadedFile() file: Express.Multer.File) {
+    return this.service.uploadTelehealthVideo(file);
   }
 
   @Post()
