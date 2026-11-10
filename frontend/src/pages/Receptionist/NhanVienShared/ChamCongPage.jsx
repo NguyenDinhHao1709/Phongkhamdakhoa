@@ -58,9 +58,6 @@ export default function ChamCongPage() {
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Đánh thức dịch vụ nhận diện khuôn mặt ngay khi mở trang (cold start ~50s)
-  useEffect(() => { apiGet('/cham-cong/warmup').catch(() => {}); }, []);
-
   // ─── Lấy trạng thái hôm nay ────────────────────────────────────────────────
   const { data: trangThaiData, refetch: refetchTrangThai } = useQuery({
     queryKey: ['cham-cong-trang-thai'],

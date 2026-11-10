@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { apiPost, apiGet } from '../../services/api';
 import { formatDate } from '../../utils/formatDate';
-import { wakeUpServices, postWithWakeRetry } from '../../utils/serviceWakeUp';
+import { postWithWakeRetry } from '../../utils/serviceWakeUp';
 
 // Hàm render văn bản có format Markdown đơn giản (in đậm, bullet, xuống dòng)
 function FormattedMessage({ text }) {
@@ -160,7 +160,6 @@ export default function ChatAiPage() {
   // Tải hồ sơ y tế & tóm tắt lâm sàng (kết hợp EMR cốt lõi và AI summary)
   useEffect(() => {
     let isMounted = true;
-    wakeUpServices(); // Render free tier cold start
 
     const loadClinicalData = async () => {
       // 1. Lấy dữ liệu EMR trực tiếp từ CSDL (/ho-so-benh-an/cua-toi)

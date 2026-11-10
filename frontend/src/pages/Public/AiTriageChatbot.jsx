@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Bot, Send, X, RotateCcw, AlertTriangle, Stethoscope, Zap, Minus, Calendar, Pill } from 'lucide-react';
 import { apiPost } from '../../services/api';
-import { wakeUpServices, postWithWakeRetry } from '../../utils/serviceWakeUp';
+import { postWithWakeRetry } from '../../utils/serviceWakeUp';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../../store/authStore';
 import useHospitalStore from '../../store/hospitalStore';
@@ -51,7 +51,6 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   useEffect(() => {
-    wakeUpServices(); // Render free tier cold start (bỏ qua nếu trang chủ vừa đánh thức)
     if (initialMessage) sendMessage(initialMessage);
   }, []);
 

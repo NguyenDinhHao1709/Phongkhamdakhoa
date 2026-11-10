@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import useAuthStore from "./store/authStore";
 import useHospitalStore from "./store/hospitalStore";
 import { apiGet } from "./services/api";
+import { wakeUpServices } from "./utils/serviceWakeUp";
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -100,6 +101,12 @@ function PageLoader() {
    ================================================================ */
 export default function App() {
   const { isAuthenticated, setUser } = useAuthStore();
+  const { pathname } = useLocation();
+
+  // Mỗi lần chuyển trang: đánh thức AI, Office, Python ML (tối đa 1 lần / 5 phút, Render free tier)
+  useEffect(() => {
+    wakeUpServices();
+  }, [pathname]);
 
   useEffect(() => {
     useHospitalStore.getState().fetchHospitalInfo();
