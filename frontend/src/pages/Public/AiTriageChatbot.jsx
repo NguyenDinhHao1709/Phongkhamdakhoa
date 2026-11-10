@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Bot, Send, X, RotateCcw, AlertTriangle, Stethoscope, Zap, Minus, Calendar, Pill } from 'lucide-react';
-import { apiGet, apiPost } from '../../services/api';
+import { apiPost } from '../../services/api';
+import { wakeUpServices, postWithWakeRetry } from '../../utils/serviceWakeUp';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../../store/authStore';
 import useHospitalStore from '../../store/hospitalStore';
@@ -50,9 +51,8 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   useEffect(() => {
+    wakeUpServices(); // Render free tier cold start (bỏ qua nếu trang chủ vừa đánh thức)
     if (initialMessage) sendMessage(initialMessage);
-    // Đánh thức AI service khi mở chatbot (Render free tier cold start)
-    else apiGet('/ai/health').catch(() => {});
   }, []);
 
   const sendMessage = async (text) => {
@@ -67,19 +67,27 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
 
     // Lấy các tin nhắn hội thoại gần nhất gửi kèm (loại bỏ tin nhắn chào mặc định id: 1)
     const chatHistory = messages
-      .filter(m => m.id !== 1 && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('🔄'))
+      .filter(m => m.id !== 1 && m.text && !/^(⚠️|🔄|⏳)/.test(m.text))
       .slice(-6)
       .map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         text: m.text,
       }));
 
+    // Tin nhắn chờ tạm thời khi AI đang thức dậy, được thay bằng câu trả lời/lỗi khi xong
+    const waitingId = Date.now() + 0.5;
+    const showWaiting = () => setMessages(prev => prev.some(m => m.id === waitingId) ? prev : [...prev, {
+      id: waitingId, role: 'bot', timestamp: new Date(),
+      text: '⏳ Trợ lý AI đang khởi động, vui lòng chờ trong giây lát — tôi sẽ tự gửi lại câu hỏi của bạn...',
+    }]);
+    const replaceWaiting = (msgItem) => setMessages(prev => [...prev.filter(m => m.id !== waitingId), msgItem]);
+
     try {
-      const res = await apiPost('/ai/triage-chat', { 
-        sessionId, 
+      const res = await postWithWakeRetry('/ai/triage-chat', {
+        sessionId,
         message: msg,
         history: chatHistory,
-      });
+      }, showWaiting);
       const raw = res?.data || res;
       const d = (raw?.data && (raw.data.cau_tra_loi || raw.data.chuyen_khoa || raw.data.khoa)) ? raw.data : raw;
 
@@ -91,18 +99,18 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
         timestamp: new Date(),
       };
 
-      setMessages(prev => [...prev, botMsg]);
+      replaceWaiting(botMsg);
       setLastResult(d);
 
       if (d.khan_cap) {
         setKhanCap(true);
       }
     } catch (err) {
-      setMessages(prev => [...prev, {
+      replaceWaiting({
         id: Date.now() + 1, role: 'bot',
         text: `⚠️ Xin lỗi, tôi đang gặp sự cố kết nối. Vui lòng thử lại hoặc liên hệ nhân viên tiếp tân qua hotline ${hospitalInfo.tongDai || '1900 8888'}.`,
         timestamp: new Date(),
-      }]);
+      });
     } finally {
       setLoading(false);
       inputRef.current?.focus();

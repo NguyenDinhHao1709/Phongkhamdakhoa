@@ -6,13 +6,15 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ChamCongService } from './cham-cong.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { Public } from '../../common/decorators/public.decorator';
 
 @Controller('cham-cong')
 @UseGuards(JwtAuthGuard)
 export class ChamCongController {
   constructor(private readonly chamCongService: ChamCongService) {}
 
-  // ─── 0. Đánh thức dịch vụ nhận diện khuôn mặt ───────────────────────────────
+  // ─── 0. Đánh thức dịch vụ nhận diện khuôn mặt (public: trang chủ gọi để đánh thức sớm, chỉ ping /health) ─
+  @Public()
   @Get('warmup')
   warmup() {
     return this.chamCongService.warmupPythonMl();

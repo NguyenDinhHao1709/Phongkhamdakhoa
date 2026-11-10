@@ -17,6 +17,7 @@ import SpecialtyDetailModal from './SpecialtyDetailModal';
 import AiTriageChatbot from './AiTriageChatbot';
 import BangGiaDichVuSection from './BangGiaDichVuSection';
 import { toBackendUrl } from '../../utils/backendUrl';
+import { wakeUpServices } from '../../utils/serviceWakeUp';
 import CapNhatHoSoModal from '../../components/Patient/CapNhatHoSoModal';
 import MedButton from '../../design-system/components/Button/MedButton';
 
@@ -371,6 +372,7 @@ export default function HomePage() {
     || 'Bệnh nhân';
 
   useEffect(() => {
+    wakeUpServices();
     fetchPublicDoctors();
     fetchHospitalInfo(true);
     fetchPublicArticles();

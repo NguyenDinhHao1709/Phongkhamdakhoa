@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { apiPost, apiGet } from '../../services/api';
 import { formatDate } from '../../utils/formatDate';
+import { wakeUpServices, postWithWakeRetry } from '../../utils/serviceWakeUp';
 
 // Hàm render văn bản có format Markdown đơn giản (in đậm, bullet, xuống dòng)
 function FormattedMessage({ text }) {
@@ -159,6 +160,7 @@ export default function ChatAiPage() {
   // Tải hồ sơ y tế & tóm tắt lâm sàng (kết hợp EMR cốt lõi và AI summary)
   useEffect(() => {
     let isMounted = true;
+    wakeUpServices(); // Render free tier cold start
 
     const loadClinicalData = async () => {
       // 1. Lấy dữ liệu EMR trực tiếp từ CSDL (/ho-so-benh-an/cua-toi)
@@ -479,11 +481,18 @@ export default function ChatAiPage() {
     setInput('');
     setLoading(true);
 
+    // Tin nhắn chờ tạm thời khi AI đang thức dậy, được thay bằng câu trả lời/lỗi khi xong
+    const showWaiting = () => setMessages((prev) => (prev.some((m) => m.waiting) ? prev : [
+      ...prev,
+      { sender: 'ai', waiting: true, text: '⏳ Trợ lý AI đang khởi động, vui lòng chờ trong giây lát — tôi sẽ tự gửi lại câu hỏi của bạn...' },
+    ]));
+    const replaceWaiting = (msgItem) => setMessages((prev) => [...prev.filter((m) => !m.waiting), msgItem]);
+
     try {
-      const res = await apiPost('/ai/patient-chat', {
+      const res = await postWithWakeRetry('/ai/patient-chat', {
         sessionId,
         message: userMsg,
-      });
+      }, showWaiting);
 
       if (res.data?.summary && !patientSummary) {
         setPatientSummary(res.data.summary);
@@ -492,15 +501,12 @@ export default function ChatAiPage() {
       const aiReply =
         res.data?.reply ||
         'Tôi đã tiếp nhận câu hỏi của bạn. Bác sĩ khuyên bạn tiếp tục tuân thủ đơn thuốc và nghỉ ngơi điều độ.';
-      setMessages((prev) => [...prev, { sender: 'ai', text: aiReply }]);
+      replaceWaiting({ sender: 'ai', text: aiReply });
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: 'ai',
-          text: 'Xin lỗi, kết nối tới trợ lý AI gặp chút gián đoạn. Bạn thử bấm gửi lại hoặc tải lại trang nhé!',
-        },
-      ]);
+      replaceWaiting({
+        sender: 'ai',
+        text: 'Xin lỗi, kết nối tới trợ lý AI gặp chút gián đoạn. Bạn thử bấm gửi lại hoặc tải lại trang nhé!',
+      });
     } finally {
       setLoading(false);
     }
