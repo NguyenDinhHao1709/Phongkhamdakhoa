@@ -100,34 +100,36 @@ export default function TelehealthVideoModal({
   const roomId = String(appointmentInfo?.maLichHen || appointmentInfo?.id || 'telehealth_general');
 
   const MAX_CALL_DURATION = 3600; // 60 phút tối đa (1 tiếng)
-  const WARNING_THRESHOLD = 3000; // Cảnh báo trước 10 phút (khi đã gọi 50 phút)
-  const [showTimeWarningToast, setShowTimeWarningToast] = useState(false);
+  const WARNING_BEFORE_END = 300; // Cảnh báo & đếm ngược khi còn 5 phút
   const [hasDismissedWarning, setHasDismissedWarning] = useState(false);
+  // Mốc bắt đầu ca khám (giờ máy mình) — server gửi mốc chung qua call:session_info để 2 bên khớp nhau
+  const sessionStartRef = useRef(Date.now());
+  const remainingSeconds = Math.max(0, MAX_CALL_DURATION - callDuration);
+  const isEndingSoon = remainingSeconds <= WARNING_BEFORE_END;
+  const showTimeWarningToast = isEndingSoon && !hasDismissedWarning;
 
-  // 1. Bộ đếm thời gian cuộc gọi & Giới hạn 60 phút
+  // 1. Bộ đếm thời gian cuộc gọi tính từ mốc chung & Giới hạn 60 phút
   useEffect(() => {
     let timer;
     if (isOpen) {
+      sessionStartRef.current = Date.now();
       setCallDuration(0);
-      setShowTimeWarningToast(false);
       setHasDismissedWarning(false);
       timer = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
+        // Âm khi vào sớm trước giờ hẹn (chưa tính vào thời gian khám)
+        setCallDuration(Math.floor((Date.now() - sessionStartRef.current) / 1000));
       }, 1000);
     }
     return () => clearInterval(timer);
   }, [isOpen]);
 
   useEffect(() => {
-    if (callDuration >= WARNING_THRESHOLD && !hasDismissedWarning) {
-      setShowTimeWarningToast(true);
-    }
     if (callDuration >= MAX_CALL_DURATION && isOpen) {
-      alert('⏰ HẾT THỜI GIAN KHÁM TRỰC TUYẾN:\n\nCa khám trực tuyến đã đạt thời lượng tối đa 60 phút quy định. Cuộc gọi sẽ được tự động đóng để bác sĩ hoàn tất kết luận tư vấn.');
       cleanupCall();
       onClose();
+      setTimeout(() => alert('⏰ HẾT THỜI GIAN KHÁM TRỰC TUYẾN:\n\nCa khám trực tuyến đã đạt thời lượng tối đa 60 phút quy định nên cuộc gọi đã tự động kết thúc.'), 100);
     }
-  }, [callDuration, hasDismissedWarning, isOpen]);
+  }, [callDuration, isOpen]);
 
   // Khóa cuộn trang web nền (Body Scroll Lock) chỉ khi đang mở cuộc gọi Toàn màn hình
   useEffect(() => {
@@ -406,6 +408,11 @@ export default function TelehealthVideoModal({
 
         socket.on('call:signal', async (data) => {
           handleIncomingSignal(data.signal);
+        });
+
+        // Mốc bắt đầu ca khám chung từ server (quy đổi sang giờ máy mình để tránh lệch đồng hồ)
+        socket.on('call:session_info', ({ startedAt, serverNow }) => {
+          sessionStartRef.current = startedAt - (serverNow - Date.now());
         });
 
         // Lịch sử chat của phòng (khi vào lại sau khi lỡ thoát) — bỏ qua tin đã có theo id
@@ -1085,6 +1092,12 @@ export default function TelehealthVideoModal({
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
+  // Vào sớm: đếm ngược tới giờ hẹn; còn 5 phút: đếm ngược màu đỏ để luôn thấy dù đã ẩn thông báo
+  const isBeforeStart = callDuration < 0;
+  const timerLabel = isBeforeStart
+    ? `Bắt đầu sau ${formatTimer(-callDuration)}`
+    : isEndingSoon ? `Còn ${formatTimer(remainingSeconds)}` : formatTimer(callDuration);
+  const timerColor = isBeforeStart ? 'text-gray-300' : isEndingSoon ? 'text-red-400 font-bold' : 'text-emerald-300';
 
   if (!isOpen) return null;
 
@@ -1132,14 +1145,13 @@ export default function TelehealthVideoModal({
           {showTimeWarningToast && (
             <div className="absolute top-10 left-2 right-2 z-30 bg-amber-500/95 text-white p-2 rounded-xl shadow-xl border border-amber-300 text-center animate-bounce text-[10px] pointer-events-auto">
               <p className="font-bold flex items-center justify-center gap-1">
-                <Clock className="h-3 w-3 shrink-0" /> Sắp hết giờ ({Math.max(1, Math.ceil((MAX_CALL_DURATION - callDuration) / 60))}p)!
+                <Clock className="h-3 w-3 shrink-0" /> Sắp hết giờ khám: <span className="font-mono">{formatTimer(remainingSeconds)}</span>
               </p>
-              <p className="opacity-95 text-[9px] mt-0.5">Giới hạn ca khám là 60 phút.</p>
+              <p className="opacity-95 text-[9px] mt-0.5">Hết giờ cuộc gọi sẽ tự động kết thúc.</p>
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setShowTimeWarningToast(false);
                   setHasDismissedWarning(true);
                 }}
                 className="mt-1 bg-amber-800 hover:bg-amber-900 text-white font-bold px-2 py-0.5 rounded-md text-[9px] transition"
@@ -1173,8 +1185,8 @@ export default function TelehealthVideoModal({
                 {participantName}
               </span>
             </div>
-            <span className={`text-[9px] sm:text-[11px] font-mono shrink-0 drop-shadow ${callDuration >= WARNING_THRESHOLD ? 'text-amber-300 font-bold' : 'text-emerald-300'}`}>
-              {formatTimer(callDuration)}
+            <span className={`text-[9px] sm:text-[11px] font-mono shrink-0 drop-shadow ${timerColor}`}>
+              {timerLabel}
             </span>
           </div>
 
@@ -1265,7 +1277,7 @@ export default function TelehealthVideoModal({
                   {isPeerConnected ? 'Trực tuyến' : 'Đang chờ...'}
                 </span>
                 <span>•</span>
-                <span className="font-mono text-emerald-300">{formatTimer(callDuration)}</span>
+                <span className={`font-mono ${timerColor}`}>{timerLabel}</span>
               </p>
             </div>
 
@@ -1285,9 +1297,9 @@ export default function TelehealthVideoModal({
 
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {/* Bộ đếm thời gian (Hiển thị pill trên Desktop) */}
-            <div className="hidden sm:flex bg-gray-800 px-3 py-1 rounded-full text-xs font-mono text-emerald-400 border border-gray-700 items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
-              {formatTimer(callDuration)}
+            <div className={`hidden sm:flex bg-gray-800 px-3 py-1 rounded-full text-xs font-mono border items-center gap-1.5 ${isEndingSoon ? 'text-red-400 font-bold border-red-500/50' : 'text-emerald-400 border-gray-700'}`}>
+              <span className={`h-2 w-2 rounded-full ${isEndingSoon ? 'bg-red-400 animate-pulse' : 'bg-emerald-400'}`}></span>
+              {timerLabel}
             </div>
 
             {/* Mute Loa để tránh hú khi test 2 tab trên 1 máy tính */}
@@ -1348,16 +1360,13 @@ export default function TelehealthVideoModal({
             <div className="flex items-center gap-2 min-w-0">
               <Clock className="h-5 w-5 shrink-0" />
               <div className="text-xs">
-                <p className="font-bold">⏰ Sắp hết thời gian khám (còn {Math.max(1, Math.ceil((MAX_CALL_DURATION - callDuration) / 60))} phút)!</p>
-                <p className="text-[11px] opacity-95">Giới hạn ca khám là 60 phút. Vui lòng chuẩn bị hoàn tất tư vấn.</p>
+                <p className="font-bold">⏰ Sắp hết thời gian khám — còn <span className="font-mono text-sm">{formatTimer(remainingSeconds)}</span></p>
+                <p className="text-[11px] opacity-95">Ca khám tối đa 60 phút, hết giờ cuộc gọi sẽ tự động kết thúc. Vui lòng hoàn tất tư vấn.</p>
               </div>
             </div>
             <button
               type="button"
-              onClick={() => {
-                setShowTimeWarningToast(false);
-                setHasDismissedWarning(true);
-              }}
+              onClick={() => setHasDismissedWarning(true)}
               className="bg-amber-800 hover:bg-amber-900 text-white font-bold px-3 py-1 rounded-xl text-xs shrink-0 transition"
             >
               Đã hiểu

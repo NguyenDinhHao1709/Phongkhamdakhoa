@@ -22,6 +22,19 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private static readonly CHAT_HISTORY_LIMIT = 100;
   private static readonly CHAT_HISTORY_TTL = 2 * 60 * 60 * 1000; // xóa sau 2 giờ không có tin mới
 
+  // Mốc bắt đầu ca khám chung cho cả 2 bên (thoát ra vào lại không reset đồng hồ 60 phút)
+  private callStartedAt = new Map<string, number>();
+  private static readonly CALL_DURATION_MS = 60 * 60 * 1000;
+
+  // Vào sớm trước giờ hẹn thì không tính: mốc = muộn hơn giữa giờ hẹn và lúc người đầu tiên vào phòng
+  private getCallStartedAt(roomId: string, apptStartMs?: number): number {
+    if (!this.callStartedAt.has(roomId)) {
+      this.callStartedAt.set(roomId, Math.max(Date.now(), apptStartMs || 0));
+      setTimeout(() => this.callStartedAt.delete(roomId), QueueGateway.CHAT_HISTORY_TTL);
+    }
+    return this.callStartedAt.get(roomId)!;
+  }
+
   private saveCallChat(roomId: string, message: any) {
     const entry = this.callChatHistory.get(roomId);
     if (entry) clearTimeout(entry.timer);
@@ -64,6 +77,9 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.emit('call:error', { code: 'INVALID_ROOM', message: 'Mã phòng gọi không hợp lệ.' });
       return;
     }
+
+    const roomKey = String(payload.roomId);
+    let apptStartMs: number | undefined;
 
     // Bảo mật Telemedicine: Bắt buộc kiểm tra lịch hẹn & xác nhận đã thanh toán
     try {
@@ -115,34 +131,41 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
         if (apptTime.length === 5) apptTime += ':00';
         else if (apptTime.length > 8) apptTime = apptTime.slice(0, 8);
 
-        if (!isRoomAlreadyOpened && apptDate && apptTime) {
-          const apptDateTime = new Date(`${apptDate}T${apptTime}+07:00`);
-          if (!isNaN(apptDateTime.getTime())) {
-            const openTime = new Date(apptDateTime.getTime() - 15 * 60 * 1000);
-            const closeTime = new Date(apptDateTime.getTime() + 60 * 60 * 1000);
-            const now = new Date();
-            if (now < openTime) {
-              const diffMin = Math.ceil((openTime.getTime() - now.getTime()) / 60000);
-              const openTimeStr = openTime.toLocaleTimeString('vi-VN', {
-                hour: '2-digit',
-                minute: '2-digit',
-                timeZone: 'Asia/Ho_Chi_Minh',
-              });
-              this.logger.warn(`Từ chối kết nối WebRTC: Chưa tới giờ mở phòng cho ${appointment.maLichHen}`);
-              client.emit('call:error', {
-                code: 'TOO_EARLY_TO_JOIN',
-                message: `Phòng khám trực tuyến chỉ mở trước giờ khám 15 phút (lúc ${openTimeStr}). Còn khoảng ${diffMin} phút nữa.`,
-              });
-              return;
-            }
-            if (now > closeTime) {
-              this.logger.warn(`Từ chối kết nối WebRTC: Quá giờ hẹn khám cho ${appointment.maLichHen}`);
-              client.emit('call:error', {
-                code: 'APPOINTMENT_EXPIRED',
-                message: 'Ca khám trực tuyến đã quá khung giờ hẹn (đã kết thúc).',
-              });
-              return;
-            }
+        if (apptDate && apptTime) {
+          const ms = new Date(`${apptDate}T${apptTime}+07:00`).getTime();
+          if (!isNaN(ms)) apptStartMs = ms;
+        }
+
+        if (!isRoomAlreadyOpened && apptStartMs) {
+          const openTime = new Date(apptStartMs - 15 * 60 * 1000);
+          // Ca khám bắt đầu muộn vẫn được vào lại cho đến khi đủ 60 phút tính từ mốc bắt đầu thực tế
+          const sessionStart = this.callStartedAt.get(roomKey);
+          const closeTime = new Date(Math.max(
+            apptStartMs + QueueGateway.CALL_DURATION_MS,
+            sessionStart ? sessionStart + QueueGateway.CALL_DURATION_MS : 0,
+          ));
+          const now = new Date();
+          if (now < openTime) {
+            const diffMin = Math.ceil((openTime.getTime() - now.getTime()) / 60000);
+            const openTimeStr = openTime.toLocaleTimeString('vi-VN', {
+              hour: '2-digit',
+              minute: '2-digit',
+              timeZone: 'Asia/Ho_Chi_Minh',
+            });
+            this.logger.warn(`Từ chối kết nối WebRTC: Chưa tới giờ mở phòng cho ${appointment.maLichHen}`);
+            client.emit('call:error', {
+              code: 'TOO_EARLY_TO_JOIN',
+              message: `Phòng khám trực tuyến chỉ mở trước giờ khám 15 phút (lúc ${openTimeStr}). Còn khoảng ${diffMin} phút nữa.`,
+            });
+            return;
+          }
+          if (now > closeTime) {
+            this.logger.warn(`Từ chối kết nối WebRTC: Quá giờ hẹn khám cho ${appointment.maLichHen}`);
+            client.emit('call:error', {
+              code: 'APPOINTMENT_EXPIRED',
+              message: 'Ca khám trực tuyến đã quá khung giờ hẹn (đã kết thúc).',
+            });
+            return;
           }
         }
       }
@@ -155,7 +178,9 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`Client ${client.id} (${payload.role} - ${payload.userName}) joined call room ${room}`);
     client.to(room).emit('call:peer_joined', { peerId: client.id, role: payload.role, userName: payload.userName });
 
-    const history = this.callChatHistory.get(String(payload.roomId))?.messages;
+    client.emit('call:session_info', { startedAt: this.getCallStartedAt(roomKey, apptStartMs), serverNow: Date.now() });
+
+    const history = this.callChatHistory.get(roomKey)?.messages;
     if (history?.length) client.emit('call:chat_history', history);
 
     // Nếu trong phòng đã có người đợi sẵn, báo ngược lại ngay cho người vừa vào biết để bắt tay WebRTC tức thì
