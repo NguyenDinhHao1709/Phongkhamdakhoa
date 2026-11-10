@@ -12,6 +12,12 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 export class ChamCongController {
   constructor(private readonly chamCongService: ChamCongService) {}
 
+  // ─── 0. Đánh thức dịch vụ nhận diện khuôn mặt ───────────────────────────────
+  @Get('warmup')
+  warmup() {
+    return this.chamCongService.warmupPythonMl();
+  }
+
   // ─── 1. Check-in ────────────────────────────────────────────────────────────
   @Post('check-in')
   async checkIn(

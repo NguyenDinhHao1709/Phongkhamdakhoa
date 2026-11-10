@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Bot, Send, X, RotateCcw, AlertTriangle, Stethoscope, Zap, Minus, Calendar, Pill } from 'lucide-react';
-import { apiPost } from '../../services/api';
+import { apiGet, apiPost } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../../store/authStore';
 import useHospitalStore from '../../store/hospitalStore';
@@ -51,6 +51,8 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
 
   useEffect(() => {
     if (initialMessage) sendMessage(initialMessage);
+    // Đánh thức AI service khi mở chatbot (Render free tier cold start)
+    else apiGet('/ai/health').catch(() => {});
   }, []);
 
   const sendMessage = async (text) => {

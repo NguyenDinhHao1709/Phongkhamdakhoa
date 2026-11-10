@@ -215,6 +215,12 @@ export class ChamCongService {
     };
   }
 
+  // ─── Đánh thức Python ML khi người dùng mở trang chấm công (Render free tier cold start ~50s) ─
+  warmupPythonMl() {
+    firstValueFrom(this.httpService.get(`${PYTHON_ML_URL}/health`, { timeout: 90000 })).catch(() => undefined);
+    return { ok: true };
+  }
+
   // ─── Gọi Python ML xác thực khuôn mặt & Live Presence ───────────────────────
 
   async xacThucKhuonMat(params: {
