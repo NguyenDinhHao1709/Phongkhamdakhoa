@@ -238,7 +238,7 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   /** Thông báo cá nhân */
   emitNotification(userId: number, data: any) {
-    this.server.to(`user:${userId}`).emit('notification:new', data);
+    this.server?.to(`user:${userId}`).emit('notification:new', data);
   }
 
   /** Tin nhắn tư vấn real-time */

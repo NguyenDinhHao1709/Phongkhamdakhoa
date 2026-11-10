@@ -2,7 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Bell, FlaskConical, FileText, CheckCheck, Inbox, Clock, ClipboardList, Wallet, X, Pill, CreditCard } from 'lucide-react';
+import { io } from 'socket.io-client';
 import api from '../services/api';
+import { BACKEND_URL } from '../utils/backendUrl';
 import { timeAgo } from '../utils/formatDate';
 import useAuthStore from '../store/authStore';
 
@@ -38,7 +40,17 @@ export function NotificationDropdown() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Polling thông báo siêu tốc dưới 3s (2.5s) theo đúng user ID đang đăng nhập
+  // Thông báo realtime: backend phát tín hiệu "notification:new" vào phòng user:<id> khi có thông báo mới
+  // → tải lại danh sách ngay (nội dung vẫn lấy qua API có JWT)
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    const socket = io(BACKEND_URL || window.location.origin, { transports: ['websocket', 'polling'] });
+    socket.on('connect', () => socket.emit('join:user', user.id)); // join lại sau mỗi lần kết nối lại
+    socket.on('notification:new', () => queryClient.invalidateQueries({ queryKey: ['thong-bao', user.id] }));
+    return () => socket.disconnect();
+  }, [user?.id, queryClient]);
+
+  // Polling 60s chỉ để dự phòng khi socket mất kết nối
   const { data } = useQuery({
     queryKey: ['thong-bao', user?.id],
     queryFn: async () => {
@@ -47,7 +59,7 @@ export function NotificationDropdown() {
       if (res?.items) return res;
       return res?.data || { items: [], unreadCount: 0 };
     },
-    refetchInterval: 2500,
+    refetchInterval: 60000,
     enabled: !!user?.id,
   });
 
@@ -56,7 +68,7 @@ export function NotificationDropdown() {
     ? data.unreadCount
     : (typeof data?.data?.unreadCount === 'number' ? data.data.unreadCount : 0);
 
-  // Hiệu ứng phát hiện thông báo MỚI đến qua Polling -> Rung chuông & hiện Toast nổi
+  // Hiệu ứng phát hiện thông báo MỚI (qua socket hoặc polling dự phòng) -> Rung chuông & hiện Toast nổi
   useEffect(() => {
     if (!notifications) return;
 

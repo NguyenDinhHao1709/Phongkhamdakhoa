@@ -11,6 +11,7 @@ import { LichLamViec } from '../nhan-vien/entities/lich-lam-viec.entity';
 import { DanhGiaCaKham } from '../danh-gia/entities/danh-gia.entity';
 import { LichSuGoiKham } from './entities/lich-su-goi-kham.entity';
 import { ThongBaoModule } from '../thong-bao/thong-bao.module';
+import { ThongBaoRealtimeSubscriber } from '../thong-bao/thong-bao-realtime.subscriber';
 
 @Module({
   imports: [
@@ -18,7 +19,8 @@ import { ThongBaoModule } from '../thong-bao/thong-bao.module';
     ThongBaoModule,
   ],
   controllers: [TiepNhanController],
-  providers: [TiepNhanService, QueueGateway],
+  // ThongBaoRealtimeSubscriber đặt ở đây vì cần QueueGateway (ThongBaoModule không import được TiepNhanModule do vòng lặp)
+  providers: [TiepNhanService, QueueGateway, ThongBaoRealtimeSubscriber],
   exports: [TiepNhanService, QueueGateway, TypeOrmModule],
 })
 export class TiepNhanModule {}
