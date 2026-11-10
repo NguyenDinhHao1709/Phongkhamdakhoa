@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import { GoogleGenerativeAI, GenerativeModel, ModelParams } from '@google/generative-ai';
 import {
   LuotTiepNhan,
   SinhHieu,
@@ -17,6 +17,7 @@ import {
   DonThuoc,
   Thuoc,
   BacSi,
+  CauHinhTienCoc,
 } from './entities/clinical.entities';
 import {
   matchClinicalProtocols,
@@ -24,6 +25,17 @@ import {
   evaluatePrescriptionSafety,
   MOH_CLINICAL_PROTOCOLS_KB,
 } from './clinical-ai.engine';
+
+// ─── Gemini: thử lần lượt các model khi model trước quá tải (503), hết hạn mức (429) hoặc quá thời gian ───
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-flash-latest'];
+const GEMINI_ATTEMPT_TIMEOUT_MS = 20000;
+const GEMINI_TOTAL_BUDGET_MS = 45000; // backend & frontend chờ AI tối đa 90s
+
+// Từ khóa phải đứng thành từ riêng (tránh "nhiều" khớp "nhi", "kem" khớp "em")
+function hasWord(text: string, words: string): boolean {
+  return new RegExp(`(?<![\\p{L}\\p{N}])(${words})(?![\\p{L}\\p{N}])`, 'u').test(text);
+}
+const CHILD_WORDS = 'trẻ|bé|nhi|con tôi|sơ sinh|cháu|trẻ em|em bé';
 
 // ─── In-memory session store ────────────────────────────────────
 const triageSessions: Map<string, Array<{ role: string; parts: Array<{ text: string }> }>> = new Map();
@@ -108,9 +120,9 @@ CÁC TÌNH HUỐNG Y TẾ BẠN PHẢI GIẢI ĐÁP THÔNG MINH & CHÍNH XÁC:
 
 4. KHI KHÁCH HỎI VỀ KHÁM ONLINE (TELEMEDICINE), BẢNG GIÁ XÉT NGHIỆM, SIÊU ÂM, CHỤP X-QUANG, GIÁ THUỐC, PHÍ KHÁM HOẶC BÁC SĨ:
    - Phòng khám CÓ ĐẦY ĐỦ 2 hình thức khám bệnh:
-     + HÌNH THỨC 1 - KHÁM TRỰC TIẾP TẠI PHÒNG KHÁM: Phí khám lâm sàng 150.000 VNĐ/lượt (hỗ trợ BHYT chiết khấu 80%). Khi đặt lịch trước qua mạng, khách chỉ cần đặt cọc giữ chỗ 40.000 VNĐ (khoản cọc 40.000 VNĐ này sẽ được TRỪ TRỰC TIẾP vào tổng hóa đơn viện phí khi đến khám).
-     + HÌNH THỨC 2 - KHÁM & TƯ VẤN TRỰC TUYẾN TỪ XA QUA VIDEO CALL (KHÁM ONLINE / TELEMEDICINE / TELEHEALTH): Chi phí trọn gói là 200.000 VNĐ/lượt (thanh toán trực tuyến qua mã QR PayOS khi đặt lịch). Bệnh nhân được gọi Video Call 1-1 trực tiếp với Bác sĩ chuyên khoa ngay trên hệ thống WebRTC của phòng khám mà không cần đến nơi; sau cuộc gọi Bác sĩ sẽ chẩn đoán và KÊ ĐƠN THUỐC ĐIỆN TỬ gửi trực tiếp vào hồ sơ bệnh nhân.
-     + CHÍNH SÁCH HỦY LỊCH & HOÀN TIỀN: Nếu hủy lịch trước giờ hẹn tối thiểu 2 tiếng, khách hàng được HOÀN TRẢ 100% tiền đã thanh toán (40.000 VNĐ hoặc 200.000 VNĐ) qua chuyển khoản ngân hàng hoặc nhận tại quầy.
+     + HÌNH THỨC 1 - KHÁM TRỰC TIẾP TẠI PHÒNG KHÁM (có đặt cọc giữ chỗ khi đặt lịch trước, tiền cọc được trừ vào hóa đơn khi đến khám).
+     + HÌNH THỨC 2 - KHÁM & TƯ VẤN TRỰC TUYẾN TỪ XA QUA VIDEO CALL (KHÁM ONLINE / TELEMEDICINE / TELEHEALTH): thanh toán trực tuyến qua mã QR PayOS khi đặt lịch. Bệnh nhân được gọi Video Call 1-1 trực tiếp với Bác sĩ chuyên khoa ngay trên hệ thống WebRTC của phòng khám mà không cần đến nơi; sau cuộc gọi Bác sĩ sẽ chẩn đoán và KÊ ĐƠN THUỐC ĐIỆN TỬ gửi trực tiếp vào hồ sơ bệnh nhân.
+   - PHÍ KHÁM, TIỀN CỌC, THỜI HẠN HỦY & % HOÀN TIỀN: CHỈ được dùng đúng số liệu trong mục [0. BẢNG GIÁ ...] của dữ liệu phòng khám gửi kèm. TUYỆT ĐỐI KHÔNG tự đưa ra con số khác; nếu mục đó ghi "đang cập nhật" thì hướng dẫn khách xem khi đặt lịch.
    - BẮT BUỘC trích xuất trực tiếp từ [0. BẢNG GIÁ KHÁM TRỰC TIẾP & KHÁM ONLINE], [1. DANH MỤC THUỐC], [2. DANH MỤC XÉT NGHIỆM & CẬN LÂM SÀNG (KÈM GIÁ)] và [3. ĐỘI NGŨ BÁC SĨ] trong ngữ cảnh để báo giá chi tiết từng mục (VNĐ).
    - TUYỆT ĐỐI CẤM trả lời kiểu "tôi không thể cung cấp bảng giá" hoặc nói sai rằng "phòng khám chưa có dịch vụ khám online"!
 
@@ -149,14 +161,32 @@ DANH SÁCH CHUYÊN KHOA PHÒNG KHÁM:
 - "Nội tổng quát" (ma_khoa: "NOI") — Tiểu đường, mỡ máu, kiểm tra sức khỏe tổng quát, đọc kết quả xét nghiệm chung.
 `;
 
+// ─── Biểu phí khám lấy từ bảng cau_hinh_tien_coc (không viết cứng giá) ───
+type BieuPhi = { trucTiep?: CauHinhTienCoc; trucTuyen?: CauHinhTienCoc };
+const PHI_DANG_CAP_NHAT = 'đang cập nhật (vui lòng xem chi tiết khi đặt lịch)';
+const vnd = (n: number) => `${Number(n || 0).toLocaleString('vi-VN')} VNĐ`;
+
+function moTaPhiTrucTiep(p?: CauHinhTienCoc): string {
+  if (!p) return `Phí khám trực tiếp: ${PHI_DANG_CAP_NHAT}`;
+  return `Phí khám trực tiếp: **${vnd(p.phiKhamMacDinh)}/lượt**; đặt lịch trước cần cọc giữ chỗ **${p.phanTramCoc}% = ${vnd(p.soTienCoc)}** (trừ thẳng vào hóa đơn khi đến khám); hủy lịch trước giờ hẹn tối thiểu **${p.thoiGianHuyHoanCocGio} giờ** được hoàn **${p.phanTramHoanCoc}% tiền cọc**`;
+}
+
+function moTaPhiTrucTuyen(p?: CauHinhTienCoc): string {
+  if (!p) return `Phí khám online qua Video Call: ${PHI_DANG_CAP_NHAT}`;
+  return `Phí khám online qua Video Call 1-1: **${vnd(p.phiKhamMacDinh)}/lượt**, thanh toán trước **${vnd(p.soTienCoc)} (${p.phanTramCoc}%)** qua mã QR PayOS khi đặt lịch; hủy lịch trước giờ hẹn tối thiểu **${p.thoiGianHuyHoanCocGio} giờ** được hoàn **${p.phanTramHoanCoc}% số tiền đã thanh toán**`;
+}
+
+const TRIAGE_MODEL_PARAMS: Omit<ModelParams, 'model'> = {
+  generationConfig: { temperature: 0.25, responseMimeType: 'application/json' },
+  systemInstruction: MEDICAL_TRIAGE_PROMPT,
+};
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private genAI: GoogleGenerativeAI | null = null;
-  private triageModel: GenerativeModel | null = null;
-  private patientModel: GenerativeModel | null = null;
   private readonly PYTHON_ML_URL: string;
-  private cachedClinicContext: { text: string; thuocList: Thuoc[]; dichVuList: DichVuXetNghiem[]; bacSiList: BacSi[]; expiresAt: number } | null = null;
+  private cachedClinicContext: { text: string; thuocList: Thuoc[]; dichVuList: DichVuXetNghiem[]; bacSiList: BacSi[]; bieuPhi: BieuPhi; expiresAt: number } | null = null;
 
   constructor(
     private configService: ConfigService,
@@ -172,6 +202,7 @@ export class AiService {
     @InjectRepository(DonThuoc) private donThuocRepo: Repository<DonThuoc>,
     @InjectRepository(Thuoc) private thuocRepo: Repository<Thuoc>,
     @InjectRepository(BacSi) private bacSiRepo: Repository<BacSi>,
+    @InjectRepository(CauHinhTienCoc) private tienCocRepo: Repository<CauHinhTienCoc>,
   ) {
     this.PYTHON_ML_URL = (
       this.configService.get<string>('PYTHON_ML_URL') || 'http://localhost:5001'
@@ -180,32 +211,44 @@ export class AiService {
     if (apiKey) {
       try {
         this.genAI = new GoogleGenerativeAI(apiKey);
-        
-        // Model Triage & Tư vấn Y khoa (Single/Multi-turn JSON)
-        this.triageModel = this.genAI.getGenerativeModel({
-          model: 'gemini-2.5-flash',
-          generationConfig: {
-            temperature: 0.25,
-            responseMimeType: 'application/json',
-          },
-          systemInstruction: MEDICAL_TRIAGE_PROMPT,
-        });
-
-        // Model Bác Sĩ Gia Đình Bệnh Nhân (Context-Aware Chat)
-        this.patientModel = this.genAI.getGenerativeModel({
-          model: 'gemini-2.5-flash',
-          generationConfig: {
-            temperature: 0.35,
-          },
-        });
-
-        this.logger.log('✅ Gemini AI (gemini-2.5-flash) initialized successfully for both Triage and Patient Assistant');
+        this.logger.log(`✅ Gemini AI initialized (models: ${GEMINI_MODELS.join(' → ')})`);
       } catch (err) {
         this.logger.warn('⚠️ Gemini AI init failed, fallback to rule-based:', err.message);
       }
     } else {
       this.logger.warn('⚠️ GEMINI_API_KEY not set, using rule-based fallback');
     }
+  }
+
+  /** Gọi Gemini, lỗi/quá thời gian thì thử model kế tiếp trong GEMINI_MODELS (tổng tối đa 45s) */
+  private async generateWithFallback<T>(
+    label: string,
+    modelParams: Omit<ModelParams, 'model'>,
+    run: (model: GenerativeModel) => Promise<T>,
+  ): Promise<T> {
+    if (!this.genAI) throw new Error('GEMINI_NOT_CONFIGURED');
+    const deadline = Date.now() + GEMINI_TOTAL_BUDGET_MS;
+    let lastError: any = new Error('AI_TIMEOUT_EXCEEDED');
+    for (const name of GEMINI_MODELS) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        const model = this.genAI.getGenerativeModel({ model: name, ...modelParams });
+        return await Promise.race([
+          run(model),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('AI_TIMEOUT_EXCEEDED')), Math.min(GEMINI_ATTEMPT_TIMEOUT_MS, remaining));
+          }),
+        ]);
+      } catch (err: any) {
+        lastError = err;
+        this.logger.warn(`[${label}] ${name} lỗi: ${err?.message} → thử model kế tiếp`);
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    throw lastError;
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -425,26 +468,14 @@ QUY TẮC GIAO TIẾP:
 - Cuối câu trả lời, luôn có một lời chúc hoặc dặn dò bệnh nhân giữ gìn sức khỏe / tái khám đúng hẹn.
 `;
 
-    if (this.patientModel) {
+    if (this.genAI) {
       try {
-        const fullPrompt = history.length === 0
-          ? `${patientSystemPrompt}\n\nCâu hỏi của bệnh nhân: ${message}`
-          : message;
-
-        const chat = this.patientModel.startChat({
-          history: [...history],
-        });
-
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('AI_TIMEOUT_EXCEEDED')), 7000),
+        // System prompt gắn vào mọi lượt (trước đây chỉ lượt đầu nên các câu sau mất ngữ cảnh bệnh án)
+        const rawReply = await this.generateWithFallback(
+          'Patient Chat',
+          { generationConfig: { temperature: 0.35 }, systemInstruction: patientSystemPrompt },
+          async (model) => (await model.startChat({ history: [...history] }).sendMessage(message)).response.text().trim(),
         );
-
-        const result: any = await Promise.race([
-          chat.sendMessage(fullPrompt),
-          timeoutPromise,
-        ]);
-
-        const rawReply = result.response.text().trim();
 
         // Lưu vào history
         history.push(
@@ -542,11 +573,16 @@ QUY TẮC GIAO TIẾP:
     }
 
     try {
-      const [thuocList, dichVuList, bacSiList] = await Promise.all([
+      const [thuocList, dichVuList, bacSiList, tienCocList] = await Promise.all([
         this.thuocRepo.find({ take: 60 }).catch(() => []),
         this.dichVuRepo.find({ where: { trangThai: 'hoat_dong' }, take: 50 }).catch(() => []),
         this.bacSiRepo.find({ relations: ['nhanVien'], take: 30 }).catch(() => []),
+        this.tienCocRepo.find().catch(() => []),
       ]);
+      const bieuPhi: BieuPhi = {
+        trucTiep: tienCocList.find((c) => c.loaiHinhThuc === 'truc_tiep'),
+        trucTuyen: tienCocList.find((c) => c.loaiHinhThuc === 'truc_tuyen'),
+      };
 
       const thuocLines = thuocList.map(
         t => `- ${t.tenThuoc} (Hoạt chất: ${t.tenHoatChat || 'Đang cập nhật'}, Hàm lượng: ${t.hamLuong || '--'}, Đường dùng: ${t.duongDung || 'Uống'}, ĐVT: ${t.donViTinh || 'Viên'}, Giá tham khảo: ${Number(t.giaBan || 0).toLocaleString('vi-VN')}đ/${t.donViTinh || 'Viên'}${t.moTa ? `, Công dụng: ${t.moTa}` : ''})`
@@ -564,16 +600,11 @@ QUY TẮC GIAO TIẾP:
 
       const text = `
 === DỮ LIỆU Y TẾ THỰC TẾ TẠI PHÒNG KHÁM (DÙNG ĐỂ ĐỐI CHIẾU KHI TƯ VẤN) ===
-[0. BẢNG GIÁ KHÁM TRỰC TIẾP & KHÁM ONLINE TỪ XA (TELEMEDICINE / VIDEO CALL)]:
-- Hình thức 1 - Khám trực tiếp tại phòng khám:
-  + Phí khám chuyên khoa / Khám nội tổng quát: 150.000 VNĐ / lượt (Hỗ trợ BHYT chiết khấu 80% chi phí).
-  + Phí đặt cọc giữ chỗ khi đặt lịch trực tuyến: 40.000 VNĐ (Khoản cọc 40.000 VNĐ này sẽ được TRỪ TRỰC TIẾP vào tổng hóa đơn viện phí khi bệnh nhân đến khám).
-- Hình thức 2 - Khám & Tư vấn trực tuyến từ xa qua Video Call (Khám Online / Telemedicine / Telehealth):
-  + Chi phí trọn gói: 200.000 VNĐ / lượt (Thanh toán trực tuyến qua mã QR PayOS ngay khi đặt lịch).
+[0. BẢNG GIÁ KHÁM TRỰC TIẾP & KHÁM ONLINE TỪ XA (TELEMEDICINE / VIDEO CALL) — SỐ LIỆU CHÍNH THỨC]:
+- Hình thức 1 - Khám trực tiếp tại phòng khám: ${moTaPhiTrucTiep(bieuPhi.trucTiep)}.
+- Hình thức 2 - Khám & Tư vấn trực tuyến từ xa (Khám Online / Telemedicine / Telehealth): ${moTaPhiTrucTuyen(bieuPhi.trucTuyen)}.
   + Quyền lợi: Gọi Video Call 1-1 trực tiếp với Bác sĩ chuyên khoa qua hệ thống WebRTC của phòng khám (không cần đến phòng khám), được Bác sĩ chẩn đoán và KÊ ĐƠN THUỐC ĐIỆN TỬ gửi trực tiếp vào hồ sơ bệnh nhân.
-- Chính sách hoàn tiền & Giờ làm việc:
-  + Hủy lịch trước giờ hẹn tối thiểu 2 tiếng được hoàn trả 100% tiền đã thanh toán (40.000 VNĐ hoặc 200.000 VNĐ).
-  + Giờ làm việc: Sáng 07:30 – 11:30 | Chiều 13:30 – 17:00 | Hotline: 1900 6868.
+- Giờ làm việc: Sáng 07:30 – 11:30 | Chiều 13:30 – 17:00 | Hotline: 1900 6868.
 
 [1. DANH MỤC THUỐC TẠI NHÀ THUỐC PHÒNG KHÁM]:
 ${thuocLines || 'Đang cập nhật danh mục thuốc.'}
@@ -591,11 +622,12 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
         thuocList,
         dichVuList,
         bacSiList,
+        bieuPhi,
         expiresAt: now + 5 * 60 * 1000,
       };
       return this.cachedClinicContext;
     } catch (err) {
-      return { text: '', thuocList: [], dichVuList: [], bacSiList: [], expiresAt: now + 60000 };
+      return { text: '', thuocList: [], dichVuList: [], bacSiList: [], bieuPhi: {}, expiresAt: now + 60000 };
     }
   }
 
@@ -608,12 +640,12 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
     const normalized = normalizeUnaccentedQuery(rawMsg);
     const lower = normalized.toLowerCase();
 
-    // Định tuyến trực tiếp vào Clinical Knowledge Engine cho các câu hỏi chính sách, bảng giá, cấp cứu, sơ cứu hoặc dược lâm sàng chuẩn
-    if (/(khám online|khám từ xa|tư vấn online|tư vấn trực tuyến|telemedicine|telehealth|gọi video|bảng giá|giá các dịch vụ|giá xét nghiệm|giá dịch vụ|giá khám|phí khám|danh mục thuốc|giá thuốc|danh sách bác sĩ|đội ngũ bác sĩ|bhyt|bảo hiểm y tế|bảo hiểm|hủy lịch|huỷ lịch|hoàn tiền|hoàn cọc|giờ làm việc|mấy giờ|địa chỉ|hotline|sơ cứu|bị bỏng|bỏng nước sôi|vết thương|quên uống|uống thuốc.*(với|chung|cùng|kèm)|uống.*(trà|sữa|cà phê|rượu|bia)|mang thai|có thai|thai nhi|cho con bú|suy thận|ăn gì|kiêng gì|nhịn ăn)/.test(lower)) {
+    // Chỉ thông tin phòng khám (giá, chính sách, giờ làm việc...) dùng dữ liệu cố định; mọi câu hỏi y tế để Gemini trả lời
+    if (/(khám online|khám từ xa|tư vấn online|tư vấn trực tuyến|telemedicine|telehealth|gọi video|bảng giá|giá các dịch vụ|giá xét nghiệm|giá dịch vụ|giá khám|phí khám|danh mục thuốc|giá thuốc|danh sách bác sĩ|đội ngũ bác sĩ|bhyt|bảo hiểm y tế|bảo hiểm|hủy lịch|huỷ lịch|hoàn tiền|hoàn cọc|giờ làm việc|mở cửa|địa chỉ|hotline)/.test(lower)) {
       return this.triageChatRuleBased(message, clientHistory);
     }
 
-    if (this.triageModel) {
+    if (this.genAI) {
       return this.triageChatGemini(sessionId, message, clientHistory);
     }
     return this.triageChatRuleBased(message, clientHistory);
@@ -666,20 +698,14 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
 
     try {
       const clinicContext = await this.getClinicMedicalContext();
-      const chat = this.triageModel!.startChat({
-        history: [...history],
+      const enrichedMessage = `${clinicContext.text}\n\nCâu hỏi / Chia sẻ của người bệnh: "${userMessage}"\nLƯU Ý BẮT BUỘC: Nếu khách hỏi về khám online, khám trực tiếp, tiền cọc, hoàn tiền, bảng giá xét nghiệm, giá thuốc hoặc bác sĩ, phải trích xuất đúng số liệu từ bảng dữ liệu trên để báo giá chi tiết từng mục (VNĐ), TUYỆT ĐỐI KHÔNG ĐƯỢC TỪ CHỐI BÁO GIÁ và không tự đặt ra con số khác. Hãy trả lời đúng cấu trúc JSON quy định.`;
+
+      // JSON.parse nằm trong run để JSON lỗi cũng chuyển sang model kế tiếp
+      const { parsed, rawText } = await this.generateWithFallback('Triage Chat', TRIAGE_MODEL_PARAMS, async (model) => {
+        const result = await model.startChat({ history: [...history] }).sendMessage(enrichedMessage);
+        const text = result.response.text().trim();
+        return { parsed: JSON.parse(text), rawText: text };
       });
-
-      const enrichedMessage = `${clinicContext.text}\n\nCâu hỏi / Chia sẻ của người bệnh: "${userMessage}"\nLƯU Ý BẮT BUỘC: Nếu khách hỏi về khám online (Telemedicine: 200.000 VNĐ/lượt), khám trực tiếp (150.000 VNĐ/lượt, cọc 40.000 VNĐ), bảng giá xét nghiệm, giá thuốc hoặc bác sĩ, phải trích xuất trực tiếp từ bảng dữ liệu trên để báo giá chi tiết từng mục (VNĐ), TUYỆT ĐỐI KHÔNG ĐƯỢC TỪ CHỐI BÁO GIÁ. Hãy trả lời đúng cấu trúc JSON quy định.`;
-
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('AI_TIMEOUT_EXCEEDED')), 12000),
-      );
-
-      const sendPromise = chat.sendMessage(enrichedMessage);
-      const result: any = await Promise.race([sendPromise, timeoutPromise]);
-      const rawText = result.response.text().trim();
-      const parsed = JSON.parse(rawText);
 
       // Nếu Gemini bị ảnh hưởng bởi lịch sử cũ mà từ chối trả lời hoặc báo sai về khám online, chuyển sang Clinical Knowledge Engine ngay
       if (parsed?.cau_tra_loi && /(không thể cung cấp|chỉ là trợ lý phân luồng|chưa có dịch vụ khám bệnh hoàn toàn trực tuyến)/.test(parsed.cau_tra_loi.toLowerCase())) {
@@ -709,18 +735,12 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
 
   // ─── PHÂN LUỒNG NHANH (single-turn, dùng cho tiếp tân) ─────────
   async phanLuongNhanh(trieuChung: string) {
-    if (this.triageModel) {
+    if (this.genAI) {
       const prompt = `Triệu chứng bệnh nhân: "${trieuChung}". Hãy phân tích và trả về JSON phân luồng chuyên khoa.`;
       try {
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('AI_TIMEOUT_EXCEEDED')), 10000),
+        const parsed = await this.generateWithFallback('Quick Triage', TRIAGE_MODEL_PARAMS, async (model) =>
+          JSON.parse((await model.generateContent(prompt)).response.text().trim()),
         );
-        const result: any = await Promise.race([
-          this.triageModel.generateContent(prompt),
-          timeoutPromise,
-        ]);
-        const rawText = result.response.text().trim();
-        const parsed = JSON.parse(rawText);
         parsed.chuyen_khoa = parsed.chuyen_khoa || parsed.khoa || 'Nội tổng quát';
         parsed.khoa = parsed.khoa || parsed.chuyen_khoa;
         return { ...parsed, source: 'gemini' };
@@ -746,10 +766,11 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
     const thuocList = clinicContext.thuocList || [];
     const dichVuList = clinicContext.dichVuList || [];
     const bacSiList = clinicContext.bacSiList || [];
+    const { trucTiep, trucTuyen } = clinicContext.bieuPhi || {};
 
-    const hasChildInCurrent = /(trẻ|bé|nhi|con tôi|sơ sinh|cháu|trẻ em|em bé)/.test(text);
-    const hasAdultSelfInCurrent = /(tôi|mình|em|bản thân)/.test(text);
-    const isChild = hasChildInCurrent || (!hasAdultSelfInCurrent && /(trẻ|bé|nhi|con tôi|sơ sinh|cháu|trẻ em|em bé)/.test(userHistoryText));
+    const hasChildInCurrent = hasWord(text, CHILD_WORDS);
+    const hasAdultSelfInCurrent = hasWord(text, 'tôi|mình|em|bản thân');
+    const isChild = hasChildInCurrent || (!hasAdultSelfInCurrent && hasWord(userHistoryText, CHILD_WORDS));
     const hasFeverValue = /(3[8-9](\.\d+)?|4[0-2](\.\d+)?|sốt cao|sốt \d+)/.test(text) || /(3[8-9](\.\d+)?|4[0-2](\.\d+)?|sốt cao|sốt \d+)/.test(userHistoryText);
     const isAskingMedicine = /(uống thuốc gì|dùng thuốc gì|thuốc nào|mua thuốc gì|uống gì cho đỡ|uống gì hết|điều trị bằng thuốc)/.test(text);
     const isAskingHowToTake = /(uống như thế nào|uống sao|uống lúc nào|trước hay sau ăn|trước ăn hay sau ăn|liều lượng|mấy viên|cách mấy tiếng|quên uống|uống chung với|tác dụng phụ)/.test(text);
@@ -821,7 +842,7 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
       cauTraLoi = `🏥 **CHÍNH SÁCH ÁP DỤNG BẢO HIỂM Y TẾ (BHYT) TẠI PHÒNG KHÁM MEDICARE:**\n\n` +
         `**1. Quyền lợi BHYT của Bệnh nhân:**\n` +
         `• Phòng khám Đa khoa MediCare **CÓ áp dụng thanh toán Bảo Hiểm Y Tế (BHYT)** theo đúng quy định hiện hành của Bộ Y Tế và Bảo hiểm Xã hội Việt Nam.\n` +
-        `• Người bệnh được hưởng mức chiết khấu thanh toán BHYT lên đến **80% - 100%** (tùy theo đối tượng thẻ BHYT) đối với các danh mục: Tiền khám bệnh, Xét nghiệm cận lâm sàng, Chẩn đoán hình ảnh và Thuốc nằm trong danh mục BHYT chi trả.\n\n` +
+        `• Người bệnh được hưởng quyền lợi BHYT **theo mức hưởng ghi trên thẻ** (tùy theo đối tượng thẻ BHYT) đối với các danh mục: Tiền khám bệnh, Xét nghiệm cận lâm sàng, Chẩn đoán hình ảnh và Thuốc nằm trong danh mục BHYT chi trả.\n\n` +
         `**2. Giấy tờ cần chuẩn bị khi đến khám:**\n` +
         `• Thẻ BHYT bản cứng còn hạn sử dụng **HOẶC** hình ảnh thẻ BHYT trên ứng dụng **VssID / VNeID**.\n` +
         `• Căn cước công dân (CCCD) gắn chip hoặc giấy tờ tùy thân có dán ảnh hợp lệ.\n` +
@@ -837,11 +858,10 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
       cauTraLoi = `🔄 **CHÍNH SÁCH HỦY LỊCH HẸN & HOÀN TIỀN 100% TẠI PHÒNG KHÁM:**\n\n` +
         `Phòng khám luôn hỗ trợ linh hoạt tối đa cho người bệnh khi có việc bận đột xuất:\n\n` +
         `**1. Đối với Khám trực tiếp tại phòng khám:**\n` +
-        `• Phí đặt cọc giữ chỗ: **40.000 VNĐ** (được trừ thẳng vào hóa đơn khi bạn đến khám).\n` +
-        `• **Chính sách hoàn tiền:** Nếu bạn hủy lịch hẹn **trước giờ khám tối thiểu 02 tiếng**, hệ thống sẽ **hoàn trả 100% tiền cọc (40.000 VNĐ)** về tài khoản ngân hàng của bạn, hoặc hỗ trợ dời lịch sang khung giờ khác hoàn toàn miễn phí.\n\n` +
+        `• ${moTaPhiTrucTiep(trucTiep)}.\n` +
+        `• Tiền hoàn được chuyển về tài khoản ngân hàng của bạn hoặc nhận tại quầy; bạn cũng có thể dời lịch sang khung giờ khác.\n\n` +
         `**2. Đối với Khám Online từ xa qua Video Call (Telemedicine):**\n` +
-        `• Phí tư vấn trực tuyến: **200.000 VNĐ** thanh toán qua PayOS khi đặt lịch.\n` +
-        `• **Chính sách hoàn tiền:** Nếu bạn hủy lịch hẹn **trước giờ khám tối thiểu 02 tiếng**, phòng khám cam kết **hoàn trả 100% (200.000 VNĐ)** vào tài khoản thanh toán ban đầu của bạn.\n\n` +
+        `• ${moTaPhiTrucTuyen(trucTuyen)}.\n\n` +
         `**3. Hướng dẫn thao tác hủy lịch:**\n` +
         `• Bạn vào mục **"Lịch hẹn của tôi"** trên website/ứng dụng → Chọn lịch khám muốn hủy → Bấm **"Hủy lịch hẹn"**.\n` +
         `• Hoặc liên hệ trực tiếp số Hotline Phòng khám để bộ phận Lễ tân hỗ trợ xử lý ngay lập tức.`;
@@ -868,16 +888,17 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
       khoa = 'Nội tổng quát'; maKhoa = 'NOI';
       cauTraLoi = `🎥 **DỊCH VỤ KHÁM & TƯ VẤN BÁC SĨ TRỰC TUYẾN TỪ XA (KHÁM ONLINE - TELEMEDICINE):**\n\n` +
         `**1. Chi phí Khám Online trọn gói:**\n` +
-        `• **Phí tư vấn trực tuyến qua Video Call 1-1 với Bác sĩ chuyên khoa:** **200.000 VNĐ / lượt**\n` +
-        `• **Hình thức thanh toán:** Thanh toán trực tuyến nhanh chóng qua mã **QR PayOS** ngay khi đặt lịch hẹn.\n` +
-        `• *(So sánh với **Khám trực tiếp tại phòng khám**: Phí khám **150.000 VNĐ/lượt**, khi đặt lịch trước chỉ cần đặt cọc giữ chỗ **40.000 VNĐ** và được trừ thẳng vào hóa đơn khi đến khám)*.\n\n` +
+        `• ${moTaPhiTrucTuyen(trucTuyen)}.\n` +
+        `• *(So sánh với **Khám trực tiếp tại phòng khám** — ${moTaPhiTrucTiep(trucTiep)})*.\n\n` +
         `**2. Quyền lợi & Quy trình Khám Online (4 bước đơn giản):**\n` +
         `• **Bước 1:** Chọn mục **"Đặt lịch khám"** → Chọn hình thức **"Tư vấn trực tuyến (Online)"**, chọn Bác sĩ và khung giờ phù hợp.\n` +
-        `• **Bước 2:** Quét mã QR thanh toán phí tư vấn **200.000 VNĐ** để hệ thống kích hoạt phòng khám trực tuyến.\n` +
+        `• **Bước 2:** Quét mã QR thanh toán phí tư vấn${trucTuyen ? ` **${vnd(trucTuyen.soTienCoc)}**` : ''} để hệ thống kích hoạt phòng khám trực tuyến.\n` +
         `• **Bước 3:** Đến giờ hẹn, đăng nhập vào cổng Bệnh nhân và bấm **"Vào phòng gọi Video"** để trao đổi trực tiếp 1-1 với Bác sĩ (hỗ trợ gửi hình ảnh kết quả xét nghiệm cũ, trò chuyện trực tiếp).\n` +
         `• **Bước 4:** Sau buổi khám, Bác sĩ sẽ **chẩn đoán và kê Đơn thuốc điện tử** gửi trực tiếp vào hồ sơ bệnh án của bạn.\n\n` +
-        `**3. Chính sách Hoàn tiền 100%:**\n` +
-        `• Nếu bạn bận đột xuất và hủy lịch trước giờ hẹn tối thiểu **2 tiếng**, phòng khám **hoàn trả 100% (200.000 VNĐ)** về tài khoản ngân hàng của bạn.`;
+        `**3. Chính sách Hoàn tiền:**\n` +
+        (trucTuyen
+          ? `• Nếu bạn bận đột xuất và hủy lịch trước giờ hẹn tối thiểu **${trucTuyen.thoiGianHuyHoanCocGio} giờ**, phòng khám **hoàn trả ${trucTuyen.phanTramHoanCoc}% số tiền đã thanh toán** về tài khoản ngân hàng của bạn.`
+          : `• Chính sách hoàn tiền ${PHI_DANG_CAP_NHAT}.`);
       luuYDungThuoc = 'Khi khám Online, bạn nên chuẩn bị sẵn danh sách các thuốc đang uống hoặc hình ảnh đơn thuốc/kết quả xét nghiệm gần nhất để Bác sĩ tư vấn chính xác nhất.';
       loiKhuyen = 'Bạn có thể bấm nút "Đặt lịch khám" ngay bên dưới để chọn Bác sĩ và khung giờ Khám Online phù hợp nhé!';
     }
@@ -890,17 +911,16 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
 
       const xnLines = xnList.length > 0
         ? xnList.map(d => `• **${d.tenDichVu}**: **${Number(d.gia || 0).toLocaleString('vi-VN')} VNĐ**${d.giaTriBinhThuong ? ` *(Chỉ số bình thường: ${d.giaTriBinhThuong} ${d.donViKetQua || ''})*` : ''}`).join('\n')
-        : `• **Tổng phân tích tế bào máu (CBC)**: **120.000 VNĐ**\n• **Đường huyết lúc đói (Glucose)**: **60.000 VNĐ**\n• **Bộ mỡ máu (Cholesterol, Triglyceride, HDL, LDL)**: **220.000 VNĐ**\n• **Chức năng Gan (AST, ALT)**: **100.000 VNĐ**\n• **Chức năng Thận (Ure, Creatinine)**: **100.000 VNĐ**\n• **Tổng phân tích nước tiểu**: **80.000 VNĐ**`;
+        : `• Bảng giá xét nghiệm ${PHI_DANG_CAP_NHAT}.`;
 
       const cdhaLines = cdhaList.length > 0
         ? cdhaList.map(d => `• **${d.tenDichVu}**: **${Number(d.gia || 0).toLocaleString('vi-VN')} VNĐ**`).join('\n')
-        : `• **Siêu âm ổ bụng tổng quát**: **180.000 VNĐ**\n• **Siêu âm tuyến giáp / Siêu âm tim**: **250.000 VNĐ**\n• **Chụp X-Quang tim phổi thẳng**: **150.000 VNĐ**\n• **Đo Điện tâm đồ (ECG)**: **100.000 VNĐ**`;
+        : `• Bảng giá chẩn đoán hình ảnh ${PHI_DANG_CAP_NHAT}.`;
 
       cauTraLoi = `📋 **BẢNG GIÁ NIÊM YẾT DỊCH VỤ KHÁM & XÉT NGHIỆM TẠI PHÒNG KHÁM:**\n\n` +
         `**1. Chi phí Khám lâm sàng & Khám Online (Telemedicine):**\n` +
-        `• **Khám trực tiếp tại phòng khám (Chuyên khoa / Nội tổng quát):** **150.000 VNĐ / lượt** *(Hỗ trợ BHYT chiết khấu 80%)*\n` +
-        `• **Phí đặt cọc giữ chỗ khám trực tiếp:** **40.000 VNĐ** *(Được **trừ trực tiếp** vào tổng hóa đơn viện phí khi đến khám)*\n` +
-        `• **Khám & Tư vấn Bác sĩ Online từ xa qua Video Call (Telemedicine):** **200.000 VNĐ / lượt trọn gói** *(Gọi Video 1-1 với Bác sĩ & nhận đơn thuốc điện tử)*\n\n` +
+        `• ${moTaPhiTrucTiep(trucTiep)}.\n` +
+        `• ${moTaPhiTrucTuyen(trucTuyen)} *(Gọi Video 1-1 với Bác sĩ & nhận đơn thuốc điện tử)*.\n\n` +
         `**2. Bảng giá Xét nghiệm Sinh hóa & Huyết học:**\n${xnLines}\n\n` +
         `**3. Bảng giá Chẩn đoán Hình ảnh & Thăm dò chức năng:**\n${cdhaLines}`;
       luuYDungThuoc = 'Lưu ý trước khi xét nghiệm: Đối với xét nghiệm Đường huyết, Mỡ máu, Chức năng Gan - Mật và Siêu âm ổ bụng, bạn nên nhịn ăn sáng từ 6 – 8 tiếng (chỉ uống nước lọc trắng) để kết quả chính xác tuyệt đối.';
@@ -929,7 +949,7 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
         `**Thời gian làm việc:**\n` +
         `• **Ca Sáng:** 07:30 – 11:30\n` +
         `• **Ca Chiều:** 13:30 – 17:00`;
-      loiKhuyen = 'Bạn có thể chọn chuyên khoa phù hợp để đặt lịch khám trực tiếp (150.000đ) hoặc tư vấn trực tuyến qua Video Call (200.000đ) cùng Bác sĩ.';
+      loiKhuyen = `Bạn có thể chọn chuyên khoa phù hợp để đặt lịch khám trực tiếp${trucTiep ? ` (${vnd(trucTiep.phiKhamMacDinh)})` : ''} hoặc tư vấn trực tuyến qua Video Call${trucTuyen ? ` (${vnd(trucTuyen.phiKhamMacDinh)})` : ''} cùng Bác sĩ.`;
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -1307,18 +1327,13 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
       loiKhuyen = 'Mặc quần áo mỏng thoáng cho bé, không ủ ấm quá kỹ khi bé đang sốt cao và chườm ấm vùng trán, nách, bẹn.';
     }
     else {
-      // Câu hỏi y tế tổng quát / Chào hỏi / Tư vấn sức khỏe chung
+      // Không khớp mẫu nào (thường do Gemini quá tải): báo thật thay vì đưa câu trả lời không liên quan
       khoa = 'Nội tổng quát'; maKhoa = 'NOI'; mucDo = 'trung_binh';
-      cauTraLoi = `🏥 **Chào bạn! Tôi là Bác Sĩ & Dược Sĩ AI của Phòng Khám Đa Khoa MediCare.**\n\n` +
-        `Để tôi tư vấn chính xác nhất về **bệnh lý, loại thuốc nên dùng và cách uống thuốc an toàn**, bạn có thể cho tôi biết cụ thể hơn:\n` +
-        `• **Triệu chứng hiện tại của bạn là gì?** (Ví dụ: sốt bao nhiêu độ, ho có đờm hay ho khan, đau bụng vùng nào, đau đầu, đau dạ dày, dị ứng da...)\n` +
-        `• **Hoặc tên loại thuốc / chỉ số xét nghiệm** bạn đang muốn hỏi cách sử dụng?\n\n` +
-        `**Một số nguyên tắc dùng thuốc cơ bản tại nhà:**\n` +
-        `• **Hạ sốt, giảm đau:** Dùng *Paracetamol 500mg* (cách 4–6 tiếng/lần, tối đa 4 lần/ngày).\n` +
-        `• **Thuốc giảm đau kháng viêm, kháng sinh:** Luôn uống **sau ăn no 15–30 phút** với nước lọc ấm.\n` +
-        `• **Thuốc dạ dày (nhóm Omeprazole):** Uống **trước ăn sáng 30 phút**; thuốc sữa dạ dày (*Phosphalugel*) uống sau ăn 1–2 giờ hoặc khi đau.${clinicMedNote}`;
-      luuYDungThuoc = 'Hãy mô tả triệu chứng hoặc tên thuốc bạn đang quan tâm, tôi sẽ hướng dẫn chi tiết liều dùng, thời điểm uống (trước/sau ăn) và chuyên khoa khám phù hợp nhất!';
-      loiKhuyen = 'Phòng khám làm việc tất cả các ngày trong tuần với đầy đủ 10 chuyên khoa và hệ thống xét nghiệm, chẩn đoán hình ảnh hiện đại.';
+      cauTraLoi = `⏳ **Trợ lý AI đang quá tải nên chưa phân tích được câu hỏi của bạn.**\n\n` +
+        `Vui lòng **gửi lại câu hỏi sau ít phút**, hoặc đặt lịch khám để bác sĩ tư vấn trực tiếp.\n\n` +
+        `🚨 **Cần đi khám hoặc gọi cấp cứu 115 ngay nếu có:** chảy máu nhiều (nôn ra máu, đi ngoài ra máu, ho ra máu), khó thở, đau ngực dữ dội, ngất xỉu, co giật, yếu liệt nửa người, sốt cao li bì.`;
+      luuYDungThuoc = null;
+      loiKhuyen = 'Không tự ý dùng thuốc khi chưa rõ nguyên nhân; nếu triệu chứng nặng lên hãy đến cơ sở y tế gần nhất.';
     }
 
     return {

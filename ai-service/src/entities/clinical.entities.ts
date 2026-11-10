@@ -121,6 +121,31 @@ export class LuotTiepNhan {
   trangThai: string;
 }
 
+// Biểu phí khám & tiền cọc do Ban Giám Đốc cấu hình (backend quản lý, ai-service chỉ đọc)
+@Entity('cau_hinh_tien_coc')
+export class CauHinhTienCoc {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column({ name: 'loai_hinh_thuc', length: 50 })
+  loaiHinhThuc: string;
+
+  @Column({ name: 'phi_kham_mac_dinh', type: 'decimal', precision: 12, scale: 2 })
+  phiKhamMacDinh: number;
+
+  @Column({ name: 'phan_tram_coc', type: 'int' })
+  phanTramCoc: number;
+
+  @Column({ name: 'so_tien_coc', type: 'decimal', precision: 12, scale: 2 })
+  soTienCoc: number;
+
+  @Column({ name: 'thoi_gian_huy_hoan_coc_gio', type: 'int' })
+  thoiGianHuyHoanCocGio: number;
+
+  @Column({ name: 'phan_tram_hoan_coc', type: 'int' })
+  phanTramHoanCoc: number;
+}
+
 @Entity('dich_vu_xet_nghiem')
 export class DichVuXetNghiem {
   @PrimaryGeneratedColumn()

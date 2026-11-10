@@ -18,6 +18,7 @@ import {
   Thuoc,
   BacSi,
   NhanVien,
+  CauHinhTienCoc,
 } from './entities/clinical.entities';
 
 const ENTITIES = [
@@ -34,6 +35,7 @@ const ENTITIES = [
   Thuoc,
   BacSi,
   NhanVien,
+  CauHinhTienCoc,
 ];
 
 @Module({
