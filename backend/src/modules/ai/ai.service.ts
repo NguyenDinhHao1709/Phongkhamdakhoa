@@ -4,7 +4,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 
 const AI_SERVICE_TIMEOUT_MS = 90000;
-const AI_SERVICE_MAX_RETRIES = 2;
+const AI_SERVICE_WAKE_WINDOW_MS = 75000; // Render free cold start mất ~20-60s, frontend chờ tối đa 90s
 const AI_SERVICE_RETRY_DELAY_MS = 5000;
 
 /**
@@ -43,6 +43,7 @@ export class AiService {
     path: string,
     options: { data?: any; params?: Record<string, any>; headers?: Record<string, string> } = {},
   ): Promise<T> {
+    const startedAt = Date.now();
     for (let attempt = 0; ; attempt++) {
       try {
         const response = await firstValueFrom(
@@ -58,7 +59,7 @@ export class AiService {
         // Render free tier trả 502/503/504 hoặc từ chối kết nối khi AI service đang cold start / redeploy
         const status = err.response?.status;
         const isWakingUp = [502, 503, 504].includes(status) || ['ECONNREFUSED', 'ECONNRESET'].includes(err.code);
-        if (isWakingUp && attempt < AI_SERVICE_MAX_RETRIES) {
+        if (isWakingUp && Date.now() - startedAt + AI_SERVICE_RETRY_DELAY_MS < AI_SERVICE_WAKE_WINDOW_MS) {
           this.logger.warn(`[AI Gateway ${method} /${path}] ${err.message} — thử lại lần ${attempt + 1}`);
           await new Promise((resolve) => setTimeout(resolve, AI_SERVICE_RETRY_DELAY_MS));
           continue;
