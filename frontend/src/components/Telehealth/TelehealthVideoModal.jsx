@@ -408,6 +408,15 @@ export default function TelehealthVideoModal({
           handleIncomingSignal(data.signal);
         });
 
+        // Lịch sử chat của phòng (khi vào lại sau khi lỡ thoát) — bỏ qua tin đã có theo id
+        socket.on('call:chat_history', (history) => {
+          setInCallMessages((prev) => {
+            const ids = new Set(prev.map((m) => m.id));
+            const missing = history.filter((m) => !ids.has(m.id));
+            return missing.length ? [...prev, ...missing] : prev;
+          });
+        });
+
         socket.on('call:peer_left', () => {
           webrtcConnectedRef.current = false;
           peerJoinedAtRef.current = 0;

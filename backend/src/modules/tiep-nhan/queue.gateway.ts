@@ -17,6 +17,19 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private logger = new Logger('QueueGateway');
 
+  // Lịch sử chat trong cuộc gọi theo phòng (RAM) để thoát ra vào lại vẫn còn tin nhắn
+  private callChatHistory = new Map<string, { messages: any[]; timer: NodeJS.Timeout }>();
+  private static readonly CHAT_HISTORY_LIMIT = 100;
+  private static readonly CHAT_HISTORY_TTL = 2 * 60 * 60 * 1000; // xóa sau 2 giờ không có tin mới
+
+  private saveCallChat(roomId: string, message: any) {
+    const entry = this.callChatHistory.get(roomId);
+    if (entry) clearTimeout(entry.timer);
+    const messages = [...(entry?.messages || []), message].slice(-QueueGateway.CHAT_HISTORY_LIMIT);
+    const timer = setTimeout(() => this.callChatHistory.delete(roomId), QueueGateway.CHAT_HISTORY_TTL);
+    this.callChatHistory.set(roomId, { messages, timer });
+  }
+
   constructor(
     @InjectRepository(LichHen)
     private readonly lichHenRepo: Repository<LichHen>,
@@ -142,6 +155,9 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`Client ${client.id} (${payload.role} - ${payload.userName}) joined call room ${room}`);
     client.to(room).emit('call:peer_joined', { peerId: client.id, role: payload.role, userName: payload.userName });
 
+    const history = this.callChatHistory.get(String(payload.roomId))?.messages;
+    if (history?.length) client.emit('call:chat_history', history);
+
     // Nếu trong phòng đã có người đợi sẵn, báo ngược lại ngay cho người vừa vào biết để bắt tay WebRTC tức thì
     const roomMembers = this.server?.sockets?.adapter?.rooms?.get(room);
     if (roomMembers && roomMembers.size > 1) {
@@ -160,6 +176,9 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // Tự động đưa client vào lại room nếu vừa reconnect để không làm đứt luồng WebRTC
     if (!client.rooms.has(room)) {
       client.join(room);
+    }
+    if (payload.signal?.type === 'chat_msg' && payload.signal.message) {
+      this.saveCallChat(String(payload.roomId), payload.signal.message);
     }
     if (payload.targetPeerId) {
       this.server.to(payload.targetPeerId).emit('call:signal', { sender: client.id, signal: payload.signal, role: payload.role });
