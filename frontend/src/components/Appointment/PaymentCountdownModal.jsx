@@ -264,9 +264,7 @@ export default function PaymentCountdownModal({
                 </p>
               </div>
 
-              {displayBin === '970422' && (
-                <BankAppLinks accountNo={vaAccountNumber} bankCode="mb" amount={displayAmount} content={displayDesc} accountName={displayAccountName} />
-              )}
+              <BankAppLinks accountNo={vaAccountNumber} bank={displayBin} amount={displayAmount} content={displayDesc} accountName={displayAccountName} />
 
               {/* Chi tiết tài khoản ngân hàng */}
               <div className="bg-gray-50 rounded-2xl p-3.5 border border-gray-200 text-xs space-y-2">

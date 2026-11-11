@@ -341,7 +341,7 @@ export default function ThanhToanVienPhiModal({
                   </span>
                 </div>
 
-                <BankAppLinks accountNo={BANK_INFO.accountNo} bankCode="mb" amount={thucThu} content={noiDungCK} accountName={BANK_INFO.accountName} />
+                <BankAppLinks accountNo={BANK_INFO.accountNo} bank={BANK_INFO.bankId} amount={thucThu} content={noiDungCK} accountName={BANK_INFO.accountName} />
 
                 {/* Thông tin chuyển khoản chi tiết */}
                 <div className="space-y-2.5 text-xs">
