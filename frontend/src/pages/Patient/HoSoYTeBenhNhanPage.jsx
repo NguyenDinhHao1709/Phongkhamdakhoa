@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet } from '../../services/api';
 import { formatDateTime, formatDate } from '../../utils/formatDate';
 import { formatCurrency } from '../../utils/formatCurrency';
+import { tamUngCuaHoaDon } from '../../utils/hoaDon';
 import {
   FileText, Activity, Pill, FlaskConical, Stethoscope, User, AlertTriangle, Clock,
   Printer, ExternalLink, Eye, CheckCircle2, CreditCard, Search, Calendar,
@@ -519,9 +520,15 @@ export default function HoSoYTeBenhNhanPage() {
                           : 'bg-amber-50 text-amber-800 border-amber-200'
                       }`}>
                         <CreditCard className="h-3 w-3" />
-                        {item.hoaDon.trangThai === 'da_thanh_toan'
-                          ? `Đã thanh toán ${formatCurrency(item.hoaDon.thucThu)}`
-                          : `Chờ thanh toán viện phí (${formatCurrency(item.hoaDon.conLai ?? item.hoaDon.tongTien)})`}
+                        {(() => {
+                          // Chi phí lần khám = viện phí − BHYT; thucThu chỉ là phần thu thêm sau khi trừ tạm ứng/cọc
+                          const hd = item.hoaDon;
+                          const tamUng = tamUngCuaHoaDon(hd);
+                          const ghiChuTamUng = tamUng > 0 ? ` (gồm tạm ứng ${formatCurrency(tamUng)})` : '';
+                          return hd.trangThai === 'da_thanh_toan'
+                            ? `Đã thanh toán ${formatCurrency(hd.tongTien - hd.soTienGiam)}${ghiChuTamUng}`
+                            : `Chờ thanh toán viện phí (${formatCurrency(hd.thucThu)})${ghiChuTamUng}`;
+                        })()}
                       </span>
                     )}
                   </div>
@@ -983,7 +990,13 @@ export default function HoSoYTeBenhNhanPage() {
                         <span className="font-medium">- {formatCurrency(item.hoaDon.soTienGiam)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between font-bold text-gray-900 text-sm pt-1 border-t border-gray-200">
+                    {tamUngCuaHoaDon(item.hoaDon) > 0 && (
+                  <div className="flex justify-between text-blue-700">
+                    <span>Đã tạm ứng / cọc:</span>
+                    <span className="font-medium">- {formatCurrency(tamUngCuaHoaDon(item.hoaDon))}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-gray-900 text-sm pt-1 border-t border-gray-200">
                       <span>Số tiền thực thu:</span>
                       <span className="text-primary-600 font-bold">{formatCurrency(item.hoaDon.thucThu)}</span>
                     </div>

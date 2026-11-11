@@ -5,6 +5,7 @@ import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge
 import { apiGet } from '../../../services/api';
 import { formatDateTime, formatDate, tinhTuoi } from '../../../utils/formatDate';
 import { formatCurrency } from '../../../utils/formatCurrency';
+import { tamUngCuaHoaDon } from '../../../utils/hoaDon';
 import {
   ClipboardList, Search, User, FileText, Activity, FlaskConical, Pill, Calendar,
   Clock, Printer, ExternalLink, Eye, CheckCircle2, CreditCard, ChevronDown,
@@ -652,7 +653,7 @@ export default function HoSoBenhAnQuanLyPage() {
                                 }`}>
                                   <CreditCard className="h-3 w-3" />
                                   {hs.hoaDon.trangThai === 'da_thanh_toan'
-                                    ? `Viện phí: ${formatCurrency(hs.hoaDon.thucThu)}`
+                                    ? `Viện phí: ${formatCurrency(hs.hoaDon.tongTien - hs.hoaDon.soTienGiam)}`
                                     : 'Chờ thanh toán'}
                                 </span>
                               )}
@@ -1083,7 +1084,13 @@ export default function HoSoBenhAnQuanLyPage() {
                                     <span className="font-medium">- {formatCurrency(hs.hoaDon.soTienGiam)}</span>
                                   </div>
                                 )}
-                                <div className="flex justify-between font-bold text-gray-900 text-sm pt-1 border-t border-gray-200">
+                                {tamUngCuaHoaDon(hs.hoaDon) > 0 && (
+                  <div className="flex justify-between text-blue-700">
+                    <span>Đã tạm ứng / cọc:</span>
+                    <span className="font-medium">- {formatCurrency(tamUngCuaHoaDon(hs.hoaDon))}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-gray-900 text-sm pt-1 border-t border-gray-200">
                                   <span>Số tiền thực thu:</span>
                                   <span className="text-primary-600 font-bold">{formatCurrency(hs.hoaDon.thucThu)}</span>
                                 </div>
