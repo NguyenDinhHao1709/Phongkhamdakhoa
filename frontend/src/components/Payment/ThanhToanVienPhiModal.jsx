@@ -20,6 +20,7 @@ import {
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDateTime } from '../../utils/formatDate';
 import { apiGet, apiPatch } from '../../services/api';
+import BankAppLinks from './BankAppLinks';
 
 /**
  * Modal Thanh toán Viện phí Đa phương thức chuẩn ERP Y tế
@@ -339,6 +340,8 @@ export default function ThanhToanVienPhiModal({
                     <ShieldCheck className="h-3.5 w-3.5" /> Quét bằng bất kỳ App Ngân hàng
                   </span>
                 </div>
+
+                <BankAppLinks accountNo={BANK_INFO.accountNo} bankCode="mb" amount={thucThu} content={noiDungCK} accountName={BANK_INFO.accountName} />
 
                 {/* Thông tin chuyển khoản chi tiết */}
                 <div className="space-y-2.5 text-xs">

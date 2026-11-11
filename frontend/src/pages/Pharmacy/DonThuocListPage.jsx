@@ -83,8 +83,9 @@ export default function DonThuocListPage() {
 
     return list.filter((item) => {
       // 1. Trạng thái cấp phát
-      if (filterStatus === 'cho_cap_phat' && item.trangThai === 'da_cap_phat') return false;
+      if (filterStatus === 'cho_cap_phat' && (item.trangThai === 'da_cap_phat' || item.luaChonMua === 'mua_ngoai')) return false;
       if (filterStatus === 'da_cap_phat' && item.trangThai !== 'da_cap_phat') return false;
+      if (filterStatus === 'mua_ngoai' && item.luaChonMua !== 'mua_ngoai') return false;
 
       // 2. Trạng thái viện phí
       const isPaid = item.trangThaiThanhToan === 'da_thanh_toan';
@@ -142,11 +143,12 @@ export default function DonThuocListPage() {
   // Thống kê nhanh
   const stats = useMemo(() => {
     const total = list.length;
-    const pending = list.filter((i) => i.trangThai !== 'da_cap_phat').length;
+    const pending = list.filter((i) => i.trangThai !== 'da_cap_phat' && i.luaChonMua !== 'mua_ngoai').length;
     const completed = list.filter((i) => i.trangThai === 'da_cap_phat').length;
+    const outside = list.filter((i) => i.luaChonMua === 'mua_ngoai').length;
     const paid = list.filter((i) => i.trangThaiThanhToan === 'da_thanh_toan').length;
     const unpaid = total - paid;
-    return { total, pending, completed, paid, unpaid };
+    return { total, pending, completed, outside, paid, unpaid };
   }, [list]);
 
   const hasActiveFilters =
@@ -402,6 +404,7 @@ export default function DonThuocListPage() {
               { key: 'all', label: 'Tất cả', count: stats.total },
               { key: 'cho_cap_phat', label: 'Chờ cấp phát', count: stats.pending, isWarning: true },
               { key: 'da_cap_phat', label: 'Đã cấp phát', count: stats.completed, isSuccess: true },
+              { key: 'mua_ngoai', label: 'Mua ngoài', count: stats.outside },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -710,15 +713,17 @@ export default function DonThuocListPage() {
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${
                             isDispensed
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : isOutsidePurchase
+                              ? 'bg-gray-100 text-gray-600 border-gray-200'
                               : 'bg-amber-50 text-amber-800 border-amber-200'
                           }`}
                         >
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
-                              isDispensed ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'
+                              isDispensed ? 'bg-emerald-500' : isOutsidePurchase ? 'bg-gray-400' : 'bg-amber-500 animate-pulse'
                             }`}
                           />
-                          <span>{isDispensed ? 'Đã cấp phát' : 'Chờ cấp phát'}</span>
+                          <span>{isDispensed ? 'Đã cấp phát' : isOutsidePurchase ? 'Mua ngoài – không cấp phát' : 'Chờ cấp phát'}</span>
                         </span>
                         {dt.maPhieuNhanThuoc && (
                           <div className="mt-1 text-[10px] font-semibold text-emerald-700">

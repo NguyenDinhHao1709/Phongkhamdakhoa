@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { apiGet, apiPost, apiPatch } from '../../services/api';
+import BankAppLinks from '../Payment/BankAppLinks';
 
 export default function PaymentCountdownModal({
   lichHenId,
@@ -262,6 +263,10 @@ export default function PaymentCountdownModal({
                   Mở app ngân hàng quét mã QR để thanh toán chính xác 100%
                 </p>
               </div>
+
+              {displayBin === '970422' && (
+                <BankAppLinks accountNo={vaAccountNumber} bankCode="mb" amount={displayAmount} content={displayDesc} accountName={displayAccountName} />
+              )}
 
               {/* Chi tiết tài khoản ngân hàng */}
               <div className="bg-gray-50 rounded-2xl p-3.5 border border-gray-200 text-xs space-y-2">

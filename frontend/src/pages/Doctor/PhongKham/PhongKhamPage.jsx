@@ -507,6 +507,29 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
     }
   };
 
+  // Chỉ định CLS cần có phiếu khám: tự tạo nếu chưa có rồi mới mở modal
+  const handleOpenChiDinh = async () => {
+    let currentId = benhAnId || bakData?.data?.id;
+    if (!currentId) currentId = await handleBatDauKham();
+    if (!currentId) {
+      try {
+        const res = await apiPost(`/ho-so-benh-an/benh-an-kham/${bn.id}`, {
+          luotTiepNhanId: luot.id,
+          hinhThucKham: 'truc_tiep',
+        });
+        currentId = res?.data?.id || res?.id;
+      } catch (e) {
+        console.error('Không thể tạo phiếu khám:', e);
+      }
+    }
+    if (!currentId) {
+      alert('Không tạo được phiếu khám để chỉ định xét nghiệm. Vui lòng thử lại.');
+      return;
+    }
+    setBenhAnId(currentId);
+    setShowChiDinhModal(true);
+  };
+
   const TABS = [
     { key: 'kham', label: 'Khám lâm sàng', icon: Stethoscope },
     { key: 'xn', label: 'Xét nghiệm & CLS', icon: FlaskConical },
@@ -581,27 +604,7 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
               variant="secondary"
               size="sm"
               leftIcon={<FlaskConical className="h-4 w-4 text-purple-600" />}
-              onClick={async () => {
-                let currentId = activeBenhAnId;
-                if (!currentId) {
-                  currentId = await handleBatDauKham();
-                }
-                if (!currentId) {
-                  try {
-                    const res = await apiPost(`/ho-so-benh-an/benh-an-kham/${bn.id}`, {
-                      luotTiepNhanId: luot.id,
-                      hinhThucKham: 'truc_tiep',
-                    });
-                    currentId = res?.data?.id || res?.id;
-                  } catch (e) {
-                    console.error('Không thể tạo phiếu khám:', e);
-                  }
-                }
-                if (currentId) {
-                  setBenhAnId(currentId);
-                }
-                setShowChiDinhModal(true);
-              }}
+              onClick={handleOpenChiDinh}
             >
               + Chỉ định cận lâm sàng
             </MedButton>
@@ -854,7 +857,7 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
           <div className={tab === 'xn' ? 'block' : 'hidden'}>
             <XetNghiemTab
               benhAnKhamId={activeBenhAnId}
-              onOpenModal={() => setShowChiDinhModal(true)}
+              onOpenModal={handleOpenChiDinh}
               onApplyLabConclusion={(conclusionText) => {
                 setForm((prev) => ({
                   ...prev,

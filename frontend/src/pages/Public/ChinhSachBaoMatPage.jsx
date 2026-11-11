@@ -79,7 +79,7 @@ export default function ChinhSachBaoMatPage() {
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-6">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary-500/10 border border-primary-400/20 text-primary-300 text-xs font-bold tracking-wide">
             <ShieldCheck className="h-4 w-4 text-emerald-400" />
-            <span>QUY CHUẨN AN TOÀN & BẢO VỆ DỮ LIỆU Y TẾ</span>
+            <span>{policy.nhanHero}</span>
           </div>
 
           <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight max-w-4xl leading-tight">
@@ -173,7 +173,7 @@ export default function ChinhSachBaoMatPage() {
                   href="#thong-tin-lien-he"
                   className="block px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
                 >
-                  6. Thông tin liên hệ Ban bảo vệ dữ liệu (DPO)
+                  {sections.length + 1}. {policy.tieuDeMucLienHe}
                 </a>
               </nav>
             </div>
@@ -182,10 +182,10 @@ export default function ChinhSachBaoMatPage() {
             <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200/80 p-5 space-y-3">
               <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs uppercase">
                 <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                <span>Hỗ Trợ Quyền Riêng Tư 24/7</span>
+                <span>{policy.hoTroTieuDe}</span>
               </div>
               <p className="text-xs text-emerald-800 leading-relaxed">
-                Người bệnh có quyền gửi yêu cầu giải trình, cập nhật hoặc thu hồi dữ liệu bất cứ lúc nào.
+                {policy.hoTroMoTa}
               </p>
               <div className="pt-1 text-xs space-y-1.5 text-emerald-900 font-semibold">
                 <div className="flex items-center gap-2">
@@ -243,15 +243,15 @@ export default function ChinhSachBaoMatPage() {
             >
               <div className="flex items-center gap-3">
                 <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 text-xs font-black">
-                  6
+                  {sections.length + 1}
                 </span>
                 <h2 className="text-lg sm:text-xl font-extrabold text-white">
-                  Đơn Vị Phụ Trách & Tiếp Nhận Yêu Cầu Dữ Liệu Cá Nhân
+                  {policy.tieuDeMucLienHe}
                 </h2>
               </div>
 
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                Mọi thắc mắc, phản ánh liên quan đến chính sách bảo mật hoặc yêu cầu thực thi quyền của chủ thể dữ liệu (trích xuất sao y bệnh án, khiếu nại, cải chính thông tin), xin vui lòng liên hệ:
+                {policy.moTaMucLienHe}
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">

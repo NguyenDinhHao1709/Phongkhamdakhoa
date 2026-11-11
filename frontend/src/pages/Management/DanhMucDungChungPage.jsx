@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Layers, Building2, DoorOpen, Search, RefreshCw, CheckCircle2,
-  AlertCircle, Plus, Edit2, Trash2, X, Check, Filter, Stethoscope,
+  AlertCircle, Plus, Edit2, Trash2, X, Filter, Stethoscope,
   MapPin, ShieldAlert, Activity, Users, Info, Building, PhoneCall,
-  Clock, ShieldCheck, Mail, HeartPulse, Save, Sparkles, Eye, Pill, Tag, RotateCcw, ExternalLink, FileText
+  Clock, ShieldCheck, Mail, HeartPulse, Save, Sparkles, Eye, Pill, Tag, RotateCcw, ExternalLink, FileText, ChevronUp, ChevronDown
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '../../services/api';
 import useHospitalStore from '../../store/hospitalStore';
@@ -37,6 +37,11 @@ const DEFAULT_HOSPITAL_INFO = {
   chinhSachBaoMat: {
     tieuDeTrang: 'Chính Sách Bảo Mật & Bảo Vệ Dữ Liệu Y Tế Cá Nhân',
     ngayCapNhat: '05/11/2026',
+    nhanHero: 'QUY CHUẨN AN TOÀN & BẢO VỆ DỮ LIỆU Y TẾ',
+    tieuDeMucLienHe: 'Đơn Vị Phụ Trách & Tiếp Nhận Yêu Cầu Dữ Liệu Cá Nhân',
+    moTaMucLienHe: 'Mọi thắc mắc, phản ánh liên quan đến chính sách bảo mật hoặc yêu cầu thực thi quyền của chủ thể dữ liệu (trích xuất sao y bệnh án, khiếu nại, cải chính thông tin), xin vui lòng liên hệ:',
+    hoTroTieuDe: 'Hỗ Trợ Quyền Riêng Tư 24/7',
+    hoTroMoTa: 'Người bệnh có quyền gửi yêu cầu giải trình, cập nhật hoặc thu hồi dữ liệu bất cứ lúc nào.',
     moTaMoDau: 'Phòng khám cam kết bảo vệ tuyệt đối thông tin sức khỏe, hồ sơ bệnh án điện tử (EMR) và quyền riêng tư của mọi bệnh nhân theo chuẩn Nghị định 13/2023/NĐ-CP và Luật Khám bệnh, chữa bệnh.',
     tieuChuanTuanThu: [
       'Nghị định 13/2023/NĐ-CP',
@@ -169,10 +174,6 @@ export default function DanhMucDungChungPage() {
   const [savingDuoc, setSavingDuoc] = useState(false);
 
   // Tab: Mẫu Lời Dặn Bác Sĩ State
-  const [loiDanList, setLoiDanList] = useState([]);
-  const [modalLoiDan, setModalLoiDan] = useState({ open: false, mode: 'create', data: null });
-  const [loiDanForm, setLoiDanForm] = useState({ tieuDe: '', noiDung: '' });
-  const [savingLoiDan, setSavingLoiDan] = useState(false);
 
   const showToast = (type, message) => {
     setToast({ type, message });
@@ -201,7 +202,12 @@ export default function DanhMucDungChungPage() {
     try {
       const res = await apiGet('/quan-ly/thong-tin-benh-vien');
       const info = res?.data || res || DEFAULT_HOSPITAL_INFO;
-      const merged = { ...DEFAULT_HOSPITAL_INFO, ...info };
+      // Gộp sâu chinhSachBaoMat để dữ liệu đã lưu trước đây vẫn có các trường mặc định mới
+      const merged = {
+        ...DEFAULT_HOSPITAL_INFO,
+        ...info,
+        chinhSachBaoMat: { ...DEFAULT_HOSPITAL_INFO.chinhSachBaoMat, ...(info.chinhSachBaoMat || {}) },
+      };
       setHospitalInfo(merged);
       setDichVuText(Array.isArray(merged.dichVuNoiBat) ? merged.dichVuNoiBat.join('\n') : '');
     } catch (err) {
@@ -231,22 +237,11 @@ export default function DanhMucDungChungPage() {
     }
   };
 
-  const fetchMauLoiDan = async () => {
-    try {
-      const res = await apiGet('/quan-ly/mau-loi-dan');
-      const d = res?.data || res;
-      if (Array.isArray(d)) setLoiDanList(d);
-    } catch (err) {
-      console.error('Lỗi tải mẫu lời dặn:', err);
-    }
-  };
-
   useEffect(() => {
     fetchDanhMuc();
     fetchHospitalInfo();
     fetchChuyenKhoas();
     fetchDanhMucDuoc();
-    fetchMauLoiDan();
   }, []);
 
   // ─── CHUYÊN KHOA Y TẾ ACTIONS ─────────────────────────────────
@@ -428,56 +423,6 @@ export default function DanhMucDungChungPage() {
     }
   };
 
-  // ─── MẪU LỜI DẶN BÁC SĨ ACTIONS ───────────────────────────────
-  const handleOpenCreateLoiDan = () => {
-    setLoiDanForm({ tieuDe: '', noiDung: '' });
-    setModalLoiDan({ open: true, mode: 'create', data: null });
-  };
-
-  const handleOpenEditLoiDan = (ld) => {
-    setLoiDanForm({ tieuDe: ld.tieuDe || '', noiDung: ld.noiDung || '' });
-    setModalLoiDan({ open: true, mode: 'edit', data: ld });
-  };
-
-  const handleSubmitLoiDan = async (e) => {
-    e.preventDefault();
-    if (!loiDanForm.tieuDe.trim() || !loiDanForm.noiDung.trim()) {
-      showToast('error', 'Vui lòng nhập đầy đủ tiêu đề và nội dung lời dặn');
-      return;
-    }
-    setSavingLoiDan(true);
-    try {
-      let nextList = [];
-      if (modalLoiDan.mode === 'create') {
-        nextList = [...loiDanList, { id: Date.now(), tieuDe: loiDanForm.tieuDe.trim(), noiDung: loiDanForm.noiDung.trim() }];
-      } else {
-        nextList = loiDanList.map(ld =>
-          ld.id === modalLoiDan.data.id ? { ...ld, tieuDe: loiDanForm.tieuDe.trim(), noiDung: loiDanForm.noiDung.trim() } : ld
-        );
-      }
-      await apiPut('/quan-ly/mau-loi-dan', nextList);
-      setLoiDanList(nextList);
-      showToast('success', modalLoiDan.mode === 'create' ? 'Thêm mẫu lời dặn thành công!' : 'Cập nhật mẫu lời dặn thành công!');
-      setModalLoiDan({ open: false, mode: 'create', data: null });
-    } catch (err) {
-      showToast('error', 'Lỗi lưu mẫu lời dặn');
-    } finally {
-      setSavingLoiDan(false);
-    }
-  };
-
-  const handleDeleteLoiDan = async (ld) => {
-    if (!window.confirm(`Xóa mẫu lời dặn "${ld.tieuDe}"?`)) return;
-    const nextList = loiDanList.filter(item => item.id !== ld.id);
-    try {
-      await apiPut('/quan-ly/mau-loi-dan', nextList);
-      setLoiDanList(nextList);
-      showToast('success', 'Đã xóa mẫu lời dặn');
-    } catch (err) {
-      showToast('error', 'Không thể xóa mẫu lời dặn');
-    }
-  };
-
   // ─── KHOA / PHÒNG BAN ACTIONS ─────────────────────────────────
   const handleOpenCreatePB = () => {
     setPbForm({ tenPhongBan: '', moTa: '' });
@@ -606,6 +551,19 @@ export default function DanhMucDungChungPage() {
   };
 
   // ─── THÔNG TIN BỆNH VIỆN SUBMIT ──────────────────────────────
+  const policy = hospitalInfo.chinhSachBaoMat || {};
+  const updatePolicy = (patch) => setHospitalInfo({ ...hospitalInfo, chinhSachBaoMat: { ...policy, ...patch } });
+  const updatePolicyItem = (key, idx, patch) =>
+    updatePolicy({ [key]: (policy[key] || []).map((it, i) => (i === idx ? { ...it, ...patch } : it)) });
+  const removePolicyItem = (key, idx) => updatePolicy({ [key]: (policy[key] || []).filter((_, i) => i !== idx) });
+  const moveDieuKhoan = (idx, dir) => {
+    const list = [...(policy.danhSachDieuKhoan || [])];
+    const j = idx + dir;
+    if (j < 0 || j >= list.length) return;
+    [list[idx], list[j]] = [list[j], list[idx]];
+    updatePolicy({ danhSachDieuKhoan: list });
+  };
+
   const handleSaveHospitalInfo = async (e) => {
     e.preventDefault();
     setSavingHospital(true);
@@ -618,6 +576,15 @@ export default function DanhMucDungChungPage() {
       const payload = {
         ...hospitalInfo,
         dichVuNoiBat: dvList,
+        chinhSachBaoMat: {
+          ...policy,
+          tieuChuanTuanThu: (policy.tieuChuanTuanThu || []).map(b => b.trim()).filter(Boolean),
+          danhSachDieuKhoan: (policy.danhSachDieuKhoan || []).map((dk, i) => ({
+            ...dk,
+            id: dk.id || `dieu-khoan-${i + 1}`,
+            danhSachChiTiet: (dk.danhSachChiTiet || []).map(x => x.trim()).filter(Boolean),
+          })),
+        },
       };
 
       await apiPut('/quan-ly/thong-tin-benh-vien', payload);
@@ -671,23 +638,11 @@ export default function DanhMucDungChungPage() {
     });
   }, [chuyenKhoas, searchTerm]);
 
-  const filteredLoiDan = useMemo(() => {
-    return (loiDanList || []).filter(ld => {
-      if (!searchTerm) return true;
-      const term = searchTerm.toLowerCase();
-      return (
-        ld.tieuDe?.toLowerCase().includes(term) ||
-        ld.noiDung?.toLowerCase().includes(term)
-      );
-    });
-  }, [loiDanList, searchTerm]);
-
   const tabs = [
     { id: 'phong_ban', label: 'Khoa / Phòng Ban', icon: Building2, count: data.phongBans?.length || 0 },
     { id: 'phong_kham', label: 'Phòng Khám Thực Tế', icon: DoorOpen, count: data.phongKhams?.length || 0 },
     { id: 'chuyen_khoa', label: 'Chuyên Khoa Y Tế', icon: Stethoscope, count: chuyenKhoas?.length || 0 },
     { id: 'danh_muc_duoc', label: 'Dược & Đơn Vị Tính', icon: Pill, badge: `${duocConfig.donViTinh?.length || 0} ĐVT` },
-    { id: 'mau_loi_dan', label: 'Mẫu Lời Dặn Bác Sĩ', icon: HeartPulse, count: loiDanList?.length || 0 },
     { id: 'thong_tin_benh_vien', label: 'Thông Tin Bệnh Viện', icon: Building, badge: 'Footer & Liên hệ' },
     { id: 'chinh_sach_bao_mat', label: 'Chính Sách & Bảo Mật Dữ Liệu', icon: ShieldCheck, badge: 'NĐ 13 / EMR' },
   ];
@@ -726,7 +681,7 @@ export default function DanhMucDungChungPage() {
 
         <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0">
           <button
-            onClick={() => { fetchDanhMuc(); fetchHospitalInfo(); fetchChuyenKhoas(); fetchDanhMucDuoc(); fetchMauLoiDan(); }}
+            onClick={() => { fetchDanhMuc(); fetchHospitalInfo(); fetchChuyenKhoas(); fetchDanhMucDuoc(); }}
             className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Làm mới
@@ -777,15 +732,6 @@ export default function DanhMucDungChungPage() {
             >
               <Save className="h-4 w-4" />
               <span>{savingDuoc ? 'Đang lưu...' : 'Lưu Danh Mục Dược'}</span>
-            </button>
-          )}
-
-          {activeTab === 'mau_loi_dan' && (
-            <button
-              onClick={handleOpenCreateLoiDan}
-              className="px-3.5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="h-4 w-4" /> Thêm Mẫu Lời Dặn
             </button>
           )}
 
@@ -856,7 +802,7 @@ export default function DanhMucDungChungPage() {
       </div>
 
       {/* ─── TAB 1 & TAB 2 CONTROLS ───────────────────────────────── */}
-      {(activeTab === 'phong_ban' || activeTab === 'phong_kham' || activeTab === 'chuyen_khoa' || activeTab === 'mau_loi_dan') && (
+      {(activeTab === 'phong_ban' || activeTab === 'phong_kham' || activeTab === 'chuyen_khoa') && (
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -869,9 +815,7 @@ export default function DanhMucDungChungPage() {
                 ? 'Tìm tên khoa, phòng ban, mô tả...'
                 : activeTab === 'phong_kham'
                 ? 'Tìm tên phòng, chuyên khoa, vị trí...'
-                : activeTab === 'chuyen_khoa'
-                ? 'Tìm mã, tên hoặc mô tả chuyên khoa...'
-                : 'Tìm tiêu đề hoặc nội dung lời dặn...'
+                : 'Tìm mã, tên hoặc mô tả chuyên khoa...'
             }
               className="w-full rounded-xl border border-gray-200 pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
             />
@@ -1372,6 +1316,18 @@ export default function DanhMucDungChungPage() {
 
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Nhãn Đầu Trang
+                    </label>
+                    <input
+                      type="text"
+                      value={policy.nhanHero || ''}
+                      onChange={(e) => updatePolicy({ nhanHero: e.target.value })}
+                      className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
                       Đoạn Mô Tả Cam Kết Mở Đầu <span className="text-rose-500">*</span>
                     </label>
                     <textarea
@@ -1393,21 +1349,31 @@ export default function DanhMucDungChungPage() {
                     <label className="block text-xs font-bold text-gray-700 mb-1.5">
                       Tiêu Chuẩn Pháp Lý & Kỹ Thuật Tuân Thủ
                     </label>
-                    <div className="flex flex-wrap gap-2">
-                      {(hospitalInfo.chinhSachBaoMat?.tieuChuanTuanThu || [
-                        'Nghị định 13/2023/NĐ-CP',
-                        'Luật Khám bệnh, chữa bệnh 2023',
-                        'Thông tư 54/2017/TT-BYT',
-                        'Mã hóa AES-256 & TLS 1.3',
-                      ]).map((badge, idx) => (
-                        <span
-                          key={idx}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold"
-                        >
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>{badge}</span>
-                        </span>
+                    <div className="space-y-2">
+                      {(policy.tieuChuanTuanThu || []).map((badge, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={badge}
+                            onChange={(e) => updatePolicy({ tieuChuanTuanThu: policy.tieuChuanTuanThu.map((b, i) => (i === idx ? e.target.value : b)) })}
+                            className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updatePolicy({ tieuChuanTuanThu: policy.tieuChuanTuanThu.filter((_, i) => i !== idx) })}
+                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       ))}
+                      <button
+                        type="button"
+                        onClick={() => updatePolicy({ tieuChuanTuanThu: [...(policy.tieuChuanTuanThu || []), ''] })}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:text-emerald-800 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Thêm tiêu chuẩn
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1513,6 +1479,51 @@ export default function DanhMucDungChungPage() {
                       className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Tiêu Đề Mục Liên Hệ (cuối trang công khai)
+                    </label>
+                    <input
+                      type="text"
+                      value={policy.tieuDeMucLienHe || ''}
+                      onChange={(e) => updatePolicy({ tieuDeMucLienHe: e.target.value })}
+                      className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Đoạn Dẫn Mục Liên Hệ
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={policy.moTaMucLienHe || ''}
+                      onChange={(e) => updatePolicy({ moTaMucLienHe: e.target.value })}
+                      className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed resize-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Tiêu Đề Hộp Hỗ Trợ (cột trái trang công khai)
+                    </label>
+                    <input
+                      type="text"
+                      value={policy.hoTroTieuDe || ''}
+                      onChange={(e) => updatePolicy({ hoTroTieuDe: e.target.value })}
+                      className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Nội Dung Hộp Hỗ Trợ
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={policy.hoTroMoTa || ''}
+                      onChange={(e) => updatePolicy({ hoTroMoTa: e.target.value })}
+                      className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed resize-none"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1528,19 +1539,22 @@ export default function DanhMucDungChungPage() {
                   </h4>
                 </div>
 
-                {(hospitalInfo.chinhSachBaoMat?.camKetCotLoi || [
-                  { tieuDe: 'Bảo mật Bệnh án Điện tử (EMR)', moTa: 'Dữ liệu chẩn đoán, toa thuốc và cận lâm sàng được lưu trữ phân quyền nghiêm ngặt theo đúng mã định danh y tế.' },
-                  { tieuDe: 'Không chia sẻ thương mại', moTa: 'Cam kết không cung cấp, mua bán hoặc tiết lộ thông tin bệnh nhân cho bất kỳ bên thứ ba vì mục đích tiếp thị.' },
-                  { tieuDe: 'Quyền làm chủ dữ liệu', moTa: 'Người bệnh có quyền tra cứu, trích xuất lịch sử khám bệnh hoặc yêu cầu cập nhật, thu hồi thông tin theo luật định.' },
-                ]).map((ck, idx) => (
-                  <div key={idx} className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
-                    <p className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{ck.tieuDe}</span>
-                    </p>
-                    <p className="text-[11px] text-slate-600 leading-relaxed pl-5">
-                      {ck.moTa}
-                    </p>
+                {(policy.camKetCotLoi || []).map((ck, idx) => (
+                  <div key={idx} className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+                    <input
+                      type="text"
+                      value={ck.tieuDe || ''}
+                      onChange={(e) => updatePolicyItem('camKetCotLoi', idx, { tieuDe: e.target.value })}
+                      placeholder="Tiêu đề cam kết"
+                      className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold"
+                    />
+                    <textarea
+                      rows={3}
+                      value={ck.moTa || ''}
+                      onChange={(e) => updatePolicyItem('camKetCotLoi', idx, { moTa: e.target.value })}
+                      placeholder="Mô tả cam kết"
+                      className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 leading-relaxed resize-none"
+                    />
                   </div>
                 ))}
               </div>
@@ -1550,26 +1564,57 @@ export default function DanhMucDungChungPage() {
                 <div className="flex items-center justify-between pb-2 border-b border-gray-100">
                   <h4 className="font-bold text-gray-900 text-xs uppercase tracking-wide flex items-center gap-1.5">
                     <FileText className="w-4 h-4 text-primary-600" />
-                    <span>5 Điều Khoản Pháp Lý Nghị Định 13</span>
+                    <span>Điều Khoản Chi Tiết</span>
                   </h4>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    5 Điều khoản
+                    {(policy.danhSachDieuKhoan || []).length} Điều khoản
                   </span>
                 </div>
 
-                <div className="space-y-2">
-                  {(hospitalInfo.chinhSachBaoMat?.danhSachDieuKhoan || [
-                    { id: '1', tieuDe: '1. Mục đích và Phạm vi Thu thập Dữ liệu', noiDung: 'Thu thập phục vụ trực tiếp cho khám chữa bệnh và chăm sóc sức khỏe.' },
-                    { id: '2', tieuDe: '2. Phạm vi Sử dụng Thông tin', noiDung: 'Chỉ định chẩn đoán, kê đơn thuốc và theo dõi tiến trình hồi phục của bệnh nhân.' },
-                    { id: '3', tieuDe: '3. Biện pháp An toàn và Bảo vệ Kỹ thuật', noiDung: 'HTTPS / TLS 1.3, phân quyền RBAC và mã hóa cột nhạy cảm.' },
-                    { id: '4', tieuDe: '4. Quyền của Người bệnh đối với Dữ liệu Cá nhân', noiDung: 'Quyền được biết, tra cứu, chỉnh sửa và khiếu nại dữ liệu.' },
-                    { id: '5', tieuDe: '5. Thời hạn Lưu trữ Hồ sơ Y tế', noiDung: 'Tối thiểu 10 năm đối với ngoại trú và 20 năm đối với nội trú theo Luật Khám bệnh.' },
-                  ]).map((dk, idx) => (
-                    <div key={idx} className="p-2.5 rounded-xl border border-gray-100 bg-gray-50/50 hover:bg-white transition-colors">
-                      <p className="text-xs font-bold text-gray-800">{dk.tieuDe}</p>
-                      <p className="text-[11px] text-gray-500 line-clamp-1 mt-0.5">{dk.noiDung}</p>
+                <div className="space-y-3">
+                  {(policy.danhSachDieuKhoan || []).map((dk, idx) => (
+                    <div key={idx} className="p-3 rounded-xl border border-gray-200 bg-gray-50/50 space-y-2">
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={dk.tieuDe || ''}
+                          onChange={(e) => updatePolicyItem('danhSachDieuKhoan', idx, { tieuDe: e.target.value })}
+                          placeholder="Tiêu đề điều khoản"
+                          className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500 font-bold"
+                        />
+                        <button type="button" onClick={() => moveDieuKhoan(idx, -1)} disabled={idx === 0} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg cursor-pointer disabled:opacity-30">
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
+                        <button type="button" onClick={() => moveDieuKhoan(idx, 1)} disabled={idx === (policy.danhSachDieuKhoan || []).length - 1} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg cursor-pointer disabled:opacity-30">
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                        <button type="button" onClick={() => removePolicyItem('danhSachDieuKhoan', idx)} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <textarea
+                        rows={3}
+                        value={dk.noiDung || ''}
+                        onChange={(e) => updatePolicyItem('danhSachDieuKhoan', idx, { noiDung: e.target.value })}
+                        placeholder="Nội dung điều khoản"
+                        className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500 leading-relaxed resize-none"
+                      />
+                      <textarea
+                        rows={3}
+                        value={(dk.danhSachChiTiet || []).join('\n')}
+                        onChange={(e) => updatePolicyItem('danhSachDieuKhoan', idx, { danhSachChiTiet: e.target.value.split('\n') })}
+                        placeholder="Các gạch đầu dòng chi tiết (mỗi dòng một ý, có thể để trống)"
+                        className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500 leading-relaxed resize-none"
+                      />
                     </div>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => updatePolicy({ danhSachDieuKhoan: [...(policy.danhSachDieuKhoan || []), { id: `dieu-khoan-${Date.now()}`, tieuDe: '', noiDung: '', danhSachChiTiet: [] }] })}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-primary-700 hover:text-primary-800 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Thêm điều khoản
+                  </button>
                 </div>
 
                 <div className="pt-2">
@@ -1904,81 +1949,6 @@ export default function DanhMucDungChungPage() {
               </table>
             </div>
           </div>
-        </div>
-      ) : activeTab === 'mau_loi_dan' ? (
-        /* ─── TAB: MẪU LỜI DẶN BÁC SĨ ──────────────────────────────── */
-        <div className="space-y-6">
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between text-xs text-slate-600">
-            <div className="flex items-center gap-2">
-              <HeartPulse className="w-4 h-4 text-primary-600" />
-              <span>
-                Mẫu lời dặn bác sĩ chuẩn hóa cho phòng khám, giúp bác sĩ nhấp chọn nhanh vào đơn thuốc hoặc sổ khám bệnh mà không cần gõ lại nội dung dài.
-              </span>
-            </div>
-            <span className="font-bold text-slate-700">
-              Tổng số: {filteredLoiDan.length} mẫu
-            </span>
-          </div>
-
-          {filteredLoiDan.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center text-gray-500 space-y-3">
-              <HeartPulse className="w-10 h-10 text-gray-300 mx-auto" />
-              <p className="font-semibold text-gray-700">Không tìm thấy mẫu lời dặn nào phù hợp</p>
-              <button
-                type="button"
-                onClick={handleOpenCreateLoiDan}
-                className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs font-bold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" /> Thêm Mẫu Mới Ngay
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {filteredLoiDan.map((ld) => (
-                <div
-                  key={ld.id}
-                  className="bg-white rounded-2xl p-5 border border-gray-200 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between group"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold flex-shrink-0">
-                          <HeartPulse className="w-4 h-4" />
-                        </div>
-                        <h4 className="font-bold text-gray-900 text-sm line-clamp-1">
-                          {ld.tieuDe}
-                        </h4>
-                      </div>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 font-semibold">
-                        #{ld.id}
-                      </span>
-                    </div>
-
-                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 text-slate-700 text-xs leading-relaxed min-h-[90px] whitespace-pre-line">
-                      "{ld.noiDung}"
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-1 pt-3 mt-3 border-t border-gray-100">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEditLoiDan(ld)}
-                      className="px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-600 hover:text-primary-600 hover:bg-primary-50 transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" /> Sửa
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteLoiDan(ld)}
-                      className="px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-600 hover:text-rose-600 hover:bg-rose-50 transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Xóa
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       ) : (
         /* ─── TAB 1 & TAB 2 MAIN TABLES ───────────────────────────── */
@@ -2491,77 +2461,6 @@ export default function DanhMucDungChungPage() {
                   className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 transition-colors cursor-pointer"
                 >
                   {modalNhomDuoc.mode === 'create' ? 'Thêm vào danh sách' : 'Cập nhật'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─── MODAL: MẪU LỜI DẶN BÁC SĨ ─────────────────────────────── */}
-      {modalLoiDan.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-2xs p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-100">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <div className="flex items-center gap-2">
-                <HeartPulse className="w-5 h-5 text-primary-600" />
-                <h3 className="text-lg font-bold text-gray-900">
-                  {modalLoiDan.mode === 'create' ? 'Thêm Mẫu Lời Dặn Mới' : 'Chỉnh Sửa Mẫu Lời Dặn'}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalLoiDan({ open: false, mode: 'create', data: null })}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitLoiDan} className="mt-4 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
-                  Tiêu Đề Mẫu Lời Dặn <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={loiDanForm.tieuDe}
-                  onChange={(e) => setLoiDanForm({ ...loiDanForm, tieuDe: e.target.value })}
-                  placeholder="Ví dụ: Hướng dẫn uống thuốc dạ dày sau ăn..."
-                  className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
-                  Nội Dung Lời Dặn Chi Tiết <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  rows={4}
-                  required
-                  value={loiDanForm.noiDung}
-                  onChange={(e) => setLoiDanForm({ ...loiDanForm, noiDung: e.target.value })}
-                  placeholder="Nhập nội dung lời dặn chuẩn của bác sĩ..."
-                  className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none leading-relaxed"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setModalLoiDan({ open: false, mode: 'create', data: null })}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingLoiDan}
-                  className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center gap-2 cursor-pointer"
-                >
-                  {savingLoiDan && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-                  {modalLoiDan.mode === 'create' ? 'Tạo mới' : 'Lưu cập nhật'}
                 </button>
               </div>
             </form>

@@ -24,6 +24,11 @@ const DEFAULT_HOSPITAL_INFO = {
   chinhSachBaoMat: {
     tieuDeTrang: 'Chính Sách Bảo Mật & Bảo Vệ Dữ Liệu Y Tế Cá Nhân',
     ngayCapNhat: '05/11/2026',
+    nhanHero: 'QUY CHUẨN AN TOÀN & BẢO VỆ DỮ LIỆU Y TẾ',
+    tieuDeMucLienHe: 'Đơn Vị Phụ Trách & Tiếp Nhận Yêu Cầu Dữ Liệu Cá Nhân',
+    moTaMucLienHe: 'Mọi thắc mắc, phản ánh liên quan đến chính sách bảo mật hoặc yêu cầu thực thi quyền của chủ thể dữ liệu (trích xuất sao y bệnh án, khiếu nại, cải chính thông tin), xin vui lòng liên hệ:',
+    hoTroTieuDe: 'Hỗ Trợ Quyền Riêng Tư 24/7',
+    hoTroMoTa: 'Người bệnh có quyền gửi yêu cầu giải trình, cập nhật hoặc thu hồi dữ liệu bất cứ lúc nào.',
     moTaMoDau: 'Phòng khám cam kết bảo vệ tuyệt đối thông tin sức khỏe, hồ sơ bệnh án điện tử (EMR) và quyền riêng tư của mọi bệnh nhân theo chuẩn Nghị định 13/2023/NĐ-CP và Luật Khám bệnh, chữa bệnh.',
     tieuChuanTuanThu: [
       'Nghị định 13/2023/NĐ-CP',
