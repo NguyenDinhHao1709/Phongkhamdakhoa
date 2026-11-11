@@ -814,8 +814,8 @@ export class QuanLyService implements OnModuleInit {
 
     // 2. Doanh thu
     const revRaw = await this.hoaDonRepo.createQueryBuilder('hd')
-      .select('SUM(hd.thucThu)', 'tongDoanhThu')
-      .addSelect('SUM(CASE WHEN DATE(hd.ngayThanhToan) = CURDATE() THEN hd.thucThu ELSE 0 END)', 'doanhThuHomNay')
+      .select('SUM(hd.thucThu - hd.tienHoanTra)', 'tongDoanhThu')
+      .addSelect('SUM(CASE WHEN DATE(hd.ngayThanhToan) = CURDATE() THEN hd.thucThu - hd.tienHoanTra ELSE 0 END)', 'doanhThuHomNay')
       .where('hd.trangThai = :st', { st: 'da_thanh_toan' })
       .getRawOne();
 
@@ -825,7 +825,7 @@ export class QuanLyService implements OnModuleInit {
     let doanhThuTrongKy = tongDoanhThu;
     if (startDateTime && endDateTime) {
       const revRangeRaw = await this.hoaDonRepo.createQueryBuilder('hd')
-        .select('SUM(hd.thucThu)', 'doanhThuTrongKy')
+        .select('SUM(hd.thucThu - hd.tienHoanTra)', 'doanhThuTrongKy')
         .where('hd.trangThai = :st', { st: 'da_thanh_toan' })
         .andWhere('hd.ngayThanhToan BETWEEN :s AND :e', { s: startDateTime, e: endDateTime })
         .getRawOne();
@@ -853,7 +853,7 @@ export class QuanLyService implements OnModuleInit {
     let revTrendQb = this.hoaDonRepo.createQueryBuilder('hd')
       .select("DATE_FORMAT(hd.ngayThanhToan, '%Y-%m-%d')", 'rawDate')
       .addSelect("DATE_FORMAT(hd.ngayThanhToan, '%d/%m')", 'ngay')
-      .addSelect('SUM(hd.thucThu)', 'doanhThu')
+      .addSelect('SUM(hd.thucThu - hd.tienHoanTra)', 'doanhThu')
       .where('hd.trangThai = :st', { st: 'da_thanh_toan' })
       .groupBy("DATE_FORMAT(hd.ngayThanhToan, '%Y-%m-%d')")
       .addGroupBy("DATE_FORMAT(hd.ngayThanhToan, '%d/%m')")
@@ -1107,7 +1107,7 @@ export class QuanLyService implements OnModuleInit {
     const byNgay: Record<string, number> = {};
 
     hoaDons.forEach(h => {
-      const tt = Number(h.thucThu);
+      const tt = Number(h.thucThu) - Number(h.tienHoanTra || 0); // trừ phần hoàn trả tạm ứng dư
       tongThucThu += tt;
       tongTienGiam += Number(h.soTienGiam || 0);
 

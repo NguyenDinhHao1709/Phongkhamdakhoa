@@ -186,8 +186,14 @@ export default function HoaDonListPage() {
     return result;
   }, [list, filterStatus, filterPriceRange, filterDateFrom, filterDateTo, debouncedSearch]);
 
-  // Thống kê nhanh
+  // Thống kê nhanh theo khoảng thời gian đang chọn
+  const allList = list;
   const stats = useMemo(() => {
+    const list = allList.filter((item) => {
+      if (!filterDateFrom && !filterDateTo) return true;
+      const dStr = item.ngayTao ? toLocalDateStr(item.ngayTao) : '';
+      return dStr && (!filterDateFrom || dStr >= filterDateFrom) && (!filterDateTo || dStr <= filterDateTo);
+    });
     const totalCount = list.length;
     const totalRevenue = list
       .filter((i) => i.trangThai === 'da_thanh_toan')
@@ -195,17 +201,19 @@ export default function HoaDonListPage() {
 
     const pendingList = list.filter((i) => i.trangThai === 'cho_thanh_toan');
     const pendingCount = pendingList.length;
-    const pendingAmount = pendingList.reduce((sum, i) => sum + Number(i.thucThu || i.tongTien || 0), 0);
+    const pendingAmount = pendingList.reduce((sum, i) => sum + Number(i.thucThu || 0), 0);
 
     const paidList = list.filter((i) => i.trangThai === 'da_thanh_toan');
     const paidCount = paidList.length;
     const paidAmount = paidList.reduce((sum, i) => sum + thuRong(i), 0);
 
-    const todayList = list.filter((i) => i.ngayTao && toLocalDateStr(i.ngayTao) === todayStr);
+    const todayList = allList.filter((i) => i.ngayTao && toLocalDateStr(i.ngayTao) === todayStr);
     const todayCount = todayList.length;
-    const todayAmount = todayList.reduce((sum, i) => sum + Number(i.thucThu || i.tongTien || 0), 0);
+    const todayAmount = todayList
+      .filter((i) => i.trangThai === 'da_thanh_toan')
+      .reduce((sum, i) => sum + thuRong(i), 0);
 
-    const pendingRefundList = list.filter((i) => Boolean(i.choHoanCoc));
+    const pendingRefundList = allList.filter((i) => Boolean(i.choHoanCoc)); // việc cần xử lý: không lọc theo ngày
     const pendingRefundCount = pendingRefundList.length;
     const pendingRefundAmount = pendingRefundList.reduce((sum, i) => sum + Number(i.thucThu || i.tongTien || 40000), 0);
 
@@ -232,7 +240,7 @@ export default function HoaDonListPage() {
       pendingRefundCount,
       pendingRefundAmount,
     };
-  }, [list, todayStr]);
+  }, [allList, todayStr, filterDateFrom, filterDateTo]);
 
   // Phân trang
   const totalPages = Math.ceil(filteredList.length / ITEMS_PER_PAGE) || 1;
@@ -405,7 +413,7 @@ export default function HoaDonListPage() {
           </div>
           <div className="text-2xl font-bold text-blue-900 mt-1">{stats.todayCount}</div>
           <div className="text-[11px] text-blue-700 font-semibold mt-0.5 truncate">
-            {formatCurrency(stats.todayAmount)}
+            Đã thu: {formatCurrency(stats.todayAmount)}
           </div>
         </div>
 
