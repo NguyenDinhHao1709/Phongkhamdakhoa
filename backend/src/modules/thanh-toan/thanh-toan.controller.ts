@@ -181,6 +181,17 @@ export class ThanhToanController {
     });
   }
 
+  @Patch('hoa-don/:id/thu-tam-ung')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thu tiền tạm ứng tại quầy (thu ngân tự nhập số tiền)' })
+  thuTamUng(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('id') userId: number,
+    @Body() dto: { soTien: number; phuongThucThanhToan?: string },
+  ) {
+    return this.thanhToanService.thuTamUng(id, userId, dto);
+  }
+
   @Patch('hoa-don/:id/lua-chon-thuoc')
   @Roles('thu_ngan', 'tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'benh_nhan')
   @ApiOperation({ summary: 'Chọn mua thuốc tại bệnh viện hoặc mua ngoài trước khi thanh toán' })

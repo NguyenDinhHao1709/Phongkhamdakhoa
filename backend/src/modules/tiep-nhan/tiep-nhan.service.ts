@@ -75,6 +75,7 @@ export class CapNhatTrangThaiTiepNhanDto {
 import { DanhGiaCaKham } from '../danh-gia/entities/danh-gia.entity';
 import { QueueGateway } from './queue.gateway';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
+import { ThanhToanService, MA_TAM_UNG_QUAY } from '../thanh-toan/thanh-toan.service';
 
 @Injectable()
 export class TiepNhanService implements OnModuleInit {
@@ -149,6 +150,7 @@ export class TiepNhanService implements OnModuleInit {
     @InjectRepository(LichSuGoiKham) private lichSuGoiRepo: Repository<LichSuGoiKham>,
     private readonly queueGateway: QueueGateway,
     private readonly thongBaoService: ThongBaoService,
+    private readonly thanhToanService: ThanhToanService,
   ) {}
 
   onModuleInit() {
@@ -181,6 +183,11 @@ export class TiepNhanService implements OnModuleInit {
       });
       if (!bacSi) return { data: [], message: 'Không tìm thấy hồ sơ bác sĩ đang đăng nhập' };
       qb.andWhere('ltn.bac_si_id = :doctorId', { doctorId: bacSi.id });
+      // Chưa đóng tạm ứng tại quầy thì bác sĩ chưa thấy để gọi khám
+      qb.andWhere(
+        `NOT EXISTS (SELECT 1 FROM hoa_don tu WHERE tu.ma_hoa_don = CONCAT(:maTu, ltn.id) AND tu.trang_thai = 'cho_thanh_toan')`,
+        { maTu: MA_TAM_UNG_QUAY },
+      );
     }
 
     const items = await qb.getMany();
@@ -336,7 +343,7 @@ export class TiepNhanService implements OnModuleInit {
     // Tra cứu Hóa đơn viện phí
     const hdRows: any[] = await this.luotRepo.manager.query(
       `SELECT hd.id, hd.ma_hoa_don as maHoaDon, hd.tong_tien as tongTien,
-              hd.so_tien_giam as soTienGiam, hd.thuc_thu as thucThu,
+              hd.so_tien_giam as soTienGiam, hd.thuc_thu as thucThu, hd.tien_hoan_tra as tienHoanTra,
               hd.trang_thai as trangThai, hd.phuong_thuc_thanh_toan as phuongThucThanhToan,
               hd.ngay_thanh_toan as ngayThanhToan, hd.ghi_chu as ghiChu
        FROM hoa_don hd
@@ -358,6 +365,7 @@ export class TiepNhanService implements OnModuleInit {
         tongTien: Number(hdRows[0].tongTien),
         soTienGiam: Number(hdRows[0].soTienGiam),
         thucThu: Number(hdRows[0].thucThu),
+        tienHoanTra: Number(hdRows[0].tienHoanTra || 0),
         chiTiet: (ctRows || []).map((c) => ({
           ...c,
           soLuong: Number(c.soLuong),
@@ -367,6 +375,13 @@ export class TiepNhanService implements OnModuleInit {
       };
     }
 
+    // Phiếu tạm ứng tại quầy (nếu có): chưa đóng thì bệnh nhân chưa vào hàng đợi bác sĩ
+    const tuRows: any[] = await this.luotRepo.manager.query(
+      `SELECT ma_hoa_don AS maHoaDon, trang_thai AS trangThai, thuc_thu AS soTien FROM hoa_don WHERE ma_hoa_don = ? LIMIT 1`,
+      [`${MA_TAM_UNG_QUAY}${luot.id}`],
+    );
+    const tamUng = tuRows[0] ? { ...tuRows[0], soTien: Number(tuRows[0].soTien) } : null;
+
     const soDangGoi = currentServing?.maSoThuTu || (allWaitingInRoom.length > 0 ? allWaitingInRoom[0].maSoThuTu : '-');
     const soNguoiPhiaTruoc = (isDangKham || isCompleted || isDangCls || isDaCoKqCls) ? 0 : waitingBeforeMe.length;
     const uocTinhPhut = isCompleted ? 0 : Math.max(2, soNguoiPhiaTruoc * 6);
@@ -374,7 +389,8 @@ export class TiepNhanService implements OnModuleInit {
     const tenPhongKham = phongKhamId === 101 ? 'Phòng 101 - Khám Nội Tổng Quát' : `Phòng ${phongKhamId} - Khám Chuyên Khoa`;
     const tenBacSi = luot.bacSi?.nhanVien?.hoTen || 'BS. CKI Trần Văn Nam';
 
-    const isHoaDonDone = !hoaDon || hoaDon.trangThai === 'da_thanh_toan' || Number(hoaDon.thucThu) === 0;
+    const isHoaDonDone =
+      !hoaDon || hoaDon.trangThai === 'da_thanh_toan' || (Number(hoaDon.thucThu) === 0 && !(hoaDon.tienHoanTra > 0));
     const isDonThuocDone = !donThuoc || donThuoc.trangThai === 'da_cap_phat' || (donThuoc.chiTiet && donThuoc.chiTiet.length === 0) || donThuoc.soLuongMon === 0;
     const isAllFullyCompleted = isCompleted && isHoaDonDone && isDonThuocDone;
 
@@ -418,6 +434,7 @@ export class TiepNhanService implements OnModuleInit {
           hasCls,
           donThuoc,
           hoaDon,
+          tamUng,
           chanDoanXacDinh: bakRows && bakRows.length > 0 ? bakRows[0].chanDoanXacDinh : null,
         },
         queue: {
@@ -656,33 +673,12 @@ export class TiepNhanService implements OnModuleInit {
       relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
     });
 
-    try {
-      const bacSiUserId = withRelations?.bacSi?.nhanVien?.nguoiDungId;
-      if (bacSiUserId) {
-        await this.thongBaoService.taoThongBao({
-          nguoiNhanId: bacSiUserId,
-          tieuDe: `Bệnh nhân mới vào hàng đợi: ${withRelations?.benhNhan?.hoTen}`,
-          noiDung: `Bệnh nhân ${withRelations?.benhNhan?.hoTen} (STT: ${withRelations?.maSoThuTu}) vừa được xếp vào danh sách khám của bạn.`,
-          loai: 'lich_kham',
-          doiTuongBang: 'luot_tiep_nhan',
-          doiTuongId: withRelations?.id,
-        });
-      }
-
-      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
-        tieuDe: `Bệnh nhân tiếp nhận mới: ${withRelations?.benhNhan?.hoTen}`,
-        noiDung: `Bệnh nhân ${withRelations?.benhNhan?.hoTen} (STT: ${withRelations?.maSoThuTu}) vừa tiếp nhận chuyên khoa ${withRelations?.chuyenKhoa || ''}. Vui lòng kiểm tra và thu phí khám ban đầu tại quầy.`,
-        loai: 'can_thanh_toan',
-        doiTuongBang: 'luot_tiep_nhan',
-        doiTuongId: withRelations?.id,
-      });
-    } catch (err) {
-      console.warn('Lỗi gửi thông báo tiếp nhận createTaiQuay:', err?.message);
-    }
+    // Bệnh nhân đến quầy phải đóng tạm ứng; bác sĩ được báo khi thu ngân thu xong (ThanhToanService.thuTamUng)
+    await this.thanhToanService.taoPhieuTamUngTaiQuay(saved, withRelations?.benhNhan?.hoTen);
 
     return {
       data: withRelations,
-      message: `Đã tiếp nhận trực tiếp. ${withRelations?.maSoThuTu} — ${withRelations?.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách'}.`,
+      message: `Đã tiếp nhận trực tiếp. ${withRelations?.maSoThuTu} — ${withRelations?.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách'}. Mời bệnh nhân sang quầy thu ngân đóng tạm ứng.`,
     };
   }
 
@@ -720,6 +716,12 @@ export class TiepNhanService implements OnModuleInit {
       where: { id: saved.id },
       relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
     });
+
+    // Không có lịch hẹn (không có cọc) → phải đóng tạm ứng tại quầy trước khi vào hàng đợi bác sĩ
+    if (!saved.lichHenId) {
+      await this.thanhToanService.taoPhieuTamUngTaiQuay(saved, withRelations?.benhNhan?.hoTen);
+      return { data: withRelations, message: `Tiếp nhận thành công. Số thứ tự: ${maSoThuTu}. Mời bệnh nhân đóng tạm ứng tại quầy thu ngân.` };
+    }
 
     try {
       const bacSiUserId = withRelations?.bacSi?.nhanVien?.nguoiDungId;

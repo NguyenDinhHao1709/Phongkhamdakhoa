@@ -93,6 +93,7 @@ export default function TienDoKhamPage() {
           donThuoc: t.donThuoc || null,
           hoaDon: t.hoaDon || null,
           chanDoanXacDinh: t.chanDoanXacDinh || null,
+          tamUng: t.tamUng || null,
         });
         if (res.data.progress) {
           setProgressSteps(res.data.progress);
@@ -201,7 +202,11 @@ export default function TienDoKhamPage() {
     !isDaCoKqCls &&
     ticketData?.trangThai === 'cho_kham';
 
-  const isPaid = !ticketData?.hoaDon || ticketData.hoaDon.trangThai === 'da_thanh_toan' || Number(ticketData.hoaDon.thucThu || 0) === 0;
+  // thucThu = 0 nhưng còn tiền hoàn trả → chưa xong (thu ngân chưa hoàn tạm ứng dư)
+  const isPaid =
+    !ticketData?.hoaDon ||
+    ticketData.hoaDon.trangThai === 'da_thanh_toan' ||
+    (Number(ticketData.hoaDon.thucThu || 0) === 0 && !(ticketData.hoaDon.tienHoanTra > 0));
   const isMedDispensed = !ticketData?.donThuoc || ticketData.donThuoc.trangThai === 'da_cap_phat' || (ticketData.donThuoc.chiTiet && ticketData.donThuoc.chiTiet.length === 0) || ticketData.donThuoc.soLuongMon === 0;
   const isFullyFinished = isAllCompleted || (hasActiveTicket && isCompleted && isPaid && isMedDispensed);
 
@@ -600,6 +605,12 @@ export default function TienDoKhamPage() {
                     </div>
                   </div>
 
+                  {ticketData.tamUng?.trangThai === 'cho_thanh_toan' && (
+                    <div className="p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-xs font-semibold">
+                      Vui lòng đóng tiền tạm ứng tại quầy thu ngân để được xếp vào hàng đợi khám. Khám xong, tạm ứng được trừ vào viện phí (thiếu thu thêm, dư hoàn lại).
+                    </div>
+                  )}
+
                   {/* Bước 2 - Khám lâm sàng ban đầu */}
                   <div className={`flex items-start gap-3 p-3 rounded-lg border ${
                     isCompleted || isDangCls || isDaCoKqCls
@@ -886,7 +897,7 @@ export default function TienDoKhamPage() {
                                   </span>
                                 ) : (
                                   <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 animate-pulse">
-                                    Chờ thanh toán tại Quầy thu ngân
+                                    {ticketData.hoaDon?.tienHoanTra > 0 ? 'Mời nhận hoàn tiền tại Quầy thu ngân' : 'Chờ thanh toán tại Quầy thu ngân'}
                                   </span>
                                 )}
                               </div>
@@ -926,9 +937,17 @@ export default function TienDoKhamPage() {
                                       <span>Thực thu:</span>
                                       <span className="text-emerald-700 font-mono">{formatCurrency(ticketData.hoaDon.thucThu)}</span>
                                     </div>
+                                    {ticketData.hoaDon.tienHoanTra > 0 && (
+                                      <div className="flex justify-between font-bold text-rose-700 text-sm">
+                                        <span>
+                                          {ticketData.hoaDon.trangThai === 'da_thanh_toan' ? 'Đã hoàn trả tạm ứng dư:' : 'Bạn được hoàn lại tại quầy:'}
+                                        </span>
+                                        <span className="font-mono">{formatCurrency(ticketData.hoaDon.tienHoanTra)}</span>
+                                      </div>
+                                    )}
                                   </div>
 
-                                  {ticketData.hoaDon.trangThai !== 'da_thanh_toan' && (
+                                  {ticketData.hoaDon.trangThai !== 'da_thanh_toan' && Number(ticketData.hoaDon.thucThu) > 0 && (
                                     <div className="pt-2 border-t border-gray-100">
                                       <button
                                         type="button"

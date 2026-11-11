@@ -43,7 +43,7 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
         soTienGiam: Number(soTienGiam),
         ghiChu,
       });
-      alert('Thanh toán hóa đơn thành công!');
+      alert(tienHoanTra > 0 ? 'Đã xác nhận hoàn tiền tạm ứng dư!' : 'Thanh toán hóa đơn thành công!');
       onSuccess?.();
       onClose?.();
     } catch (err) {
@@ -86,7 +86,10 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
 
   const tongTien = hoaDon?.tongTien || 0;
   const tienCocDaThu = Number(hoaDon?.tienCocDaThu || 0);
-  const thucThu = Math.max(0, tongTien - Number(soTienGiam) - tienCocDaThu);
+  // Còn lại âm = tạm ứng dư → hoàn trả bệnh nhân
+  const conLai = tongTien - Number(soTienGiam) - tienCocDaThu;
+  const thucThu = Math.max(0, conLai);
+  const tienHoanTra = Math.max(0, -conLai);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
@@ -268,7 +271,7 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
                 <div className="flex items-center justify-between text-xs text-blue-700 bg-blue-50/80 px-2.5 py-1.5 rounded-lg border border-blue-200">
                   <span className="flex items-center gap-1.5 font-medium">
                     <span className="h-2 w-2 rounded-full bg-blue-600 inline-block"></span>
-                    Đã cọc đặt lịch hẹn ({hoaDon?.maLichHenCoc || 'Đã thanh toán trước'}):
+                    Đã tạm ứng / cọc ({hoaDon?.maLichHenCoc || 'Đã thanh toán trước'}):
                   </span>
                   <span className="font-bold text-blue-800 font-mono">- {formatCurrency(tienCocDaThu)}</span>
                 </div>
@@ -290,13 +293,25 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
                   ✓ BHYT/Ưu đãi chi trả: {((Number(soTienGiam) / (tongTien || 1)) * 100).toFixed(0)}%
                 </div>
               )}
-              <div className="border-t pt-2 flex justify-between items-center">
-                <div>
-                  <span className="text-base font-bold text-gray-900 block">Bệnh nhân thanh toán:</span>
-                  <span className="text-[11px] text-gray-500 font-medium">(Thực thu viện phí)</span>
+              {tienHoanTra > 0 ? (
+                <div className="border-t pt-2 flex justify-between items-center">
+                  <div>
+                    <span className="text-base font-bold text-rose-700 block">Hoàn trả bệnh nhân:</span>
+                    <span className="text-[11px] text-gray-500 font-medium">(Tạm ứng dư, trả tiền mặt hoặc chuyển khoản)</span>
+                  </div>
+                  <span className="text-xl font-black text-rose-600">{formatCurrency(tienHoanTra)}</span>
                 </div>
-                <span className="text-xl font-black text-primary-600">{formatCurrency(thucThu)}</span>
-              </div>
+              ) : (
+                <div className="border-t pt-2 flex justify-between items-center">
+                  <div>
+                    <span className="text-base font-bold text-gray-900 block">
+                      {tienCocDaThu > 0 ? 'Bệnh nhân thanh toán thêm:' : 'Bệnh nhân thanh toán:'}
+                    </span>
+                    <span className="text-[11px] text-gray-500 font-medium">(Thực thu viện phí)</span>
+                  </div>
+                  <span className="text-xl font-black text-primary-600">{formatCurrency(thucThu)}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -318,7 +333,7 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
                 onClick={handleConfirmPay}
                 leftIcon={<CheckCircle className="h-4 w-4" />}
               >
-                Xác nhận thu tiền
+                {tienHoanTra > 0 ? 'Xác nhận đã hoàn tiền' : 'Xác nhận thu tiền'}
               </MedButton>
             )}
           </div>

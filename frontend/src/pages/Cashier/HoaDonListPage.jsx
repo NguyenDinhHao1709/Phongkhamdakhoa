@@ -30,6 +30,7 @@ import { formatDateTime, formatDate } from '../../utils/formatDate';
 import ThanhToanModal from './ThanhToanModal';
 import InHoaDonModal from './InHoaDonModal';
 import HuyHoaDonModal from './HuyHoaDonModal';
+import ThuTamUngModal from './ThuTamUngModal';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -45,6 +46,7 @@ export default function HoaDonListPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
   const [selectedHoaDonId, setSelectedHoaDonId] = useState(null);
+  const [tamUngInvoice, setTamUngInvoice] = useState(null);
   const [printInvoiceData, setPrintInvoiceData] = useState(null);
   const [cancellingInvoice, setCancellingInvoice] = useState(null);
 
@@ -597,7 +599,9 @@ export default function HoaDonListPage() {
                   const avatarBg = getAvatarBg(patientName);
                   const isToday = hd.ngayTao && toLocalDateStr(hd.ngayTao) === todayStr;
                   const isPaid = hd.trangThai === 'da_thanh_toan';
+                  const isTamUngQuay = hd.loaiHoaDon === 'tam_ung_tai_quay';
                   const isTamUng =
+                    isTamUngQuay ||
                     hd.loaiHoaDon === 'tam_ung_dat_lich' ||
                     hd.maHoaDon?.startsWith('HDT') ||
                     hd.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]');
@@ -623,7 +627,7 @@ export default function HoaDonListPage() {
                           </span>
                           {isTamUng && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 border border-violet-200">
-                              📌 Tạm ứng 1/5{hd.maLichHen ? ` • ${hd.maLichHen}` : ''}
+                              📌 {isTamUngQuay ? 'Tạm ứng tại quầy' : `Tạm ứng đặt lịch${hd.maLichHen ? ` • ${hd.maLichHen}` : ''}`}
                             </span>
                           )}
                           {isDeductedDeposit && (
@@ -679,6 +683,9 @@ export default function HoaDonListPage() {
                         >
                           {formatCurrency(hd.thucThu)}
                         </span>
+                        {hd.tienHoanTra > 0 && (
+                          <p className="text-[11px] font-bold text-rose-600 mt-0.5">Hoàn trả {formatCurrency(hd.tienHoanTra)}</p>
+                        )}
                       </td>
 
                       {/* Trạng thái */}
@@ -799,6 +806,14 @@ export default function HoaDonListPage() {
                                 </span>
                               </button>
                             </>
+                          ) : isTamUngQuay ? (
+                            <button
+                              onClick={() => setTamUngInvoice(hd)}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
+                            >
+                              <Wallet className="h-3.5 w-3.5" />
+                              <span>Thu tạm ứng</span>
+                            </button>
                           ) : (
                             <button
                               onClick={() => setSelectedHoaDonId(hd.id)}
@@ -859,6 +874,10 @@ export default function HoaDonListPage() {
           onClose={() => setSelectedHoaDonId(null)}
           onSuccess={fetchData}
         />
+      )}
+
+      {tamUngInvoice && (
+        <ThuTamUngModal hoaDon={tamUngInvoice} onClose={() => setTamUngInvoice(null)} onSuccess={fetchData} />
       )}
 
       {/* Modal In Hóa Đơn / Phiếu Thu */}

@@ -48,6 +48,10 @@ export class HoaDon {
   @Column({ name: 'thuc_thu', type: 'decimal', precision: 14, scale: 2, default: 0 })
   thucThu: number;
 
+  // Tạm ứng/cọc lớn hơn viện phí thực tế → số tiền thu ngân phải trả lại bệnh nhân
+  @Column({ name: 'tien_hoan_tra', type: 'decimal', precision: 14, scale: 2, default: 0 })
+  tienHoanTra: number;
+
   @Column({ name: 'phuong_thuc_thanh_toan', nullable: true })
   phuongThucThanhToan: string;
 
