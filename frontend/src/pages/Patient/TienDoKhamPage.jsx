@@ -175,7 +175,8 @@ export default function TienDoKhamPage() {
   };
 
   const hasCls = (ticketData?.dsChiDinh && ticketData.dsChiDinh.length > 0) || ticketData?.hasCls;
-  const isCompleted = ticketData?.trangThai === 'hoan_thanh';
+  // 'cho_thanh_toan': bác sĩ đã kết thúc khám, chỉ còn thanh toán / nhận thuốc
+  const isCompleted = ['hoan_thanh', 'cho_thanh_toan'].includes(ticketData?.trangThai);
   const isDaCoKqCls =
     ticketData?.trangThai === 'da_co_kq_cls' ||
     (hasCls &&
@@ -806,7 +807,15 @@ export default function TienDoKhamPage() {
                             ? 'text-emerald-800 bg-emerald-100 border-emerald-300'
                             : 'text-gray-400 bg-white border-gray-200'
                         }`}>
-                          {isCompleted ? 'Đã hoàn thành' : isDaCoKqCls ? 'Sẵn sàng vào gặp bác sĩ' : 'Chưa bắt đầu'}
+                          {isCompleted
+                            ? !isPaid
+                              ? 'Chờ thanh toán'
+                              : !isMedDispensed
+                              ? 'Chờ nhận thuốc'
+                              : 'Đã hoàn thành'
+                            : isDaCoKqCls
+                            ? 'Sẵn sàng vào gặp bác sĩ'
+                            : 'Chưa bắt đầu'}
                         </span>
                       </div>
                       <p className="text-xs text-gray-600 leading-relaxed">

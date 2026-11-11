@@ -256,7 +256,8 @@ export class TiepNhanService implements OnModuleInit {
     let hasCls = false;
     let donThuoc: any = null;
     let hoaDon: any = null;
-    let isCompleted = luot.trangThai === TrangThaiTiepNhan.HOAN_THANH;
+    // Bác sĩ kết thúc khám → lượt chuyển CHO_THANH_TOAN: phần chuyên môn đã xong, chỉ còn thanh toán / nhận thuốc
+    let isCompleted = [TrangThaiTiepNhan.HOAN_THANH, TrangThaiTiepNhan.CHO_THANH_TOAN].includes(luot.trangThai);
     let isDangKham = luot.trangThai === TrangThaiTiepNhan.DANG_KHAM;
     let isDangCls = luot.trangThai === TrangThaiTiepNhan.DANG_CLS;
     let isDaCoKqCls = luot.trangThai === TrangThaiTiepNhan.DA_CO_KQ_CLS;
