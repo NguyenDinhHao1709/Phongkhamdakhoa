@@ -146,21 +146,6 @@ export class QuanLyController {
     return this.quanLyService.capNhatDanhMucDuoc(dto, userId);
   }
 
-  // ─── ADMIN & PUBLIC: MẪU LỜI DẶN Y KHOA BÁC SĨ ───────────────
-  @Public()
-  @Get('mau-loi-dan')
-  @ApiOperation({ summary: 'Lấy danh mục mẫu lời dặn y khoa mặc định' })
-  getMauLoiDanBacSi() {
-    return this.quanLyService.getMauLoiDanBacSi();
-  }
-
-  @Put('mau-loi-dan')
-  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
-  @ApiOperation({ summary: 'Cập nhật danh mục mẫu lời dặn y khoa' })
-  capNhatMauLoiDanBacSi(@Body() dto: any[], @CurrentUser('id') userId: number) {
-    return this.quanLyService.capNhatMauLoiDanBacSi(dto, userId);
-  }
-
   // ─── ADMIN: THÔNG SỐ CƠ SỞ DỮ LIỆU & BACKUP ─────────────────
   @Get('backup-info')
   @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')

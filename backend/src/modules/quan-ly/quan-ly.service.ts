@@ -2946,6 +2946,11 @@ export class QuanLyService implements OnModuleInit {
       chinhSachBaoMat: {
         tieuDeTrang: 'Chính Sách Bảo Mật & Bảo Vệ Dữ Liệu Y Tế Cá Nhân',
         ngayCapNhat: '05/11/2026',
+        nhanHero: 'QUY CHUẨN AN TOÀN & BẢO VỆ DỮ LIỆU Y TẾ',
+        tieuDeMucLienHe: 'Đơn Vị Phụ Trách & Tiếp Nhận Yêu Cầu Dữ Liệu Cá Nhân',
+        moTaMucLienHe: 'Mọi thắc mắc, phản ánh liên quan đến chính sách bảo mật hoặc yêu cầu thực thi quyền của chủ thể dữ liệu (trích xuất sao y bệnh án, khiếu nại, cải chính thông tin), xin vui lòng liên hệ:',
+        hoTroTieuDe: 'Hỗ Trợ Quyền Riêng Tư 24/7',
+        hoTroMoTa: 'Người bệnh có quyền gửi yêu cầu giải trình, cập nhật hoặc thu hồi dữ liệu bất cứ lúc nào.',
         moTaMoDau: 'Phòng khám cam kết bảo vệ tuyệt đối thông tin sức khỏe, hồ sơ bệnh án điện tử (EMR) và quyền riêng tư của mọi bệnh nhân theo chuẩn Nghị định 13/2023/NĐ-CP và Luật Khám bệnh, chữa bệnh.',
         tieuChuanTuanThu: [
           'Nghị định 13/2023/NĐ-CP',
@@ -3192,58 +3197,6 @@ export class QuanLyService implements OnModuleInit {
     });
 
     return { message: 'Cập nhật danh mục dược dùng chung thành công', data: dto };
-  }
-
-  // ─── ADMIN: MẪU LỜI DẶN Y KHOA BÁC SĨ ─────────────────────────
-  async getMauLoiDanBacSi() {
-    const defaultData = [
-      { id: 1, tieuDe: 'Uống sau ăn & kiêng cay nóng', noiDung: 'Uống thuốc đúng liều lượng sau bữa ăn 30 phút. Kiêng đồ ăn cay nóng, chua và chất kích thích.' },
-      { id: 2, tieuDe: 'Uống nhiều nước & nghỉ ngơi', noiDung: 'Uống đủ 2 - 2.5 lít nước mỗi ngày. Nghỉ ngơi hợp lý, tránh thức khuya và làm việc quá sức.' },
-      { id: 3, tieuDe: 'Theo dõi nhiệt độ & tái khám', noiDung: 'Theo dõi thân nhiệt định kỳ. Tái khám ngay nếu sốt cao liên tục trên 39 độ hoặc xuất hiện ban đỏ bất thường.' },
-      { id: 4, tieuDe: 'Kiêng rượu bia khi dùng kháng sinh', noiDung: 'Tuyệt đối không uống rượu bia và đồ uống có cồn trong suốt đợt điều trị kháng sinh.' },
-      { id: 5, tieuDe: 'Tái khám sau 5 - 7 ngày', noiDung: 'Tái khám sau 5 - 7 ngày để đánh giá đáp ứng điều trị hoặc bất kỳ lúc nào nếu triệu chứng nặng hơn.' },
-    ];
-
-    const rows = await this.nguoiDungRepo.query(
-      'SELECT gia_tri FROM cai_dat_he_thong WHERE khoa_cai_dat = "MAU_LOI_DAN_BAC_SI" LIMIT 1',
-    );
-    if (!rows || rows.length === 0 || !rows[0].gia_tri) {
-      return defaultData;
-    }
-    const val = typeof rows[0].gia_tri === 'string' ? JSON.parse(rows[0].gia_tri) : rows[0].gia_tri;
-    return Array.isArray(val) && val.length > 0 ? val : defaultData;
-  }
-
-  async capNhatMauLoiDanBacSi(danhSach: any[], userId?: number) {
-    if (!Array.isArray(danhSach)) {
-      throw new BadRequestException('Dữ liệu mẫu lời dặn phải là mảng hợp lệ');
-    }
-    const existing = await this.nguoiDungRepo.query(
-      'SELECT id FROM cai_dat_he_thong WHERE khoa_cai_dat = "MAU_LOI_DAN_BAC_SI" LIMIT 1',
-    );
-    const jsonStr = JSON.stringify(danhSach);
-    if (existing && existing.length > 0) {
-      await this.nguoiDungRepo.query(
-        'UPDATE cai_dat_he_thong SET gia_tri = ?, cap_nhat_luc = NOW() WHERE khoa_cai_dat = "MAU_LOI_DAN_BAC_SI"',
-        [jsonStr],
-      );
-    } else {
-      await this.nguoiDungRepo.query(
-        'INSERT INTO cai_dat_he_thong (khoa_cai_dat, gia_tri, ghi_chu, cap_nhat_luc) VALUES ("MAU_LOI_DAN_BAC_SI", ?, "Mẫu lời dặn y khoa mặc định", NOW())',
-        [jsonStr],
-      );
-    }
-
-    await this.ghiLog({
-      nguoiDungId: userId || 1,
-      tenNguoiDung: 'admin',
-      vaiTro: 'quan_tri_vien_cap_cao',
-      hanhDong: 'CAP_NHAT_MAU_LOI_DAN',
-      loaiNhatKy: LoaiNhatKy.INFO,
-      moTa: `Cập nhật danh mục mẫu lời dặn y khoa (${danhSach.length} mẫu)`,
-    });
-
-    return { message: 'Cập nhật danh mục mẫu lời dặn thành công', data: danhSach };
   }
 
   // ─── ADMIN: SAO LƯU & DUNG LƯỢNG DATABASE ─────────────────────
