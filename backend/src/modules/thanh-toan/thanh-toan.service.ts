@@ -130,8 +130,17 @@ export class ThanhToanService {
           isTamUngQuay ||
           hd.maHoaDon?.startsWith('HDT') ||
           hd.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]') ||
-          (hd.chiTiet && hd.chiTiet.some((c) => c.loaiPhi === 'tam_ung'))
+          // Hóa đơn quyết toán của lượt khám cũng có dòng 'tam_ung' (khấu trừ, số âm) → không phải phiếu tạm ứng
+          (!hd.luotTiepNhanId && hd.chiTiet?.some((c) => c.loaiPhi === 'tam_ung'))
         );
+        // Hóa đơn quyết toán: tạm ứng đã khấu trừ, mã chứng từ nằm trong ngoặc của mô tả dòng khấu trừ
+        const dongKhauTru = hd.luotTiepNhanId ? hd.chiTiet?.find((c) => c.loaiPhi === 'tam_ung') : null;
+        const khauTruTamUng = dongKhauTru
+          ? {
+              soTien: Math.abs(Number(dongKhauTru.thanhTien)),
+              maChungTu: dongKhauTru.moTa?.match(/\(([^)]+)\)\s*$/)?.[1] || null,
+            }
+          : null;
         const matchMaLh = hd.ghiChu?.match(/\[MÃ_LỊCH_HẸN:\s*([^\]]+)\]/i);
         const maLichHen = matchMaLh
           ? matchMaLh[1].trim()
@@ -173,6 +182,7 @@ export class ThanhToanService {
             gioiTinh: hd.benhNhan?.gioiTinh,
           },
           luotTiepNhanId: hd.luotTiepNhanId,
+          khauTruTamUng,
           thuNgan: hd.thuNgan
             ? hd.thuNgan.hoTen
             : isTamUng && !isTamUngQuay

@@ -669,8 +669,10 @@ export default function HoaDonListPage() {
                     hd.loaiHoaDon === 'tam_ung_dat_lich' ||
                     hd.maHoaDon?.startsWith('HDT') ||
                     hd.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]');
-                  const isDeductedDeposit =
-                    !isTamUng && hd.ghiChu && hd.ghiChu.includes('khấu trừ');
+                  // Phiếu tạm ứng tại quầy (TU + id lượt) → hóa đơn quyết toán của cùng lượt khám
+                  const hoaDonQuyetToan = isTamUngQuay
+                    ? list.find((x) => x.luotTiepNhanId === Number(hd.maHoaDon.slice(2)) && x.trangThai !== 'huy')
+                    : null;
 
                   return (
                     <tr
@@ -694,9 +696,15 @@ export default function HoaDonListPage() {
                               📌 {isTamUngQuay ? 'Tạm ứng tại quầy' : `Tạm ứng đặt lịch${hd.maLichHen ? ` • ${hd.maLichHen}` : ''}`}
                             </span>
                           )}
-                          {isDeductedDeposit && (
+                          {hd.khauTruTamUng && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200">
-                              ✓ Đã trừ cọc 40.000 đ
+                              ✓ Đã trừ tạm ứng {formatCurrency(hd.khauTruTamUng.soTien)}
+                              {hd.khauTruTamUng.maChungTu ? ` (${hd.khauTruTamUng.maChungTu})` : ''}
+                            </span>
+                          )}
+                          {hoaDonQuyetToan && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-50 text-gray-600 border border-gray-200">
+                              → Quyết toán: {hoaDonQuyetToan.maHoaDon}
                             </span>
                           )}
                         </div>
