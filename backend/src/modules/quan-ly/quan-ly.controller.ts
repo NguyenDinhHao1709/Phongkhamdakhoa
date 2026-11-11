@@ -161,35 +161,6 @@ export class QuanLyController {
     return this.quanLyService.capNhatMauLoiDanBacSi(dto, userId);
   }
 
-  // ─── ADMIN: CẤU HÌNH DỊCH VỤ (.ENV, EMAIL, PAYOS, GEMINI, THANH TOÁN) ──
-  @Get('cai-dat-dich-vu')
-  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
-  @ApiOperation({ summary: 'Lấy cấu hình Email OTP, Cổng PayOS, Gemini AI và Hình thức thanh toán' })
-  getCaiDatDichVu() {
-    return this.quanLyService.getCaiDatDichVu();
-  }
-
-  @Put('cai-dat-dich-vu')
-  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
-  @ApiOperation({ summary: 'Cập nhật cấu hình dịch vụ hệ thống và đồng bộ file .env' })
-  capNhatCaiDatDichVu(@Body() dto: any, @CurrentUser('id') userId: number) {
-    return this.quanLyService.capNhatCaiDatDichVu(dto, userId);
-  }
-
-  @Post('test-ket-noi-dich-vu')
-  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
-  @ApiOperation({ summary: 'Kiểm tra kết nối thử nghiệm Email SMTP, PayOS hoặc Gemini AI' })
-  testKetNoiDichVu(@Body() body: { loai: string; payload: any }) {
-    return this.quanLyService.testKetNoiDichVu(body.loai, body.payload);
-  }
-
-  @Public()
-  @Get('hinh-thuc-thanh-toan')
-  @ApiOperation({ summary: 'Lấy danh sách hình thức thanh toán được kích hoạt (Công khai)' })
-  getHinhThucThanhToanPublic() {
-    return this.quanLyService.getHinhThucThanhToanPublic();
-  }
-
   // ─── ADMIN: THÔNG SỐ CƠ SỞ DỮ LIỆU & BACKUP ─────────────────
   @Get('backup-info')
   @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
