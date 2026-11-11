@@ -13,6 +13,7 @@ ENV NODE_ENV=production
 COPY package.json ./
 RUN npm install --omit=dev --no-package-lock && npm cache clean --force
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/data ./data
 COPY register-paths.js ./
 EXPOSE 5002
 CMD ["node", "-r", "./register-paths.js", "dist/main.js"]

@@ -2272,10 +2272,12 @@ function ClinicalRagAssistantPanel({
   });
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(true);
+  const [ragError, setRagError] = useState('');
 
   const handleRunRag = async () => {
     setLoading(true);
     setExpanded(true);
+    setRagError('');
     try {
       const res = await apiPost('/ai/clinical-protocol-rag', {
         benhAnKhamId,
@@ -2294,7 +2296,13 @@ function ClinicalRagAssistantPanel({
         } catch {}
       }
     } catch (e) {
-      console.error('Lỗi truy xuất RAG Phác đồ Bộ Y tế:', e);
+      console.error('Lỗi gợi ý phác đồ:', e);
+      // Không giữ kết quả cũ (của triệu chứng trước) khi tra cứu lỗi
+      setRagData(null);
+      try {
+        sessionStorage.removeItem(ragStorageKey);
+      } catch {}
+      setRagError('Không lấy được gợi ý phác đồ (dịch vụ đang khởi động hoặc lỗi). Vui lòng thử lại sau ít phút.');
     } finally {
       setLoading(false);
     }
@@ -2341,6 +2349,13 @@ function ClinicalRagAssistantPanel({
           </MedButton>
         </div>
       </div>
+
+      {ragError && (
+        <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>{ragError}</span>
+        </div>
+      )}
 
       {ragData && expanded && topProto && (
         <div className="space-y-3 pt-2 border-t border-emerald-200/70 text-xs">
