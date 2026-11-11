@@ -7,6 +7,7 @@ Cách chạy:
     uvicorn main:app --reload --port 5001
 """
 import os
+import threading
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException
@@ -16,7 +17,7 @@ from dotenv import load_dotenv
 
 from services.forecaster import DataLoader, HoltWintersForecaster, PatternAnalyzer
 from services.queue_router import DynamicQueueRouter
-from services.face_verifier import verify_face, check_duplicate_face
+from services.face_verifier import verify_face, check_duplicate_face, get_face_app
 from services.triage_classifier import TriageClassifier
 
 load_dotenv()
@@ -36,6 +37,12 @@ app.add_middleware(
 
 loader = DataLoader()
 triage_classifier = TriageClassifier(loader)
+
+
+@app.on_event("startup")
+def warmup_face_model():
+    """Nạp sẵn model khuôn mặt ở luồng nền → lần chấm công đầu tiên không phải chờ nạp model."""
+    threading.Thread(target=get_face_app, daemon=True).start()
 
 
 # ─── Health Check ─────────────────────────────────────────────────────

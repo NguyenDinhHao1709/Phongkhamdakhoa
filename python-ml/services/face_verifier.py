@@ -5,22 +5,37 @@ Ngưỡng đối sánh: ~70% (chuẩn hóa thang điểm 100%)
 """
 import os
 import base64
+import hashlib
 import io
+import threading
+from collections import OrderedDict
+
 import cv2
 import numpy as np
 from PIL import Image
 
 from insightface.app import FaceAnalysis
 
+# Ảnh lớn hơn được thu nhỏ trước khi nhận diện (ảnh điện thoại 12MP xử lý rất chậm)
+MAX_SIDE = 800
+# Mặt khi chấm công/ảnh thẻ luôn lớn → khung dò 320 đủ chính xác, nhanh hơn ~3-4 lần so với 640
+DET_SIZE = (320, 320)
+
 # ─── Khởi tạo InsightFace ───────────────────────────────────────────────────
 
 _face_app = None
+_face_app_lock = threading.Lock()
 
-def _get_face_app():
+
+def get_face_app():
+    """Nạp model 1 lần (gọi sẵn lúc khởi động service, có khóa để request đồng thời không nạp trùng)."""
     global _face_app
-    if _face_app is None:
-        _face_app = FaceAnalysis(name='buffalo_sc', providers=['CPUExecutionProvider'])
-        _face_app.prepare(ctx_id=0, det_size=(640, 640))
+    with _face_app_lock:
+        if _face_app is None:
+            app = FaceAnalysis(name='buffalo_sc', providers=['CPUExecutionProvider'])
+            app.prepare(ctx_id=0, det_size=DET_SIZE)
+            app.get(np.zeros((DET_SIZE[1], DET_SIZE[0], 3), dtype=np.uint8))  # chạy thử 1 lần để khởi tạo ONNX
+            _face_app = app
     return _face_app
 
 
@@ -29,18 +44,43 @@ def decode_base64_image(b64_str: str) -> np.ndarray:
     data = b64_str
     for prefix in ['data:image/jpeg;base64,', 'data:image/png;base64,', 'data:image/webp;base64,']:
         data = data.replace(prefix, '')
-    buf = io.BytesIO(base64.b64decode(data))
-    pil_img = Image.open(buf).convert('RGB')
-    return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+    pil_img = Image.open(io.BytesIO(base64.b64decode(data)))
+    pil_img.draft('RGB', (MAX_SIDE, MAX_SIDE))  # JPEG: giải mã thẳng ở kích thước nhỏ, nhanh hơn nhiều
+    return cv2.cvtColor(np.array(pil_img.convert('RGB')), cv2.COLOR_RGB2BGR)
 
 
 def get_face_info(img_bgr: np.ndarray):
     """Lấy thông tin khuôn mặt (det_score, kps, embedding). Trả về None nếu không thấy mặt."""
-    app = _get_face_app()
-    faces = app.get(img_bgr)
+    h, w = img_bgr.shape[:2]
+    if max(h, w) > MAX_SIDE:
+        scale = MAX_SIDE / max(h, w)
+        img_bgr = cv2.resize(img_bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    faces = get_face_app().get(img_bgr)
     if not faces:
         return None
     return max(faces, key=lambda f: f.det_score)
+
+
+# ─── Cache kết quả nhận diện ảnh mẫu theo hash nội dung ─────────────────────
+# Ảnh mẫu nhân viên ít thay đổi → không chạy lại model mỗi lần quét/đối soát trùng
+_FACE_CACHE_MAX = 500
+_face_cache: 'OrderedDict[str, object]' = OrderedDict()
+
+
+def get_cached_face(b64: str | None = None, path: str | None = None):
+    """Nhận diện ảnh (base64 hoặc đường dẫn) có cache. Trả về face hoặc None; raise nếu ảnh hỏng."""
+    key = hashlib.sha1(b64.encode()).hexdigest() if b64 else f'{path}|{os.path.getmtime(path)}'
+    if key in _face_cache:
+        _face_cache.move_to_end(key)
+        return _face_cache[key]
+    img = decode_base64_image(b64) if b64 else cv2.imread(path)
+    if img is None:
+        raise ValueError('ảnh hỏng hoặc sai định dạng')
+    face = get_face_info(img)
+    _face_cache[key] = face
+    if len(_face_cache) > _FACE_CACHE_MAX:
+        _face_cache.popitem(last=False)
+    return face
 
 
 def cosine_similarity(a, b) -> float:
@@ -83,6 +123,7 @@ def check_live_entity(frame_img: np.ndarray, frames_b64: list[str] | None = None
 
     return {
         'is_live': True,
+        'face': face_info,  # dùng lại để so khớp, không chạy model lần 2
         'det_score': float(face_info.det_score),
         'reason': 'Thực thể sống hợp lệ',
     }
@@ -99,72 +140,29 @@ def verify_face(
     1. Kiểm tra thực thể sống trước camera (Live Entity)
     2. Đối sánh khuôn mặt với ảnh đại diện theo ngưỡng ~70%
     """
-    # ── 1. Đọc và kiểm tra ảnh mẫu ──
-    if ref_image_base64:
-        try:
-            ref_img = decode_base64_image(ref_image_base64)
-        except Exception as e:
-            return {
-                'verified': False,
-                'liveness': False,
-                'similarity': 0.0,
-                'reason': f'Lỗi giải mã ảnh mẫu nhân viên: {e}',
-            }
-    elif ref_image_path and os.path.exists(ref_image_path):
-        ref_img = cv2.imread(ref_image_path)
-    else:
-        return {
-            'verified': False,
-            'liveness': False,
-            'similarity': 0.0,
-            'reason': 'Không nhận được ảnh mẫu nhân viên từ backend',
-        }
+    def fail(reason: str) -> dict:
+        return {'verified': False, 'liveness': False, 'similarity': 0.0, 'reason': reason}
 
-    if ref_img is None:
-        return {
-            'verified': False,
-            'liveness': False,
-            'similarity': 0.0,
-            'reason': 'Không thể đọc ảnh mẫu nhân viên',
-        }
-
-    ref_face = get_face_info(ref_img)
+    # ── 1. Ảnh mẫu (có cache embedding) ──
+    if not ref_image_base64 and not (ref_image_path and os.path.exists(ref_image_path)):
+        return fail('Không nhận được ảnh mẫu nhân viên từ backend')
+    try:
+        ref_face = get_cached_face(ref_image_base64, ref_image_path)
+    except Exception as e:
+        return fail(f'Không thể đọc ảnh mẫu nhân viên: {e}')
     if ref_face is None:
-        return {
-            'verified': False,
-            'liveness': False,
-            'similarity': 0.0,
-            'reason': 'Ảnh mẫu trong hệ thống không phát hiện được khuôn mặt',
-        }
+        return fail('Ảnh mẫu trong hệ thống không phát hiện được khuôn mặt')
 
     # ── 2. Đọc frame camera và kiểm tra thực thể sống ──
     try:
         frame_img = decode_base64_image(frame_b64)
     except Exception as e:
-        return {
-            'verified': False,
-            'liveness': False,
-            'similarity': 0.0,
-            'reason': f'Lỗi giải mã ảnh camera: {e}',
-        }
+        return fail(f'Lỗi giải mã ảnh camera: {e}')
 
     live_check = check_live_entity(frame_img, frames_b64)
     if not live_check['is_live']:
-        return {
-            'verified': False,
-            'liveness': False,
-            'similarity': 0.0,
-            'reason': live_check['reason'],
-        }
-
-    frame_face = get_face_info(frame_img)
-    if frame_face is None:
-        return {
-            'verified': False,
-            'liveness': True,
-            'similarity': 0.0,
-            'reason': 'Không phát hiện rõ khuôn mặt trong ảnh chụp',
-        }
+        return fail(live_check['reason'])
+    frame_face = live_check['face']
 
     # ── 3. So khớp khuôn mặt ──
     cos_sim = cosine_similarity(ref_face.embedding, frame_face.embedding)
@@ -203,27 +201,22 @@ def check_duplicate_face(
     Ngưỡng phát hiện trùng lặp: >= 70% (~ cosine similarity >= 0.35)
     """
     candidate_list = candidate_list or []
-    target_img = None
-    if target_image_base64:
-        try:
-            target_img = decode_base64_image(target_image_base64)
-        except Exception as exc:
-            return {
-                'valid_face': False,
-                'is_duplicate': False,
-                'reason': f'Không thể giải mã ảnh tải lên: {exc}',
-            }
-    elif target_image_path and os.path.exists(target_image_path):
-        target_img = cv2.imread(target_image_path)
-
-    if target_img is None:
+    if not target_image_base64 and not (target_image_path and os.path.exists(target_image_path)):
         return {
             'valid_face': False,
             'is_duplicate': False,
             'reason': 'Không thể đọc dữ liệu ảnh tải lên hoặc đường dẫn ảnh không tồn tại',
         }
+    try:
+        # Có cache: ảnh này sau thành ảnh mẫu, lần đối soát/chấm công sau không phải chạy lại model
+        target_face = get_cached_face(target_image_base64, target_image_path)
+    except Exception as exc:
+        return {
+            'valid_face': False,
+            'is_duplicate': False,
+            'reason': f'Không thể giải mã ảnh tải lên: {exc}',
+        }
 
-    target_face = get_face_info(target_img)
     if target_face is None or target_face.det_score < 0.5:
         return {
             'valid_face': False,
@@ -233,19 +226,13 @@ def check_duplicate_face(
 
     # So sánh với từng ứng viên
     for cand in candidate_list:
-        cand_img = None
-        if cand.get('anh_base64'):
-            try:
-                cand_img = decode_base64_image(cand['anh_base64'])
-            except Exception:
-                continue
-        elif cand.get('anh_path') and os.path.exists(cand['anh_path']):
-            cand_img = cv2.imread(cand['anh_path'])
-
-        if cand_img is None:
+        cand_path = cand.get('anh_path')
+        if not cand.get('anh_base64') and not (cand_path and os.path.exists(cand_path)):
             continue
-
-        cand_face = get_face_info(cand_img)
+        try:
+            cand_face = get_cached_face(cand.get('anh_base64'), cand_path)
+        except Exception:
+            continue
         if cand_face is None:
             continue
 
