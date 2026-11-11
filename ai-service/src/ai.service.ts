@@ -18,6 +18,7 @@ import {
   Thuoc,
   BacSi,
   CauHinhTienCoc,
+  AiCauTraLoiCache,
 } from './entities/clinical.entities';
 import {
   matchClinicalProtocols,
@@ -181,12 +182,46 @@ const TRIAGE_MODEL_PARAMS: Omit<ModelParams, 'model'> = {
   systemInstruction: MEDICAL_TRIAGE_PROMPT,
 };
 
+// ─── Cache câu trả lời & bộ phân loại chuyên khoa (python-ml) ───
+const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
+const ML_MIN_XAC_SUAT = 0.6;
+const KHOA_THEO_MA: Record<string, string> = {
+  NHI: 'Nhi khoa', HH_TMH: 'Hô hấp / Tai Mũi Họng', CAP_CUU: 'Cấp cứu', TIM: 'Tim mạch', TH: 'Tiêu hóa',
+  TK: 'Thần kinh', CXK: 'Cơ xương khớp', DA: 'Da liễu', MAT: 'Mắt', NOI: 'Nội tổng quát',
+};
+// Dấu hiệu đe dọa tính mạng: luôn trả lời bằng luật ngay, không chờ AI
+const RED_FLAG_RE = /(nguy kịch|co giật|hôn mê|ngất xỉu|ngất|thở khò khè nặng|tím tái|đột quỵ|chảy máu nhiều|nôn ra máu|ho ra máu|đau thắt ngực|thắt ngực|đau ngực dữ dội|ép ngực|liệt nửa người|méo miệng|khó thở dữ dội)/;
+
+function boDau(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+}
+
+/** Khóa cache: chữ thường, bỏ dấu, bỏ ký tự đặc biệt → "Đau đầu?" và "dau dau" trùng nhau */
+function taoKhoaCache(message: string): string {
+  return boDau(normalizeUnaccentedQuery(message)).replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 255);
+}
+
+const TU_DUNG = new Set(['thuốc', 'uống', 'giá', 'bao', 'nhiêu', 'của', 'và', 'có', 'không', 'bị', 'tôi', 'mình', 'cho', 'là', 'gì', 'nào', 'thì', 'với', 'được', 'em', 'bác', 'sĩ', 'khám', 'xét', 'nghiệm', 'loại', 'cần', 'nên', 'hay', 'bệnh']);
+
+/** Chọn tối đa `max` mục có nhiều từ trùng với câu hỏi nhất */
+function chonMucLienQuan<T>(items: T[], query: string, getText: (item: T) => string, max = 8): T[] {
+  const tach = (s: string) => s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2 && !TU_DUNG.has(w));
+  const tuHoi = new Set(tach(query));
+  if (!tuHoi.size) return [];
+  return items
+    .map((item) => ({ item, diem: [...new Set(tach(getText(item)))].filter((w) => tuHoi.has(w)).length }))
+    .filter((x) => x.diem > 0)
+    .sort((a, b) => b.diem - a.diem)
+    .slice(0, max)
+    .map((x) => x.item);
+}
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private genAI: GoogleGenerativeAI | null = null;
   private readonly PYTHON_ML_URL: string;
-  private cachedClinicContext: { text: string; thuocList: Thuoc[]; dichVuList: DichVuXetNghiem[]; bacSiList: BacSi[]; bieuPhi: BieuPhi; expiresAt: number } | null = null;
+  private cachedClinicContext: { fixedText: string; thuocList: Thuoc[]; dichVuList: DichVuXetNghiem[]; bacSiList: BacSi[]; bieuPhi: BieuPhi; expiresAt: number } | null = null;
 
   constructor(
     private configService: ConfigService,
@@ -203,6 +238,7 @@ export class AiService {
     @InjectRepository(Thuoc) private thuocRepo: Repository<Thuoc>,
     @InjectRepository(BacSi) private bacSiRepo: Repository<BacSi>,
     @InjectRepository(CauHinhTienCoc) private tienCocRepo: Repository<CauHinhTienCoc>,
+    @InjectRepository(AiCauTraLoiCache) private cacheRepo: Repository<AiCauTraLoiCache>,
   ) {
     this.PYTHON_ML_URL = (
       this.configService.get<string>('PYTHON_ML_URL') || 'http://localhost:5001'
@@ -249,6 +285,45 @@ export class AiService {
       }
     }
     throw lastError;
+  }
+
+  /** Lấy câu trả lời Gemini đã lưu cho câu hỏi giống hệt (lỗi/chưa tạo bảng → coi như không có) */
+  private async docCache(khoa: string): Promise<any | null> {
+    if (!khoa) return null;
+    try {
+      const row = await this.cacheRepo.findOne({ where: { khoaCache: khoa } });
+      if (!row || Date.now() - new Date(row.ngayCapNhat).getTime() > CACHE_TTL_MS) return null;
+      // Gán lại ngay_cap_nhat để MySQL không tự cập nhật (TTL tính từ lúc Gemini trả lời)
+      this.cacheRepo
+        .query('UPDATE ai_cau_tra_loi_cache SET so_lan_dung = so_lan_dung + 1, ngay_cap_nhat = ngay_cap_nhat WHERE id = ?', [row.id])
+        .catch(() => undefined);
+      return { ...row.ketQua, source: 'cache' };
+    } catch {
+      return null;
+    }
+  }
+
+  private ghiCache(khoa: string, cauHoi: string, ketQua: any) {
+    if (!khoa) return;
+    this.cacheRepo
+      .query(
+        `INSERT INTO ai_cau_tra_loi_cache (khoa_cache, cau_hoi_goc, ket_qua, ma_khoa) VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE cau_hoi_goc = VALUES(cau_hoi_goc), ket_qua = VALUES(ket_qua), ma_khoa = VALUES(ma_khoa)`,
+        [khoa, cauHoi, JSON.stringify({ ...ketQua, source: undefined }), ketQua.ma_khoa || null],
+      )
+      .catch((err) => this.logger.warn(`Ghi cache AI lỗi: ${err.message}`));
+  }
+
+  /** Bộ phân loại chuyên khoa tự huấn luyện (TF-IDF + Logistic Regression ở python-ml) */
+  private async phanLoaiChuyenKhoaML(text: string): Promise<{ ma_khoa: string; xac_suat: number } | null> {
+    try {
+      const { data } = await firstValueFrom(
+        this.httpService.post(`${this.PYTHON_ML_URL}/triage-classify`, { text }, { timeout: 3000 }),
+      );
+      return data?.ma_khoa ? data : null;
+    } catch {
+      return null;
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -584,41 +659,26 @@ QUY TẮC GIAO TIẾP:
         trucTuyen: tienCocList.find((c) => c.loaiHinhThuc === 'truc_tuyen'),
       };
 
-      const thuocLines = thuocList.map(
-        t => `- ${t.tenThuoc} (Hoạt chất: ${t.tenHoatChat || 'Đang cập nhật'}, Hàm lượng: ${t.hamLuong || '--'}, Đường dùng: ${t.duongDung || 'Uống'}, ĐVT: ${t.donViTinh || 'Viên'}, Giá tham khảo: ${Number(t.giaBan || 0).toLocaleString('vi-VN')}đ/${t.donViTinh || 'Viên'}${t.moTa ? `, Công dụng: ${t.moTa}` : ''})`
-      ).join('\n');
-
-      const dichVuLines = dichVuList.map(
-        dv => `- ${dv.tenDichVu} (Giá: ${Number(dv.gia || 0).toLocaleString('vi-VN')}đ${dv.giaTriBinhThuong ? `, Chỉ số bình thường: ${dv.giaTriBinhThuong} ${dv.donViKetQua || ''}` : ''})`
-      ).join('\n');
-
       const bacSiLines = bacSiList.map(bs => {
         const rawName = (bs.nhanVien?.hoTen || 'Bác sĩ').replace(/^(BS\.|Bác sĩ|ThS\.|TS\.|CKI|CKII)\s+/gi, '').trim();
         const degree = bs.bangCap ? bs.bangCap.trim() : 'BS.';
         return `- ${degree.includes('BS') || degree.includes('Bác sĩ') ? degree : `BS. ${degree}`} ${rawName} — Chuyên khoa: ${bs.chuyenKhoa}`;
       }).join('\n');
 
-      const text = `
-=== DỮ LIỆU Y TẾ THỰC TẾ TẠI PHÒNG KHÁM (DÙNG ĐỂ ĐỐI CHIẾU KHI TƯ VẤN) ===
+      // Phần cố định (biểu phí + bác sĩ) luôn gửi; thuốc/xét nghiệm chỉ gửi mục liên quan (xem buildRelevantClinicContext)
+      const fixedText = `
 [0. BẢNG GIÁ KHÁM TRỰC TIẾP & KHÁM ONLINE TỪ XA (TELEMEDICINE / VIDEO CALL) — SỐ LIỆU CHÍNH THỨC]:
 - Hình thức 1 - Khám trực tiếp tại phòng khám: ${moTaPhiTrucTiep(bieuPhi.trucTiep)}.
 - Hình thức 2 - Khám & Tư vấn trực tuyến từ xa (Khám Online / Telemedicine / Telehealth): ${moTaPhiTrucTuyen(bieuPhi.trucTuyen)}.
   + Quyền lợi: Gọi Video Call 1-1 trực tiếp với Bác sĩ chuyên khoa qua hệ thống WebRTC của phòng khám (không cần đến phòng khám), được Bác sĩ chẩn đoán và KÊ ĐƠN THUỐC ĐIỆN TỬ gửi trực tiếp vào hồ sơ bệnh nhân.
 - Giờ làm việc: Sáng 07:30 – 11:30 | Chiều 13:30 – 17:00 | Hotline: 1900 6868.
 
-[1. DANH MỤC THUỐC TẠI NHÀ THUỐC PHÒNG KHÁM]:
-${thuocLines || 'Đang cập nhật danh mục thuốc.'}
-
-[2. DANH MỤC XÉT NGHIỆM & CẬN LÂM SÀNG (KÈM GIÁ & NGƯỠNG BÌNH THƯỜNG)]:
-${dichVuLines || 'Đang cập nhật danh mục xét nghiệm.'}
-
 [3. ĐỘI NGŨ BÁC SĨ CHUYÊN KHOA]:
 ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
-===========================================================================
 `;
 
       this.cachedClinicContext = {
-        text,
+        fixedText,
         thuocList,
         dichVuList,
         bacSiList,
@@ -627,8 +687,29 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
       };
       return this.cachedClinicContext;
     } catch (err) {
-      return { text: '', thuocList: [], dichVuList: [], bacSiList: [], bieuPhi: {}, expiresAt: now + 60000 };
+      return { fixedText: '', thuocList: [], dichVuList: [], bacSiList: [], bieuPhi: {}, expiresAt: now + 60000 };
     }
+  }
+
+  /** RAG: chỉ đưa vào prompt các thuốc/xét nghiệm khớp từ khóa câu hỏi (thay vì cả danh mục) → prompt ngắn, Gemini trả lời nhanh hơn */
+  private async buildRelevantClinicContext(query: string): Promise<string> {
+    const ctx = await this.getClinicMedicalContext();
+    const thuoc = chonMucLienQuan(ctx.thuocList, query, (t) => `${t.tenThuoc} ${t.tenHoatChat || ''} ${t.moTa || ''}`).map(
+      (t) => `- ${t.tenThuoc} (Hoạt chất: ${t.tenHoatChat || 'Đang cập nhật'}, Hàm lượng: ${t.hamLuong || '--'}, Đường dùng: ${t.duongDung || 'Uống'}, Giá tham khảo: ${Number(t.giaBan || 0).toLocaleString('vi-VN')}đ/${t.donViTinh || 'Viên'}${t.moTa ? `, Công dụng: ${t.moTa}` : ''})`,
+    );
+    const dichVu = chonMucLienQuan(ctx.dichVuList, query, (dv) => dv.tenDichVu).map(
+      (dv) => `- ${dv.tenDichVu} (Giá: ${Number(dv.gia || 0).toLocaleString('vi-VN')}đ${dv.giaTriBinhThuong ? `, Chỉ số bình thường: ${dv.giaTriBinhThuong} ${dv.donViKetQua || ''}` : ''})`,
+    );
+    const khongKhop = 'Không có mục khớp câu hỏi — không tự bịa tên/giá, hướng dẫn khách xem bảng giá khi đặt lịch.';
+    return `
+=== DỮ LIỆU Y TẾ THỰC TẾ TẠI PHÒNG KHÁM (DÙNG ĐỂ ĐỐI CHIẾU KHI TƯ VẤN) ===${ctx.fixedText}
+[1. THUỐC TẠI NHÀ THUỐC PHÒNG KHÁM LIÊN QUAN CÂU HỎI]:
+${thuoc.join('\n') || khongKhop}
+
+[2. XÉT NGHIỆM & CẬN LÂM SÀNG LIÊN QUAN CÂU HỎI (KÈM GIÁ & NGƯỠNG BÌNH THƯỜNG)]:
+${dichVu.join('\n') || khongKhop}
+===========================================================================
+`;
   }
 
   async triageChat(
@@ -696,9 +777,21 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
       }
     }
 
+    // Chỉ cache câu hỏi mở đầu cuộc trò chuyện: câu sau phụ thuộc ngữ cảnh hội thoại nên không dùng lại được
+    const khoaCache = history.length === 0 ? taoKhoaCache(userMessage) : '';
+    const cached = await this.docCache(khoaCache);
+    if (cached) {
+      history.push(
+        { role: 'user', parts: [{ text: userMessage }] },
+        { role: 'model', parts: [{ text: cached.cau_tra_loi || '' }] },
+      );
+      return cached;
+    }
+
     try {
-      const clinicContext = await this.getClinicMedicalContext();
-      const enrichedMessage = `${clinicContext.text}\n\nCâu hỏi / Chia sẻ của người bệnh: "${userMessage}"\nLƯU Ý BẮT BUỘC: Nếu khách hỏi về khám online, khám trực tiếp, tiền cọc, hoàn tiền, bảng giá xét nghiệm, giá thuốc hoặc bác sĩ, phải trích xuất đúng số liệu từ bảng dữ liệu trên để báo giá chi tiết từng mục (VNĐ), TUYỆT ĐỐI KHÔNG ĐƯỢC TỪ CHỐI BÁO GIÁ và không tự đặt ra con số khác. Hãy trả lời đúng cấu trúc JSON quy định.`;
+      const recentUserText = history.filter((h) => h.role === 'user').slice(-2).map((h) => h.parts[0].text).join(' ');
+      const clinicText = await this.buildRelevantClinicContext(`${recentUserText} ${userMessage}`);
+      const enrichedMessage = `${clinicText}\n\nCâu hỏi / Chia sẻ của người bệnh: "${userMessage}"\nLƯU Ý BẮT BUỘC: Nếu khách hỏi về khám online, khám trực tiếp, tiền cọc, hoàn tiền, bảng giá xét nghiệm, giá thuốc hoặc bác sĩ, phải trích xuất đúng số liệu từ bảng dữ liệu trên để báo giá chi tiết từng mục (VNĐ), TUYỆT ĐỐI KHÔNG ĐƯỢC TỪ CHỐI BÁO GIÁ và không tự đặt ra con số khác. Hãy trả lời đúng cấu trúc JSON quy định.`;
 
       // JSON.parse nằm trong run để JSON lỗi cũng chuyển sang model kế tiếp
       const { parsed, rawText } = await this.generateWithFallback('Triage Chat', TRIAGE_MODEL_PARAMS, async (model) => {
@@ -725,6 +818,7 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
         { role: 'model', parts: [{ text: parsed.cau_tra_loi || rawText }] },
       );
       triageSessions.set(sessionId, history.slice(-16));
+      this.ghiCache(khoaCache, userMessage, parsed);
 
       return { ...parsed, source: 'gemini' };
     } catch (err) {
@@ -734,7 +828,37 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
   }
 
   // ─── PHÂN LUỒNG NHANH (single-turn, dùng cho tiếp tân) ─────────
+  // Thứ tự: dấu hiệu cấp cứu (luật) → cache → bộ phân loại tự huấn luyện → Gemini → luật
   async phanLuongNhanh(trieuChung: string) {
+    const lower = normalizeUnaccentedQuery((trieuChung || '').trim());
+    if (RED_FLAG_RE.test(lower)) return this.triageChatRuleBased(trieuChung);
+
+    const khoaCache = taoKhoaCache(trieuChung);
+    const cached = await this.docCache(khoaCache);
+    if (cached) return cached;
+
+    const ml = await this.phanLoaiChuyenKhoaML(trieuChung);
+    if (ml && ml.xac_suat >= ML_MIN_XAC_SUAT && ml.ma_khoa !== 'CAP_CUU') {
+      const maKhoa = hasWord(lower, CHILD_WORDS) ? 'NHI' : ml.ma_khoa;
+      const khoa = KHOA_THEO_MA[maKhoa] || 'Nội tổng quát';
+      return {
+        loai_cau_hoi: 'trieu_chung',
+        chuyen_khoa: khoa,
+        khoa,
+        ma_khoa: maKhoa,
+        khan_cap: false,
+        muc_do_uu_tien: 'trung_binh',
+        cau_tra_loi: `Triệu chứng phù hợp khám chuyên khoa **${khoa}**.`,
+        luu_y_dung_thuoc: null,
+        can_hoi_them: false,
+        cau_hoi_tiep_theo: null,
+        loi_khuyen_so_bo: 'Nếu triệu chứng nặng lên (sốt cao, khó thở, đau dữ dội) hãy báo ngay nhân viên y tế để được ưu tiên.',
+        hien_thi_dat_lich: true,
+        do_tin_cay: ml.xac_suat,
+        source: 'ml_classifier',
+      };
+    }
+
     if (this.genAI) {
       const prompt = `Triệu chứng bệnh nhân: "${trieuChung}". Hãy phân tích và trả về JSON phân luồng chuyên khoa.`;
       try {
@@ -743,6 +867,7 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
         );
         parsed.chuyen_khoa = parsed.chuyen_khoa || parsed.khoa || 'Nội tổng quát';
         parsed.khoa = parsed.khoa || parsed.chuyen_khoa;
+        this.ghiCache(khoaCache, trieuChung, parsed);
         return { ...parsed, source: 'gemini' };
       } catch (err) {
         this.logger.error('Gemini quick triage error / timeout:', err.message);
@@ -801,7 +926,7 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
     // ══════════════════════════════════════════════════════════════════
     // ƯU TIÊN #1: CẤP CỨU Y KHOA (RED FLAGS - ĐE DỌA TÍNH MẠNG)
     // ══════════════════════════════════════════════════════════════════
-    if (/(nguy kịch|co giật|hôn mê|ngất xỉu|ngất|thở khò khè nặng|tím tái|đột quỵ|chảy máu nhiều|nôn ra máu|ho ra máu|đau thắt ngực|thắt ngực|đau ngực dữ dội|ép ngực|liệt nửa người|méo miệng|khó thở dữ dội)/.test(text)) {
+    if (RED_FLAG_RE.test(text)) {
       khoa = 'Cấp cứu'; maKhoa = 'CAP_CUU'; khanCap = true; mucDo = 'khan_cap';
       cauTraLoi = `🚨 **CẢNH BÁO CẤP CỨU Y KHOA!**\n\n` +
         `Các triệu chứng bạn mô tả là **dấu hiệu nguy kịch đe dọa tính mạng** (nghi ngờ Cơn đau thắt ngực không ổn định / Nhồi máu cơ tim cấp, Tai biến mạch máu não / Đột quỵ hoặc Suy hô hấp cấp). Tuyệt đối không tự ý cho uống thuốc hay chờ đợi tại nhà!\n\n` +

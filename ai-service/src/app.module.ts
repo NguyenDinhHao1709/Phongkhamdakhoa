@@ -19,9 +19,11 @@ import {
   BacSi,
   NhanVien,
   CauHinhTienCoc,
+  AiCauTraLoiCache,
 } from './entities/clinical.entities';
 
 const ENTITIES = [
+  AiCauTraLoiCache,
   LuotTiepNhan,
   SinhHieu,
   ChiDinhCanLamSang,

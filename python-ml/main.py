@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from services.forecaster import DataLoader, HoltWintersForecaster, PatternAnalyzer
 from services.queue_router import DynamicQueueRouter
 from services.face_verifier import verify_face, check_duplicate_face
+from services.triage_classifier import TriageClassifier
 
 load_dotenv()
 
@@ -34,6 +35,7 @@ app.add_middleware(
 )
 
 loader = DataLoader()
+triage_classifier = TriageClassifier(loader)
 
 
 # ─── Health Check ─────────────────────────────────────────────────────
@@ -94,6 +96,23 @@ def check_duplicate_face_endpoint(req: CheckDuplicateFaceRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+# ─── Endpoint: Phân loại chuyên khoa từ triệu chứng (mô hình tự huấn luyện) ───
+class TriageClassifyRequest(BaseModel):
+    text: str
+
+
+@app.post("/triage-classify")
+def triage_classify(req: TriageClassifyRequest):
+    """Dự đoán mã chuyên khoa + xác suất (TF-IDF ký tự + Logistic Regression)."""
+    return triage_classifier.predict(req.text)
+
+
+@app.post("/triage-classify/retrain")
+def triage_retrain():
+    """Huấn luyện lại ngay với dữ liệu mẫu + câu hỏi Gemini đã gán nhãn trong cache."""
+    return triage_classifier.train()
 
 
 # ─── Endpoint: Dynamic Queue Routing Optimization ─────────────────────

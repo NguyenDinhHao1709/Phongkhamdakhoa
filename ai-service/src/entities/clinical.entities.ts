@@ -146,6 +146,31 @@ export class CauHinhTienCoc {
   phanTramHoanCoc: number;
 }
 
+// Cache câu trả lời AI (triage) — cũng là dữ liệu huấn luyện bộ phân loại chuyên khoa
+@Entity('ai_cau_tra_loi_cache')
+export class AiCauTraLoiCache {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column({ name: 'khoa_cache', length: 255 })
+  khoaCache: string;
+
+  @Column({ name: 'cau_hoi_goc', type: 'text' })
+  cauHoiGoc: string;
+
+  @Column({ name: 'ket_qua', type: 'json' })
+  ketQua: any;
+
+  @Column({ name: 'ma_khoa', length: 20, nullable: true })
+  maKhoa: string | null;
+
+  @Column({ name: 'so_lan_dung', type: 'int', default: 0 })
+  soLanDung: number;
+
+  @Column({ name: 'ngay_cap_nhat', type: 'datetime', insert: false, update: false })
+  ngayCapNhat: Date;
+}
+
 @Entity('dich_vu_xet_nghiem')
 export class DichVuXetNghiem {
   @PrimaryGeneratedColumn()
