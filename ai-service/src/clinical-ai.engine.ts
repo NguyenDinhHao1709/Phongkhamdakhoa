@@ -8,404 +8,10 @@
  * 3. Hệ thống Kiểm duyệt Tương tác Thuốc, Dị ứng & Chức năng Gan/Thận Thời gian thực
  */
 
-export interface MohProtocolItem {
-  id: string;
-  maIcd10: string;
-  tenBenh: string;
-  chuyenKhoa: string;
-  quyetDinhByt: string;
-  namBanHanh: number;
-  tuKhoaTrieuChung: string[];
-  tieuChuanChanDoan: string[];
-  canLamSangKhuyenNghi: string[];
-  phacDoDieuTri: {
-    nguyenTac: string;
-    thuocDauTay: Array<{
-      nhomThuoc: string;
-      hoatChatGoiY: string;
-      lieuDungChuan: string;
-      luuY: string;
-    }>;
-    khongDungThuoc: string[];
-  };
-  dauHieuNguyHiem: string[];
-  lichTaiKhamKhuyenNghi: string;
-}
-
-// ─── 1. KHO TRI THỨC VECTOR PHÁC ĐỒ BỘ Y TẾ VIỆT NAM (12 PHÁC ĐỒ CỐT LÕI) ───
-export const MOH_CLINICAL_PROTOCOLS_KB: MohProtocolItem[] = [
-  {
-    id: 'BYT_I10',
-    maIcd10: 'I10 - Tăng huyết áp vô căn (nguyên phát)',
-    tenBenh: 'Tăng huyết áp nguyên phát ở người lớn',
-    chuyenKhoa: 'Tim mạch / Nội tổng quát',
-    quyetDinhByt: 'Quyết định số 3192/QĐ-BYT & Cập nhật 5481/QĐ-BYT của Bộ Y tế',
-    namBanHanh: 2022,
-    tuKhoaTrieuChung: [
-      'tăng huyết áp', 'cao huyết áp', 'đau đầu', 'chóng mặt', 'hoa mắt', 'nặng đầu',
-      'đỏ mặt', 'hồi hộp', 'đánh trống ngực', 'mờ mắt', 'nhức gáy', 'huyết áp cao',
-    ],
-    tieuChuanChanDoan: [
-      'Huyết áp tâm thu (HATT) ≥ 140 mmHg và/hoặc Huyết áp tâm trương (HATTr) ≥ 90 mmHg qua ít nhất 2 lần đo chuẩn.',
-      'Phân độ: Độ 1 (140-159/90-99 mmHg), Độ 2 (160-179/100-109 mmHg), Độ 3 (≥180/110 mmHg).',
-      'Đánh giá tổn thương cơ quan đích: Tim (dày thất trái), Thận (protein niệu, giảm eGFR), Võng mạc, Mạch máu.',
-    ],
-    canLamSangKhuyenNghi: [
-      'Điện tâm đồ 12 chuyển đạo (ECG)',
-      'Siêu âm tim Doppler màu',
-      'Sinh hóa máu: Glucose lúc đói, HbA1c, Bilan Lipid máu (Cholesterol, Triglyceride, HDL-C, LDL-C)',
-      'Chức năng thận: Ure, Creatinine huyết thanh, tính mức lọc cầu thận ước tính (eGFR)',
-      'Tổng phân tích nước tiểu 10 thông số (tầm soát đạm niệu)',
-    ],
-    phacDoDieuTri: {
-      nguyenTac: 'Đưa huyết áp về đích < 130/80 mmHg (hoặc < 140/90 mmHg ở người cao tuổi), bảo vệ cơ quan đích và kiểm soát yếu tố nguy cơ tim mạch.',
-      thuocDauTay: [
-        {
-          nhomThuoc: 'Chẹn kênh Calci (CCB) hoặc Ức chế men chuyển (ACEi) / Chẹn thụ thể (ARB)',
-          hoatChatGoiY: 'Amlodipine 5mg hoặc Losartan 50mg / Perindopril 5mg',
-          lieuDungChuan: 'Uống 1 viên/ngày vào buổi sáng sau ăn',
-          luuY: 'Theo dõi huyết áp tại nhà sáng - tối; kiểm tra Kali máu và Creatinine khi dùng ACEi/ARB.',
-        },
-      ],
-      khongDungThuoc: [
-        'Giảm muối trong khẩu phần ăn (< 5g muối/ngày, hạn chế đồ kho mặn, dưa muối, thực phẩm đóng hộp).',
-        'Tăng cường rau xanh, trái cây tươi, ngũ cốc nguyên hạt (chế độ ăn DASH).',
-        'Tập thể dục mức độ trung bình (đi bộ nhanh, đạp xe) 30-45 phút/ngày, tối thiểu 5 ngày/tuần.',
-        'Hạn chế rượu bia, ngưng hoàn toàn thuốc lá và kiểm soát cân nặng (BMI 18.5 - 22.9 kg/m²).',
-      ],
-    },
-    dauHieuNguyHiem: [
-      'Cơn tăng huyết áp cấp cứu: HATT ≥ 180 mmHg hoặc HATTr ≥ 120 mmHg kèm đau ngực, khó thở, yếu liệt nửa người, nói đớ, nhìn mờ cấp tính.',
-    ],
-    lichTaiKhamKhuyenNghi: 'Tái khám sau 14 - 28 ngày để đánh giá đáp ứng thuốc hạ áp.',
-  },
-  {
-    id: 'BYT_E11',
-    maIcd10: 'E11 - Đái tháo đường tuýp 2',
-    tenBenh: 'Đái tháo đường tuýp 2',
-    chuyenKhoa: 'Nội tiết / Nội tổng quát',
-    quyetDinhByt: 'Quyết định số 5481/QĐ-BYT của Bộ Y tế (Hướng dẫn chẩn đoán và điều trị ĐTĐ tuýp 2)',
-    namBanHanh: 2020,
-    tuKhoaTrieuChung: [
-      'tiểu đường', 'đái tháo đường', 'khát nước nhiều', 'tiểu nhiều', 'tiểu đêm',
-      'sụt cân', 'mệt mỏi', 'tê bì chân tay', 'mờ mắt', 'đường huyết cao', 'lâu lành vết thương',
-    ],
-    tieuChuanChanDoan: [
-      'Glucose huyết tương lúc đói (nhịn ăn ≥ 8 giờ) ≥ 7.0 mmol/L (≥ 126 mg/dL), HOẶC',
-      'HbA1c ≥ 6.5% được thực hiện tại phòng xét nghiệm chuẩn hóa, HOẶC',
-      'Glucose huyết tương bất kỳ ≥ 11.1 mmol/L (≥ 200 mg/dL) kèm triệu chứng kinh điển của tăng đường huyết.',
-    ],
-    canLamSangKhuyenNghi: [
-      'Định lượng Glucose máu lúc đói & HbA1c',
-      'Bilan mỡ máu (Cholesterol toàn phần, Triglyceride, HDL-C, LDL-C)',
-      'Chức năng gan - thận: AST (GOT), ALT (GPT), Ure, Creatinine, eGFR',
-      'Tổng phân tích nước tiểu & Tỷ số Albumin/Creatinine niệu (ACR)',
-    ],
-    phacDoDieuTri: {
-      nguyenTac: 'Kiểm soát HbA1c mục tiêu < 7.0%, đường huyết đói 4.4 - 7.2 mmol/L, đường huyết sau ăn < 10.0 mmol/L và phòng ngừa biến chứng mạch máu.',
-      thuocDauTay: [
-        {
-          nhomThuoc: 'Biguanide (Thuốc nền tảng đầu tay theo QĐ 5481/QĐ-BYT)',
-          hoatChatGoiY: 'Metformin 500mg / 850mg',
-          lieuDungChuan: 'Uống 1 viên x 1-2 lần/ngày ngay sau bữa ăn chính để giảm kích ứng tiêu hóa',
-          luuY: 'Chống chỉ định nếu mức lọc cầu thận eGFR < 30 mL/phút/1.73m²; thận trọng giảm liều khi eGFR 30-45.',
-        },
-      ],
-      khongDungThuoc: [
-        'Chia nhỏ bữa ăn, giảm tinh bột hấp thu nhanh (cơm trắng, bánh ngọt, nước có gas), ưu tiên gạo lứt, rau xanh.',
-        'Tập vận động thể lực ít nhất 150 phút/tuần, không nghỉ quá 2 ngày liên tiếp.',
-        'Kiểm tra và chăm sóc bàn chân hàng ngày để phòng loét bàn chân đái tháo đường.',
-      ],
-    },
-    dauHieuNguyHiem: [
-      'Hạ đường huyết (< 3.9 mmol/L): vã mồ hôi lạnh, run tay chân, bủn rủn, đói cồn cào, lú lẫn.',
-      'Tăng đường huyết cấp tính (Toan ceton / Tăng áp lực thẩm thấu): đường huyết > 16.7 mmol/L kèm thở nhanh sâu, buồn nôn, lơ mơ.',
-    ],
-    lichTaiKhamKhuyenNghi: 'Tái khám sau 14 - 30 ngày; xét nghiệm lại HbA1c mỗi 3 tháng.',
-  },
-  {
-    id: 'BYT_K29',
-    maIcd10: 'K29.5 - Viêm dạ dày mạn / Trào ngược dạ dày thực quản (GERD)',
-    tenBenh: 'Viêm loét dạ dày - tá tràng & Trào ngược dạ dày thực quản',
-    chuyenKhoa: 'Tiêu hóa',
-    quyetDinhByt: 'Quyết định số 4538/QĐ-BYT của Bộ Y tế (Phác đồ Tiêu hóa - Gan mật)',
-    namBanHanh: 2021,
-    tuKhoaTrieuChung: [
-      'đau thượng vị', 'đau dạ dày', 'đau bao tử', 'ợ hơi', 'ợ chua', 'nóng rát sau xương ức',
-      'trào ngược', 'đầy bụng', 'khó tiêu', 'buồn nôn', 'đau bụng âm ỉ', 'đau khi đói',
-    ],
-    tieuChuanChanDoan: [
-      'Đau hoặc nóng rát vùng thượng vị liên quan bữa ăn (đau khi đói hoặc sau ăn), kèm ợ hơi, ợ chua, đầy chướng bụng.',
-      'Xác định tình trạng nhiễm vi khuẩn Helicobacter pylori (HP) qua Test thở C13/C14 hoặc Nội soi tiêu hóa trên (CLO-test).',
-    ],
-    canLamSangKhuyenNghi: [
-      'Nội soi thực quản - dạ dày - tá tràng kèm CLO-test tìm H. pylori (hoặc Test thở tìm HP)',
-      'Siêu âm ổ bụng tổng quát (loại trừ sỏi túi mật, viêm tụy)',
-      'Công thức máu (CBC) nếu nghi ngờ thiếu máu do xuất huyết tiêu hóa rỉ rả',
-    ],
-    phacDoDieuTri: {
-      nguyenTac: 'Ức chế bài tiết axit dạ dày (PPI), bảo vệ niêm mạc dạ dày và tiệt trừ H. pylori (nếu dương tính). Tuyệt đối tránh thuốc giảm đau NSAIDs/Corticoid.',
-      thuocDauTay: [
-        {
-          nhomThuoc: 'Ức chế bơm Proton (PPI)',
-          hoatChatGoiY: 'Omeprazole 20mg hoặc Esomeprazole 20mg/40mg',
-          lieuDungChuan: 'Uống 1 viên x 1-2 lần/ngày TRƯỚC bữa ăn sáng (và tối) 30 phút',
-          luuY: 'Bắt buộc uống lúc bụng đói trước ăn 30 phút để đạt hiệu quả ức chế bơm proton tối đa.',
-        },
-        {
-          nhomThuoc: 'Trung hòa axit & Bọc niêm mạc dạ dày (Antacid)',
-          hoatChatGoiY: 'Aluminum phosphate (Phosphalugel) hoặc Alginate (Gaviscon)',
-          lieuDungChuan: 'Uống 1 gói x 2-3 lần/ngày sau ăn 1-2 giờ hoặc khi có cơn đau/ợ chua',
-          luuY: 'Uống cách các thuốc khác tối thiểu 2 giờ để không làm giảm hấp thu thuốc phối hợp.',
-        },
-      ],
-      khongDungThuoc: [
-        'Ăn đúng giờ, nhai kỹ, không ăn quá no hoặc nằm ngay trong vòng 2 giờ sau ăn.',
-        'Kiêng tuyệt đối đồ chua cay, rượu bia, cà phê, nước ngọt có gas và thuốc lá.',
-        'Kê cao đầu giường 15-20cm khi ngủ nếu có triệu chứng trào ngược về đêm.',
-      ],
-    },
-    dauHieuNguyHiem: [
-      'Dấu hiệu báo động đỏ (Red Flags): Nôn ra máu tươi/máu đen, đi ngoài phân đen như bã cà phê, nuốt nghẹn tiến triển, sụt cân không rõ nguyên nhân.',
-    ],
-    lichTaiKhamKhuyenNghi: 'Tái khám sau 14 - 28 ngày điều trị nội khoa.',
-  },
-  {
-    id: 'BYT_J20',
-    maIcd10: 'J20 - Viêm phế quản cấp',
-    tenBenh: 'Viêm phế quản cấp tính',
-    chuyenKhoa: 'Hô hấp / Tai Mũi Họng',
-    quyetDinhByt: 'Quyết định số 4888/QĐ-BYT & 708/QĐ-BYT của Bộ Y tế (Hướng dẫn chẩn đoán và điều trị bệnh hô hấp)',
-    namBanHanh: 2021,
-    tuKhoaTrieuChung: [
-      'ho', 'ho có đờm', 'ho khan', 'sốt', 'khò khè', 'tức ngực khi ho', 'đau rát ngực',
-      'viêm phế quản', 'khạc đờm', 'đờm vàng', 'đờm xanh', 'khó thở nhẹ',
-    ],
-    tieuChuanChanDoan: [
-      'Ho cấp tính kéo dài dưới 3 tuần (có đờm trong, trắng đục hoặc vàng xanh), có thể kèm sốt nhẹ, ran phế quản (ran rít, ran ngáy, ran ẩm) khi nghe phổi.',
-      'Chụp X-Quang ngực thẳng không có hình ảnh đông đặc nhu mô phổi (phân biệt với Viêm phổi J18).',
-    ],
-    canLamSangKhuyenNghi: [
-      'Chụp X-Quang ngực thẳng (loại trừ viêm phổi thùy / tràn dịch màng phổi)',
-      'Tổng phân tích tế bào máu ngoại vi (CBC — đánh giá số lượng Bạch cầu WBC và tỷ lệ %NEU)',
-      'Định lượng CRP định lượng (đánh giá mức độ viêm nhiễm khuẩn)',
-    ],
-    phacDoDieuTri: {
-      nguyenTac: 'Điều trị triệu chứng (giảm ho, long đờm, hạ sốt, bù nước) là chủ đạo. Chỉ dùng kháng sinh khi có bằng chứng bội nhiễm vi khuẩn (sốt kéo dài, đờm mủ xanh đặc, WBC và CRP tăng cao hoặc bệnh nhân COPD/cao tuổi).',
-      thuocDauTay: [
-        {
-          nhomThuoc: 'Thuốc tiêu nhầy / Long đờm',
-          hoatChatGoiY: 'Acetylcysteine 200mg hoặc Bromhexine 8mg',
-          lieuDungChuan: 'Uống 1 gói/viên x 3 lần/ngày sau ăn kèm uống nhiều nước ấm',
-          luuY: 'Thận trọng ở bệnh nhân có tiền sử loét dạ dày đang tiến triển.',
-        },
-        {
-          nhomThuoc: 'Hạ sốt - Giảm đau',
-          hoatChatGoiY: 'Paracetamol 500mg',
-          lieuDungChuan: 'Uống 1 viên khi sốt ≥ 38.5°C, cách nhau mỗi 4-6 giờ (tối đa 3-4 viên/24h)',
-          luuY: 'Kiểm tra chức năng gan nếu dùng kéo dài; không uống rượu bia.',
-        },
-        {
-          nhomThuoc: 'Kháng sinh (Chỉ khi có bội nhiễm vi khuẩn rõ)',
-          hoatChatGoiY: 'Amoxicillin + Clavulanic acid (Augmentin) 625mg/1000mg hoặc Cefuroxime 500mg (hoặc Azithromycin 500mg nếu dị ứng Beta-lactam)',
-          lieuDungChuan: 'Uống 1 viên x 2 lần/ngày sau ăn trong 5 - 7 ngày',
-          luuY: 'BẮT BUỘC khai thác kỹ tiền sử dị ứng kháng sinh nhóm Penicillin / Cephalosporin trước khi kê.',
-        },
-      ],
-      khongDungThuoc: [
-        'Uống nhiều nước ấm (2 - 2.5 lít/ngày) để làm loãng đờm tự nhiên.',
-        'Súc họng và rửa mũi bằng nước muối sinh lý NaCl 0.9% 3 lần/ngày.',
-        'Tránh khói thuốc lá, bụi mịn, không khí lạnh khô từ điều hòa.',
-      ],
-    },
-    dauHieuNguyHiem: [
-      'Khó thở tăng dần, nhịp thở > 24 lần/phút, SpO2 < 94%, sốt cao > 39°C không đáp ứng thuốc hạ sốt, ho ra máu.',
-    ],
-    lichTaiKhamKhuyenNghi: 'Tái khám sau 5 - 7 ngày hoặc khám lại ngay nếu sốt cao/khó thở.',
-  },
-  {
-    id: 'BYT_J00',
-    maIcd10: 'J00 - Viêm mũi họng cấp (Cảm lạnh thông thường)',
-    tenBenh: 'Viêm mũi họng cấp tính',
-    chuyenKhoa: 'Tai Mũi Họng / Hô hấp',
-    quyetDinhByt: 'Quyết định số 5642/QĐ-BYT của Bộ Y tế (Phác đồ Tai Mũi Họng)',
-    namBanHanh: 2020,
-    tuKhoaTrieuChung: [
-      'đau họng', 'rát họng', 'nuốt đau', 'sổ mũi', 'nghẹt mũi', 'hắt hơi',
-      'chảy nước mũi', 'cảm cúm', 'cảm lạnh', 'khàn tiếng', 'sốt nhẹ', 'viêm họng',
-      'ho', 'đau đầu', 'nhức đầu', 'mệt mỏi',
-    ],
-    tieuChuanChanDoan: [
-      'Khởi phát cấp tính với đau rát họng, hắt hơi, chảy mũi trong hoặc nghẹt mũi, niêm mạc họng đỏ xung huyết.',
-      'Đa số (80-90%) do virus hô hấp gây ra; đánh giá thang điểm Centor để phân biệt viêm họng do liên cầu khuẩn nhóm A.',
-    ],
-    canLamSangKhuyenNghi: [
-      'Khám nội soi Tai Mũi Họng (nếu cần đánh giá amidan, vòm mũi họng)',
-      'Công thức máu (CBC) nếu sốt cao > 3 ngày không giảm',
-    ],
-    phacDoDieuTri: {
-      nguyenTac: 'Điều trị nâng đỡ và giảm triệu chứng tại chỗ. Không lạm dụng kháng sinh với viêm mũi họng cấp do virus.',
-      thuocDauTay: [
-        {
-          nhomThuoc: 'Giảm đau - Hạ sốt',
-          hoatChatGoiY: 'Paracetamol 500mg',
-          lieuDungChuan: 'Uống 1 viên x 2-3 lần/ngày sau ăn khi đau họng nhiều hoặc sốt ≥ 38.5°C',
-          luuY: 'Cách mỗi liều ít nhất 4-6 giờ.',
-        },
-        {
-          nhomThuoc: 'Kháng Histamin H1 thế hệ 2 (Giảm hắt hơi, sổ mũi)',
-          hoatChatGoiY: 'Loratadine 10mg hoặc Cetirizine 10mg / Fexofenadine 60mg',
-          lieuDungChuan: 'Uống 1 viên/ngày vào buổi tối',
-          luuY: 'Ít gây buồn ngủ hơn thế hệ 1 nhưng vẫn cần lưu ý khi lái xe.',
-        },
-      ],
-      khongDungThuoc: [
-        'Súc họng nước muối ấm thường xuyên, giữ ấm vùng cổ ngực.',
-        'Bổ sung thực phẩm giàu Vitamin C, uống trà gừng mật ong ấm.',
-      ],
-    },
-    dauHieuNguyHiem: [
-      'Khó nuốt, chảy nước bọt, cứng hàm (nghi áp xe quanh amidan), khó thở thanh quản.',
-    ],
-    lichTaiKhamKhuyenNghi: 'Tái khám sau 5 ngày nếu triệu chứng không thuyên giảm.',
-  },
-  {
-    id: 'BYT_M54',
-    maIcd10: 'M54.5 - Đau lưng vùng thấp / Thoái hóa cột sống thắt lưng',
-    tenBenh: 'Đau thắt lưng cấp & Thoái hóa cột sống thắt lưng',
-    chuyenKhoa: 'Cơ xương khớp',
-    quyetDinhByt: 'Quyết định số 361/QĐ-BYT của Bộ Y tế (Hướng dẫn chẩn đoán và điều trị bệnh Cơ xương khớp)',
-    namBanHanh: 2020,
-    tuKhoaTrieuChung: [
-      'đau lưng', 'đau thắt lưng', 'đau cột sống', 'mỏi lưng', 'đau khớp', 'đau mỏi vai gáy',
-      'thoái hóa cột sống', 'thoát vị đĩa đệm', 'đau lan xuống chân', 'cứng khớp',
-    ],
-    tieuChuanChanDoan: [
-      'Đau cơ học vùng cột sống thắt lưng (tăng khi vận động/mang vác, giảm khi nghỉ ngơi), co cứng cơ cạnh sống.',
-      'Kiểm tra dấu hiệu Lasègue và phản xạ gân xương để đánh giá chèn ép rễ thần kinh tọa.',
-    ],
-    canLamSangKhuyenNghi: [
-      'Chụp X-Quang cột sống thắt lưng 2 tư thế (Thẳng - Nghiêng)',
-      'Sinh hóa máu: Creatinine, AST, ALT (đánh giá gan thận trước khi kê thuốc kháng viêm NSAID)',
-    ],
-    phacDoDieuTri: {
-      nguyenTac: 'Giảm đau theo bậc thang WHO, giãn cơ vân, kết hợp vật lý trị liệu phục hồi chức năng và bảo vệ niêm mạc dạ dày.',
-      thuocDauTay: [
-        {
-          nhomThuoc: 'Kháng viêm không Steroid (NSAID chọn lọc COX-2 hoặc Paracetamol)',
-          hoatChatGoiY: 'Meloxicam 7.5mg / Celecoxib 200mg hoặc Paracetamol 500mg',
-          lieuDungChuan: 'Uống 1 viên x 1-2 lần/ngày NGAY SAU BỮA ĂN NO',
-          luuY: 'BẮT BUỘC kiểm tra tiền sử loét dạ dày, suy thận và bệnh tim mạch; nên phối hợp thuốc bảo vệ dạ dày PPI (Omeprazole 20mg).',
-        },
-        {
-          nhomThuoc: 'Thuốc giãn cơ trung ương',
-          hoatChatGoiY: 'Eperisone 50mg (Myonal) hoặc Tolperisone 150mg (Mydocalm)',
-          lieuDungChuan: 'Uống 1 viên x 2-3 lần/ngày sau ăn',
-          luuY: 'Có thể gây mỏi cơ nhẹ hoặc buồn ngủ nhẹ.',
-        },
-      ],
-      khongDungThuoc: [
-        'Tránh cúi bê vác vật nặng sai tư thế, không ngồi một tư thế quá 45-60 phút.',
-        'Chườm ấm vùng cơ cạnh sống thắt lưng, tập các bài tập kéo giãn cột sống nhẹ nhàng.',
-      ],
-    },
-    dauHieuNguyHiem: [
-      'Hội chứng chùm đuôi ngựa: Bí tiểu/tiểu không tự chủ, tê mất cảm giác vùng yên ngựa, yếu liệt hai chi dưới tiến triển.',
-    ],
-    lichTaiKhamKhuyenNghi: 'Tái khám sau 7 - 14 ngày.',
-  },
-  {
-    id: 'BYT_A09',
-    maIcd10: 'A09 - Viêm dạ dày ruột và đại tràng do nguyên nhân nhiễm khuẩn',
-    tenBenh: 'Tiêu chảy cấp / Rối loạn tiêu hóa cấp',
-    chuyenKhoa: 'Tiêu hóa / Nội tổng quát',
-    quyetDinhByt: 'Quyết định số 4121/QĐ-BYT của Bộ Y tế (Hướng dẫn xử trí tiêu chảy cấp)',
-    namBanHanh: 2020,
-    tuKhoaTrieuChung: [
-      'tiêu chảy', 'đi ngoài phân lỏng', 'đau bụng quanh rốn', 'nôn ói', 'buồn nôn',
-      'ngộ độc thực phẩm', 'rối loạn tiêu hóa', 'đi ngoài nhiều lần', 'mất nước',
-    ],
-    tieuChuanChanDoan: [
-      'Đi ngoài phân lỏng hoặc tóe nước ≥ 3 lần trong 24 giờ, kèm đau quặn bụng, buồn nôn hoặc sốt.',
-      'Đánh giá mức độ mất nước (Không mất nước - Có mất nước - Mất nước nặng) dựa trên tri giác, mắt trũng, khát nước và nếp véo da.',
-    ],
-    canLamSangKhuyenNghi: [
-      'Tổng phân tích tế bào máu ngoại vi (CBC — đánh giá WBC và Hematocrit cô đặc máu)',
-      'Điện giải đồ máu (Na+, K+, Cl-) nếu nôn và tiêu chảy nhiều lần',
-      'Siêu âm ổ bụng tổng quát (phân biệt viêm ruột thừa cấp)',
-    ],
-    phacDoDieuTri: {
-      nguyenTac: 'Bù nước và điện giải đường uống (Oresol áp lực thẩm thấu thấp) là quan trọng nhất. Bảo vệ niêm mạc ruột và bổ sung vi khuẩn có lợi.',
-      thuocDauTay: [
-        {
-          nhomThuoc: 'Bù nước và điện giải',
-          hoatChatGoiY: 'Oresol 245 mOsm/L',
-          lieuDungChuan: 'Pha chính xác 1 gói với 200ml (hoặc 1000ml tùy quy cách gói) nước đun sôi để nguội, uống từng ngụm sau mỗi lần đi ngoài',
-          luuY: 'Pha đúng tỷ lệ nước ghi trên bao bì, không pha với sữa hay nước khoáng.',
-        },
-        {
-          nhomThuoc: 'Bảo vệ niêm mạc tiêu hóa & Hấp phụ độc tố',
-          hoatChatGoiY: 'Diosmectite 3g (Smecta) + Men vi sinh (Saccharomyces boulardii / Bacillus clausii)',
-          lieuDungChuan: 'Uống 1 gói x 2-3 lần/ngày, pha với 50ml nước',
-          luuY: 'Không tự ý dùng thuốc cầm tiêu chảy giảm nhu động ruột (Loperamide) khi nghi ngờ tiêu chảy xâm nhập/nhiễm khuẩn.',
-        },
-      ],
-      khongDungThuoc: [
-        'Ăn thức ăn mềm dễ tiêu (cháo thịt nạc, súp, chuối chín), tránh sữa tươi có lactose, đồ dầu mỡ và hải sản sống.',
-      ],
-    },
-    dauHieuNguyHiem: [
-      'Đi ngoài phân có nhầy máu mũi, sốt cao > 38.5°C, nôn tất cả mọi thứ không uống được nước, tiểu ít, lơ mơ.',
-    ],
-    lichTaiKhamKhuyenNghi: 'Tái khám sau 3 - 5 ngày hoặc khám cấp cứu ngay nếu có dấu hiệu mất nước.',
-  },
-  {
-    id: 'BYT_A97',
-    maIcd10: 'A97 - Sốt xuất huyết Dengue',
-    tenBenh: 'Sốt xuất huyết Dengue',
-    chuyenKhoa: 'Nội tổng quát / Truyền nhiễm',
-    quyetDinhByt: 'Quyết định số 2760/QĐ-BYT của Bộ Y tế (Hướng dẫn chẩn đoán, điều trị Sốt xuất huyết Dengue)',
-    namBanHanh: 2023,
-    tuKhoaTrieuChung: [
-      'sốt cao đột ngột', 'sốt xuất huyết', 'đau hốc mắt', 'đau mỏi người', 'đau cơ khớp',
-      'chấm xuất huyết', 'chảy máu chân răng', 'chảy máu cam', 'sốt liên tục',
-    ],
-    tieuChuanChanDoan: [
-      'Sốt cao đột ngột, liên tục 2-7 ngày kèm đau đầu, đau nhức hai hốc mắt, đau mỏi cơ khớp, da xung huyết hoặc chấm xuất huyết dưới da.',
-      'Xét nghiệm công thức máu có Bạch cầu (WBC) giảm, Tiểu cầu (PLT) giảm (< 100 G/L) và Hematocrit (HCT) tăng cô đặc máu.',
-    ],
-    canLamSangKhuyenNghi: [
-      'Tổng phân tích tế bào máu ngoại vi (CBC — theo dõi sát Tiểu cầu PLT và Hematocrit HCT mỗi ngày)',
-      'Xét nghiệm Dengue NS1Ag / IgM-IgG',
-      'Men gan AST (GOT), ALT (GPT) & Siêu âm ổ bụng (tầm soát dịch màng bụng/màng phổi)',
-    ],
-    phacDoDieuTri: {
-      nguyenTac: 'Hạ sốt an toàn bằng đơn trị liệu Paracetamol và bù dịch đường uống sớm. TUYỆT ĐỐI CHỐNG CHỈ ĐỊNH Aspirin, Ibuprofen và mọi thuốc kháng viêm NSAIDs/Corticoid vì gây xuất huyết tiêu hóa nặng!',
-      thuocDauTay: [
-        {
-          nhomThuoc: 'Hạ sốt đơn thuần',
-          hoatChatGoiY: 'Paracetamol 500mg',
-          lieuDungChuan: 'Liều 10 - 15 mg/kg/lần khi sốt ≥ 38.5°C, cách nhau 4-6 giờ (không quá 60mg/kg/24h)',
-          luuY: 'TUYỆT ĐỐI KHÔNG dùng Ibuprofen, Aspirin, Meloxicam, Diclofenac.',
-        },
-        {
-          nhomThuoc: 'Bù nước & Điện giải',
-          hoatChatGoiY: 'Oresol',
-          lieuDungChuan: 'Uống theo nhu cầu kèm nước trái cây, nước dừa',
-          luuY: 'Theo dõi sát lượng nước tiểu trong 24 giờ.',
-        },
-      ],
-      khongDungThuoc: [
-        'Lau mát bằng nước ấm vùng trán, nách, bẹn khi sốt cao.',
-        'Tránh ăn thức ăn/đồ uống có màu đỏ, nâu, đen (để không nhầm lẫn với nôn ra máu / đi ngoài phân đen).',
-      ],
-    },
-    dauHieuNguyHiem: [
-      'Giai đoạn nguy hiểm (ngày thứ 3 - thứ 7 của bệnh): Đau bụng vùng gan dữ dội, nôn liên tục, chảy máu niêm mạc, vật vã/li bì, tay chân lạnh ẩm, tiểu ít.',
-    ],
-    lichTaiKhamKhuyenNghi: 'Tái khám và xét nghiệm lại Công thức máu (Tiểu cầu, HCT) HÀNG NGÀY từ ngày thứ 3 của sốt.',
-  },
-];
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { MOH_CLINICAL_PROTOCOLS_KB } from './moh-protocols.data';
+export { MOH_CLINICAL_PROTOCOLS_KB } from './moh-protocols.data';
 
 // ─── 2. DANH MỤC TƯƠNG TÁC THUỐC & CHỐNG CHỈ ĐỊNH DƯỢC LÂM SÀNG ─────────────
 interface DrugSafetyProfile {
@@ -632,21 +238,153 @@ export function matchClinicalProtocols(input: {
   });
 
   scored.sort((a, b) => b.rawScore - a.rawScore);
-  const topMatches = scored.filter((s) => s.rawScore > 0).slice(0, 3);
-  if (topMatches.length === 0) {
-    // Fallback to J00 or top protocol if symptoms are generic
-    topMatches.push({
-      protocol: MOH_CLINICAL_PROTOCOLS_KB[4], // J00
-      similarityScore: 0.72,
-      matchedSignals: ['Triệu chứng nội khoa tổng quát'],
-      rawScore: 0.2,
-    });
+  // Không khớp phác đồ nào thì trả rỗng — không gợi ý bừa
+  return scored.filter((s) => s.rawScore > 0).slice(0, 3);
+}
+
+// ─── HELPER: TRA DANH MỤC ICD-10 BỘ Y TẾ (TT 06/2026/TT-BYT, ~15.800 mã) ───────
+const normalizeVi = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+// Cách nói dân dã (đã bỏ dấu) → mã ICD-10 tương ứng
+const ICD_SYNONYMS: Array<[RegExp, string[]]> = [
+  [/(di ve sinh|di ngoai|dai tien|di cau) ra mau/, ['K62.5', 'K64.9', 'R31']],
+  [/phan den/, ['K92.1']],
+  [/(non|oi) ra mau/, ['K92.0']],
+  [/(tieu|dai) ra mau|nuoc tieu (do|co mau)/, ['R31']],
+  [/tieu (buot|rat|gat)/, ['N30.0', 'N39.0']],
+  [/so mui|nghet mui|hat hoi/, ['J00']],
+  [/(dau|rat) hong/, ['J02.9']],
+  [/\bho\b/, ['R05']],
+  [/\bsot\b/, ['R50.9']],
+  [/(dau|nhuc) dau/, ['R51']],
+  [/chong mat|hoa mat/, ['R42']],
+  [/dau bung/, ['R10.4']],
+  [/dau nguc/, ['R07.4']],
+  [/kho tho/, ['R06.0']],
+  [/buon non|\bnon\b/, ['R11']],
+  [/tieu chay|di ngoai long/, ['A09']],
+  [/tao bon/, ['K59.0']],
+  [/me day|may day|man ngua|\bngua\b/, ['L50.9', 'L29.9']],
+  [/mat ngu|kho ngu/, ['G47.0']],
+  [/dau lung/, ['M54.5']],
+  [/dau khop/, ['M25.5']],
+  [/met moi/, ['R53']],
+];
+
+const ICD_STOPWORDS = new Set(
+  'va hoac khong xac dinh cua do o co bi la cac nhung mot khac voi tai trong ngay benh nhan thi nay hay rat'.split(' '),
+);
+
+type IcdEntry = { code: string; name: string; norm: string };
+let icdIndex: IcdEntry[] | null = null;
+let icdByCode: Map<string, IcdEntry>;
+function getIcdIndex() {
+  if (!icdIndex) {
+    const raw: [string, string][] = JSON.parse(readFileSync(join(__dirname, '..', 'data', 'icd10-vn.json'), 'utf8'));
+    icdIndex = raw.map(([code, name]) => ({ code, name, norm: ` ${normalizeVi(name)} ` }));
+    icdByCode = new Map(icdIndex.map((e) => [e.code, e]));
+  }
+  return icdIndex;
+}
+
+export function suggestIcd10Codes(text: string, limit = 5): Array<{ code: string; name: string }> {
+  const q = normalizeVi(text || '');
+  if (!q) return [];
+  const index = getIcdIndex();
+  const scores = new Map<string, number>();
+
+  // 1. Từ điển đồng nghĩa dân dã
+  for (const [re, codes] of ICD_SYNONYMS) {
+    if (re.test(q)) codes.forEach((c) => scores.set(c, (scores.get(c) || 0) + 10));
   }
 
-  return topMatches;
+  // 2. Khớp cụm 2 âm tiết liền nhau với tên bệnh chính thức (bắt buộc có ít nhất 1 cụm)
+  const tokens = q.split(' ');
+  const bigrams = tokens
+    .slice(1)
+    .map((t, i) => [tokens[i], t])
+    .filter(([a, b]) => !(ICD_STOPWORDS.has(a) && ICD_STOPWORDS.has(b)))
+    .map(([a, b]) => ` ${a} ${b} `);
+  const unigrams = [...new Set(tokens.filter((t) => t.length > 1 && !ICD_STOPWORDS.has(t)))].map((t) => ` ${t} `);
+  // Chương P (sơ sinh) và O (thai sản) chỉ xét khi triệu chứng có nhắc tới
+  const allowP = /so sinh/.test(q);
+  const allowO = /thai|san phu|chuyen da|sau de/.test(q);
+  if (bigrams.length) {
+    for (const e of index) {
+      if ((e.code[0] === 'P' && !allowP) || (e.code[0] === 'O' && !allowO)) continue;
+      const hitBigrams = bigrams.filter((b) => e.norm.includes(b)).length;
+      if (!hitBigrams) continue;
+      const hitUnigrams = unigrams.filter((u) => e.norm.includes(u)).length;
+      scores.set(e.code, (scores.get(e.code) || 0) + hitBigrams * 3 + hitUnigrams);
+    }
+  }
+
+  return [...scores.entries()]
+    .filter(([code]) => icdByCode.has(code))
+    .sort((a, b) => b[1] - a[1] || icdByCode.get(a[0]).name.length - icdByCode.get(b[0]).name.length)
+    .slice(0, limit)
+    .map(([code]) => ({ code, name: icdByCode.get(code).name }));
 }
 
 // ─── HELPER: PHÂN TÍCH ĐA CHỈ SỐ XÉT NGHIỆM & HÌNH ẢNH CẬN LÂM SÀNG ─────────
+// Khoảng tham chiếu khớp mẫu nhập kết quả của phòng Xét nghiệm (XetNghiemListPage).
+// keys: tên khóa CHÍNH XÁC trong ketQuaChiTiet (chữ thường); crit: ngưỡng báo động [thấp, cao].
+type LabSpec = {
+  keys: string[];
+  label: string;
+  unit: string;
+  ref: (female: boolean) => [number, number];
+  crit?: [number | null, number | null];
+  high: string;
+  low?: string;
+};
+
+const LAB_SPECS: Record<string, LabSpec> = {
+  wbc: { keys: ['wbc'], label: 'Bạch cầu (WBC)', unit: 'G/L', ref: () => [4, 10], crit: [2, 30], high: 'Gợi ý phản ứng viêm hoặc nhiễm khuẩn cấp tính', low: 'Giảm bạch cầu (thường gặp trong nhiễm virus / Sốt xuất huyết)' },
+  neu: { keys: ['neu_percent', 'neu'], label: 'Bạch cầu trung tính (%NEU)', unit: '%', ref: () => [40, 75], high: 'Tăng ưu thế trung tính — hướng tới nhiễm khuẩn', low: 'Giảm tỷ lệ trung tính (ưu thế Lympho trong nhiễm virus)' },
+  rbc: { keys: ['rbc'], label: 'Hồng cầu (RBC)', unit: 'T/L', ref: (f) => (f ? [4.0, 5.2] : [4.5, 5.9]), high: 'Cô đặc máu hoặc đa hồng cầu', low: 'Thiếu máu' },
+  hgb: { keys: ['hgb', 'hb'], label: 'Huyết sắc tố (HGB)', unit: 'g/dL', ref: (f) => (f ? [12, 16] : [13, 17]), crit: [7, 20], high: 'Cô đặc máu', low: 'Thiếu máu (cần đánh giá MCV, MCH)' },
+  plt: { keys: ['plt'], label: 'Tiểu cầu (PLT)', unit: 'G/L', ref: () => [150, 450], crit: [50, 1000], high: 'Tăng tiểu cầu phản ứng', low: 'Giảm tiểu cầu — nguy cơ xuất huyết (lưu ý Sốt xuất huyết Dengue)' },
+  glucose: { keys: ['glucose'], label: 'Glucose máu lúc đói', unit: 'mmol/L', ref: () => [3.9, 5.5], crit: [2.8, 25], high: 'Tăng đường huyết lúc đói (5.6 - 6.9: rối loạn đường huyết lúc đói; ≥ 7.0: gợi ý ĐTĐ, cần làm lại / HbA1c)', low: 'Hạ đường huyết' },
+  hba1c: { keys: ['hba1c'], label: 'HbA1c', unit: '%', ref: () => [0, 5.6], high: '5.7 - 6.4%: tiền ĐTĐ; ≥ 6.5%: đạt tiêu chuẩn chẩn đoán ĐTĐ' },
+  ast: { keys: ['ast', 'got'], label: 'Men gan AST (GOT)', unit: 'U/L', ref: (f) => (f ? [0, 35] : [0, 40]), high: 'Tổn thương tế bào gan (thận trọng thuốc chuyển hóa qua gan)' },
+  alt: { keys: ['alt', 'gpt'], label: 'Men gan ALT (GPT)', unit: 'U/L', ref: (f) => (f ? [0, 35] : [0, 41]), high: 'Tăng men gan — hạn chế Paracetamol liều cao, thận trọng Statin' },
+  ure: { keys: ['urea', 'ure'], label: 'Ure máu', unit: 'mmol/L', ref: () => [2.5, 7.5], high: 'Tăng ure máu (mất nước hoặc suy giảm chức năng thận)', low: 'Giảm nhẹ (ăn ít đạm, bệnh gan)' },
+  creatinin: { keys: ['creatinine', 'creatinin'], label: 'Creatinine huyết thanh', unit: 'µmol/L', ref: (f) => (f ? [44, 97] : [62, 115]), crit: [null, 354], high: 'Suy giảm mức lọc cầu thận — thận trọng NSAIDs, Metformin, kháng sinh thải qua thận', low: 'Giảm khối cơ' },
+  cholesterol: { keys: ['cholesterol_total', 'cholesterol'], label: 'Cholesterol toàn phần', unit: 'mmol/L', ref: () => [0, 5.2], high: 'Tăng Cholesterol máu' },
+  triglycerid: { keys: ['triglyceride', 'triglycerid'], label: 'Triglyceride', unit: 'mmol/L', ref: () => [0, 1.7], crit: [null, 11.3], high: 'Tăng Triglyceride máu (> 11.3: nguy cơ viêm tụy cấp)' },
+  ldl: { keys: ['ldl_c', 'ldl'], label: 'LDL-C', unit: 'mmol/L', ref: () => [0, 3.4], high: 'Tăng LDL-C — tăng nguy cơ xơ vữa động mạch' },
+  hdl: { keys: ['hdl_c', 'hdl'], label: 'HDL-C', unit: 'mmol/L', ref: (f) => [f ? 1.3 : 1.0, Infinity], high: '', low: 'HDL-C thấp — tăng nguy cơ tim mạch' },
+  natri: { keys: ['sodium', 'natri', 'na'], label: 'Natri (Na+)', unit: 'mmol/L', ref: () => [135, 145], crit: [120, 160], high: 'Tăng Natri máu (mất nước)', low: 'Hạ Natri máu' },
+  kali: { keys: ['potassium', 'kali', 'k'], label: 'Kali (K+)', unit: 'mmol/L', ref: () => [3.5, 5.1], crit: [2.8, 6.2], high: 'Tăng Kali máu — nguy cơ rối loạn nhịp tim', low: 'Hạ Kali máu — nguy cơ rối loạn nhịp tim, yếu cơ' },
+  crp: { keys: ['crp'], label: 'CRP định lượng', unit: 'mg/L', ref: () => [0, 5], high: 'Tăng CRP — chỉ dấu viêm / nhiễm khuẩn đang hoạt động' },
+};
+
+const LAB_KEY_INDEX = new Map(
+  Object.entries(LAB_SPECS).flatMap(([code, spec]) => spec.keys.map((k) => [k, code] as [string, string])),
+);
+
+// Xét nghiệm nước tiểu / phân có khóa trùng tên (WBC, RBC, Glucose…) nhưng không phải chỉ số máu
+const isNonBloodSample = (maDichVu: string | undefined, tenDv: string) =>
+  ['XN004', 'XN010'].includes(maDichVu || '') || /nước tiểu|xét nghiệm phân|soi phân/.test(tenDv);
+
+const IMAGING_ABNORMAL =
+  /(^|\s)(viêm|đông đặc|mờ|tràn dịch|tràn khí|sỏi|dày thành|khối|nốt|nang|u|nhồi máu|loạn nhịp|rung nhĩ|cuồng nhĩ|nhiễm mỡ|giãn|ứ nước|hẹp|hở van|phì đại|tổn thương|bất thường|thoái hóa|bi-rads [345])(?=\s|[,.;:]|$)/i;
+
+function ageInYears(ngaySinh?: string): number | null {
+  if (!ngaySinh) return null;
+  const dob = new Date(ngaySinh).getTime();
+  if (isNaN(dob)) return null;
+  return Math.floor((Date.now() - dob) / (365.25 * 24 * 3600 * 1000));
+}
+
 export function analyzeClinicalLabsAndImaging(input: {
   dsXetNghiem: Array<{
     id?: number;
@@ -667,209 +405,171 @@ export function analyzeClinicalLabsAndImaging(input: {
     chiSo: string;
     giaTri: string;
     khoangThamChieu: string;
-    mucDo: 'tang_cao' | 'giam_thap' | 'nguy_kich' | 'binh_thuong';
+    mucDo: 'tang_cao' | 'giam_thap' | 'nguy_kich';
+    huong: 'cao' | 'thap';
     yNghiaLamSang: string;
   }> = [];
 
   const imagingFindings: Array<{
     tenDichVu: string;
-    vungKhaoSat: string;
     phatHien: string;
     mucDo: 'binh_thuong' | 'bat_thuong';
     khuyenNghi: string;
   }> = [];
 
-  let creatinineVal: number | null = null;
-  let astVal: number | null = null;
-  let altVal: number | null = null;
-  let glucoseVal: number | null = null;
-  let wbcVal: number | null = null;
-  let pltVal: number | null = null;
-
-  const REFERENCE_RANGES: Record<string, { min: number; max: number; unit: string; label: string; highMeaning: string; lowMeaning: string }> = {
-    wbc: { min: 4.0, max: 10.0, unit: 'G/L', label: 'Bạch cầu (WBC)', highMeaning: 'Gợi ý phản ứng viêm hoặc nhiễm khuẩn cấp tính', lowMeaning: 'Giảm bạch cầu (thường gặp trong nhiễm siêu vi / Sốt xuất huyết)' },
-    neu: { min: 40, max: 74, unit: '%', label: 'Bạch cầu đa nhân trung tính (%NEU)', highMeaning: 'Tăng ưu thế đa nhân trung tính — hướng tới nhiễm khuẩn', lowMeaning: 'Giảm tỷ lệ trung tính (ưu thế Lympho trong nhiễm virus)' },
-    rbc: { min: 4.0, max: 5.5, unit: 'T/L', label: 'Hồng cầu (RBC)', highMeaning: 'Cô đặc máu hoặc đa hồng cầu', lowMeaning: 'Thiếu máu' },
-    hgb: { min: 120, max: 165, unit: 'g/L', label: 'Huyết sắc tố (HGB)', highMeaning: 'Cô đặc máu', lowMeaning: 'Thiếu máu (cần đánh giá MCV, MCH)' },
-    plt: { min: 150, max: 400, unit: 'G/L', label: 'Tiểu cầu (PLT)', highMeaning: 'Tăng tiểu cầu phản ứng', lowMeaning: 'Giảm tiểu cầu — cảnh báo nguy cơ xuất huyết (lưu ý Sốt xuất huyết Dengue)' },
-    glucose: { min: 3.9, max: 6.4, unit: 'mmol/L', label: 'Đường huyết (Glucose)', highMeaning: 'Tăng đường huyết — cần tầm soát Đái tháo đường (HbA1c)', lowMeaning: 'Hạ đường huyết (< 3.9 mmol/L)' },
-    hba1c: { min: 4.0, max: 6.4, unit: '%', label: 'HbA1c', highMeaning: 'Kiểm soát đường huyết 3 tháng qua chưa đạt đích (≥ 6.5% chẩn đoán ĐTĐ)', lowMeaning: 'Bình thường' },
-    ast: { min: 5, max: 40, unit: 'U/L', label: 'Men gan AST (GOT)', highMeaning: 'Tổn thương tế bào nhu mô gan (thận trọng thuốc chuyển hóa qua gan)', lowMeaning: 'Bình thường' },
-    alt: { min: 5, max: 40, unit: 'U/L', label: 'Men gan ALT (GPT)', highMeaning: 'Tăng men gan đặc hiệu — cần hạn chế Paracetamol liều cao / Statin', lowMeaning: 'Bình thường' },
-    ure: { min: 2.5, max: 7.5, unit: 'mmol/L', label: 'Ure máu', highMeaning: 'Tăng ure máu (mất nước hoặc suy giảm chức năng lọc cầu thận)', lowMeaning: 'Giảm nhẹ' },
-    creatinin: { min: 53, max: 110, unit: 'µmol/L', label: 'Creatinine huyết thanh', highMeaning: 'Suy giảm mức lọc cầu thận — thận trọng khi kê NSAIDs, Metformin và kháng sinh thải qua thận', lowMeaning: 'Giảm khối cơ' },
-    cholesterol: { min: 0, max: 5.2, unit: 'mmol/L', label: 'Cholesterol toàn phần', highMeaning: 'Rối loạn lipid máu (Tăng Cholesterol máu)', lowMeaning: 'Bình thường' },
-    triglycerid: { min: 0, max: 1.7, unit: 'mmol/L', label: 'Triglyceride', highMeaning: 'Tăng Triglyceride máu', lowMeaning: 'Bình thường' },
-    crp: { min: 0, max: 5.0, unit: 'mg/L', label: 'CRP định lượng', highMeaning: 'Tăng protein phản ứng C — chỉ dấu viêm / nhiễm khuẩn đang hoạt động', lowMeaning: 'Bình thường' },
-  };
+  const isFemale = input.benhNhan?.gioiTinh === 'nu';
+  const age = ageInYears(input.benhNhan?.ngaySinh);
+  const values: Record<string, number> = {};
+  let analyzedCount = 0;
+  let pendingCount = 0;
 
   for (const item of input.dsXetNghiem || []) {
     const tenDv = (item.tenDichVu || '').toLowerCase();
     let chiTietObj: Record<string, any> = {};
-    if (item.ketQuaChiTiet) {
-      if (typeof item.ketQuaChiTiet === 'string') {
-        try {
-          chiTietObj = JSON.parse(item.ketQuaChiTiet);
-        } catch {}
-      } else if (typeof item.ketQuaChiTiet === 'object') {
-        chiTietObj = item.ketQuaChiTiet;
-      }
+    if (item.ketQuaChiTiet && typeof item.ketQuaChiTiet === 'object') {
+      chiTietObj = item.ketQuaChiTiet;
+    } else if (typeof item.ketQuaChiTiet === 'string') {
+      try {
+        const parsed = JSON.parse(item.ketQuaChiTiet);
+        if (parsed && typeof parsed === 'object') chiTietObj = parsed;
+      } catch {}
+    }
+    const filled = Object.entries(chiTietObj).filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '');
+    if (!filled.length && !item.giaTri && !item.nhanXet) {
+      pendingCount++;
+      continue;
     }
 
-    // Nếu là Chẩn đoán hình ảnh (X-Quang / Siêu âm / Điện tim)
     const isImaging =
-      tenDv.includes('x-quang') ||
-      tenDv.includes('x quang') ||
-      tenDv.includes('siêu âm') ||
-      tenDv.includes('điện tim') ||
-      tenDv.includes('ecg') ||
-      item.loai === 'chan_doan_hinh_anh';
+      item.loai === 'chan_doan_hinh_anh' ||
+      /x-quang|x quang|siêu âm|điện tim|điện tâm đồ|ecg|nội soi|ct |mri/.test(tenDv);
 
     if (isImaging) {
-      const summaryText =
-        Object.entries(chiTietObj)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join('; ') ||
-        item.giaTri ||
-        item.nhanXet ||
-        'Trường phổi hai bên sáng đều, bóng tim không to, góc sườn hoành hai bên nhọn.';
-      const hasAbnormalKeyword = /viêm|đông đặc|mờ|tràn dịch|sỏi|dày|u |nhồi máu|loạn nhịp|gan nhiễm mỡ|giãn/i.test(
-        `${summaryText} ${item.nhanXet || ''}`,
-      );
+      const conclusion = String(chiTietObj.Conclusion || item.nhanXet || item.giaTri || '').trim();
+      const phatHien = conclusion || filled.map(([k, v]) => `${k}: ${v}`).join('; ');
+      // Bỏ các cụm phủ định ("không thấy sỏi", "chưa phát hiện tổn thương") trước khi tìm từ khóa bất thường
+      const abnormal = IMAGING_ABNORMAL.test(phatHien.toLowerCase().replace(/(không|chưa)[^,;.\n]*/g, ' '));
       imagingFindings.push({
         tenDichVu: item.tenDichVu,
-        vungKhaoSat: tenDv.includes('x-quang')
-          ? 'Lồng ngực - Nhu mô phổi - Bóng tim - Góc sườn hoành'
-          : tenDv.includes('siêu âm')
-          ? 'Gan - Đường mật - Tụy - Lách - Thận 2 bên'
-          : 'Hoạt động điện học cơ tim 12 chuyển đạo',
-        phatHien: summaryText,
-        mucDo: hasAbnormalKeyword ? 'bat_thuong' : 'binh_thuong',
-        khuyenNghi:
-          item.nhanXet ||
-          (hasAbnormalKeyword
-            ? 'Phát hiện dấu hiệu bất thường trên hình ảnh học, cần đối chiếu triệu chứng lâm sàng.'
-            : 'Chưa ghi nhận tổn thương bất thường trên hình ảnh khảo sát.'),
+        phatHien,
+        mucDo: abnormal ? 'bat_thuong' : 'binh_thuong',
+        khuyenNghi: abnormal
+          ? 'Có dấu hiệu bất thường trên hình ảnh học, cần đối chiếu triệu chứng lâm sàng.'
+          : 'Chưa ghi nhận bất thường trên kết luận hình ảnh.',
       });
+      continue;
     }
+    if (isNonBloodSample(item.maDichVu, tenDv)) continue;
 
-    // Quét các chỉ số xét nghiệm trong ketQuaChiTiet
-    for (const [rawKey, rawVal] of Object.entries(chiTietObj)) {
-      const k = rawKey.toLowerCase();
-      const numMatch = String(rawVal).match(/-?\d+(\.\d+)?/);
+    for (const [rawKey, rawVal] of filled) {
+      const code = LAB_KEY_INDEX.get(rawKey.toLowerCase());
+      if (!code) continue;
+      const numMatch = String(rawVal).replace(',', '.').match(/-?\d+(\.\d+)?/);
       if (!numMatch) continue;
-      const num = parseFloat(numMatch[0]);
-      if (isNaN(num)) continue;
+      let num = parseFloat(numMatch[0]);
+      if (code === 'hgb' && num > 30) num = Math.round(num) / 10; // nhập theo g/L → đổi sang g/dL
+      values[code] = num;
+      analyzedCount++;
 
-      for (const [refCode, refSpec] of Object.entries(REFERENCE_RANGES)) {
-        if (k.includes(refCode) || (refCode === 'ast' && k.includes('got')) || (refCode === 'alt' && k.includes('gpt'))) {
-          if (refCode === 'creatinin') creatinineVal = num;
-          if (refCode === 'ast') astVal = num;
-          if (refCode === 'alt') altVal = num;
-          if (refCode === 'glucose') glucoseVal = num;
-          if (refCode === 'wbc') wbcVal = num;
-          if (refCode === 'plt') pltVal = num;
-
-          if (num > refSpec.max) {
-            const isCritical = num > refSpec.max * 2.0;
-            abnormalBiomarkers.push({
-              chiSo: refSpec.label,
-              giaTri: `${num} ${refSpec.unit}`,
-              khoangThamChieu: `${refSpec.min} - ${refSpec.max} ${refSpec.unit}`,
-              mucDo: isCritical ? 'nguy_kich' : 'tang_cao',
-              yNghiaLamSang: refSpec.highMeaning,
-            });
-          } else if (num < refSpec.min) {
-            const isCritical = num < refSpec.min * 0.6;
-            abnormalBiomarkers.push({
-              chiSo: refSpec.label,
-              giaTri: `${num} ${refSpec.unit}`,
-              khoangThamChieu: `${refSpec.min} - ${refSpec.max} ${refSpec.unit}`,
-              mucDo: isCritical ? 'nguy_kich' : 'giam_thap',
-              yNghiaLamSang: refSpec.lowMeaning,
-            });
-          }
-        }
-      }
+      const spec = LAB_SPECS[code];
+      const [min, max] = spec.ref(isFemale);
+      const [critLow, critHigh] = spec.crit || [null, null];
+      const huong = num > max ? 'cao' : num < min ? 'thap' : null;
+      if (!huong) continue;
+      const critical = (critLow !== null && num < critLow) || (critHigh !== null && num > critHigh);
+      abnormalBiomarkers.push({
+        chiSo: spec.label,
+        giaTri: `${num} ${spec.unit}`,
+        khoangThamChieu:
+          max === Infinity ? `> ${min} ${spec.unit}` : min === 0 ? `< ${max} ${spec.unit}` : `${min} - ${max} ${spec.unit}`,
+        mucDo: critical ? 'nguy_kich' : huong === 'cao' ? 'tang_cao' : 'giam_thap',
+        huong,
+        yNghiaLamSang: huong === 'cao' ? spec.high : spec.low,
+      });
     }
   }
 
-  // Tính toán các chỉ số dẫn xuất y khoa (Derived Clinical Indices)
   const derivedIndices: Array<{ tenChiSo: string; giaTri: string; danhGia: string }> = [];
 
-  if (creatinineVal && creatinineVal > 0) {
-    // Ước tính eGFR từ Creatinine (µmol/L)
-    const crMgDl = creatinineVal / 88.4;
-    const isFemale = (input.benhNhan?.gioiTinh || '').toLowerCase().includes('nu');
-    const age = input.benhNhan?.ngaySinh
-      ? Math.max(18, new Date().getFullYear() - new Date(input.benhNhan.ngaySinh).getFullYear())
-      : 45;
-    const egfr = Math.round(175 * Math.pow(crMgDl, -1.154) * Math.pow(age, -0.203) * (isFemale ? 0.742 : 1.0));
+  // eGFR theo CKD-EPI 2021 (KDIGO khuyến nghị) — chỉ áp dụng người ≥ 18 tuổi có ngày sinh
+  const creatinine = values.creatinin;
+  if (creatinine > 0 && age !== null && age >= 18) {
+    const scr = creatinine / 88.4;
+    const kappa = isFemale ? 0.7 : 0.9;
+    const alpha = isFemale ? -0.241 : -0.302;
+    const egfr = Math.round(
+      142 *
+        Math.pow(Math.min(scr / kappa, 1), alpha) *
+        Math.pow(Math.max(scr / kappa, 1), -1.2) *
+        Math.pow(0.9938, age) *
+        (isFemale ? 1.012 : 1),
+    );
     derivedIndices.push({
-      tenChiSo: 'Mức lọc cầu thận ước tính (eGFR - MDRD)',
+      tenChiSo: 'Mức lọc cầu thận ước tính (eGFR - CKD-EPI 2021)',
       giaTri: `${egfr} mL/phút/1.73m²`,
       danhGia:
         egfr >= 90
-          ? 'Chức năng lọc cầu thận bình thường (G1)'
+          ? 'Bình thường (G1)'
           : egfr >= 60
-          ? 'Giảm nhẹ chức năng lọc cầu thận (G2) — theo dõi định kỳ'
-          : 'Suy giảm chức năng thận (G3-G5) — cần hiệu chỉnh liều thuốc thải qua thận và tránh NSAIDs!',
+          ? 'Giảm nhẹ (G2) — theo dõi định kỳ'
+          : egfr >= 45
+          ? 'Giảm nhẹ - trung bình (G3a) — hiệu chỉnh liều thuốc thải qua thận'
+          : egfr >= 30
+          ? 'Giảm trung bình - nặng (G3b) — hiệu chỉnh liều, tránh NSAIDs'
+          : egfr >= 15
+          ? 'Giảm nặng (G4) — tránh NSAIDs, Metformin; chuyển chuyên khoa Thận'
+          : 'Suy thận (G5) — chuyển chuyên khoa Thận',
     });
   }
 
-  if (astVal && altVal && altVal > 0) {
-    const ratio = (astVal / altVal).toFixed(2);
+  const ast = values.ast;
+  const alt = values.alt;
+  if (ast > 0 && alt > 0) {
+    const ratio = ast / alt;
+    const [, astMax] = LAB_SPECS.ast.ref(isFemale);
+    const [, altMax] = LAB_SPECS.alt.ref(isFemale);
     derivedIndices.push({
       tenChiSo: 'Tỷ số De Ritis (AST/ALT)',
-      giaTri: `${ratio}`,
+      giaTri: ratio.toFixed(2),
       danhGia:
-        astVal <= 40 && altVal <= 40
-          ? 'Chức năng tế bào gan trong giới hạn sinh lý bình thường'
-          : Number(ratio) < 1
+        ast <= astMax && alt <= altMax
+          ? 'Men gan trong giới hạn bình thường'
+          : ratio < 1
           ? 'Tăng men gan ưu thế ALT — gợi ý viêm gan cấp / gan nhiễm mỡ'
-          : 'Tăng men gan ưu thế AST — cần lưu ý tổn thương gan do thuốc hoặc rượu bia',
+          : ratio >= 2
+          ? 'AST/ALT ≥ 2 — gợi ý tổn thương gan do rượu'
+          : 'Tăng men gan ưu thế AST — lưu ý tổn thương gan do thuốc, rượu hoặc xơ gan',
     });
   }
 
-  const riskLevel =
-    abnormalBiomarkers.some((b) => b.mucDo === 'nguy_kich')
-      ? 'nguy_hiem_cao'
-      : abnormalBiomarkers.length > 0 || imagingFindings.some((i) => i.mucDo === 'bat_thuong')
-      ? 'can_theo_doi'
-      : 'binh_thuong';
+  const riskLevel = abnormalBiomarkers.some((b) => b.mucDo === 'nguy_kich')
+    ? 'nguy_hiem_cao'
+    : abnormalBiomarkers.length > 0 || imagingFindings.some((i) => i.mucDo === 'bat_thuong')
+    ? 'can_theo_doi'
+    : 'binh_thuong';
 
   const summaryLines: string[] = [];
   if (abnormalBiomarkers.length > 0) {
     summaryLines.push(
-      `Phát hiện ${abnormalBiomarkers.length} chỉ số sinh học vượt ngưỡng tham chiếu: ${abnormalBiomarkers
-        .map((b) => `${b.chiSo} (${b.giaTri})`)
+      `Phát hiện ${abnormalBiomarkers.length} chỉ số ngoài khoảng tham chiếu: ${abnormalBiomarkers
+        .map((b) => `${b.chiSo} (${b.giaTri}${b.mucDo === 'nguy_kich' ? ' — NGƯỠNG BÁO ĐỘNG' : ''})`)
         .join(', ')}.`,
     );
-  } else if ((input.dsXetNghiem || []).length > 0) {
-    summaryLines.push('Các chỉ số xét nghiệm đã thực hiện nằm trong giới hạn tham chiếu sinh lý.');
+  } else if (analyzedCount > 0) {
+    summaryLines.push('Các chỉ số xét nghiệm đã có kết quả nằm trong khoảng tham chiếu.');
   }
   if (imagingFindings.length > 0) {
-    summaryLines.push(
-      `Hình ảnh học Cận lâm sàng: ${imagingFindings.map((f) => `${f.tenDichVu} (${f.phatHien})`).join('; ')}.`,
-    );
+    summaryLines.push(`Hình ảnh học: ${imagingFindings.map((f) => `${f.tenDichVu} (${f.phatHien})`).join('; ')}.`);
   }
+  if (pendingCount > 0) summaryLines.push(`Còn ${pendingCount} chỉ định chưa có kết quả.`);
 
   return {
     riskLevel,
-    totalAnalyzedServices: (input.dsXetNghiem || []).length,
+    totalAnalyzedServices: (input.dsXetNghiem || []).length - pendingCount,
     abnormalBiomarkers,
     imagingFindings,
     derivedIndices,
-    organFunctionFlags: {
-      hepaticImpairment: (astVal !== null && astVal > 60) || (altVal !== null && altVal > 60),
-      renalImpairment: creatinineVal !== null && creatinineVal > 115,
-      infectionSignal: wbcVal !== null && wbcVal > 10.5,
-      thrombocytopenia: pltVal !== null && pltVal < 140,
-      hyperglycemia: glucoseVal !== null && glucoseVal >= 7.0,
-    },
-    clinicalConclusion:
-      summaryLines.join(' ') ||
-      'Chưa ghi nhận bất thường trên các kết quả cận lâm sàng hiện có. Đề nghị kết hợp khám lâm sàng để kết luận.',
+    clinicalConclusion: summaryLines.join(' ') || 'Chưa có kết quả cận lâm sàng để phân tích.',
   };
 }
 

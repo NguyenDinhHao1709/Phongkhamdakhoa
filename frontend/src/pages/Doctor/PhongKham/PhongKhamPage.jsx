@@ -2304,14 +2304,14 @@ function ClinicalRagAssistantPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-2xs">
-            <Sparkles className="w-4 h-4" />
+            <ClipboardList className="w-4 h-4" />
           </div>
           <div>
             <h4 className="text-sm font-bold text-gray-900">
-              🧠 Trợ lý AI Tra cứu Phác đồ Bộ Y tế (Clinical RAG)
+              Gợi ý Phác đồ Điều trị Bộ Y tế
             </h4>
             <p className="text-[11px] text-gray-500">
-              Đối chiếu triệu chứng, sinh hiệu & tiền sử dị ứng với Kho Phác đồ Chẩn đoán và Điều trị Bộ Y tế Việt Nam
+              Đối chiếu triệu chứng, sinh hiệu & tiền sử dị ứng với Phác đồ Chẩn đoán và Điều trị và Danh mục ICD-10 của Bộ Y tế
             </p>
           </div>
         </div>
@@ -2331,10 +2331,10 @@ function ClinicalRagAssistantPanel({
             variant="primary"
             size="sm"
             loading={loading}
-            leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+            leftIcon={<Search className="w-3.5 h-3.5" />}
             onClick={handleRunRag}
           >
-            ✨ AI Tra cứu Phác đồ Bộ Y tế
+            Gợi ý phác đồ
           </MedButton>
         </div>
       </div>
@@ -2346,7 +2346,7 @@ function ClinicalRagAssistantPanel({
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[11px] border border-emerald-300">
-                  Độ tương đồng Vector: {Math.round((topProto.similarityScore || 0.88) * 100)}%
+                  Độ khớp triệu chứng: {Math.round(topProto.similarityScore * 100)}%
                 </span>
                 <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold text-[11px] border border-blue-200">
                   {topProto.quyetDinhByt}
@@ -2379,6 +2379,13 @@ function ClinicalRagAssistantPanel({
             </div>
           )}
 
+          {ragData.matchedProtocols?.length > 1 && (
+            <div className="p-2.5 rounded-lg bg-white border border-gray-200 text-gray-700">
+              <span className="font-semibold">Phác đồ khác cũng khớp: </span>
+              {ragData.matchedProtocols.slice(1).map((m) => m.maIcd10).join(' • ')}
+            </div>
+          )}
+
           {/* Chi tiết Tiêu chuẩn Chẩn đoán & CLS khuyến nghị */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="p-3 rounded-xl bg-white border border-gray-200 space-y-1.5">
@@ -2407,6 +2414,36 @@ function ClinicalRagAssistantPanel({
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {ragData && expanded && (!topProto || ragData.icdSuggestions?.length > 0) && (
+        <div className="p-3 rounded-xl bg-white border border-amber-200 space-y-2 text-xs">
+          {!topProto && (
+            <div className="font-semibold text-amber-800 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              Chưa có phác đồ chi tiết phù hợp trong kho ({ragData.totalKnowledgeBaseProtocols} phác đồ) — bác sĩ tự chẩn đoán.
+            </div>
+          )}
+          {ragData.icdSuggestions?.length > 0 ? (
+            <>
+              <div className="font-bold text-gray-900">📖 Mã ICD-10 tham khảo (Danh mục Bộ Y tế — bấm để điền chẩn đoán xác định):</div>
+              <div className="flex flex-wrap gap-1.5">
+                {ragData.icdSuggestions.map((icd) => (
+                  <button
+                    key={icd.code}
+                    type="button"
+                    onClick={() => onApplyProtocol?.({ chanDoanXacDinhGoiY: `${icd.code} - ${icd.name}` })}
+                    className="px-2 py-1 rounded-lg bg-gray-50 hover:bg-emerald-50 border border-gray-200 hover:border-emerald-300 text-gray-700 cursor-pointer"
+                  >
+                    <span className="font-bold text-emerald-700">{icd.code}</span> {icd.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="text-gray-500">Không tìm thấy mã ICD-10 tương ứng với triệu chứng đã nhập.</div>
+          )}
         </div>
       )}
     </div>
@@ -2470,10 +2507,10 @@ function AiLabVisionPanel({ benhAnKhamId, items, onApplyConclusion }) {
           </div>
           <div>
             <h4 className="font-bold text-sm text-gray-900">
-              🔬 AI Phân tích Đa chỉ số Cận lâm sàng & Thị giác Máy tính (Lab & Vision AI)
+              Phân tích Kết quả Cận lâm sàng
             </h4>
             <p className="text-[11px] text-gray-500">
-              Tự động đọc chỉ số bất thường, tính mức lọc cầu thận ước tính (eGFR), tỷ số AST/ALT và phân tích hình ảnh X-Quang / Siêu âm
+              Đối chiếu chỉ số với khoảng tham chiếu, tính eGFR (CKD-EPI 2021), tỷ số AST/ALT và tổng hợp kết luận chẩn đoán hình ảnh
             </p>
           </div>
         </div>
@@ -2483,10 +2520,10 @@ function AiLabVisionPanel({ benhAnKhamId, items, onApplyConclusion }) {
           variant="primary"
           size="sm"
           loading={loading}
-          leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+          leftIcon={<Search className="w-3.5 h-3.5" />}
           onClick={handleAnalyzeLabs}
         >
-          🔍 AI Đọc & Biện luận Kết quả CLS
+          Phân tích kết quả
         </MedButton>
       </div>
 
@@ -2496,7 +2533,7 @@ function AiLabVisionPanel({ benhAnKhamId, items, onApplyConclusion }) {
           {analysis.abnormalBiomarkers?.length > 0 && (
             <div className="space-y-1.5">
               <div className="font-bold text-gray-900">
-                ⚠️ Phát hiện {analysis.abnormalBiomarkers.length} chỉ số sinh học vượt ngưỡng tham chiếu:
+                ⚠️ Phát hiện {analysis.abnormalBiomarkers.length} chỉ số ngoài khoảng tham chiếu:
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {analysis.abnormalBiomarkers.map((bm, i) => (
@@ -2509,7 +2546,8 @@ function AiLabVisionPanel({ benhAnKhamId, items, onApplyConclusion }) {
                       <div className="text-[11px] text-amber-800 mt-0.5">{bm.yNghiaLamSang}</div>
                     </div>
                     <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 font-bold text-[10px] shrink-0">
-                      {bm.mucDo === 'giam_thap' ? 'Thấp (L)' : 'Cao (H)'}
+                      {bm.huong === 'thap' ? 'Thấp (L)' : 'Cao (H)'}
+                      {bm.mucDo === 'nguy_kich' && ' · Báo động'}
                     </span>
                   </div>
                 ))}
@@ -2534,13 +2572,13 @@ function AiLabVisionPanel({ benhAnKhamId, items, onApplyConclusion }) {
           {/* Phát hiện Hình ảnh học (X-Quang / Siêu âm / ECG) */}
           {analysis.imagingFindings?.length > 0 && (
             <div className="space-y-1.5">
-              <div className="font-bold text-gray-900">🖼️ Phân tích Hình ảnh học Y khoa (Computer Vision):</div>
+              <div className="font-bold text-gray-900">🖼️ Kết luận Chẩn đoán hình ảnh / Thăm dò chức năng:</div>
               {analysis.imagingFindings.map((img, i) => (
                 <div key={i} className="p-2.5 rounded-lg bg-white border border-gray-200 space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-purple-700">{img.tenDichVu}</span>
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-700">
-                      Vùng khảo sát: {img.vungKhaoSat}
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${img.mucDo === 'bat_thuong' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                      {img.mucDo === 'bat_thuong' ? 'Bất thường' : 'Bình thường'}
                     </span>
                   </div>
                   <div className="text-gray-800 font-medium">{img.phatHien}</div>
@@ -2553,7 +2591,7 @@ function AiLabVisionPanel({ benhAnKhamId, items, onApplyConclusion }) {
           {/* Kết luận tổng hợp + Nút chèn vào Bệnh án */}
           <div className="p-3 rounded-xl bg-white border border-purple-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <div className="font-bold text-gray-900">📌 Nhận định Tổng hợp Cận lâm sàng từ AI:</div>
+              <div className="font-bold text-gray-900">📌 Nhận định Tổng hợp Cận lâm sàng:</div>
               <p className="text-gray-700 mt-0.5">{analysis.clinicalConclusion}</p>
             </div>
             {onApplyConclusion && (

@@ -24,6 +24,7 @@ import {
   matchClinicalProtocols,
   analyzeClinicalLabsAndImaging,
   evaluatePrescriptionSafety,
+  suggestIcd10Codes,
   MOH_CLINICAL_PROTOCOLS_KB,
 } from './clinical-ai.engine';
 
@@ -1975,11 +1976,36 @@ CHỈ trả về JSON chuẩn, không có markdown hoặc text thừa.`;
       diUng,
     });
 
-    const primary = matches[0]?.protocol || MOH_CLINICAL_PROTOCOLS_KB[0];
     const allergyAlert =
       diUng && diUng.toLowerCase() !== 'không' && diUng.toLowerCase() !== 'khong'
         ? `Lưu ý tiền sử dị ứng của bệnh nhân (${diUng}): Tránh kê nhóm hoạt chất có nguy cơ dị ứng chéo.`
         : null;
+    const baseData = {
+      engine: 'Hybrid-Vector-RAG-MOH-Vietnam-v2',
+      totalKnowledgeBaseProtocols: MOH_CLINICAL_PROTOCOLS_KB.length,
+      patientContext: {
+        hoTen: hoTenBenhNhan || undefined,
+        diUng: diUng || 'Không ghi nhận',
+        sinhHieuTomTat: sinhHieu
+          ? `HA: ${sinhHieu.huyetApTamThu || '--'}/${sinhHieu.huyetApTamTruong || '--'} mmHg, Mạch: ${
+              sinhHieu.nhipTim || '--'
+            } l/p, Nhiệt độ: ${sinhHieu.nhietDoC || '--'}°C, SpO2: ${sinhHieu.spo2 || '--'}%`
+          : 'Chưa đo sinh hiệu',
+      },
+      icdSuggestions: suggestIcd10Codes(`${trieuChung} ${chanDoanSoBo} ${chanDoanXacDinh}`),
+      allergyAlert,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (matches.length === 0) {
+      return {
+        success: true,
+        message: 'Chưa có phác đồ chi tiết phù hợp trong kho — tham khảo mã ICD-10',
+        data: { ...baseData, topProtocol: null, matchedProtocols: [] },
+      };
+    }
+
+    const primary = matches[0].protocol;
 
     const phuongPhapDieuTriGoiY = [
       `1. Nguyên tắc (${primary.quyetDinhByt}): ${primary.phacDoDieuTri.nguyenTac}`,
@@ -1996,21 +2022,11 @@ CHỈ trả về JSON chuẩn, không có markdown hoặc text thừa.`;
       success: true,
       message: 'Truy xuất RAG Phác đồ Chẩn đoán & Điều trị Bộ Y tế thành công',
       data: {
-        engine: 'Hybrid-Vector-RAG-MOH-Vietnam-v2',
-        totalKnowledgeBaseProtocols: MOH_CLINICAL_PROTOCOLS_KB.length,
-        patientContext: {
-          hoTen: hoTenBenhNhan || undefined,
-          diUng: diUng || 'Không ghi nhận',
-          sinhHieuTomTat: sinhHieu
-            ? `HA: ${sinhHieu.huyetApTamThu || '--'}/${sinhHieu.huyetApTamTruong || '--'} mmHg, Mạch: ${
-                sinhHieu.nhipTim || '--'
-              } l/p, Nhiệt độ: ${sinhHieu.nhietDoC || '--'}°C, SpO2: ${sinhHieu.spo2 || '--'}%`
-            : 'Chưa đo sinh hiệu',
-        },
+        ...baseData,
         topProtocol: {
           ...primary,
-          similarityScore: matches[0]?.similarityScore || 0.85,
-          matchedSignals: matches[0]?.matchedSignals || [],
+          similarityScore: matches[0].similarityScore,
+          matchedSignals: matches[0].matchedSignals,
         },
         matchedProtocols: matches.map((m) => ({
           id: m.protocol.id,
@@ -2036,8 +2052,6 @@ CHỈ trả về JSON chuẩn, không có markdown hoặc text thừa.`;
           phuongPhapDieuTriGoiY,
           ghiChuGoiY: primary.lichTaiKhamKhuyenNghi,
         },
-        allergyAlert,
-        timestamp: new Date().toISOString(),
       },
     };
   }
