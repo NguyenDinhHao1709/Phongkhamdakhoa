@@ -54,10 +54,7 @@ export default function BankAppLinks({ accountNo, bank, amount, content, account
 
   return (
     <div className="sm:hidden w-full">
-      <p className="text-[11px] font-semibold text-gray-600 mb-1 text-center">Hoặc mở app ngân hàng để thanh toán:</p>
-      <p className="text-[10px] text-gray-500 mb-2 text-center">
-        App có dấu <span className="text-emerald-600 font-bold">⚡</span> tự điền sẵn thông tin, app khác cần quét mã QR ở trên.
-      </p>
+      <p className="text-[11px] font-semibold text-gray-600 mb-2 text-center">Hoặc mở app ngân hàng để thanh toán:</p>
       <div className="grid grid-cols-5 gap-2 max-h-48 overflow-y-auto">
         {apps.map((b) => (
           <a
