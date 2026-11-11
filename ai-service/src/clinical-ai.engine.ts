@@ -187,9 +187,14 @@ export function matchClinicalProtocols(input: {
   sinhHieu?: any;
   diUng?: string;
 }) {
-  const combinedText = `${input.trieuChung || ''} ${input.chanDoanSoBo || ''} ${input.chanDoanXacDinh || ''}`
-    .toLowerCase()
-    .trim();
+  // Triệu chứng là căn cứ chính; chẩn đoán (có thể là gợi ý cũ đã áp dụng) chỉ dùng khi triệu chứng không khớp phác đồ nào
+  const symptomText = (input.trieuChung || '').toLowerCase().trim();
+  const hasSymptomHit =
+    !!symptomText &&
+    MOH_CLINICAL_PROTOCOLS_KB.some((p) => p.tuKhoaTrieuChung.some((kw) => symptomText.includes(kw.toLowerCase())));
+  const combinedText = hasSymptomHit
+    ? symptomText
+    : `${symptomText} ${input.chanDoanSoBo || ''} ${input.chanDoanXacDinh || ''}`.toLowerCase().trim();
 
   const hatt = Number(input.sinhHieu?.huyetApTamThu || input.sinhHieu?.huyet_ap_tam_thu || 0);
   const hattr = Number(input.sinhHieu?.huyetApTamTruong || input.sinhHieu?.huyet_ap_tam_truong || 0);

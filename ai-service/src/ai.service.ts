@@ -1992,7 +1992,7 @@ CHỈ trả về JSON chuẩn, không có markdown hoặc text thừa.`;
             } l/p, Nhiệt độ: ${sinhHieu.nhietDoC || '--'}°C, SpO2: ${sinhHieu.spo2 || '--'}%`
           : 'Chưa đo sinh hiệu',
       },
-      icdSuggestions: suggestIcd10Codes(`${trieuChung} ${chanDoanSoBo} ${chanDoanXacDinh}`),
+      icdSuggestions: suggestIcd10Codes(trieuChung || `${chanDoanSoBo} ${chanDoanXacDinh}`),
       allergyAlert,
       timestamp: new Date().toISOString(),
     };
