@@ -34,6 +34,11 @@ import ThuTamUngModal from './ThuTamUngModal';
 
 const ITEMS_PER_PAGE = 10;
 
+// Tạm ứng tại quầy chưa thu; hóa đơn có tạm ứng dư chưa hoàn; tiền thu ròng (trừ hoàn trả)
+const isChoThuTamUng = (i) => i.loaiHoaDon === 'tam_ung_tai_quay' && i.trangThai === 'cho_thanh_toan';
+const isChoHoanTra = (i) => i.trangThai === 'cho_thanh_toan' && Number(i.tienHoanTra || 0) > 0;
+const thuRong = (i) => Number(i.thucThu ?? 0) - Number(i.tienHoanTra || 0);
+
 export default function HoaDonListPage() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -127,6 +132,10 @@ export default function HoaDonListPage() {
     // 1. Trạng thái
     if (filterStatus === 'cho_hoan_coc') {
       result = result.filter((item) => Boolean(item.choHoanCoc));
+    } else if (filterStatus === 'cho_thu_tam_ung') {
+      result = result.filter(isChoThuTamUng);
+    } else if (filterStatus === 'cho_hoan_tra') {
+      result = result.filter(isChoHoanTra);
     } else if (filterStatus !== 'all') {
       result = result.filter((item) => item.trangThai === filterStatus);
     }
@@ -182,7 +191,7 @@ export default function HoaDonListPage() {
     const totalCount = list.length;
     const totalRevenue = list
       .filter((i) => i.trangThai === 'da_thanh_toan')
-      .reduce((sum, i) => sum + Number(i.thucThu || i.tongTien || 0), 0);
+      .reduce((sum, i) => sum + thuRong(i), 0);
 
     const pendingList = list.filter((i) => i.trangThai === 'cho_thanh_toan');
     const pendingCount = pendingList.length;
@@ -190,7 +199,7 @@ export default function HoaDonListPage() {
 
     const paidList = list.filter((i) => i.trangThai === 'da_thanh_toan');
     const paidCount = paidList.length;
-    const paidAmount = paidList.reduce((sum, i) => sum + Number(i.thucThu || i.tongTien || 0), 0);
+    const paidAmount = paidList.reduce((sum, i) => sum + thuRong(i), 0);
 
     const todayList = list.filter((i) => i.ngayTao && toLocalDateStr(i.ngayTao) === todayStr);
     const todayCount = todayList.length;
@@ -200,7 +209,18 @@ export default function HoaDonListPage() {
     const pendingRefundCount = pendingRefundList.length;
     const pendingRefundAmount = pendingRefundList.reduce((sum, i) => sum + Number(i.thucThu || i.tongTien || 40000), 0);
 
+    const tamUngChoThuCount = list.filter(isChoThuTamUng).length;
+    const tamUngDaThuAmount = list
+      .filter((i) => i.loaiHoaDon === 'tam_ung_tai_quay' && i.trangThai === 'da_thanh_toan')
+      .reduce((sum, i) => sum + Number(i.thucThu || 0), 0);
+    const hoanTraList = list.filter(isChoHoanTra);
+    const hoanTraAmount = hoanTraList.reduce((sum, i) => sum + Number(i.tienHoanTra || 0), 0);
+
     return {
+      tamUngChoThuCount,
+      tamUngDaThuAmount,
+      hoanTraCount: hoanTraList.length,
+      hoanTraAmount,
       totalCount,
       totalRevenue,
       pendingCount,
@@ -303,7 +323,7 @@ export default function HoaDonListPage() {
       )}
 
       {/* 2. Thẻ Thống kê nhanh (Interactive Quick-Filter Cards) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {/* Tổng hóa đơn */}
         <div
           onClick={() => {
@@ -388,6 +408,40 @@ export default function HoaDonListPage() {
             {formatCurrency(stats.todayAmount)}
           </div>
         </div>
+
+        {/* Tạm ứng tại quầy */}
+        <div
+          onClick={() => {
+            setFilterStatus(stats.tamUngChoThuCount === 0 && stats.hoanTraCount > 0 ? 'cho_hoan_tra' : 'cho_thu_tam_ung');
+            setCurrentPage(1);
+          }}
+          className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
+            filterStatus === 'cho_thu_tam_ung' || filterStatus === 'cho_hoan_tra'
+              ? 'bg-violet-50/80 border-violet-300 ring-2 ring-violet-500/20 shadow-xs'
+              : 'bg-white border-gray-100 hover:border-gray-200 hover:bg-gray-50/50 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-violet-800">Chờ thu tạm ứng</span>
+            <Wallet className="h-4 w-4 text-violet-600" />
+          </div>
+          <div className="text-2xl font-bold text-violet-900 mt-1">{stats.tamUngChoThuCount}</div>
+          <div className="text-[11px] text-violet-700 font-semibold mt-0.5 truncate">
+            Đã thu: {formatCurrency(stats.tamUngDaThuAmount)}
+          </div>
+          {stats.hoanTraCount > 0 && (
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                setFilterStatus('cho_hoan_tra');
+                setCurrentPage(1);
+              }}
+              className="text-[11px] text-rose-600 font-bold mt-0.5 truncate hover:underline"
+            >
+              Chờ hoàn trả: {stats.hoanTraCount} ({formatCurrency(stats.hoanTraAmount)})
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 3. Bộ lọc Đa năng & Tìm kiếm Thông minh */}
@@ -425,6 +479,8 @@ export default function HoaDonListPage() {
             >
               <option value="all">💳 Tất cả trạng thái</option>
               <option value="cho_thanh_toan">⏳ Chờ thanh toán</option>
+              <option value="cho_thu_tam_ung">💜 Chờ thu tạm ứng tại quầy</option>
+              <option value="cho_hoan_tra">↩️ Chờ hoàn trả tạm ứng dư</option>
               <option value="cho_hoan_coc">🔔 Chờ hoàn cọc đặt lịch (40k)</option>
               <option value="da_thanh_toan">✅ Đã thanh toán</option>
               <option value="huy">❌ Đã hủy / Hoàn tiền</option>
