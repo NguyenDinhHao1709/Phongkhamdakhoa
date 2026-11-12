@@ -100,6 +100,15 @@ export default function LichHenBenhNhanPage() {
   const mucCocTrucTiep = Number(cocTrucTiepCfg?.soTienCoc || 40000);
   const mucCocTrucTuyen = Number(cocTrucTuyenCfg?.soTienCoc || 200000);
 
+  // Thời hạn hủy được hoàn cọc và % hoàn theo cấu hình của phòng khám (từng hình thức khám)
+  const quyDinhHuy = (cfg) => ({
+    gio: Number(cfg?.thoiGianHuyHoanCocGio ?? 24),
+    phanTram: Number(cfg?.phanTramHoanCoc ?? 100),
+  });
+  const qdTrucTiep = quyDinhHuy(cocTrucTiepCfg);
+  const qdTrucTuyen = quyDinhHuy(cocTrucTuyenCfg);
+  const quyDinhCua = (lh) => (lh?.hinhThuc === 'truc_tuyen' ? qdTrucTuyen : qdTrucTiep);
+
   const getAppointmentAmount = (lh) => {
     if (!lh) return mucCocTrucTiep;
     if (lh.soTienThanhToan != null && Number(lh.soTienThanhToan) > 0) return Number(lh.soTienThanhToan);
@@ -148,8 +157,9 @@ export default function LichHenBenhNhanPage() {
     const diffHours = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
     const soTienLhStr = formatVND(getAppointmentAmount(lh));
 
-    if (diffHours < 24) {
-      alert(`⚠️ KHÔNG THỂ HỦY LỊCH HẸN TRỰC TUYẾN!\n\nLịch hẹn ${lh.maLichHen} còn dưới 24 tiếng (1 ngày) nữa là đến giờ khám (${lh.gioHen} ngày ${lh.ngayHen}).\nTheo quy định phòng khám, chỉ được hủy trước ngày khám ít nhất 1 ngày (24 tiếng). Khi hủy dưới 24 tiếng, hệ thống không thể xử lý hủy trực tuyến và không được hoàn lại tiền tạm ứng (${soTienLhStr}).`);
+    const { gio } = quyDinhCua(lh);
+    if (diffHours < gio) {
+      alert(`⚠️ KHÔNG THỂ HỦY LỊCH HẸN TRỰC TUYẾN!\n\nLịch hẹn ${lh.maLichHen} còn dưới ${gio} tiếng nữa là đến giờ khám (${lh.gioHen} ngày ${lh.ngayHen}).\nTheo quy định phòng khám, chỉ được hủy trước giờ khám ít nhất ${gio} tiếng. Hủy sát giờ hơn, hệ thống không thể xử lý hủy trực tuyến và không được hoàn lại tiền tạm ứng (${soTienLhStr}).`);
       return;
     }
 
@@ -238,8 +248,8 @@ export default function LichHenBenhNhanPage() {
           <ShieldAlert className="h-4 w-4 text-primary-600" /> Quy định Tạm ứng & Quy trình Hoàn cọc chuẩn ERP Y tế:
         </p>
         <p>• Mỗi lịch hẹn khám trực tiếp cần tạm ứng <strong>{formatVND(mucCocTrucTiep)}</strong> (tư vấn trực tuyến: <strong>{formatVND(mucCocTrucTuyen)}</strong>) để xác nhận giữ chỗ và khấu trừ trực tiếp vào hóa đơn khi đến khám.</p>
-        <p>• Hủy lịch hợp lệ <strong>trước ngày khám ít nhất 1 ngày (trước 24 tiếng)</strong> hoặc do Bác sĩ dời/hủy ca: Được <strong>hoàn trả 100% số tiền tạm ứng đã đóng</strong>. Quý khách cung cấp <strong>Số tài khoản Ngân hàng</strong> (hoặc chọn nhận tiền mặt tại quầy) để bộ phận Thu ngân đối soát và chuyển hoàn.</p>
-        <p>• Hủy lịch <strong>trong vòng 24 tiếng</strong> hoặc không đến khám (No-show): Khoản tiền tạm ứng sẽ không được hoàn lại theo quy định của phòng khám.</p>
+        <p>• Hủy lịch hợp lệ: khám trực tiếp hủy <strong>trước giờ khám ít nhất {qdTrucTiep.gio} tiếng</strong> được hoàn <strong>{qdTrucTiep.phanTram}%</strong>; tư vấn trực tuyến hủy <strong>trước ít nhất {qdTrucTuyen.gio} tiếng</strong> được hoàn <strong>{qdTrucTuyen.phanTram}%</strong> số tiền đã đóng. Bác sĩ dời/hủy ca: hoàn 100%. Quý khách cung cấp <strong>Số tài khoản Ngân hàng</strong> (hoặc chọn nhận tiền mặt tại quầy) để bộ phận Thu ngân đối soát và chuyển hoàn.</p>
+        <p>• Hủy sát giờ hơn thời hạn trên hoặc không đến khám (No-show): Khoản tiền tạm ứng sẽ không được hoàn lại theo quy định của phòng khám.</p>
       </div>
 
       <div className="space-y-4">
@@ -619,7 +629,14 @@ export default function LichHenBenhNhanPage() {
               <div className="p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-900 space-y-1">
                 <p className="font-bold flex items-center gap-1.5">
                   <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                  Đủ điều kiện hoàn trả 100% tiền tạm ứng: <span className="text-sm font-black text-emerald-700">{formatVND(getAppointmentAmount(refundModalData.appointment))}</span>
+                  {refundModalData.mode === 'cancel'
+                    ? `Đủ điều kiện hoàn trả ${quyDinhCua(refundModalData.appointment).phanTram}% tiền tạm ứng: `
+                    : 'Đủ điều kiện hoàn trả 100% tiền tạm ứng: '}
+                  <span className="text-sm font-black text-emerald-700">
+                    {formatVND(refundModalData.mode === 'cancel'
+                      ? Math.round(getAppointmentAmount(refundModalData.appointment) * quyDinhCua(refundModalData.appointment).phanTram / 100)
+                      : getAppointmentAmount(refundModalData.appointment))}
+                  </span>
                 </p>
                 <p className="text-[11px] text-emerald-800">
                   Vui lòng cung cấp thông tin nhận tiền bên dưới để bộ phận Thu ngân phòng khám đối soát và chuyển khoản hoàn trả chính xác cho quý khách.

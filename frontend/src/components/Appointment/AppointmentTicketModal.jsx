@@ -351,13 +351,13 @@ export default function AppointmentTicketModal({
               </p>
               <p>• Quý khách vui lòng chuẩn bị thiết bị (điện thoại hoặc máy tính có camera, micro) và giữ kết nối mạng ổn định.</p>
               <p>• Bác sĩ phụ trách sẽ gọi Video Call trực tiếp tới Quý khách vào khung giờ hẹn trên.</p>
-              <p>• Quý khách có thể xem chi tiết hoặc đổi/hủy lịch tại mục <strong>"Lịch Hẹn Của Tôi"</strong> (trước giờ hẹn 24 tiếng để được bảo lưu/hoàn tiền).</p>
+              <p>• Quý khách có thể xem chi tiết hoặc đổi/hủy lịch tại mục <strong>"Lịch Hẹn Của Tôi"</strong> (hủy trong thời hạn quy định của phòng khám để được hoàn tiền).</p>
             </div>
           ) : (
             <div className="rounded-xl bg-amber-50 p-3 border border-amber-200 text-[11px] text-amber-900 space-y-1">
               <p className="font-bold">⚠️ Lưu ý dành cho người bệnh:</p>
               <p>• Quý khách vui lòng có mặt trước giờ hẹn <strong>15 phút</strong> tại phòng khám để quét mã QR check-in.</p>
-              <p>• Nếu cần hủy lịch, quý khách phải hủy <strong>trước ngày khám ít nhất 1 ngày (24 tiếng)</strong> để được hoàn 100% tiền tạm ứng.</p>
+              <p>• Nếu cần hủy lịch, quý khách hủy tại mục <strong>"Lịch Hẹn Của Tôi"</strong> trong thời hạn quy định để được hoàn tiền tạm ứng.</p>
             </div>
           )}
         </div>

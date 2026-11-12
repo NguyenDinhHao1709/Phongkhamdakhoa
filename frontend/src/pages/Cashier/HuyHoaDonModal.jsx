@@ -5,7 +5,7 @@ import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDateTime } from '../../utils/formatDate';
 
 const LY_DO_PRESETS = [
-  'Hoàn trả 100% tiền cọc đặt lịch hẹn (Hủy hợp lệ trước >= 24h)',
+  'Hoàn trả tiền cọc đặt lịch hẹn (Hủy hợp lệ theo quy định)',
   'Bệnh nhân yêu cầu hủy / Không tiếp tục khám',
   'Bác sĩ xin hủy ca khám (Ban Giám Đốc đã phê duyệt hoàn cọc)',
   'Bác sĩ chỉ định hủy bớt dịch vụ / Cận lâm sàng',

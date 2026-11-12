@@ -314,7 +314,7 @@ export default function HoaDonListPage() {
                 Có {stats.pendingRefundCount} phiếu tạm ứng đặt lịch ({formatCurrency(stats.pendingRefundAmount)}) đang chờ Thu ngân hoàn cọc
               </span>
               <p className="text-[11px] text-rose-700 mt-0.5">
-                Lịch hẹn đã hủy hợp lệ trước &ge; 24 tiếng hoặc do Bác sĩ hủy ca. Bấm "Hoàn cọc" trên từng phiếu để xem Số tài khoản / mã QR của bệnh nhân và xác nhận giải ngân.
+                Lịch hẹn đã hủy hợp lệ theo quy định hoặc do Bác sĩ hủy ca; số tiền hoàn ghi trên từng phiếu. Bấm "Hoàn cọc" trên từng phiếu để xem Số tài khoản / mã QR của bệnh nhân và xác nhận giải ngân.
               </p>
             </div>
           </div>

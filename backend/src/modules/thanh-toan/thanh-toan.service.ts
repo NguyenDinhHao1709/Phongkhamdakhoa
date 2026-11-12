@@ -523,9 +523,11 @@ export class ThanhToanService {
         tienCocDaThu = Math.abs(Number(tamUngItem.thanhTien));
       }
 
-      // Nếu chọn thanh toán hình thức BHYT hoặc gắn cờ apDungBhyt mà chưa nhập soTienGiam
-      if ((dto.phuongThucThanhToan === 'bao_hiem' || dto.apDungBhyt) && (isNaN(soTienGiam) || soTienGiam === 0)) {
-        soTienGiam = Math.round(tongTien * 0.8);
+      // Chọn BHYT mà chưa có số giảm: tính theo thẻ (mức hưởng, tuyến, ngưỡng); chỉ khi chưa nhập thẻ hợp lệ mới dùng 80% mặc định
+      const chonBhyt = dto.phuongThucThanhToan === 'bao_hiem' || dto.apDungBhyt;
+      if (chonBhyt && (isNaN(soTienGiam) || soTienGiam === 0)) {
+        const tyLe = tyLeBhyt(hd.benhNhan, await this.layCauHinhBhyt(), tongTien, hd.luotTiepNhan?.doiTuongUuTien === 'cap_cuu') ?? 0.8;
+        soTienGiam = Math.round(tongTien * tyLe);
       } else if (isNaN(soTienGiam)) {
         soTienGiam = Number(hd.soTienGiam || 0);
       }
@@ -541,8 +543,8 @@ export class ThanhToanService {
       if (nv) hd.thuNganId = nv.id;
       if (dto.ghiChu) {
         hd.ghiChu = dto.ghiChu;
-      } else if (dto.phuongThucThanhToan === 'bao_hiem' || dto.apDungBhyt) {
-        hd.ghiChu = `Đã khấu trừ BHYT 80% (~${soTienGiam.toLocaleString('vi-VN')} đ)${tienCocDaThu > 0 ? ` & cọc ${tienCocDaThu.toLocaleString('vi-VN')} đ` : ''}. Thu thực tế: ${thucThu.toLocaleString('vi-VN')} đ`;
+      } else if (chonBhyt) {
+        hd.ghiChu = `Đã khấu trừ BHYT ${tongTien > 0 ? Math.round((soTienGiam / tongTien) * 100) : 0}% (~${soTienGiam.toLocaleString('vi-VN')} đ)${tienCocDaThu > 0 ? ` & cọc ${tienCocDaThu.toLocaleString('vi-VN')} đ` : ''}. Thu thực tế: ${thucThu.toLocaleString('vi-VN')} đ`;
       }
 
       const updated = await this.hoaDonRepo.save(hd);
@@ -817,7 +819,12 @@ export class ThanhToanService {
     const isTamUng = Boolean(
       hd.maHoaDon?.startsWith('HDT') || hd.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]')
     );
-    const soTienHoanText = `${Number(hd.thucThu || hd.tongTien || 0).toLocaleString('vi-VN')} đ`;
+    // Hoàn cọc theo đúng số tiền trong yêu cầu "chờ hoàn" (có thể chỉ một phần theo % quy định)
+    const daThu = Number(hd.thucThu || hd.tongTien || 0);
+    const yeuCauHoan = hd.ghiChu?.match(/\[CHỜ HOÀN CỌC ([\d.,]+)/);
+    const soTienHoan = isTamUng && yeuCauHoan ? Math.min(daThu, Number(yeuCauHoan[1].replace(/\D/g, ''))) : daThu;
+    const hoanMotPhan = isTamUng && soTienHoan < daThu;
+    const soTienHoanText = `${soTienHoan.toLocaleString('vi-VN')} đ`;
 
     // Chốt chặn đối soát Kho Dược - Thu Ngân: Không cho phép hủy hóa đơn viện phí nếu đơn thuốc đã xuất kho cấp phát
     if (!isTamUng && hd.luotTiepNhanId) {
@@ -856,8 +863,10 @@ export class ThanhToanService {
       hd.thuNganId = nv.id;
     }
 
-    hd.trangThai = 'huy' as any;
-    hd.ghiChu = `[ĐÃ HỦY / HOÀN TIỀN] ${isTamUng ? '[ĐÃ HOÀN CỌC THÀNH CÔNG] ' : ''}Lúc ${ngayHuy.toLocaleString('vi-VN')} bởi ${nguoiThucHien}. Lý do: ${lyDo}${dto.ghiChu ? ` - Chứng từ: ${dto.ghiChu}` : ''}. ${hd.ghiChu ? `(Cũ: ${hd.ghiChu.replace(/\[CHỜ HOÀN CỌC[^\]]*\]/gi, '').trim()})` : ''}`;
+    // Hoàn một phần: phần giữ lại vẫn là doanh thu, phần hoàn ghi vào tiền hoàn trả
+    if (hoanMotPhan) hd.tienHoanTra = soTienHoan;
+    else hd.trangThai = 'huy' as any;
+    hd.ghiChu = `[ĐÃ HỦY / HOÀN TIỀN] ${isTamUng ? `[ĐÃ HOÀN CỌC THÀNH CÔNG] (${soTienHoanText}) ` : ''}Lúc ${ngayHuy.toLocaleString('vi-VN')} bởi ${nguoiThucHien}. Lý do: ${lyDo}${dto.ghiChu ? ` - Chứng từ: ${dto.ghiChu}` : ''}. ${hd.ghiChu ? `(Cũ: ${hd.ghiChu.replace(/\[CHỜ HOÀN CỌC[^\]]*\]/gi, '').trim()})` : ''}`;
 
     const updated = await this.hoaDonRepo.save(hd);
 

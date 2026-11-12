@@ -1,335 +1,362 @@
-# TÀI LIỆU ĐẶC TẢ YÊU CẦU PHẦN MỀM (SRS) & BỘ TEST CASES TOÀN BỘ BACKEND
-## HỆ THỐNG QUẢN LÝ PHÒNG KHÁM ĐA KHOA QUỐC TẾ (SMART CLINIC MANAGEMENT SYSTEM)
+# Đặc tả yêu cầu phần mềm (SRS)
+## Hệ thống quản lý phòng khám đa khoa
 
-- **Mã dự án:** KLTN-PKDK-2026
-- **Tiêu chuẩn áp dụng:** IEEE 830 / ISO/IEC/IEEE 29148 & Chuẩn an toàn thông tin y tế
-- **Kiến trúc Backend:** NestJS 10, TypeORM, MySQL 8.0, Redis, BullMQ, Socket.io, Python FastAPI ML Microservice
-- **Phiên bản tài liệu:** v2.0 (Đầy đủ 12 phân hệ backend)
-- **Ngày cập nhật:** 07/09/2026
-
----
-
-## MỤC LỤC
-1. [TỔNG QUAN HỆ THỐNG & MÔI TRƯỜNG KIỂM THỬ](#1-tổng-quan-hệ-thống--môi-trường-kiểm-thử)
-2. [QUY ƯỚC ĐẶT MÃ & TIÊU CHÍ TEST CASE](#2-quy-ước-đặt-mã--tiêu-chí-test-case)
-3. [MA TRẬN KIỂM THỬ 12 PHÂN HỆ BACKEND](#3-ma-trận-kiểm-thử-12-phân-hệ-backend)
-   - [Module 1: Xác Thực & Quản Lý Truy Cập (Auth, OTP & SMS Gateway)](#module-1-xác-thực--quản-lý-truy-cập-auth-otp--sms-gateway)
-   - [Module 2: Tiếp Nhận Bệnh Nhân, Hàng Đợi & Sinh Hiệu (TiepNhan)](#module-2-tiếp-nhận-bệnh-nhân-hàng-đợi--sinh-hiệu-tiepnhan)
-   - [Module 3: Quản Lý Hồ Sơ Bệnh Nhân (BenhNhan)](#module-3-quản-lý-hồ-sơ-bệnh-nhân-benhnhan)
-   - [Module 4: Quản Lý Lịch Hẹn & Nhắc Lịch Tự Động (LichHen)](#module-4-quản-lý-lịch-hẹn--nhắc-lịch-tự-động-lichhen)
-   - [Module 5: Hồ Sơ Bệnh Án & Khám Lâm Sàng (HoSoBenhAn)](#module-5-hồ-sơ-bệnh-án--khám-lâm-sàng-hosobenhan)
-   - [Module 6: Cận Lâm Sàng, Xét Nghiệm & Upload Tệp Ảnh (XetNghiem)](#module-6-cận-lâm-sàng-xét-nghiệm--upload-tệp-ảnh-xetnghiem)
-   - [Module 7: Quản Lý Nhà Thuốc, Kho Dược FEFO & Dự Báo ML (NhaThuoc)](#module-7-quản-lý-nhà-thuốc-kho-dược-fefo--dự-báo-ml-nhathuoc)
-   - [Module 8: Viện Phí, BHYT & Cổng Thanh Toán (ThanhToan)](#module-8-viện-phí-bhyt--cổng-thanh-toán-thanhtoan)
-   - [Module 9: Quản Trị Hệ Thống, Xếp Lịch Trực & Sao Lưu Dữ Liệu (QuanLy)](#module-9-quản-trị-hệ-thống-xếp-lịch-trực--sao-lưu-dữ-liệu-quanly)
-   - [Module 10: Nhân Sự & Đơn Từ Nội Bộ (NhanVien)](#module-10-nhân-sự--đơn-từ-nội-bộ-nhanvien)
-   - [Module 11: Thông Báo & Đồng Bộ Thời Gian Thực (ThongBao - WebSocket)](#module-11-thông-báo--đồng-bộ-thời-gian-thực-thongbao---websocket)
-   - [Module 12: Trí Tuệ Nhân Tạo & Phân Luồng Động (AI Triage & Dynamic Queue)](#module-12-trí-tuệ-nhân-tạo--phân-luồng-động-ai-triage--dynamic-queue)
-4. [MA TRẬN TRUY XUẤT YÊU CẦU (TRACEABILITY MATRIX)](#4-ma-trận-truy-xuất-yêu-cầu-traceability-matrix)
-5. [HƯỚNG DẪN THỰC THI KIỂM THỬ TỰ ĐỘNG](#5-hướng-dẫn-thực-thi-kiểm-thử-tự-động)
+| Mục | Nội dung |
+|---|---|
+| Phiên bản tài liệu | 2.0 |
+| Ngày cập nhật | 12/11/2026 |
+| Chuẩn tham chiếu | ISO/IEC/IEEE 29148:2018 (kế thừa IEEE 830) |
+| Tài liệu liên quan | [Quy trình khám bệnh & BPMN](docs/QUY_TRINH_KHAM_BENH.md), [README](README.md) |
 
 ---
 
-## 1. TỔNG QUAN HỆ THỐNG & MÔI TRƯỜNG KIỂM THỬ
+## Mục lục
 
-### 1.1 Mục tiêu kiểm thử
-Xác minh tính đúng đắn về mặt logic nghiệp vụ, tính toàn vẹn dữ liệu y tế, hiệu năng phản hồi và khả năng bảo mật của toàn bộ các API Endpoints thuộc hệ thống Quản lý Phòng khám Đa khoa.
-
-### 1.2 Môi trường thực thi (Test Environment)
-- **Base API URL:** `http://localhost:5000/api`
-- **Python ML API URL:** `http://localhost:5001`
-- **Database Engine:** MySQL 8.0 Community Server (CSDL `phong_kham`)
-- **Queue & Cache:** Redis 7.x (Port 6379)
-- **Cơ chế xác thực:** JWT Bearer Token (Header: `Authorization: Bearer <token>`)
-- **Phân quyền RBAC:** `quan_tri_vien`, `ban_giam_doc`, `bac_si`, `ky_thuat_vien`, `nhan_vien_nha_thuoc`, `thu_ngan`, `tiep_tan`, `benh_nhan`.
-
----
-
-## 2. QUY ƯỚC ĐẶT MÃ & TIÊU CHÍ TEST CASE
-
-- **Mã Test Case:** `TC-[MODULE]-[STT]` (Ví dụ: `TC-AUTH-01`, `TC-LH-04`, `TC-TT-02`)
-- **Loại kiểm thử (Type):**
-  - **Happy Path (HP):** Kiểm tra kịch bản chuẩn với dữ liệu hợp lệ.
-  - **Negative / Edge Case (NEG):** Kiểm tra ngoại lệ, dữ liệu biên, dữ liệu không hợp lệ.
-  - **Security (SEC):** Kiểm tra xác thực token, phân quyền vai trò (401, 403), injection, rate limit.
-  - **Concurrency / Lock (CON):** Kiểm tra xung đột dữ liệu (Optimistic Lock 409).
-- **Trạng thái kỳ vọng:** Mã phản hồi HTTP (`200 OK`, `201 Created`, `400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`, `409 Conflict`).
+1. [Giới thiệu](#1-giới-thiệu)
+2. [Mô tả tổng quan](#2-mô-tả-tổng-quan)
+3. [Yêu cầu chức năng](#3-yêu-cầu-chức-năng)
+4. [Quy tắc nghiệp vụ](#4-quy-tắc-nghiệp-vụ)
+5. [Đặc tả use case chính](#5-đặc-tả-use-case-chính)
+6. [Yêu cầu dữ liệu](#6-yêu-cầu-dữ-liệu)
+7. [Yêu cầu giao tiếp ngoài](#7-yêu-cầu-giao-tiếp-ngoài)
+8. [Yêu cầu phi chức năng](#8-yêu-cầu-phi-chức-năng)
+9. [Ma trận truy xuất](#9-ma-trận-truy-xuất)
 
 ---
 
-## 3. MA TRẬN KIỂM THỬ 12 PHÂN HỆ BACKEND
+## 1. Giới thiệu
+
+### 1.1 Mục đích
+Tài liệu đặc tả các yêu cầu chức năng, quy tắc nghiệp vụ và yêu cầu phi chức năng của hệ thống quản lý phòng khám đa khoa ngoại trú. Đối tượng đọc: hội đồng đánh giá đồ án, nhóm phát triển, kiểm thử và vận hành.
+
+### 1.2 Phạm vi
+Hệ thống số hóa toàn bộ quy trình khám ngoại trú của một phòng khám đa khoa: đặt lịch và đặt cọc trực tuyến, tiếp nhận tại quầy/kiosk, hàng đợi có ưu tiên, khám lâm sàng, cận lâm sàng, kê đơn, viện phí có BHYT, cấp phát thuốc, tư vấn video từ xa, quản lý kho dược, nhân sự, chấm công và báo cáo điều hành.
+
+Ngoài phạm vi: điều trị nội trú, liên thông cổng giám định BHYT quốc gia, ký số điện tử.
+
+### 1.3 Thuật ngữ
+
+| Thuật ngữ | Giải thích |
+|---|---|
+| Lượt tiếp nhận (lượt khám) | Một lần bệnh nhân đến khám, gắn số thứ tự trong ngày |
+| CLS | Cận lâm sàng: xét nghiệm, chẩn đoán hình ảnh |
+| Tạm ứng | Khoản thu trước phí khám tại quầy (phiếu `TU…`) |
+| Cọc | Khoản đóng khi đặt lịch trực tuyến (hóa đơn `HDT…`) |
+| Quyết toán | Lập hóa đơn cuối của lượt khám, trừ BHYT và tạm ứng |
+| Đúng / trái tuyến | Khám tại nơi đăng ký KCB ban đầu trên thẻ BHYT hay nơi khác |
+| Qua lượt | Gọi khám nhưng bệnh nhân vắng mặt, xếp xuống cuối hàng |
+| ICD-10 | Bảng phân loại bệnh tật quốc tế |
+| FEFO | Xuất kho lô có hạn dùng gần nhất trước |
+
+### 1.4 Tài liệu tham khảo
+- Quyết định 1313/QĐ-BYT về quy trình khám bệnh tại khoa khám bệnh.
+- Luật Bảo hiểm y tế và Nghị định 146/2018/NĐ-CP (mức hưởng, ngưỡng 15% lương cơ sở).
+- Luật Khám bệnh, chữa bệnh 2023 (thứ tự ưu tiên khám).
+- Thông tư 52/2017/TT-BYT (mẫu đơn thuốc).
+
+---
+
+## 2. Mô tả tổng quan
+
+### 2.1 Bối cảnh hệ thống
 
 ```
-+-----------------------------------------------------------------------------------+
-|                           BACKEND TEST CASES COVERAGE                             |
-|                                                                                   |
-|  [Auth]             [TiepNhan]         [BenhNhan]         [LichHen]               |
-|  TC-AUTH: 10 TCs    TC-TN: 8 TCs       TC-BN: 6 TCs       TC-LH: 9 TCs            |
-|                                                                                   |
-|  [HoSoBenhAn]       [XetNghiem]        [NhaThuoc]         [ThanhToan]             |
-|  TC-HSBA: 8 TCs     TC-CLS: 8 TCs      TC-NT: 9 TCs       TC-TT: 8 TCs            |
-|                                                                                   |
-|  [QuanLy]           [NhanVien]         [ThongBao]         [AI & ML]               |
-|  TC-QL: 10 TCs      TC-NV: 5 TCs       TC-TB: 4 TCs       TC-AI: 6 TCs            |
-+-----------------------------------------------------------------------------------+
+ Trình duyệt / Kiosk / App di động (Expo)
+        │ HTTPS + Socket.IO
+        ▼
+ Backend NestJS (REST /api, WebSocket) ──► MySQL 8 (Clever Cloud)
+        │            │            │
+        ▼            ▼            ▼
+   ai-service   office-service  python-ml      PayOS, SMTP, Gemini API
+   (RAG, AI)    (chat nội bộ)   (dự báo thuốc)
 ```
 
----
+### 2.2 Tác nhân
 
-### MODULE 1: XÁC THỰC & QUẢN LÝ TRUY CẬP (AUTH, OTP & SMS GATEWAY)
-
-| ID | Endpoint & Method | Mô tả kịch bản | Loại | Đầu vào (Payload / Headers) | Kỳ vọng kết quả (Expected Output) | HTTP |
-|---|---|---|---|---|---|---|
-| **TC-AUTH-01** | `POST /auth/login` | Đăng nhập tài khoản Bác sĩ hợp lệ | HP | `{"tenDangNhap": "bacsi_hung", "matKhau": "123456"}` | Trả về `accessToken`, `refreshToken`, user object (role: `bac_si`) | `200` |
-| **TC-AUTH-02** | `POST /auth/login` | Đăng nhập với mật khẩu không chính xác | NEG | `{"tenDangNhap": "bacsi_hung", "matKhau": "sai_mat_khau"}` | `code: "DANG_NHAP_THAT_BAI"`, thông báo lỗi rõ ràng | `401` |
-| **TC-AUTH-03** | `POST /auth/login` | Đăng nhập với tài khoản bị khóa | NEG | `{"tenDangNhap": "user_khoa", "matKhau": "123456"}` | `code: "TAI_KHOAN_BI_KHOA"` | `403` |
-| **TC-AUTH-04** | `POST /auth/register-patient` | Đăng ký tài khoản bệnh nhân tự do hợp lệ | HP | `{"email": "patient.test@gmail.com", "matKhau": "Pass@123", "hoTen": "Trần Văn A", "soDienThoai": "0912345678"}` | Tạo tài khoản trạng thái `cho_xac_thuc`, tự động kích hoạt gửi OTP | `201` |
-| **TC-AUTH-05** | `POST /auth/register-patient` | Đăng ký với Email đã tồn tại trong CSDL | NEG | `{"email": "patient.test@gmail.com", ...}` | `code: "USERNAME_EXISTS"`, báo lỗi email trùng | `409` |
-| **TC-AUTH-06** | `POST /auth/send-otp` | Gửi mã OTP xác thực qua Email & SMS đồng thời | HP | `{"email": "patient.test@gmail.com", "soDienThoai": "0912345678"}` | Lưu mã OTP 6 số vào DB (hạn 10 phút), log SMS Dispatcher & gửi Mail | `201` |
-| **TC-AUTH-07** | `POST /auth/verify-otp` | Xác thực OTP chính xác và kích hoạt tài khoản | HP | `{"email": "patient.test@gmail.com", "maOtp": "123456"}` | Đánh dấu `daSuDung = 1`, kích hoạt `trangThai = "hoat_dong"` | `200` |
-| **TC-AUTH-08** | `POST /auth/verify-otp` | Nhập sai mã OTP quá 5 lần liên tiếp | SEC | `{"email": "patient.test@gmail.com", "maOtp": "000000"}` x5 | `code: "OTP_QUA_NHIEU_LAN_THU"`, khóa mã OTP | `400` |
-| **TC-AUTH-09** | `POST /auth/refresh` | Làm mới Access Token bằng Refresh Token hợp lệ | HP | `{"refreshToken": "<valid_refresh_token>"}` | Trả về bộ access token & refresh token mới | `200` |
-| **TC-AUTH-10** | `POST /auth/change-password` | Đổi mật khẩu tài khoản đang đăng nhập | SEC | Auth Header + `{"matKhauCu": "123456", "matKhauMoi": "NewPass@2026"}` | Cập nhật `matKhauHash` mới, vô hiệu hóa token cũ | `200` |
-
----
-
-### MODULE 2: TIẾP NHẬN BỆNH NHÂN, HÀNG ĐỢI & SINH HIỆU (TIEPNHAN)
-
-| ID | Endpoint & Method | Mô tả kịch bản | Loại | Đầu vào (Payload / Headers) | Kỳ vọng kết quả (Expected Output) | HTTP |
-|---|---|---|---|---|---|---|
-| **TC-TN-01** | `GET /tiep-nhan/hang-doi` | Lấy danh sách hàng đợi khám bệnh hôm nay | HP | Auth Header (Tiếp tân/Bác sĩ) | Danh sách lượt khám phân loại theo phòng: `cho_kham`, `dang_kham`, `dang_cls` | `200` |
-| **TC-TN-02** | `POST /tiep-nhan` | Tiếp nhận bệnh nhân mới vào phòng khám | HP | `{"benhNhanId": 1, "phongKhamId": 2, "bacSiId": 1, "lyDoKham": "Đau bụng cấp"}` | Tạo lượt khám, sinh mã `LK2026xxxx`, sinh STT hàng đợi tự tăng theo ngày | `201` |
-| **TC-TN-03** | `POST /tiep-nhan` | Tiếp nhận thiếu trường `phongKhamId` bắt buộc | NEG | `{"benhNhanId": 1, "lyDoKham": "Khám tổng quát"}` | ValidationPipe trả về lỗi thiếu `phongKhamId` | `400` |
-| **TC-TN-04** | `POST /tiep-nhan/:id/sinh-hieu` | Đo và ghi nhận chỉ số sinh hiệu bệnh nhân | HP | `id: 1`, payload: `{"mach": 80, "huyetApTamThu": 120, "huyetApTamTruong": 80, "nhietDoC": 37.0, "spo2": 98}` | Lưu bản ghi sinh hiệu liên kết với lượt tiếp nhận, tính tự động BMI | `201` |
-| **TC-TN-05** | `POST /tiep-nhan/:id/sinh-hieu` | Cảnh báo sinh hiệu bất thường (Huyết áp nguy kịch) | EDGE | `{"huyetApTamThu": 190, "huyetApTamTruong": 120}` | Lưu thành công và trả cờ cảnh báo ưu tiên cấp cứu (`priority: "khan_cap"`) | `201` |
-| **TC-TN-06** | `GET /tiep-nhan/:id/sinh-hieu` | Lấy thông số sinh hiệu của lượt tiếp nhận | HP | `id: 1` | Trả về đầy đủ mạch, huyết áp, nhiệt độ, chiều cao, cân nặng, SpO2 | `200` |
-| **TC-TN-07** | `PATCH /tiep-nhan/:id/trang-thai` | Chuyển trạng thái lượt khám sang `dang_cls` | HP | `id: 1`, payload: `{"trangThai": "dang_cls"}` | Cập nhật trạng thái và broadcast WebSocket sự kiện `queue:update` | `200` |
-| **TC-TN-08** | `PATCH /tiep-nhan/:id/trang-thai` | Chuyển trạng thái lượt khám không tồn tại | NEG | `id: 999999`, payload: `{"trangThai": "dang_kham"}` | Trả về mã lỗi `404 Not Found` | `404` |
-
----
-
-### MODULE 3: QUẢN LÝ HỒ SƠ BỆNH NHÂN (BENHNHAN)
-
-| ID | Endpoint & Method | Mô tả kịch bản | Loại | Đầu vào (Payload / Headers) | Kỳ vọng kết quả (Expected Output) | HTTP |
-|---|---|---|---|---|---|---|
-| **TC-BN-01** | `GET /benh-nhan` | Tìm kiếm bệnh nhân theo tên hoặc SĐT | HP | Query: `?keyword=Nguyễn Văn&page=1&limit=10` | Danh sách bệnh nhân thỏa điều kiện kèm phân trang | `200` |
-| **TC-BN-02** | `GET /benh-nhan/:id` | Xem chi tiết hồ sơ bệnh nhân kèm tiền sử bệnh | HP | `id: 1` | Trả về thông tin cá nhân, CCCD, số BHYT, tiền sử dị ứng thuốc | `200` |
-| **TC-BN-03** | `POST /benh-nhan` | Tạo hồ sơ bệnh nhân mới | HP | `{"hoTen": "Lê Thị Lan", "ngaySinh": "1992-03-15", "gioiTinh": "nu", "soDienThoai": "0987654321", "soBhyt": "DN4791234567890"}` | Sinh mã `BN000xxx`, lưu CSDL thành công | `201` |
-| **TC-BN-04** | `POST /benh-nhan` | Tạo bệnh nhân có số điện thoại sai định dạng | NEG | `{"hoTen": "Lê Văn B", "soDienThoai": "123"}` | Báo lỗi `soDienThoai` không hợp lệ | `400` |
-| **TC-BN-05** | `PATCH /benh-nhan/:id` | Cập nhật thông tin dị ứng và địa chỉ bệnh nhân | HP | `id: 1`, payload: `{"diUng": "Dị ứng kháng sinh Penicillin", "diaChi": "Quận 1, TP.HCM"}` | Cập nhật dữ liệu thành công | `200` |
-| **TC-BN-06** | `GET /benh-nhan/tra-cuu-bhyt/:soBhyt` | Kiểm tra tính hợp lệ của mã thẻ BHYT | HP | `soBhyt: "GD4791234567890"` | Trả về thông tin hạn thẻ BHYT và mức hưởng (80% / 100%) | `200` |
-
----
-
-### MODULE 4: QUẢN LÝ LỊCH HẸN & NHẮC LỊCH TỰ ĐỘNG (LICHHEN)
-
-| ID | Endpoint & Method | Mô tả kịch bản | Loại | Đầu vào (Payload / Headers) | Kỳ vọng kết quả (Expected Output) | HTTP |
-|---|---|---|---|---|---|---|
-| **TC-LH-01** | `GET /lich-hen` | Lọc danh sách lịch hẹn theo ngày và bác sĩ | HP | `?ngay=2026-09-08&bacSiId=2&trangThai=da_xac_nhan` | Danh sách ca hẹn phù hợp tiêu chí lọc | `200` |
-| **TC-LH-02** | `GET /lich-hen/cua-toi` | Bệnh nhân xem danh sách lịch khám của chính mình | HP | Auth Header (Bệnh nhân) | Trả về danh sách lịch hẹn liên kết với `nguoiDungId` của token | `200` |
-| **TC-LH-03** | `GET /lich-hen/slot-trong` | Xem các khung giờ còn trống của bác sĩ trong ngày | HP | `?bacSiId=1&ngayHen=2026-09-10` | Mảng các slot còn rảnh (loại bỏ các slot đã được đặt trước) | `200` |
-| **TC-LH-04** | `POST /lich-hen` | Đặt lịch khám trực tiếp có tạm ứng 1/5 | HP | `{"benhNhanId": 1, "bacSiId": 1, "ngayHen": "2026-09-10", "gioHen": "08:30", "lyDoKham": "Đau nửa đầu"}` | Tạo lịch hẹn `LH2026xxxx`, trạng thái `cho_xac_nhan`, cọc 40.000đ | `201` |
-| **TC-LH-05** | `POST /lich-hen` | Đặt lịch hẹn vào khung giờ đã có người khác đặt | NEG | `{"bacSiId": 1, "ngayHen": "2026-09-10", "gioHen": "08:30", ...}` | `code: "SLOT_DA_DUOC_DAT"`, báo lỗi 409 Conflict | `409` |
-| **TC-LH-06** | `PATCH /lich-hen/:id/huy` | Bệnh nhân hủy lịch khám trước giờ hẹn > 2 tiếng | HP | `id: 1` (giờ khám cách hiện tại > 2h) | Hủy thành công, ghi chú hoàn trả 100% tiền cọc 40.000đ qua VNPay/MoMo | `200` |
-| **TC-LH-07** | `PATCH /lich-hen/:id/huy` | Bệnh nhân cố tình hủy lịch khám khi còn dưới 2 tiếng | NEG | `id: 2` (giờ khám cách hiện tại < 2h) | `code: "KHONG_THE_HUY_DUOI_2_TIENG"`, không hoàn cọc | `400` |
-| **TC-LH-08** | `PATCH /lich-hen/:id/trang-thai` | Cập nhật trạng thái ca hẹn với Optimistic Locking | CON | `id: 1`, payload: `{"trangThai": "da_xac_nhan", "phienBan": 0}` | Tăng `phienBan` lên 1, cập nhật trạng thái | `200` |
-| **TC-LH-09** | `POST /lich-hen/nhac-lich-tu-dong` | Kích hoạt quét và gửi email nhắc hẹn trước 24h | HP | Auth Header (Tiếp tân/Quản trị viên) | Quét các ca hẹn ngày mai, gửi email template HTML chuẩn, gắn cờ `[ĐÃ_NHẮC_LỊCH]` | `201` |
-
----
-
-### MODULE 5: HỒ SƠ BỆNH ÁN & KHÁM LÂM SÀNG (HOSOBENHAN)
-
-| ID | Endpoint & Method | Mô tả kịch bản | Loại | Đầu vào (Payload / Headers) | Kỳ vọng kết quả (Expected Output) | HTTP |
-|---|---|---|---|---|---|---|
-| **TC-HSBA-01** | `POST /ho-so-benh-an/benh-an-kham/:benhNhanId` | Khởi tạo phiếu khám bệnh mới cho lượt tiếp nhận | HP | `benhNhanId: 1`, payload: `{"luotTiepNhanId": 1, "hinhThucKham": "truc_tiep"}` | Tạo phiếu khám bệnh, gán bác sĩ phụ trách từ phiên đăng nhập | `201` |
-| **TC-HSBA-02** | `GET /ho-so-benh-an/benh-an-kham/luot/:luotId` | Lấy dữ liệu phiếu khám hiện thời theo lượt tiếp nhận | HP | `luotId: 1` | Trả về triệu chứng, chẩn đoán, diễn tiến bệnh án | `200` |
-| **TC-HSBA-03** | `PATCH /ho-so-benh-an/benh-an-kham/:id` | Bác sĩ lưu nháp thông tin khám bệnh | HP | `id: 1`, payload: `{"trieuChung": "Sốt nhẹ, rát họng", "chanDoanSoBo": "Theo dõi Viêm họng cấp"}` | Lưu tạm thời vào DB mà không bắt buộc nhập ICD-10 | `200` |
-| **TC-HSBA-04** | `PATCH /ho-so-benh-an/benh-an-kham/:id/ket-thuc` | Hoàn tất ca khám với đầy đủ chẩn đoán xác định | HP | `id: 1`, payload: `{"chanDoanXacDinh": "Viêm amidan cấp (J03)", "phuongPhapDieuTri": "Ngoại trú, kháng sinh đường uống"}` | Chuyển trạng thái sang `da_hoan_thanh`, cập nhật EMR bệnh nhân | `200` |
-| **TC-HSBA-05** | `PATCH /ho-so-benh-an/benh-an-kham/:id/ket-thuc` | Bấm kết thúc khám nhưng bỏ trống chẩn đoán xác định | NEG | `id: 1`, payload: `{"chanDoanXacDinh": ""}` | Báo lỗi `CHUA_NHAP_CHAN_DOAN_XAC_DINH`, ngăn kết thúc | `400` |
-| **TC-HSBA-06** | `GET /ho-so-benh-an/lich-su/:benhNhanId` | Xem toàn bộ lịch sử các lần khám bệnh trước đây | HP | `benhNhanId: 1` | Trả về danh sách timeline các lần khám, bác sĩ khám, đơn thuốc | `200` |
-| **TC-HSBA-07** | `GET /ho-so-benh-an/thong-ke-bac-si` | Bác sĩ xem báo cáo thống kê khám chữa bệnh cá nhân | HP | Auth Header (Bác sĩ) | Số ca đã khám, tỷ lệ hoàn thành, doanh thu tạo ra từ CSDL thực tế | `200` |
-| **TC-HSBA-08** | `GET /ho-so-benh-an/cua-toi` | Bệnh nhân xem hồ sơ sức khỏe điện tử EMR cá nhân | HP | Auth Header (Bệnh nhân) | Trả về toàn bộ lịch sử chẩn đoán, sinh hiệu, đơn thuốc của bệnh nhân | `200` |
-
----
-
-### MODULE 6: CẬN LÂM SÀNG, XÉT NGHIỆM & UPLOAD TỆP ẢNH (XETNGHIEM)
-
-| ID | Endpoint & Method | Mô tả kịch bản | Loại | Đầu vào (Payload / Headers) | Kỳ vọng kết quả (Expected Output) | HTTP |
-|---|---|---|---|---|---|---|
-| **TC-CLS-01** | `GET /xet-nghiem/dich-vu` | Lấy danh mục dịch vụ cận lâm sàng (XN, Siêu âm, X-Quang) | HP | Không tham số | Danh sách dịch vụ kèm mã, tên, đơn giá niêm yết CSDL | `200` |
-| **TC-CLS-02** | `POST /xet-nghiem/chi-dinh` | Bác sĩ tạo phiếu chỉ định nhiều dịch vụ cận lâm sàng | HP | `{"benhAnKhamId": 1, "dsChiDinh": [{"dichVuXetNghiemId": 1}, {"dichVuXetNghiemId": 3}]}` | Tạo danh sách chỉ định trạng thái `cho_thuc_hien`, tính viện phí | `201` |
-| **TC-CLS-03** | `GET /xet-nghiem/danh-sach-cho` | KTV lấy danh sách các mẫu đang chờ làm xét nghiệm | HP | Auth Header (Kỹ thuật viên) | Danh sách chỉ định phân nhóm theo phòng xét nghiệm | `200` |
-| **TC-CLS-04** | `POST /xet-nghiem/upload` | Upload hình ảnh kết quả xét nghiệm / X-Quang thực tế | HP | Multipart FormData: `file: <chest_xray.png>` | Lưu file vào `uploads/`, trả về URL tĩnh `/uploads/xxxx.png` | `201` |
-| **TC-CLS-05** | `POST /xet-nghiem/upload` | Upload file không hợp lệ (file thực thi .exe) | SEC | Multipart FormData: `file: <malicious.exe>` | Multer FileFilter từ chối, trả về lỗi định dạng tệp | `400` |
-| **TC-CLS-06** | `POST /xet-nghiem/ket-qua/:chiDinhId` | KTV nhập trị số kết quả và gắn kèm file ảnh vừa upload | HP | `chiDinhId: 1`, payload: `{"giaTri": "5.2", "donVi": "mmol/L", "nhanXet": "Đường huyết ổn định", "fileDinhKem": "/uploads/kq1.png"}` | Cập nhật `trangThai = "co_ket_qua"`, gửi thông báo Realtime tới Bác sĩ | `201` |
-| **TC-CLS-07** | `GET /xet-nghiem/benh-an-kham/:id` | Bác sĩ xem toàn bộ kết quả CLS đã có của ca khám | HP | `id: 1` | Trả về danh sách dịch vụ, trị số, nhận xét và ảnh chụp đính kèm | `200` |
-| **TC-CLS-08** | `GET /uploads/:filename` | Truy cập tệp hình ảnh xét nghiệm qua static route | HP | `GET /uploads/chest_xray.png` | Server trả về file ảnh binary với Content-Type `image/png` | `200` |
-
----
-
-### MODULE 7: QUẢN LÝ NHÀ THUỐC, KHO DƯỢC FEFO & DỰ BÁO ML (NHATHUOC)
-
-| ID | Endpoint & Method | Mô tả kịch bản | Loại | Đầu vào (Payload / Headers) | Kỳ vọng kết quả (Expected Output) | HTTP |
-|---|---|---|---|---|---|---|
-| **TC-NT-01** | `GET /nha-thuoc/thuoc` | Tra cứu danh mục thuốc và số lượng tồn kho khả dụng | HP | `?search=Paracetamol` | Danh sách thuốc, số lô, hạn dùng gần nhất, tồn kho tổng | `200` |
-| **TC-NT-02** | `POST /nha-thuoc/thuoc` | Dược sĩ tạo mới thuốc vào danh mục | HP | `{"maThuoc": "TH099", "tenThuoc": "Augmentin 1g", "donViTinh": "viên", "giaBan": 25000}` | Tạo bản ghi thuốc mới vào CSDL | `201` |
-| **TC-NT-03** | `POST /nha-thuoc/don-thuoc` | Bác sĩ kê đơn thuốc điện tử cho bệnh nhân | HP | `{"benhAnKhamId": 1, "chiTiet": [{"thuocId": 1, "soLuong": 20, "lieuDung": "Ngày 2 lần"}]}` | Tạo đơn thuốc mã `DT2026xxxx`, trạng thái `cho_cap_phat` | `201` |
-| **TC-NT-04** | `POST /nha-thuoc/don-thuoc` | Kê đơn thuốc khi số lượng kê vượt quá tồn kho thực tế | NEG | `{"chiTiet": [{"thuocId": 1, "soLuong": 999999}]}` | Cảnh báo không đủ thuốc trong kho để kê đơn | `400` |
-| **TC-NT-05** | `POST /nha-thuoc/don-thuoc/:id/cap-phat` | Dược sĩ cấp phát thuốc theo nguyên tắc FEFO | HP | `id: 1` | Trừ số lượng ở lô có hạn dùng gần nhất trước, đánh dấu `da_cap_phat` | `201` |
-| **TC-NT-06** | `POST /nha-thuoc/don-thuoc/:id/cap-phat` | Cấp phát lại đơn thuốc đã được xuất kho trước đó | NEG | `id: 1` (đã cấp phát) | Báo lỗi đơn thuốc đã được cấp phát, không được trừ kho lần 2 | `400` |
-| **TC-NT-07** | `GET /nha-thuoc/thong-ke` | Thống kê doanh số nhà thuốc, thuốc sắp hết hàng, cận date | HP | `?khoangThoiGian=7days` | Báo cáo doanh số, số đơn đã xuất, danh sách thuốc tồn dưới định mức | `200` |
-| **TC-NT-08** | `GET /nha-thuoc/du-bao-nhu-cau` | Dự báo nhu cầu thuốc 14 ngày tới bằng ML Holt-Winters | HP | `?horizonDays=14` | Kết nối Python ML, trả về dự báo nhu cầu 7d/14d, ngày tồn còn lại, đề xuất nhập | `200` |
-| **TC-NT-09** | `GET /nha-thuoc/du-bao-nhu-cau` | Kiểm tra cơ chế tự động Fallback khi Python ML offline | EDGE | Dừng service Python port 5001 | Hệ thống tự chuyển sang NestJS Integrated Forecaster mà không bị crash | `200` |
-
----
-
-### MODULE 8: VIỆN PHÍ, BHYT & CỔNG THANH TOÁN (THANHTOAN)
-
-| ID | Endpoint & Method | Mô tả kịch bản | Loại | Đầu vào (Payload / Headers) | Kỳ vọng kết quả (Expected Output) | HTTP |
-|---|---|---|---|---|---|---|
-| **TC-TT-01** | `GET /thanh-toan/hoa-don/luot-kham/:luotId` | Tính tổng viện phí trọn gói (Khám + CLS + Thuốc) | HP | `luotId: 1` | Gộp tự động các khoản phí, hiển thị tổng tiền viện phí | `200` |
-| **TC-TT-02** | `POST /thanh-toan/hoa-don` | Tạo hóa đơn thanh toán thông thường không BHYT | HP | `{"luotKhamId": 1, "phuongThuc": "tien_mat", "apDungBhyt": false}` | Tính đúng 100% viện phí, tạo mã hóa đơn `HD2026xxxx` | `201` |
-| **TC-TT-03** | `POST /thanh-toan/hoa-don` | Thanh toán áp dụng chiết khấu BHYT 80% thực tế | HP | `{"luotKhamId": 1, "apDungBhyt": true, "tyLeBhyt": 80}` | BHYT chi trả 80% danh mục hợp lệ, bệnh nhân đồng chi trả 20% | `201` |
-| **TC-TT-04** | `PATCH /thanh-toan/hoa-don/:id/xac-nhan` | Xác nhận thu tiền thành công và hoàn tất lượt khám | HP | `id: 1`, payload: `{"soTienNhan": 200000}` | Cập nhật hóa đơn `da_thanh_toan`, chuyển lượt khám sang `hoan_thanh` | `200` |
-| **TC-TT-05** | `POST /thanh-toan/vnpay/tao-url` | Tạo đường dẫn thanh toán qua cổng VNPay điện tử | HP | `{"hoaDonId": 1, "soTien": 150000, "nganHang": "NCB"}` | Trả về URL thanh toán VNPay Sandbox có checksum SHA512 hợp lệ | `201` |
-| **TC-TT-06** | `GET /thanh-toan/vnpay/callback` | Tiếp nhận IPN Webhook callback từ VNPay | HP | Query params chứa mã giao dịch `vnp_ResponseCode=00` | Cập nhật tự động trạng thái hóa đơn thành công | `200` |
-| **TC-TT-07** | `GET /thanh-toan/vnpay/callback` | Webhook với chữ ký số (vnp_SecureHash) giả mạo | SEC | Query params với checksum sai | Từ chối cập nhật, trả về `code: "CHU_KY_KHONG_HOP_LE"` | `400` |
-| **TC-TT-08** | `GET /thanh-toan/in-hoa-don/:id` | Xuất dữ liệu in biên lai tài chính song ngữ | HP | `id: 1` | Đầy đủ thông tin người nộp, cơ quan thu, chi tiết khoản viện phí | `200` |
-
----
-
-### MODULE 9: QUẢN TRỊ HỆ THỐNG, XẾP LỊCH TRỰC & SAO LƯU DỮ LIỆU (QUANLY)
-
-| ID | Endpoint & Method | Mô tả kịch bản | Loại | Đầu vào (Payload / Headers) | Kỳ vọng kết quả (Expected Output) | HTTP |
-|---|---|---|---|---|---|---|
-| **TC-QL-01** | `GET /quan-ly/system-overview` | Xem thông số kỹ thuật hệ thống (RAM, CPU, Uptime, DB size) | HP | Auth Header (`quan_tri_vien`) | Trả về cấu hình máy chủ, số bảng DB, số người dùng trực tuyến | `200` |
-| **TC-QL-02** | `GET /quan-ly/system-overview` | Nhân viên Tiếp tân cố truy cập trang Quản trị kỹ thuật | SEC | Auth Header (`tiep_tan`) | RolesGuard chặn truy cập, trả về lỗi `403 Forbidden` | `403` |
-| **TC-QL-03** | `GET /quan-ly/backup-info` | Lấy danh sách 31 bảng CSDL và dung lượng từng bảng | HP | Auth Header (`quan_tri_vien`) | Trả về mảng bảng CSDL, tổng số dòng và dung lượng MB | `200` |
-| **TC-QL-04** | `GET /quan-ly/export-sql-dump` | Tải về bản sao lưu toàn diện CSDL định dạng `.sql` | HP | Auth Header (`quan_tri_vien`) | Header `Content-Type: application/sql`, đính kèm DDL và Data toàn bộ DB | `200` |
-| **TC-QL-05** | `GET /quan-ly/lich-lam-viec` | Lấy bảng phân ca trực nhân viên y tế trong tuần | HP | `?weekStart=2026-09-07` | Lưới phân ca thứ 2 đến chủ nhật của Bác sĩ, KTV, Dược sĩ, Tiếp tân | `200` |
-| **TC-QL-06** | `POST /quan-ly/lich-lam-viec` | Phân ca làm việc hợp lệ cho nhân viên | HP | `[{"nhanVienId": 2, "caLamViecId": 1, "ngayLam": "2026-09-08"}]` | Lưu lịch phân ca thành công | `201` |
-| **TC-QL-07** | `POST /quan-ly/lich-lam-viec` | Xếp trùng ca trực của cùng nhân viên trong một ngày | NEG | `[{"nhanVienId": 2, "caLamViecId": 1, "ngayLam": "2026-09-08"}]` (đã có) | Báo lỗi `409 ConflictException` (trùng ca trực) | `409` |
-| **TC-QL-08** | `POST /quan-ly/lich-lam-viec` | Xếp quá 2 ca trực trong một ngày cho cùng một nhân viên | NEG | Thêm ca thứ 3 trong cùng ngày | Báo lỗi `400 BadRequestException` (vi phạm an toàn lao động y tế) | `400` |
-| **TC-QL-09** | `DELETE /quan-ly/lich-lam-viec/:id` | Xóa một ca trực khỏi lịch làm việc | HP | `id: 5` | Xóa thành công bản ghi phân ca | `200` |
-| **TC-QL-10** | `GET /quan-ly/dashboard-stats` | Ban giám đốc xem chỉ số KPI tài chính và lượt khám | HP | Auth Header (`ban_giam_doc`) | Doanh thu thực, số lượt tiếp nhận, biểu đồ tăng trưởng bệnh nhân | `200` |
-
----
-
-### MODULE 10: NHÂN SỰ & ĐƠN TỪ NỘI BỘ (NHANVIEN)
-
-| ID | Endpoint & Method | Mô tả kịch bản | Loại | Đầu vào (Payload / Headers) | Kỳ vọng kết quả (Expected Output) | HTTP |
-|---|---|---|---|---|---|---|
-| **TC-NV-01** | `GET /nhan-vien/ho-so-ca-nhan` | Nhân viên xem thông tin hồ sơ và bằng cấp cá nhân | HP | Auth Header (Nhân viên bất kỳ) | Trả về họ tên, chứng chỉ hành nghề, chức vụ, khoa phòng | `200` |
-| **TC-NV-02** | `PATCH /nhan-vien/ho-so-ca-nhan` | Nhân viên cập nhật số điện thoại và địa chỉ liên lạc | HP | `{"soDienThoai": "0911223344", "diaChi": "TP. Thủ Đức"}` | Cập nhật thông tin thành công | `200` |
-| **TC-NV-03** | `POST /nhan-vien/don-tu` | Nhân viên gửi đơn xin nghỉ phép lên Ban giám đốc | HP | `{"loaiDon": "nghi_phep", "tuNgay": "2026-09-15", "denNgay": "2026-09-16", "lyDo": "Việc gia đình"}` | Tạo đơn từ trạng thái `cho_duyet` | `201` |
-| **TC-NV-04** | `GET /nhan-vien/don-tu/danh-sach` | Ban giám đốc xem danh sách các đơn từ cần xét duyệt | HP | Auth Header (`ban_giam_doc`) | Danh sách đơn nghỉ phép, đề xuất vật tư cần phê duyệt | `200` |
-| **TC-NV-05** | `PATCH /nhan-vien/don-tu/:id/duyet` | Ban giám đốc phê duyệt hoặc từ chối đơn | HP | `id: 1`, payload: `{"trangThai": "da_duyet", "yKien": "Đồng ý nghỉ"}` | Cập nhật trạng thái và gửi thông báo Realtime đến người làm đơn | `200` |
-
----
-
-### MODULE 11: THÔNG BÁO & ĐỒNG BỘ THỜI GIAN THỰC (THONGBAO - WEBSOCKET)
-
-| ID | Endpoint & Method | Mô tả kịch bản | Loại | Đầu vào (Payload / Headers) | Kỳ vọng kết quả (Expected Output) | HTTP |
-|---|---|---|---|---|---|---|
-| **TC-TB-01** | `WS connect /` | Kết nối WebSocket Gateway với JWT Bearer Token | HP | Handshake query: `?token=<valid_jwt>` | Kết nối thành công, join vào các room cá nhân và room khoa phòng | `101` |
-| **TC-TB-02** | `WS connect /` | Kết nối WebSocket không truyền Token hoặc Token hết hạn | SEC | Handshake không có token hợp lệ | Gateway từ chối kết nối (`Disconnect`) | `401` |
-| **TC-TB-03** | `WS event: xn:result_ready` | KTV hoàn tất XN -> Bác sĩ nhận sự kiện Realtime | HP | Trigger từ `POST /xet-nghiem/ket-qua` | Bác sĩ nhận gói tin thông báo kết quả XN trong thời gian < 100ms | N/A |
-| **TC-TB-04** | `GET /thong-bao` | Lấy danh sách các thông báo chưa đọc của người dùng | HP | Auth Header | Mảng thông báo, đếm số lượng `unreadCount` | `200` |
-
----
-
-### MODULE 12: TRÍ TUỆ NHÂN TẠO & PHÂN LUỒNG ĐỘNG (AI TRIAGE & DYNAMIC QUEUE)
-
-| ID | Endpoint & Method | Mô tả kịch bản | Loại | Đầu vào (Payload / Headers) | Kỳ vọng kết quả (Expected Output) | HTTP |
-|---|---|---|---|---|---|---|
-| **TC-AI-01** | `POST /ai/triage` | Phân loại triệu chứng bệnh nhân bằng Gemini AI | HP | `{"trieuChung": "Đau ngực trái dữ dội lan ra cánh tay, vã mồ hôi"}` | Khuyến nghị chuyên khoa Tim Mạch, mức độ khẩn cấp Cấp cứu đỏ | `200` |
-| **TC-AI-02** | `POST /ai/triage` | Gửi chuỗi triệu chứng rỗng | NEG | `{"trieuChung": ""}` | Trả về thông báo yêu cầu mô tả triệu chứng cụ thể | `400` |
-| **TC-AI-03** | `GET /ai/dynamic-queue/:benhAnId` | Thuật toán Python Min-Wait tối ưu lộ trình CLS | HP | `benhAnId: 1` (có chỉ định Máu + X-Quang) | Trả về lộ trình tối ưu (phòng vắng làm trước), ước tính thời gian tiết kiệm | `200` |
-| **TC-AI-04** | `POST /ai/forecast` | Dự báo lưu lượng bệnh nhân 7 ngày tới (Holt-Winters) | HP | `{"horizon": 7, "history_days": 90}` | Dự báo số ca từng ngày, độ tin cậy, MAPE, heatmap khung giờ cao điểm | `200` |
-| **TC-AI-05** | `POST /ai/forecast-medicine` | Dự báo nhu cầu thuốc 14 ngày tới từ Python Microservice | HP | `{"horizon_days": 14, "items": [{"maThuoc": "TH001", "tonKhoTong": 50}]}` | Tốc độ xuất/ngày, dự báo 7d/14d, cảnh báo điểm đặt hàng lại | `200` |
-| **TC-AI-06** | `GET /ai/health` | Kiểm tra kết nối dịch vụ Python FastAPI ML (:5001) | HP | Không tham số | Trả về `{"status": "ok", "service": "PhongKham ML Forecasting"}` | `200` |
-
----
-
-## 4. MA TRẬN TRUY XUẤT YÊU CẦU (TRACEABILITY MATRIX)
-
-| Mã Yêu Cầu SRS | Mô Tả Nghiệp Vụ Y Tế | Các Test Case Tương Ứng | Kết Quả Đạt Được |
+| Mã | Tác nhân | Mã vai trò | Mô tả |
 |---|---|---|---|
-| **REQ-AUTH-01** | Đăng nhập an toàn, cấp phát JWT & phân quyền 8 vai trò | TC-AUTH-01, 02, 03, 09, 10 | Đạt chuẩn bảo mật OWASP |
-| **REQ-AUTH-02** | Đăng ký & xác thực bệnh nhân qua Email + SMS song song | TC-AUTH-04, 05, 06, 07, 08 | Tích hợp SMS Gateway |
-| **REQ-QUEUE-01** | Cấp STT tiếp nhận, quản lý hàng đợi và phân luồng phòng khám | TC-TN-01, 02, 03, 07, 08 | Đồng bộ Realtime WebSocket |
-| **REQ-VITALS-01**| Ghi nhận sinh hiệu, tính BMI, tự động cảnh báo huyết áp nguy kịch | TC-TN-04, 05, 06 | Phân luồng ưu tiên cấp cứu |
-| **REQ-PATIENT-01**| Quản lý thông tin định danh bệnh nhân, thẻ BHYT & tiền sử dị ứng | TC-BN-01, 02, 03, 04, 05, 06 | Tuân thủ hồ sơ y tế điện tử |
-| **REQ-BOOKING-01**| Đặt lịch khám, tính cọc 1/5, quy tắc hủy trước 2h hoàn cọc | TC-LH-01, 02, 03, 04, 05, 06, 07 | Tự động xử lý hoàn cọc VNPay |
-| **REQ-REMIND-01** | Quét lịch tự động trước 24h & gửi email nhắc nhở kèm dặn dò | TC-LH-09 | Cron Scheduler 30 phút/lần |
-| **REQ-CLINICAL-01**| Bác sĩ khám bệnh, bắt buộc mã ICD-10 khi kết thúc, xem EMR | TC-HSBA-01, 02, 03, 04, 05, 06, 08 | Chuẩn hóa danh mục ICD-10 |
-| **REQ-LAB-01** | Chỉ định cận lâm sàng, KTV upload ảnh/PDF, trả kết quả Realtime | TC-CLS-01, 02, 03, 04, 05, 06, 07, 08 | Lưu trữ tệp tĩnh an toàn |
-| **REQ-PHARM-01** | Kê đơn điện tử, xuất kho FEFO (First-Expired, First-Out) | TC-NT-01, 02, 03, 04, 05, 06, 07 | Trừ kho tự động theo lô |
-| **REQ-PHARM-02** | Dự báo nhu cầu thuốc 14 ngày bằng AI/ML Holt-Winters | TC-NT-08, 09, TC-AI-05 | Có cơ chế Fallback tự động |
-| **REQ-BILLING-01**| Gộp viện phí trọn gói, chiết khấu BHYT 80%, cổng VNPay | TC-TT-01, 02, 03, 04, 05, 06, 07, 08 | Kiểm tra chữ ký SHA512 |
-| **REQ-ROSTER-01** | Phân ca làm việc, chặn xếp trùng ca (409) và quá tải 2 ca/ngày | TC-QL-05, 06, 07, 08, 09 | 2 tầng kiểm tra (Client + Server) |
-| **REQ-BACKUP-01** | Giám sát dung lượng CSDL & Xuất tệp sao lưu `.sql` toàn diện | TC-QL-03, 04 | Hỗ trợ phục hồi thảm họa |
-| **REQ-AI-01** | Sàng lọc triệu chứng thông minh & Định tuyến hàng đợi Min-Wait | TC-AI-01, 02, 03, 04, 06 | Giảm thời gian chờ đợi BN |
+| A1 | Bệnh nhân | `benh_nhan` | Đặt lịch, thanh toán, xem hồ sơ, tư vấn video |
+| A2 | Lễ tân | `tiep_tan` | Tiếp nhận, check-in, điều phối hàng đợi |
+| A3 | Bác sĩ | `bac_si` | Khám, chỉ định, kê đơn, tư vấn video |
+| A4 | Kỹ thuật viên | `ky_thuat_vien` | Thực hiện và trả kết quả CLS |
+| A5 | Dược sĩ | `nhan_vien_nha_thuoc` | Kho thuốc, cấp phát |
+| A6 | Thu ngân | `thu_ngan` | Tạm ứng, quyết toán, hoàn tiền, chốt ca |
+| A7 | Ban giám đốc | `ban_giam_doc` | Cấu hình, báo cáo, duyệt |
+| A8 | Quản trị viên cấp cao | `quan_tri_vien_cap_cao` | Tài khoản, phân quyền, sao lưu, nhật ký |
+| A9 | Hệ thống / tác vụ định kỳ | — | Hủy lịch quá hạn, nhắc lịch, báo trễ hẹn |
+| A10 | PayOS | — | Cổng thanh toán, gửi webhook |
+
+### 2.3 Môi trường vận hành
+- Backend: Node.js 20, NestJS 10, triển khai trên Render (tự deploy từ nhánh `main`).
+- Frontend: React 18 + Vite 5, bản build tĩnh trên cPanel.
+- CSDL: MySQL 8 trên Clever Cloud; migration chạy thủ công.
+- Múi giờ nghiệp vụ: Asia/Ho_Chi_Minh (UTC+7).
+
+### 2.4 Ràng buộc
+- C1. CSDL không tự đồng bộ schema (`synchronize: false`); mọi thay đổi cấu trúc qua file SQL trong `database/`.
+- C2. Backend có thể chạy nhiều instance: trạng thái dùng chung (khóa, bộ đếm mã) phải nằm trong CSDL.
+- C3. Giao diện tiếng Việt; tiền tệ VNĐ.
+
+### 2.5 Giả định
+- Mỗi bác sĩ có lịch làm việc (ca trực) được xếp trước.
+- Thông tin thẻ BHYT do lễ tân nhập và chịu trách nhiệm kiểm tra bản gốc.
 
 ---
 
-## 5. HƯỚNG DẪN THỰC THI KIỂM THỬ TỰ ĐỘNG
+## 3. Yêu cầu chức năng
 
-### 5.1 Chạy Unit / E2E Tests bằng Jest & Supertest (Backend)
-```bash
-cd d:\KLTN\backend
+Mức ưu tiên: **C** = bắt buộc, **M** = nên có.
 
-# Chạy toàn bộ kiểm thử tích hợp (Integration / E2E Tests)
-npm run test:e2e
+### 3.1 Tài khoản và phân quyền (AUTH)
 
-# Chạy kiểm thử đơn vị các Service
-npm run test
+| Mã | Yêu cầu | Ưu tiên |
+|---|---|---|
+| FR-AUTH-01 | Đăng ký tài khoản bệnh nhân bằng email hoặc số điện thoại, xác thực OTP | C |
+| FR-AUTH-02 | Đăng nhập trả JWT access token và refresh token | C |
+| FR-AUTH-03 | Mỗi API kiểm tra vai trò người gọi; truy cập trái phép trả 403 | C |
+| FR-AUTH-04 | Quản trị viên tạo, khóa tài khoản nhân viên và gán vai trò | C |
+| FR-AUTH-05 | Ghi nhật ký thao tác nghiệp vụ quan trọng | M |
 
-# Kiểm tra độ bao phủ mã nguồn (Code Coverage)
-npm run test:cov
-```
+### 3.2 Đặt lịch và đặt cọc (LH)
 
-### 5.2 Kịch bản kiểm thử API nhanh bằng cURL
+| Mã | Yêu cầu | Ưu tiên |
+|---|---|---|
+| FR-LH-01 | Hiển thị khung giờ trống của bác sĩ theo ngày, đánh dấu buổi "Đã kín" khi hết suất | C |
+| FR-LH-02 | Tạo lịch hẹn trực tiếp hoặc trực tuyến ở trạng thái chờ thanh toán, giữ chỗ 15 phút (BR-01, BR-02) | C |
+| FR-LH-03 | Tạo link thanh toán PayOS, nhận webhook, xác nhận lịch và lập hóa đơn cọc `HDT…` | C |
+| FR-LH-04 | Tự hủy lịch quá hạn thanh toán và nhả khung giờ | C |
+| FR-LH-05 | Bệnh nhân hủy lịch và khai tài khoản nhận hoàn khi đủ điều kiện (BR-03) | C |
+| FR-LH-06 | Đổi lịch hẹn, áp dụng lại kiểm tra suất buổi | C |
+| FR-LH-07 | Bác sĩ gửi yêu cầu hủy ca; lễ tân/quản trị duyệt | M |
+| FR-LH-08 | Gửi email nhắc lịch hẹn trong 24 giờ tới, tự động và thủ công | M |
+| FR-LH-09 | Lễ tân đặt lịch hộ khách tại quầy | C |
 
-#### 1. Kiểm tra Health Check Backend & AI
-```bash
-# Kiểm tra NestJS API Gateway
-curl -X GET http://localhost:5000/api/quan-ly/system-overview -H "Authorization: Bearer <ADMIN_TOKEN>"
+### 3.3 Tiếp nhận và hàng đợi (TN)
 
-# Kiểm tra Python ML Microservice
-curl -X GET http://localhost:5001/health
-```
+| Mã | Yêu cầu | Ưu tiên |
+|---|---|---|
+| FR-TN-01 | Tìm hoặc tạo hồ sơ bệnh nhân (mã `BNxxxxxx` không trùng) | C |
+| FR-TN-02 | Check-in lịch hẹn hôm nay tại quầy; không tạo lượt trùng cho cùng lịch hẹn (BR-05) | C |
+| FR-TN-03 | Tạo lượt khám vãng lai: chọn chuyên khoa, bác sĩ, phòng, đối tượng ưu tiên | C |
+| FR-TN-04 | Cấp số thứ tự theo ngày, không trùng giữa quầy và kiosk (BR-06) | C |
+| FR-TN-05 | Kiosk tự phục vụ: check-in lịch hẹn, lấy số vãng lai, tự khai ưu tiên giới hạn (BR-08) | C |
+| FR-TN-06 | Tự nhận đối tượng ưu tiên theo tuổi; lễ tân đổi được đối tượng ưu tiên (BR-07) | C |
+| FR-TN-07 | Hàng đợi bác sĩ chỉ gồm lượt đã đóng đủ tạm ứng (hoặc cấp cứu), sắp xếp theo BR-09 | C |
+| FR-TN-08 | Cập nhật hàng đợi thời gian thực cho lễ tân, bác sĩ, màn hình gọi số, TV | C |
+| FR-TN-09 | Bác sĩ/lễ tân đánh dấu "Vắng – qua lượt" (BR-10) | C |
+| FR-TN-10 | Báo trễ hẹn 15 phút và gợi ý chuyển bác sĩ khi trễ 30 phút (BR-11) | C |
+| FR-TN-11 | Bệnh nhân xem tiến độ: số người phía trước, thời gian chờ ước tính, thông báo trễ | M |
+| FR-TN-12 | Điều phối chuyển lượt sang bác sĩ / phòng khác | C |
 
-#### 2. Kiểm thử Endpoint Nhắc Lịch Khám Tự Động (TC-LH-09)
-```bash
-curl -X POST http://localhost:5000/api/lich-hen/nhac-lich-tu-dong \
-  -H "Authorization: Bearer <TIEPTAN_TOKEN>" \
-  -H "Content-Type: application/json"
-```
+### 3.4 Khám bệnh và hồ sơ bệnh án (KB)
 
-#### 3. Kiểm thử Tải Xuất Bản Sao Lưu CSDL .SQL (TC-QL-04)
-```bash
-curl -X GET http://localhost:5000/api/quan-ly/export-sql-dump \
-  -H "Authorization: Bearer <ADMIN_TOKEN>" \
-  -o backup_test.sql
-```
+| Mã | Yêu cầu | Ưu tiên |
+|---|---|---|
+| FR-KB-01 | Ghi sinh hiệu: mạch, nhiệt độ, huyết áp, SpO2, cân nặng, chiều cao | C |
+| FR-KB-02 | Ghi triệu chứng, khám lâm sàng, chẩn đoán sơ bộ | C |
+| FR-KB-03 | Chẩn đoán xác định theo mã ICD-10 | C |
+| FR-KB-04 | Kê đơn thuốc: tìm thuốc, liều, số lượng, cách dùng | C |
+| FR-KB-05 | Kết thúc khám: hướng điều trị, hẹn tái khám, chuyển lượt sang chờ thanh toán | C |
+| FR-KB-06 | In phiếu khám ngoại trú và đơn thuốc theo mẫu Bộ Y tế | M |
+| FR-KB-07 | Hồ sơ bệnh án điện tử (mã `HSxxxxxx`) tra cứu theo bệnh nhân | C |
 
-#### 4. Kiểm thử Dự Báo Nhu Cầu Thuốc ML (TC-NT-08)
-```bash
-curl -X GET "http://localhost:5000/api/nha-thuoc/du-bao-nhu-cau?horizonDays=14" \
-  -H "Authorization: Bearer <PHARMACY_TOKEN>"
-```
+### 3.5 Cận lâm sàng (CLS)
 
-#### 5. Kiểm thử Chống Trùng Ca Làm Việc (TC-QL-07)
-```bash
-curl -X POST http://localhost:5000/api/quan-ly/lich-lam-viec \
-  -H "Authorization: Bearer <DIRECTOR_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '[{"nhanVienId": 2, "caLamViecId": 1, "ngayLam": "2026-09-08"}]'
-# Kỳ vọng lần 1: 201 Created
-# Gửi lại lần 2: 409 Conflict với mã lỗi TRUNG_CA_LAM_VIEC
-```
+| Mã | Yêu cầu | Ưu tiên |
+|---|---|---|
+| FR-CLS-01 | Bác sĩ chỉ định xét nghiệm / chẩn đoán hình ảnh cho lượt khám | C |
+| FR-CLS-02 | Kỹ thuật viên nhận danh sách chỉ định, chuyển trạng thái lấy mẫu → xử lý → có kết quả | C |
+| FR-CLS-03 | Nhập kết quả (giá trị, đơn vị, khoảng tham chiếu, nhận xét) và tải ảnh/tệp kết quả | C |
+| FR-CLS-04 | Không thêm hoặc xóa chỉ định sau khi lượt đã thanh toán (BR-16) | C |
+
+### 3.6 Viện phí và thanh toán (TT)
+
+| Mã | Yêu cầu | Ưu tiên |
+|---|---|---|
+| FR-TT-01 | Tự lập phiếu tạm ứng phí khám khi tiếp nhận (BR-12) | C |
+| FR-TT-02 | Thu tạm ứng; chống thu trùng khi nhiều quầy cùng thao tác | C |
+| FR-TT-03 | Quyết toán: gộp phí khám, CLS, thuốc; trừ BHYT (BR-13, BR-14) và tạm ứng/cọc; tính thu thêm hoặc hoàn dư | C |
+| FR-TT-04 | Thanh toán bằng tiền mặt, chuyển khoản; in hóa đơn | C |
+| FR-TT-05 | Hủy hóa đơn, hoàn cọc/tạm ứng với số tiền thực tế | C |
+| FR-TT-06 | Danh sách "chờ hoàn" để thu ngân xử lý hoàn tiền | C |
+| FR-TT-07 | Phiếu chi hoạt động, chốt ca thu ngân, thống kê doanh thu ròng sau hoàn | M |
+
+### 3.7 Nhà thuốc (NT)
+
+| Mã | Yêu cầu | Ưu tiên |
+|---|---|---|
+| FR-NT-01 | Danh mục thuốc, lô, hạn dùng, tồn kho, cảnh báo sắp hết / sắp hết hạn | C |
+| FR-NT-02 | Cấp phát đơn thuốc chỉ khi hóa đơn đã thanh toán (BR-17); xuất kho FEFO | C |
+| FR-NT-03 | Mua hàng, nhập kho, so sánh báo giá, công nợ nhà cung cấp | M |
+| FR-NT-04 | Dự báo nhu cầu thuốc bằng mô hình chuỗi thời gian (python-ml) | M |
+
+### 3.8 Tư vấn trực tuyến (TV)
+
+| Mã | Yêu cầu | Ưu tiên |
+|---|---|---|
+| FR-TV-01 | Phòng gọi video 1-1 (WebRTC, tín hiệu qua Socket.IO), chat và gửi tệp trong cuộc gọi | C |
+| FR-TV-02 | Chỉ cho vào phòng khi lịch đã thanh toán, chưa hủy, chưa hoàn thành, trong khung giờ (BR-18) | C |
+| FR-TV-03 | Ghi nhận lần đầu bác sĩ phụ trách / bệnh nhân của lịch vào phòng, xác thực bằng token | C |
+| FR-TV-04 | Bác sĩ kết luận tư vấn → tạo hồ sơ bệnh án, hoàn thành lịch | C |
+| FR-TV-05 | Xử lý ca không diễn ra theo dữ liệu vào phòng (BR-19) | C |
+
+### 3.9 Quản lý điều hành (QL)
+
+| Mã | Yêu cầu | Ưu tiên |
+|---|---|---|
+| FR-QL-01 | Cấu hình phí khám, cọc, thời hạn hủy và % hoàn cọc, khoảng ngày đặt trước, suất mỗi buổi, tham số BHYT | C |
+| FR-QL-02 | Bảng giá dịch vụ CLS | C |
+| FR-QL-03 | Quản lý nhân viên, chuyên khoa, phòng khám | C |
+| FR-QL-04 | Xếp lịch làm việc, chặn trùng ca và quá 2 ca/ngày | C |
+| FR-QL-05 | Chấm công, đơn từ nội bộ, duyệt yêu cầu | M |
+| FR-QL-06 | Dashboard KPI: lượt khám, doanh thu, bệnh nhân mới; báo cáo tài chính | C |
+| FR-QL-07 | Sao lưu CSDL ra file `.sql` | M |
+| FR-QL-08 | Đánh giá ca khám của bệnh nhân, bài viết sức khỏe | M |
+
+### 3.10 Trí tuệ nhân tạo (AI)
+
+| Mã | Yêu cầu | Ưu tiên |
+|---|---|---|
+| FR-AI-01 | Chatbot tư vấn sức khỏe cho bệnh nhân (Gemini, có bộ nhớ đệm câu trả lời) | M |
+| FR-AI-02 | Gợi ý phân luồng chuyên khoa theo triệu chứng | M |
 
 ---
-*Tài liệu SRS và Ma trận Kiểm thử Backend này được tạo tự động nhằm phục vụ đánh giá nghiệm thu KLTN, kiểm toán chất lượng phần mềm y tế và quy trình CI/CD.*
 
+## 4. Quy tắc nghiệp vụ
+
+| Mã | Quy tắc | Nguồn |
+|---|---|---|
+| BR-01 | Lịch hẹn mới giữ chỗ **15 phút** ở trạng thái chờ thanh toán; quá hạn tự hủy | `lich-hen`, `payos` |
+| BR-02 | Mỗi bác sĩ nhận tối đa **N lịch hẹn mỗi buổi** (cấu hình, mặc định 3). Áp dụng khi bệnh nhân tự đặt và khi đổi lịch; lễ tân đặt tại quầy được vượt | `lich-hen` |
+| BR-03 | Bệnh nhân chỉ hủy trực tuyến khi còn đủ **thời hạn hủy** cấu hình theo hình thức khám (mặc định: trực tiếp 2 giờ, trực tuyến 24 giờ); số tiền chờ hoàn = cọc đã đóng × % hoàn cọc cấu hình. Thu ngân hoàn đúng số đó; hoàn một phần thì phần giữ lại vẫn là doanh thu. Sát giờ hơn thời hạn: không hoàn | `lich-hen`, `thanh-toan` |
+| BR-04 | Lịch hẹn trực tiếp quá giờ hẹn **15 phút** chưa check-in → hủy | `lich-hen` |
+| BR-05 | Một lịch hẹn chỉ gắn một lượt tiếp nhận chưa hủy | `tiep-nhan` |
+| BR-06 | Số thứ tự `A###` (quầy, check-in) / `B###` (kiosk vãng lai), đánh lại từ 001 mỗi ngày, duy nhất theo (ngày, số) | `tiep-nhan` |
+| BR-07 | Đối tượng ưu tiên: cấp cứu, trẻ < 6 tuổi, người ≥ 75 tuổi, phụ nữ có thai, khuyết tật nặng, người có công. Hai nhóm tuổi tự nhận theo ngày sinh | `tiep-nhan` |
+| BR-08 | Tại kiosk chỉ tự khai: phụ nữ có thai, khuyết tật nặng, người có công | `kiosk` |
+| BR-09 | Thứ tự gọi: (0) cấp cứu → (1) ưu tiên theo luật, theo giờ đến → (2) có lịch hẹn đã đến giờ và đến không trễ quá 15 phút, theo giờ hẹn → (3) còn lại, theo giờ đến / giờ qua lượt | `tiep-nhan` |
+| BR-10 | Qua lượt: xếp cuối hàng tính từ lúc qua lượt; lần thứ **3** → hủy lượt vắng mặt, tạm ứng chuyển chờ hoàn | `tiep-nhan`, `thanh-toan` |
+| BR-11 | Lịch hẹn đã có mặt bị trễ ≥ 15 phút: báo lễ tân và bệnh nhân; ≥ 30 phút: gợi ý bác sĩ cùng chuyên khoa đang trực, ít người chờ nhất. Không chặn bác sĩ đang khám | `tiep-nhan` |
+| BR-12 | Trước khi khám phải đóng đủ phần phí khám bệnh nhân chi trả: `phí khám × (1 − tỷ lệ BHYT) − cọc`. Kết quả ≤ 0 hoặc cấp cứu → không thu trước. Khách vãng lai: thu ngân nhập số tiền tạm ứng. Lịch hẹn quá giờ 15 phút chưa đóng → hủy lượt | `thanh-toan` |
+| BR-13 | Mức hưởng BHYT theo ký tự thứ 3 của mã thẻ (định dạng `XX#############`): 1, 2, 5 → 100%; 3 → 95%; 4 → 80%. Thẻ hết hạn → 0%. Thu ngân chọn BHYT khi thu tiền mà chưa nhập thẻ hợp lệ → mức mặc định 80% | `thanh-toan` |
+| BR-14 | Đúng tuyến khi: cấp cứu, hoặc chưa cấu hình mã cơ sở KCB, hoặc nơi đăng ký trên thẻ trùng mã phòng khám, hoặc giấy chuyển tuyến còn hiệu lực. Đúng tuyến và tổng chi phí < ngưỡng cấu hình → 100%. Trái tuyến → mức hưởng × % trái tuyến | `thanh-toan` |
+| BR-15 | Quyết toán: `thực thu = tổng − BHYT − tạm ứng`; âm thì hoàn phần dư cho bệnh nhân | `thanh-toan` |
+| BR-16 | Lượt đã có hóa đơn thanh toán thì không thêm/xóa chỉ định CLS | `xet-nghiem` |
+| BR-17 | Chỉ cấp phát thuốc khi hóa đơn lượt khám đã thanh toán; xuất lô hạn dùng gần nhất trước | `nha-thuoc` |
+| BR-18 | Phòng tư vấn mở từ 15 phút trước giờ hẹn đến 60 phút sau giờ hẹn (hoặc sau lúc bắt đầu thực tế) | `queue.gateway` |
+| BR-19 | Ca tư vấn đã thanh toán, hết ngày chưa kết luận: bác sĩ không vào → hoàn phí; bác sĩ vào, bệnh nhân không vào → vắng mặt, không hoàn; cả hai vào → chờ thu ngân xác minh | `lich-hen` |
+| BR-20 | Mã bệnh nhân `BN`, hồ sơ `HS`, hóa đơn `HD<năm>`, lịch hẹn, số thứ tự sinh từ bộ đếm trong CSDL (`bo_dem_ma`), không trùng khi chạy song song | `db-sequence.util` |
+
+---
+
+## 5. Đặc tả use case chính
+
+### UC-01 Đặt lịch khám và đóng cọc
+- **Tác nhân:** Bệnh nhân (A1), PayOS (A10).
+- **Tiền điều kiện:** Bệnh nhân đã đăng nhập; bác sĩ có ca trực ngày được chọn.
+- **Luồng chính:**
+  1. Bệnh nhân chọn bác sĩ, ngày, khung giờ.
+  2. Hệ thống kiểm tra khung giờ, khoảng ngày đặt trước, suất buổi (BR-02).
+  3. Hệ thống tạo lịch `cho_thanh_toan`, giữ chỗ 15 phút, trả link PayOS.
+  4. Bệnh nhân thanh toán; PayOS gửi webhook.
+  5. Hệ thống xác nhận lịch `da_xac_nhan`, lập hóa đơn cọc `HDT…`, gửi thông báo.
+- **Luồng thay thế:** 2a. Hết suất → báo "Đã kín". 4a. Quá 15 phút → hủy lịch (BR-01).
+- **Hậu điều kiện:** Lịch hẹn được giữ, cọc được ghi nhận.
+- **Sơ đồ:** [BPMN 02](docs/bpmn/02_dat_lich_dat_coc.png).
+
+### UC-02 Tiếp nhận và thu phí trước khám
+- **Tác nhân:** Lễ tân (A2), Thu ngân (A6), Kiosk.
+- **Luồng chính:**
+  1. Lễ tân check-in lịch hẹn hoặc tạo lượt vãng lai, chọn đối tượng ưu tiên.
+  2. Hệ thống cấp số thứ tự (BR-06), lập phiếu tạm ứng (BR-12).
+  3. Thu ngân thu tạm ứng.
+  4. Hệ thống đưa lượt vào hàng đợi bác sĩ, báo bác sĩ.
+- **Luồng thay thế:** 2a. Cấp cứu → vào thẳng hàng đợi. 2b. BHYT/cọc đủ → không lập phiếu. 3a. Lịch hẹn quá 15 phút chưa đóng → hủy lượt.
+- **Sơ đồ:** [BPMN 01](docs/bpmn/01_kham_benh_truc_tiep.png).
+
+### UC-03 Gọi khám và khám bệnh
+- **Tác nhân:** Bác sĩ (A3), Kỹ thuật viên (A4).
+- **Luồng chính:**
+  1. Bác sĩ gọi bệnh nhân đầu hàng đợi (BR-09).
+  2. Bác sĩ khám, ghi sinh hiệu, chẩn đoán sơ bộ.
+  3. Nếu cần, chỉ định CLS; kỹ thuật viên trả kết quả.
+  4. Bác sĩ chẩn đoán ICD-10, kê đơn, kết thúc khám.
+- **Luồng thay thế:** 1a. Vắng mặt → qua lượt (BR-10). 1b. Bác sĩ chậm → báo trễ, gợi ý chuyển (BR-11).
+
+### UC-04 Quyết toán và cấp phát thuốc
+- **Tác nhân:** Thu ngân (A6), Dược sĩ (A5).
+- **Luồng chính:**
+  1. Hệ thống lập hóa đơn gộp, tính BHYT (BR-13, BR-14), trừ tạm ứng (BR-15).
+  2. Thu ngân thu thêm hoặc hoàn dư, xác nhận thanh toán; lượt `hoan_thanh`.
+  3. Dược sĩ cấp phát thuốc (BR-17).
+
+### UC-05 Tư vấn trực tuyến
+- **Tác nhân:** Bệnh nhân (A1), Bác sĩ (A3), Thu ngân (A6).
+- **Luồng chính:**
+  1. Hai bên vào phòng gọi trong khung giờ (BR-18); hệ thống ghi nhận người vào.
+  2. Bác sĩ tư vấn và kết luận → hồ sơ bệnh án, lịch hoàn thành.
+- **Luồng thay thế:** 2a. Hết ngày chưa kết luận → xử lý theo BR-19.
+- **Sơ đồ:** [BPMN 03](docs/bpmn/03_tu_van_truc_tuyen.png).
+
+---
+
+## 6. Yêu cầu dữ liệu
+
+| Thực thể (bảng) | Nội dung chính |
+|---|---|
+| `benh_nhan` | Hồ sơ hành chính; thẻ BHYT: số thẻ, hạn, nơi đăng ký KCB, hiệu lực giấy chuyển tuyến |
+| `lich_hen` | Bác sĩ, ngày giờ, hình thức, trạng thái, thời điểm hai bên vào phòng tư vấn |
+| `luot_tiep_nhan` | Số thứ tự, ngày đến, bác sĩ, phòng, trạng thái, đối tượng ưu tiên, số lần qua lượt |
+| `lich_su_goi_kham` | Lịch sử gọi số (gọi lần đầu, gọi lại, vắng mặt) |
+| `ho_so_benh_an`, `benh_an_kham` | Hồ sơ bệnh án và phiếu khám từng lượt |
+| `chi_dinh_can_lam_sang`, `dich_vu_xet_nghiem` | Chỉ định và kết quả CLS |
+| `don_thuoc`, thuốc, lô thuốc | Đơn thuốc, kho dược theo lô |
+| `hoa_don`, `hoa_don_chi_tiet` | Hóa đơn cọc, tạm ứng, quyết toán; tiền hoàn trả |
+| `cau_hinh_tien_coc` | Tham số phí khám, cọc, suất buổi, BHYT |
+| `bo_dem_ma` | Bộ đếm sinh mã nguyên tử |
+| `thong_bao` | Thông báo người dùng (kèm chống gửi trùng) |
+
+Lưu trữ: dữ liệu nhạy cảm được mã hóa AES-256 ở tầng ứng dụng; thời gian lưu theo múi giờ +07:00.
+
+---
+
+## 7. Yêu cầu giao tiếp ngoài
+
+| Mã | Giao tiếp | Mô tả |
+|---|---|---|
+| EI-01 | REST API | Tiền tố `/api`, JSON; tài liệu Swagger tại `/api/docs` |
+| EI-02 | WebSocket (Socket.IO) | Cập nhật hàng đợi, thông báo, tín hiệu WebRTC (`call:*`) |
+| EI-03 | PayOS | Tạo link thanh toán, kiểm tra trạng thái, webhook xác nhận |
+| EI-04 | SMTP | Gửi OTP, nhắc lịch, thông báo |
+| EI-05 | Google Gemini | Chatbot và phân luồng (qua ai-service) |
+| EI-06 | python-ml (FastAPI) | Dự báo nhu cầu thuốc |
+| EI-07 | office-service | Chat và cộng tác nội bộ nhân viên |
+
+---
+
+## 8. Yêu cầu phi chức năng
+
+| Mã | Nhóm | Yêu cầu |
+|---|---|---|
+| NFR-01 | Bảo mật | Mật khẩu băm bcrypt; xác thực JWT; phân quyền theo vai trò ở mọi API |
+| NFR-02 | Bảo mật | Phòng gọi video chỉ ghi nhận người vào khi token hợp lệ và đúng người của lịch hẹn |
+| NFR-03 | Toàn vẹn | Thao tác tiền (thu, hủy, hoàn, phiếu chi, chốt ca) và sinh mã dùng khóa MySQL `GET_LOCK` / `SELECT … FOR UPDATE`; an toàn khi nhiều instance |
+| NFR-04 | Toàn vẹn | Ràng buộc duy nhất (ngày, số thứ tự); cập nhật có điều kiện trạng thái để chống thu trùng |
+| NFR-05 | Hiệu năng | Hàng đợi cập nhật thời gian thực qua WebSocket; tác vụ quét hàng đợi giới hạn 1 lần / 5 giây |
+| NFR-06 | Sẵn sàng | Tác vụ định kỳ chỉ chạy trên một instance nhờ khóa không chờ; có endpoint `/api/health` |
+| NFR-07 | Khả dụng | Giao diện tiếng Việt, đáp ứng máy tính, máy tính bảng, kiosk cảm ứng, TV gọi số; app di động cho bệnh nhân |
+| NFR-08 | Bảo trì | Mã nguồn tách module NestJS theo nghiệp vụ; migration SQL đánh số theo ngày |
+| NFR-09 | Kiểm thử | Bộ kiểm thử đầu-cuối các luồng tiếp nhận, hàng đợi, thanh toán, BHYT, tư vấn trực tuyến |
+| NFR-10 | Pháp lý | Thứ tự ưu tiên, mức hưởng BHYT, mẫu đơn thuốc theo văn bản tại mục 1.4 |
+
+---
+
+## 9. Ma trận truy xuất
+
+| Use case | Yêu cầu chức năng | Quy tắc | Module backend | Sơ đồ |
+|---|---|---|---|---|
+| UC-01 | FR-LH-01…06, FR-LH-08 | BR-01…03 | `lich-hen`, `payos` | BPMN 02 |
+| UC-02 | FR-TN-01…08, FR-TT-01…02 | BR-04…08, BR-12 | `tiep-nhan`, `kiosk`, `thanh-toan` | BPMN 01 |
+| UC-03 | FR-TN-09…12, FR-KB-01…07, FR-CLS-01…04 | BR-09…11, BR-16 | `tiep-nhan`, `ho-so-benh-an`, `xet-nghiem` | BPMN 01 |
+| UC-04 | FR-TT-03…07, FR-NT-02 | BR-13…15, BR-17 | `thanh-toan`, `nha-thuoc` | BPMN 01 |
+| UC-05 | FR-TV-01…05 | BR-18, BR-19 | `tiep-nhan/queue.gateway`, `lich-hen` | BPMN 03 |
