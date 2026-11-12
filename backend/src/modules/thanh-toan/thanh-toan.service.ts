@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { Repository, Not, In } from 'typeorm';
 import { HoaDon } from './entities/hoa-don.entity';
 import { HoaDonChiTiet } from './entities/hoa-don-chi-tiet.entity';
 import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
@@ -316,13 +316,14 @@ export class ThanhToanService {
       }
 
       // 2. Tổng hợp các khoản viện phí từ Phiếu Khám thực tế
+      const phiKham = await this.layPhiKham();
       const items: Partial<HoaDonChiTiet>[] = [
         {
           loaiPhi: 'kham_benh',
           moTa: 'Phí khám bệnh chuyên khoa',
           soLuong: 1,
-          donGia: 150000,
-          thanhTien: 150000,
+          donGia: phiKham,
+          thanhTien: phiKham,
         },
       ];
 
@@ -597,41 +598,72 @@ export class ThanhToanService {
     return { thucThu: Math.max(0, conLai), tienHoanTra: Math.max(0, -conLai) };
   }
 
-  /** Tạm ứng đã thu thực tế của lượt khám: cọc đặt lịch online (HDT…) hoặc tạm ứng tại quầy (TU…) */
+  /** Phí khám trực tiếp theo cấu hình của giám đốc */
+  private async layPhiKham(): Promise<number> {
+    const rows = await this.hoaDonRepo.manager.query(
+      `SELECT phi_kham_mac_dinh FROM cau_hinh_tien_coc WHERE loai_hinh_thuc = 'truc_tiep' LIMIT 1`,
+    );
+    return Number(rows[0]?.phi_kham_mac_dinh) || 150000;
+  }
+
+  /** Tạm ứng đã thu thực tế của lượt khám: cọc đặt lịch (HDT…) + tạm ứng tại quầy (TU…) */
   private async layTamUngCuaLuot(luot: { id: number; lichHenId?: number }) {
-    let maChungTu = `${MA_TAM_UNG_QUAY}${luot.id}`;
-    let moTa = 'tạm ứng tại quầy';
+    const phieu = [{ ma: `${MA_TAM_UNG_QUAY}${luot.id}`, moTa: 'tạm ứng tại quầy' }];
     if (luot.lichHenId) {
       const lhRows = await this.hoaDonRepo.manager.query(
         `SELECT ma_lich_hen FROM lich_hen WHERE id = ? LIMIT 1`,
         [luot.lichHenId],
       );
       if (lhRows.length) {
-        maChungTu = `HDT${String(lhRows[0].ma_lich_hen || '').replace(/^LH/i, '')}`;
-        moTa = 'tiền cọc đặt lịch';
+        phieu.unshift({ ma: `HDT${String(lhRows[0].ma_lich_hen || '').replace(/^LH/i, '')}`, moTa: 'tiền cọc đặt lịch' });
       }
     }
-    const hdTamUng = await this.hoaDonRepo.findOne({ where: { maHoaDon: maChungTu, trangThai: 'da_thanh_toan' } });
-    return { soTien: hdTamUng ? Number(hdTamUng.thucThu) : 0, maChungTu, moTa };
+    const daThu = await this.hoaDonRepo.find({
+      where: { maHoaDon: In(phieu.map((p) => p.ma)), trangThai: 'da_thanh_toan' },
+    });
+    const coThu = phieu.filter((p) => daThu.some((h) => h.maHoaDon === p.ma));
+    return {
+      soTien: daThu.reduce((sum, h) => sum + Number(h.thucThu), 0),
+      maChungTu: coThu.map((p) => p.ma).join(', '),
+      moTa: coThu.map((p) => p.moTa).join(' + '),
+    };
   }
 
-  /** Lễ tân tiếp nhận tại quầy → tạo phiếu tạm ứng chờ thu; bác sĩ chỉ thấy bệnh nhân sau khi thu xong */
-  async taoPhieuTamUngTaiQuay(luot: { id: number; benhNhanId: number; maSoThuTu?: string }, hoTen?: string) {
+  /**
+   * Tạo phiếu tạm ứng chờ thu; bác sĩ chỉ thấy bệnh nhân sau khi thu xong.
+   * Không lịch hẹn: thu ngân tự nhập số tiền. Có lịch hẹn: phải đóng đủ phí khám trừ cọc đã đóng
+   * (cọc đã đủ thì vào hàng đợi luôn, trả về null).
+   */
+  async taoPhieuTamUngTaiQuay(
+    luot: { id: number; benhNhanId: number; maSoThuTu?: string; lichHenId?: number },
+    hoTen?: string,
+  ) {
     const maHoaDon = `${MA_TAM_UNG_QUAY}${luot.id}`;
     const existed = await this.hoaDonRepo.findOne({ where: { maHoaDon } });
     if (existed) return existed;
+
+    let canThu = 0;
+    if (luot.lichHenId) {
+      canThu = (await this.layPhiKham()) - (await this.layTamUngCuaLuot(luot)).soTien;
+      if (canThu <= 0) {
+        await this.baoBacSiVaoHangDoi(luot.id, 'vừa được xếp vào danh sách khám của bạn');
+        return null;
+      }
+    }
+
     const saved = await this.hoaDonRepo.save(this.hoaDonRepo.create({
       maHoaDon,
       benhNhanId: luot.benhNhanId,
       trangThai: 'cho_thanh_toan',
-      tongTien: 0,
+      tongTien: canThu,
       soTienGiam: 0,
       thucThu: 0,
-      ghiChu: `[TẠM ỨNG TẠI QUẦY] Lượt khám ${luot.maSoThuTu || `#${luot.id}`}`,
+      ghiChu: `[TẠM ỨNG TẠI QUẦY] Lượt khám ${luot.maSoThuTu || `#${luot.id}`}${canThu ? ' - đóng nốt phí khám sau tiền cọc đặt lịch' : ''}`,
     }));
+    const soTienText = canThu ? ` ${canThu.toLocaleString('vi-VN')} đ` : '';
     await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
       tieuDe: `Cần thu tạm ứng: ${hoTen || 'Bệnh nhân'} (${luot.maSoThuTu || ''})`,
-      noiDung: `Bệnh nhân ${hoTen || ''} vừa được tiếp nhận tại quầy. Vui lòng thu tiền tạm ứng (${maHoaDon}); bệnh nhân chỉ được vào hàng đợi bác sĩ sau khi đóng tạm ứng.`,
+      noiDung: `Bệnh nhân ${hoTen || ''} vừa được tiếp nhận. Vui lòng thu tiền tạm ứng${soTienText} (${maHoaDon}); bệnh nhân chỉ được vào hàng đợi bác sĩ sau khi đóng tạm ứng.`,
       loai: 'can_thanh_toan',
       doiTuongBang: 'hoa_don',
       doiTuongId: saved.id,
@@ -639,14 +671,37 @@ export class ThanhToanService {
     return saved;
   }
 
-  /** Thu ngân thu tạm ứng tại quầy: tự nhập số tiền; xong thì bệnh nhân vào hàng đợi bác sĩ */
+  /** Báo bác sĩ phụ trách: bệnh nhân đã vào hàng đợi khám */
+  private async baoBacSiVaoHangDoi(luotId: number, lyDo: string) {
+    const luot = await this.tiepNhanRepo.findOne({
+      where: { id: luotId },
+      relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
+    });
+    const bacSiUserId = luot?.bacSi?.nhanVien?.nguoiDungId;
+    if (!bacSiUserId) return;
+    const hoTen = luot.benhNhan?.hoTen || '';
+    await this.thongBaoService.taoThongBao({
+      nguoiNhanId: bacSiUserId,
+      tieuDe: `Bệnh nhân mới vào hàng đợi: ${hoTen}`,
+      noiDung: `Bệnh nhân ${hoTen} (STT: ${luot.maSoThuTu}) ${lyDo}.`,
+      loai: 'lich_kham',
+      doiTuongBang: 'luot_tiep_nhan',
+      doiTuongId: luot.id,
+    }).catch((e) => console.warn('Lỗi gửi thông báo bác sĩ:', e?.message));
+  }
+
+  /** Thu ngân thu tạm ứng tại quầy (phiếu có số cần thu thì phải thu đủ); xong thì bệnh nhân vào hàng đợi bác sĩ */
   async thuTamUng(id: number, userId: number, dto: { soTien: number; phuongThucThanhToan?: string }) {
     return this.withLock(`invoice:pay:${id}`, async () => {
-      const hd = await this.hoaDonRepo.findOne({ where: { id }, relations: ['benhNhan'] });
+      const hd = await this.hoaDonRepo.findOne({ where: { id } });
       if (!hd || !hd.maHoaDon.startsWith(MA_TAM_UNG_QUAY)) throw new NotFoundException('Không tìm thấy phiếu tạm ứng');
       if (hd.trangThai !== 'cho_thanh_toan') throw new BadRequestException('Phiếu tạm ứng đã được xử lý');
       const soTien = Math.round(Number(dto.soTien));
       if (!(soTien > 0)) throw new BadRequestException('Số tiền tạm ứng phải lớn hơn 0');
+      const canThu = Number(hd.tongTien) || 0;
+      if (soTien < canThu) {
+        throw new BadRequestException(`Phải thu đủ ${canThu.toLocaleString('vi-VN')} đ (phí khám trừ tiền cọc) bệnh nhân mới được vào khám`);
+      }
 
       const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
       Object.assign(hd, {
@@ -658,21 +713,10 @@ export class ThanhToanService {
         thuNganId: nv?.id ?? hd.thuNganId,
       });
       const saved = await this.hoaDonRepo.save(hd);
-
-      // Báo bác sĩ phụ trách: bệnh nhân đã vào hàng đợi khám
-      const luotId = Number(hd.maHoaDon.slice(MA_TAM_UNG_QUAY.length));
-      const luot = await this.tiepNhanRepo.findOne({ where: { id: luotId }, relations: ['bacSi', 'bacSi.nhanVien'] });
-      const bacSiUserId = luot?.bacSi?.nhanVien?.nguoiDungId;
-      if (bacSiUserId) {
-        await this.thongBaoService.taoThongBao({
-          nguoiNhanId: bacSiUserId,
-          tieuDe: `Bệnh nhân mới vào hàng đợi: ${hd.benhNhan?.hoTen || ''}`,
-          noiDung: `Bệnh nhân ${hd.benhNhan?.hoTen || ''} (STT: ${luot.maSoThuTu}) đã đóng tạm ứng và vào danh sách khám của bạn.`,
-          loai: 'lich_kham',
-          doiTuongBang: 'luot_tiep_nhan',
-          doiTuongId: luot.id,
-        }).catch((e) => console.warn('Lỗi gửi thông báo bác sĩ sau tạm ứng:', e?.message));
-      }
+      await this.baoBacSiVaoHangDoi(
+        Number(hd.maHoaDon.slice(MA_TAM_UNG_QUAY.length)),
+        'đã đóng tạm ứng và vào danh sách khám của bạn',
+      );
 
       return { message: `Đã thu tạm ứng ${soTien.toLocaleString('vi-VN')} đ`, data: saved };
     });

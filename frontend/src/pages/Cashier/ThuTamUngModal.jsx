@@ -11,8 +11,13 @@ export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Gợi ý số tiền theo cấu hình tiền cọc khám trực tiếp (thu ngân sửa được)
+  // Có lịch hẹn: phiếu đã có số cần thu (phí khám trừ cọc). Không thì gợi ý theo cấu hình tiền cọc (thu ngân sửa được)
   useEffect(() => {
+    const canThu = Math.round(Number(hoaDon?.tongTien) || 0);
+    if (canThu > 0) {
+      setSoTien(String(canThu));
+      return;
+    }
     apiGet('/quan-ly/cau-hinh-tien-coc')
       .then((res) => {
         const raw = res?.data?.data || res?.data || res;
@@ -82,6 +87,11 @@ export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
             />
             {Number(soTien) > 0 && (
               <p className="text-right text-xs text-gray-500 mt-1">{formatCurrency(Number(soTien))}</p>
+            )}
+            {Number(hoaDon?.tongTien) > 0 && (
+              <p className="text-xs text-amber-700 mt-1">
+                Có lịch hẹn: phải thu đủ {formatCurrency(Number(hoaDon.tongTien))} (phí khám trừ tiền cọc đã đóng).
+              </p>
             )}
           </div>
 

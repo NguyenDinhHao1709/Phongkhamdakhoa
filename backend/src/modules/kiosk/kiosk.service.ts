@@ -5,6 +5,8 @@ import { LuotTiepNhan, TrangThaiTiepNhan } from '../tiep-nhan/entities/tiep-nhan
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
+import { ThanhToanService } from '../thanh-toan/thanh-toan.service';
+import { TiepNhanService } from '../tiep-nhan/tiep-nhan.service';
 
 export interface KioskDangKyMoiDto {
   hoTen: string;
@@ -71,6 +73,8 @@ export class KioskService {
     private readonly benhNhanRepo: Repository<BenhNhan>,
     @InjectRepository(BacSi)
     private readonly bacSiRepo: Repository<BacSi>,
+    private readonly thanhToanService: ThanhToanService,
+    private readonly tiepNhanService: TiepNhanService,
   ) {}
 
   /**
@@ -238,13 +242,7 @@ export class KioskService {
 
       if (existingLuot) {
         // Đếm số người đang chờ phía trước trong cùng phòng khám
-        const soNguoiDangDoi = await this.luotRepo
-          .createQueryBuilder('ltn')
-          .where('ltn.phongKhamId = :pkId', { pkId: phongKhamInfo.id })
-          .andWhere('ltn.trangThai = :st', { st: TrangThaiTiepNhan.CHO_KHAM })
-          .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
-          .andWhere('ltn.id < :curId', { curId: existingLuot.id })
-          .getCount();
+        const soNguoiDangDoi = await this.tiepNhanService.soNguoiPhiaTruoc(existingLuot.id, phongKhamInfo.id);
 
         return {
           success: true,
@@ -280,6 +278,8 @@ export class KioskService {
       });
 
       const savedLuot = await this.luotRepo.save(newLuot);
+      // Đóng đủ phí khám (trừ cọc) tại quầy thu ngân rồi mới vào hàng đợi bác sĩ
+      await this.thanhToanService.taoPhieuTamUngTaiQuay(savedLuot, lh.benhNhan?.hoTen);
 
       // Ghi nhận mã checkin vào ghi chú của lịch hẹn
       await this.lichHenRepo.update(lh.id, {
@@ -287,13 +287,7 @@ export class KioskService {
       });
 
       // Số người đang chờ phía trước
-      const soNguoiDangDoi = await this.luotRepo
-        .createQueryBuilder('ltn')
-        .where('ltn.phongKhamId = :pkId', { pkId: phongKhamInfo.id })
-        .andWhere('ltn.trangThai = :st', { st: TrangThaiTiepNhan.CHO_KHAM })
-        .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
-        .andWhere('ltn.id < :curId', { curId: savedLuot.id })
-        .getCount();
+      const soNguoiDangDoi = await this.tiepNhanService.soNguoiPhiaTruoc(savedLuot.id, phongKhamInfo.id);
 
       return {
         success: true,
@@ -391,13 +385,7 @@ export class KioskService {
         .getOne();
 
       if (existingActiveWalkin) {
-        const soNguoiDangDoi = await this.luotRepo
-          .createQueryBuilder('ltn')
-          .where('ltn.phongKhamId = :pkId', { pkId: phongKhamInfo.id })
-          .andWhere('ltn.trangThai = :st', { st: TrangThaiTiepNhan.CHO_KHAM })
-          .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
-          .andWhere('ltn.id < :curId', { curId: existingActiveWalkin.id })
-          .getCount();
+        const soNguoiDangDoi = await this.tiepNhanService.soNguoiPhiaTruoc(existingActiveWalkin.id, phongKhamInfo.id);
 
         return {
           success: true,
@@ -434,15 +422,11 @@ export class KioskService {
       });
 
       const savedLuot = await this.luotRepo.save(newLuot);
+      // Đóng tạm ứng tại quầy thu ngân rồi mới vào hàng đợi bác sĩ
+      await this.thanhToanService.taoPhieuTamUngTaiQuay(savedLuot, benhNhan.hoTen);
 
       // Đếm số người đang chờ trong phòng
-      const soNguoiDangDoi = await this.luotRepo
-        .createQueryBuilder('ltn')
-        .where('ltn.phongKhamId = :pkId', { pkId: phongKhamInfo.id })
-        .andWhere('ltn.trangThai = :st', { st: TrangThaiTiepNhan.CHO_KHAM })
-        .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
-        .andWhere('ltn.id < :curId', { curId: savedLuot.id })
-        .getCount();
+      const soNguoiDangDoi = await this.tiepNhanService.soNguoiPhiaTruoc(savedLuot.id, phongKhamInfo.id);
 
       return {
         success: true,
