@@ -1,3 +1,4 @@
+import { voiKhoaDb } from '../../common/utils/db-sequence.util';
 import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
@@ -14,28 +15,6 @@ import { BenhAnKham, TrangThaiBenhAnKham } from '../ho-so-benh-an/entities/ho-so
 
 @Injectable()
 export class DanhGiaService {
-  private locks = new Map<string, Promise<any>>();
-
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) || Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const chain = prev.then(() => next);
-    this.locks.set(key, chain);
-
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === chain) {
-        this.locks.delete(key);
-      }
-    }
-  }
-
   constructor(
     @InjectRepository(DanhGiaCaKham)
     private readonly danhGiaRepo: Repository<DanhGiaCaKham>,
@@ -57,7 +36,7 @@ export class DanhGiaService {
    * Bệnh nhân gửi đánh giá cho 1 ca khám đã hoàn thành
    */
   async taoDanhGia(userId: number, dto: TaoDanhGiaDto) {
-    return this.withLock(`danh_gia:user:${userId}`, async () => {
+    return voiKhoaDb(this.danhGiaRepo.manager.connection, `danh_gia:user:${userId}`, async () => {
       const benhNhan = await this.benhNhanRepo.findOne({ where: { nguoiDungId: userId } });
       if (!benhNhan) {
         throw new BadRequestException('Không tìm thấy thông tin bệnh nhân tương ứng với tài khoản này');

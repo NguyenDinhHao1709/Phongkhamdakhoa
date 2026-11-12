@@ -7,6 +7,7 @@ import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { ThanhToanService } from '../thanh-toan/thanh-toan.service';
 import { TiepNhanService } from '../tiep-nhan/tiep-nhan.service';
+import { voiKhoaDb, maBenhNhanTiepTheo } from '../../common/utils/db-sequence.util';
 
 export interface KioskDangKyMoiDto {
   hoTen: string;
@@ -15,54 +16,14 @@ export interface KioskDangKyMoiDto {
   gioiTinh?: string;
   trieuChung?: string;
   chuyenKhoa?: string;
+  /** Bệnh nhân tự khai tại kiosk (cấp cứu do nhân viên xác định, không chọn ở kiosk) */
+  doiTuongUuTien?: string;
 }
+
+const UU_TIEN_TU_KHAI_KIOSK = ['phu_nu_co_thai', 'khuyet_tat_nang', 'nguoi_co_cong'];
 
 @Injectable()
 export class KioskService {
-  private locks = new Map<string, Promise<any>>();
-  private lastSttDate = '';
-  private lastSttSeq = 0;
-
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) || Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const chain = prev.then(() => next);
-    this.locks.set(key, chain);
-
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === chain) {
-        this.locks.delete(key);
-      }
-    }
-  }
-
-  private async generateNextKioskStt(prefix: 'A' | 'B'): Promise<string> {
-    return this.withLock('seq:kiosk_stt', async () => {
-      const now = new Date();
-      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      if (this.lastSttDate !== today || this.lastSttSeq === 0) {
-        const rows: any[] = await this.luotRepo.manager.query(
-          `SELECT COALESCE(MAX(CAST(REGEXP_REPLACE(ma_so_thu_tu, '[^0-9]', '') AS UNSIGNED)), 0) AS maxNum,
-                  COUNT(*) AS totalCnt
-           FROM luot_tiep_nhan
-           WHERE DATE(thoi_gian_den) = CURDATE()`,
-        );
-        const maxNum = Number(rows?.[0]?.maxNum || 0);
-        const totalCnt = Number(rows?.[0]?.totalCnt || 0);
-        this.lastSttSeq = Math.max(maxNum, totalCnt);
-        this.lastSttDate = today;
-      }
-      this.lastSttSeq += 1;
-      return `${prefix}${String(this.lastSttSeq).padStart(3, '0')}`;
-    });
-  }
 
   constructor(
     @InjectRepository(LuotTiepNhan)
@@ -176,7 +137,7 @@ export class KioskService {
    * 2. Bệnh nhân bấm Check-in tại Kiosk -> Sinh STT thật & đưa vào hàng đợi
    */
   async checkInLichHen(lichHenId: number) {
-    return this.withLock(`kiosk:checkin:${lichHenId}`, async () => {
+    return this.tiepNhanService.voiKhoaLichHen(lichHenId, async () => {
       const lh = await this.lichHenRepo.findOne({
         where: { id: lichHenId },
         relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
@@ -264,7 +225,7 @@ export class KioskService {
       }
 
       // Sinh STT nguyên tử tăng dần hôm nay cho nhóm ưu tiên có lịch hẹn (Loại A)
-      const maSoThuTu = await this.generateNextKioskStt('A');
+      const maSoThuTu = await this.tiepNhanService.generateNextSoThuTu('A');
 
       const newLuot = this.luotRepo.create({
         maSoThuTu,
@@ -320,14 +281,14 @@ export class KioskService {
       throw new BadRequestException('Vui lòng cung cấp Họ tên và Số điện thoại.');
     }
 
-    return this.withLock(`kiosk:walkin:${soDienThoai}`, async () => {
+    return voiKhoaDb(this.luotRepo.manager.connection, `bn_phone:${soDienThoai}`, async () => {
       // 1. Tìm hoặc tạo hồ sơ bệnh nhân
       let benhNhan = await this.benhNhanRepo.findOne({
         where: { soDienThoai },
       });
 
       if (!benhNhan) {
-        const maBenhNhan = `BN${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 90 + 10)}`;
+        const maBenhNhan = await maBenhNhanTiepTheo(this.luotRepo.manager);
         const birthYear = dto.namSinh ? parseInt(dto.namSinh, 10) : 1990;
         const ngaySinh = `${birthYear}-01-01`;
 
@@ -408,7 +369,7 @@ export class KioskService {
       }
 
       // 3. Sinh số thứ tự nguyên tử cho bệnh nhân vãng lai (Loại B)
-      const maSoThuTu = await this.generateNextKioskStt('B');
+      const maSoThuTu = await this.tiepNhanService.generateNextSoThuTu('B');
 
       const newLuot = this.luotRepo.create({
         maSoThuTu,
@@ -416,6 +377,7 @@ export class KioskService {
         lichHenId: undefined,
         phongKhamId: phongKhamInfo.id,
         bacSiId: matchedDoctor?.id,
+        doiTuongUuTien: UU_TIEN_TU_KHAI_KIOSK.includes(dto.doiTuongUuTien) ? dto.doiTuongUuTien : null,
         thoiGianDen: new Date(),
         trangThai: TrangThaiTiepNhan.CHO_KHAM,
         ghiChu: `[Kiosk tự động] Đăng ký mới. Triệu chứng: ${dto.trieuChung || 'Khám lâm sàng'}`,

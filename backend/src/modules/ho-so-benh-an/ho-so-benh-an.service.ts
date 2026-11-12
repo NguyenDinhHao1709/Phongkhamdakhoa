@@ -6,7 +6,7 @@ import { Repository, Not } from 'typeorm';
 import { HoSoBenhAn, BenhAnKham, TrangThaiBenhAnKham } from './entities/ho-so-benh-an.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
-import { MaGeneratorService } from '../../common/utils/ma-generator.util';
+import { maHoSoTiepTheo, voiKhoaDb } from '../../common/utils/db-sequence.util';
 import {
   IsInt, IsPositive, IsOptional, IsString, IsEnum, IsDateString,
 } from 'class-validator';
@@ -53,45 +53,9 @@ export class KetThucKhamDto {
 // ──── SERVICE ──────────────────────────────────────────────
 @Injectable()
 export class HoSoBenhAnService {
-  private locks = new Map<string, Promise<any>>();
-  private lastMaHsSeq = 0;
-
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) || Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const chain = prev.then(() => next);
-    this.locks.set(key, chain);
-
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === chain) {
-        this.locks.delete(key);
-      }
-    }
-  }
-
-  private async generateNextMaHoSo(): Promise<string> {
-    return this.withLock('seq:ma_ho_so', async () => {
-      const year = new Date().getFullYear();
-      const prefix = `HS${year}`;
-      if (this.lastMaHsSeq === 0) {
-        const rows: any[] = await this.hoSoRepo.manager.query(
-          `SELECT MAX(CAST(SUBSTRING(ma_ho_so, 7) AS UNSIGNED)) AS maxNum FROM ho_so_benh_an WHERE ma_ho_so LIKE ?`,
-          [`${prefix}%`],
-        );
-        const dbMax = Number(rows?.[0]?.maxNum || 0);
-        const totalCount = await this.hoSoRepo.count();
-        this.lastMaHsSeq = Math.max(dbMax, totalCount);
-      }
-      this.lastMaHsSeq += 1;
-      return MaGeneratorService.generateMaHoSo(this.lastMaHsSeq);
-    });
+  /** Mã hồ sơ từ bộ đếm trong DB (không trùng khi chạy nhiều instance) */
+  private generateNextMaHoSo(): Promise<string> {
+    return maHoSoTiepTheo(this.hoSoRepo.manager);
   }
 
   constructor(
@@ -667,7 +631,7 @@ export class HoSoBenhAnService {
 
   // ─── Lấy/tạo hồ sơ bệnh án cho bệnh nhân ────────────────
   async getOrCreateHoSo(benhNhanId: number): Promise<HoSoBenhAn> {
-    return this.withLock(`hoso:bn:${benhNhanId}`, async () => {
+    return voiKhoaDb(this.hoSoRepo.manager.connection, `hoso:bn:${benhNhanId}`, async () => {
       let hoSo = await this.hoSoRepo.findOne({ where: { benhNhanId } });
       if (!hoSo) {
         const maHoSo = await this.generateNextMaHoSo();
@@ -701,7 +665,7 @@ export class HoSoBenhAnService {
 
   // ─── Tạo phiếu khám mới ──────────────────────────────────
   async taoBenhAnKham(nguoiDungId: number, benhNhanId: number, dto: TaoBenhAnKhamDto) {
-    return this.withLock(`bak:visit:${dto.luotTiepNhanId}`, async () => {
+    return voiKhoaDb(this.hoSoRepo.manager.connection, `bak:visit:${dto.luotTiepNhanId}`, async () => {
       const hoSo = await this.getOrCreateHoSo(benhNhanId);
 
       // Nếu lượt tiếp nhận đã có phiếu khám thì trả về phiếu hiện tại

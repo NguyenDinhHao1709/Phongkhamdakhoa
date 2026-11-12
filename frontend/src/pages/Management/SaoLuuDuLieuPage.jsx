@@ -37,7 +37,7 @@ export default function SaoLuuDuLieuPage() {
       const url = window.URL.createObjectURL(blob);
       const downloadAnchor = document.createElement('a');
       downloadAnchor.href = url;
-      const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+      const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
       downloadAnchor.download = `phong_kham_backup_${timestamp}.sql`;
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();

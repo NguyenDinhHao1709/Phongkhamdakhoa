@@ -5,49 +5,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, Or, ILike } from 'typeorm';
 import { BenhNhan } from './entities/benh-nhan.entity';
 import { TaoBenhNhanDto, CapNhatBenhNhanDto, TimKiemBenhNhanDto } from './dto/benh-nhan.dto';
-import { MaGeneratorService } from '../../common/utils/ma-generator.util';
+import { maBenhNhanTiepTheo, voiKhoaDb } from '../../common/utils/db-sequence.util';
 
 @Injectable()
 export class BenhNhanService {
-  private locks = new Map<string, Promise<any>>();
-  private lastMaBnSeq = 0;
-
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) || Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const chain = prev.then(() => next);
-    this.locks.set(key, chain);
-
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === chain) {
-        this.locks.delete(key);
-      }
-    }
-  }
-
-  private async generateNextMaBenhNhan(): Promise<string> {
-    return this.withLock('seq:ma_benh_nhan', async () => {
-      if (this.lastMaBnSeq === 0) {
-        const rows: any[] = await this.repo.manager.query(
-          `SELECT COALESCE(MAX(CAST(SUBSTRING(ma_benh_nhan, 3) AS UNSIGNED)), 0) AS maxNum,
-                  COUNT(*) AS totalCnt
-           FROM benh_nhan
-           WHERE ma_benh_nhan REGEXP '^BN[0-9]+$'`,
-        );
-        const maxNum = Number(rows?.[0]?.maxNum || 0);
-        const totalCnt = Number(rows?.[0]?.totalCnt || 0);
-        this.lastMaBnSeq = Math.max(maxNum, totalCnt);
-      }
-      this.lastMaBnSeq += 1;
-      return MaGeneratorService.generateMaBenhNhan(this.lastMaBnSeq);
-    });
+  private generateNextMaBenhNhan(): Promise<string> {
+    return maBenhNhanTiepTheo(this.repo.manager);
   }
 
   constructor(
@@ -156,7 +119,7 @@ export class BenhNhanService {
 
   // ─── TẠO MỚI ────────────────────────────────────────────────
   async create(dto: TaoBenhNhanDto) {
-    return this.withLock(`create_bn:${dto.soCmnd || dto.soDienThoai || 'new'}`, async () => {
+    return voiKhoaDb(this.repo.manager.connection, `create_bn:${dto.soCmnd || dto.soDienThoai || 'new'}`, async () => {
       // Kiểm tra CMND trùng
       if (dto.soCmnd) {
         const existing = await this.repo.findOne({ where: { soCmnd: dto.soCmnd } });

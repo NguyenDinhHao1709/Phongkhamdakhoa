@@ -764,6 +764,9 @@ function SuaHoSoBenhNhanModal({ patient, isOpen, onClose, onSuccess }) {
     gioiTinh: patient.gioiTinh || 'nam',
     soCmnd: patient.soCmnd || '',
     soBhyt: patient.soBhyt || patient.soBHYT || '',
+    bhytHanDen: patient.bhytHanDen || '',
+    bhytNoiDangKy: patient.bhytNoiDangKy || '',
+    bhytChuyenTuyenDen: patient.bhytChuyenTuyenDen || '',
     diaChi: patient.diaChi || '',
     nhomMau: patient.nhomMau || '',
     diUng: patient.diUng || '',
@@ -881,6 +884,37 @@ function SuaHoSoBenhNhanModal({ patient, isOpen, onClose, onSuccess }) {
                 value={formData.soBhyt}
                 onChange={e => setFormData({ ...formData, soBhyt: e.target.value.toUpperCase() })}
                 className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-gray-700 mb-1">Hạn thẻ BHYT</label>
+              <input
+                type="date"
+                value={formData.bhytHanDen}
+                onChange={e => setFormData({ ...formData, bhytHanDen: e.target.value })}
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-gray-700 mb-1">Nơi đăng ký KCB ban đầu (mã)</label>
+              <input
+                type="text"
+                value={formData.bhytNoiDangKy}
+                onChange={e => setFormData({ ...formData, bhytNoiDangKy: e.target.value.toUpperCase() })}
+                placeholder="Mã cơ sở ghi trên thẻ"
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-gray-700 mb-1">Giấy chuyển tuyến hiệu lực đến</label>
+              <input
+                type="date"
+                value={formData.bhytChuyenTuyenDen}
+                onChange={e => setFormData({ ...formData, bhytChuyenTuyenDen: e.target.value })}
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 

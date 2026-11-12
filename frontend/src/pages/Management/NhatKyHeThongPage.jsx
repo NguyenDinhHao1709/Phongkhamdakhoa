@@ -92,7 +92,7 @@ export default function NhatKyHeThongPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+    const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
     link.download = `nhat_ky_he_thong_${timestamp}.csv`;
     document.body.appendChild(link);
     link.click();

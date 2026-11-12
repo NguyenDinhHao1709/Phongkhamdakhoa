@@ -27,6 +27,9 @@ export default function BenhNhanChiTietPage({ isCreate = false, isEdit = false }
     soDienThoai: '',
     soCmnd: '',
     soBhyt: '',
+    bhytHanDen: '',
+    bhytNoiDangKy: '',
+    bhytChuyenTuyenDen: '',
     email: '',
     diaChi: '',
     nhomMau: '',
@@ -56,6 +59,9 @@ export default function BenhNhanChiTietPage({ isCreate = false, isEdit = false }
           soDienThoai: res.data.soDienThoai || '',
           soCmnd: res.data.soCmnd || '',
           soBhyt: res.data.soBhyt || '',
+          bhytHanDen: res.data.bhytHanDen || '',
+          bhytNoiDangKy: res.data.bhytNoiDangKy || '',
+          bhytChuyenTuyenDen: res.data.bhytChuyenTuyenDen || '',
           email: res.data.email || '',
           diaChi: res.data.diaChi || '',
           nhomMau: res.data.nhomMau || '',
@@ -263,6 +269,49 @@ export default function BenhNhanChiTietPage({ isCreate = false, isEdit = false }
                     />
                   ) : (
                     <p className="font-mono text-gray-900">{patient?.soBhyt || 'Chưa cập nhật'}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Hạn thẻ BHYT</label>
+                  {editMode ? (
+                    <input
+                      type="date"
+                      value={formData.bhytHanDen}
+                      onChange={(e) => setFormData({ ...formData, bhytHanDen: e.target.value })}
+                      className="w-full p-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500"
+                    />
+                  ) : (
+                    <p className="text-gray-900">{patient?.bhytHanDen || 'Chưa cập nhật'}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Nơi đăng ký KCB ban đầu (mã)</label>
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={formData.bhytNoiDangKy}
+                      onChange={(e) => setFormData({ ...formData, bhytNoiDangKy: e.target.value.toUpperCase() })}
+                      placeholder="Mã cơ sở ghi trên thẻ (VD: 79001)"
+                      className="w-full p-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500 font-mono"
+                    />
+                  ) : (
+                    <p className="font-mono text-gray-900">{patient?.bhytNoiDangKy || 'Chưa cập nhật'}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Giấy chuyển tuyến hiệu lực đến</label>
+                  {editMode ? (
+                    <input
+                      type="date"
+                      value={formData.bhytChuyenTuyenDen}
+                      onChange={(e) => setFormData({ ...formData, bhytChuyenTuyenDen: e.target.value })}
+                      className="w-full p-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-primary-500"
+                    />
+                  ) : (
+                    <p className="text-gray-900">{patient?.bhytChuyenTuyenDen || 'Không có'}</p>
                   )}
                 </div>
 

@@ -6,11 +6,11 @@ import { Repository, Between, In } from 'typeorm';
 import { LuotTiepNhan, SinhHieu, TrangThaiTiepNhan } from './entities/tiep-nhan.entity';
 import { LichSuGoiKham } from './entities/lich-su-goi-kham.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
-import { MaGeneratorService } from '../../common/utils/ma-generator.util';
+import { soTiepTheo, voiKhoaDb, maBenhNhanTiepTheo } from '../../common/utils/db-sequence.util';
 import {
   IsOptional, IsInt, IsPositive, IsString, IsDateString,
   IsNumber, Min, Max, IsEnum,
-  IsBoolean,
+  IsBoolean, IsIn,
 } from 'class-validator';
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
@@ -21,6 +21,52 @@ import * as https from 'https';
 import { uploadToCloudinary } from '../../common/utils/cloudinary-upload.util';
 import { Aes256Transformer } from '../../common/transformers/aes-256.transformer';
 
+// Đối tượng ưu tiên khám theo Luật Khám bệnh, chữa bệnh (cấp cứu luôn trước nhất)
+export const DOI_TUONG_UU_TIEN = ['cap_cuu', 'tre_em_duoi_6', 'nguoi_cao_tuoi', 'phu_nu_co_thai', 'khuyet_tat_nang', 'nguoi_co_cong'];
+// Gọi vắng mặt đến lần thứ này thì hủy lượt (tạm ứng đã đóng được hoàn)
+const SO_LAN_QUA_LUOT_TOI_DA = 3;
+// Đến muộn quá số phút này sau giờ hẹn thì mất ưu tiên lịch hẹn (xếp như khách thường theo giờ đến)
+const AN_HAN_PHUT = 15;
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const gioHienTai = (d = new Date()) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+
+/** Giờ hẹn hôm nay của lượt (null nếu không có lịch hẹn) */
+function gioHenHomNay(l: LuotTiepNhan): Date | null {
+  const gio = l.lichHen?.gioHen;
+  if (!gio) return null;
+  const [h, m] = gio.split(':').map(Number);
+  const hen = new Date();
+  hen.setHours(h, m, 0, 0);
+  return hen;
+}
+
+/** Có lịch hẹn và check-in không muộn quá thời gian ân hạn → được ưu tiên theo giờ hẹn */
+function denDungHen(l: LuotTiepNhan): boolean {
+  const hen = gioHenHomNay(l);
+  return !!hen && new Date(l.thoiGianDen).getTime() <= hen.getTime() + AN_HAN_PHUT * 60000;
+}
+
+/** Số phút bác sĩ chậm so với giờ hẹn (chỉ tính với bệnh nhân đến đúng hẹn; đến muộn thì 0) */
+function soPhutTreHen(l: LuotTiepNhan): number {
+  if (!denDungHen(l)) return 0;
+  return Math.max(0, Math.floor((Date.now() - gioHenHomNay(l)!.getTime()) / 60000));
+}
+
+/** Tách chuyên khoa ghép ("Nội tổng quát & Tim mạch") thành từng chuyên khoa thành phần */
+const tachChuyenKhoa = (ck?: string) =>
+  (ck || '').toLowerCase().split(/[&,;/]| và /).map((x) => x.trim()).filter(Boolean);
+
+/** Đối tượng ưu tiên: lễ tân chọn, hoặc hệ thống tự nhận theo tuổi (dưới 6 tuổi, từ 75 tuổi) */
+function doiTuongUuTien(l: LuotTiepNhan): string | null {
+  if (l.doiTuongUuTien) return l.doiTuongUuTien;
+  if (!l.benhNhan?.ngaySinh) return null;
+  const ns = new Date(l.benhNhan.ngaySinh);
+  const now = new Date();
+  const tuoi = now.getFullYear() - ns.getFullYear() - (now < new Date(now.getFullYear(), ns.getMonth(), ns.getDate()) ? 1 : 0);
+  return tuoi < 6 ? 'tre_em_duoi_6' : tuoi >= 75 ? 'nguoi_cao_tuoi' : null;
+}
+
 // DTO nội tuyến cho module này
 export class TaoTiepNhanDto {
   @ApiProperty() @IsInt() @IsPositive() benhNhanId: number;
@@ -29,6 +75,7 @@ export class TaoTiepNhanDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() bacSiId?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() ghiChu?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() lyDoKham?: string;
+  @ApiPropertyOptional({ enum: DOI_TUONG_UU_TIEN }) @IsOptional() @IsIn(DOI_TUONG_UU_TIEN) doiTuongUuTien?: string;
 }
 
 export class TiepNhanTaiQuayDto {
@@ -43,6 +90,7 @@ export class TiepNhanTaiQuayDto {
   @ApiPropertyOptional() @IsOptional() @IsString() loaiLuot?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() luotGocId?: number;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() choPhepTrung?: boolean;
+  @ApiPropertyOptional({ enum: DOI_TUONG_UU_TIEN }) @IsOptional() @IsIn(DOI_TUONG_UU_TIEN) doiTuongUuTien?: string;
 }
 
 export class GhiSinhHieuDto {
@@ -62,7 +110,7 @@ export class GhiSinhHieuDto {
 }
 
 export class DieuPhoiPhongDto {
-  @ApiProperty() @IsInt() @IsPositive() phongKhamId: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @IsPositive() phongKhamId?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() bacSiId?: number;
 }
 
@@ -85,62 +133,20 @@ const DA_DONG_TAM_UNG =
 export class TiepNhanService implements OnModuleInit {
   private latestCallEvent: any = null;
   private recentCalls: any[] = [];
-  private locks = new Map<string, Promise<any>>();
-  private lastSttSeq = 0;
-  private lastMaBnSeq = 0;
   private lastSyncAt = 0;
 
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) || Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const chain = prev.then(() => next);
-    this.locks.set(key, chain);
-
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === chain) {
-        this.locks.delete(key);
-      }
-    }
+  /** Số thứ tự trong ngày (reset mỗi ngày, A001…), dùng chung quầy và kiosk: A = lịch hẹn/quầy, B = kiosk đăng ký mới */
+  async generateNextSoThuTu(prefix: 'A' | 'B' = 'A'): Promise<string> {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+    const so = await soTiepTheo(this.luotRepo.manager, `stt_${today}`,
+      `SELECT COALESCE(MAX(CAST(SUBSTRING(ma_so_thu_tu, 2) AS UNSIGNED)), 0) AS maxNum FROM luot_tiep_nhan
+       WHERE ma_so_thu_tu REGEXP '^[AB][0-9]+$' AND DATE(thoi_gian_den) = ?`, [today]);
+    return `${prefix}${String(so).padStart(3, '0')}`;
   }
 
-  private async generateNextSoThuTu(): Promise<string> {
-    return this.withLock('seq:stt_tiep_nhan', async () => {
-      if (this.lastSttSeq === 0) {
-        const rows: any[] = await this.luotRepo.manager.query(
-          `SELECT MAX(CAST(SUBSTRING(ma_so_thu_tu, 5) AS UNSIGNED)) AS maxNum FROM luot_tiep_nhan WHERE ma_so_thu_tu LIKE 'STT-%'`,
-        );
-        const dbMax = Number(rows?.[0]?.maxNum || 0);
-        const totalCount = await this.luotRepo.count();
-        this.lastSttSeq = Math.max(dbMax, totalCount);
-      }
-      this.lastSttSeq += 1;
-      return MaGeneratorService.generateSoThuTu(this.lastSttSeq);
-    });
-  }
-
-  private async generateNextMaBenhNhan(): Promise<string> {
-    return this.withLock('seq:ma_benh_nhan_tn', async () => {
-      const year = new Date().getFullYear();
-      const prefix = `BN${year}`;
-      if (this.lastMaBnSeq === 0) {
-        const rows: any[] = await this.luotRepo.manager.query(
-          `SELECT MAX(CAST(SUBSTRING(ma_benh_nhan, 7) AS UNSIGNED)) AS maxNum FROM benh_nhan WHERE ma_benh_nhan LIKE ?`,
-          [`${prefix}%`],
-        );
-        const dbMax = Number(rows?.[0]?.maxNum || 0);
-        const totalCount = await this.benhNhanRepo.count();
-        this.lastMaBnSeq = Math.max(dbMax, totalCount);
-      }
-      this.lastMaBnSeq += 1;
-      return MaGeneratorService.generateMaBenhNhan(this.lastMaBnSeq);
-    });
+  private generateNextMaBenhNhan(): Promise<string> {
+    return maBenhNhanTiepTheo(this.luotRepo.manager);
   }
 
   constructor(
@@ -158,11 +164,11 @@ export class TiepNhanService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.syncLichHenDenGio().catch((err) =>
+    this.quetHangDoi().catch((err) =>
       console.error('[TiepNhanScheduler] Không đồng bộ được lịch hẹn:', err.message)
     );
     setInterval(() => {
-      this.syncLichHenDenGio().catch((err) =>
+      this.quetHangDoi().catch((err) =>
         console.error('[TiepNhanScheduler] Không đồng bộ được lịch hẹn:', err.message)
       );
     }, 30 * 1000);
@@ -170,7 +176,7 @@ export class TiepNhanService implements OnModuleInit {
 
   // ─── HÀNG ĐỢI PHÒNG KHÁM ─────────────────────────────────────
   async hangDoi(phongKhamId?: number, currentUser?: any) {
-    await this.syncLichHenDenGio();
+    await this.quetHangDoi();
     const qb = this.luotRepo.createQueryBuilder('ltn')
       .leftJoinAndSelect('ltn.benhNhan', 'bn')
       .leftJoinAndSelect('ltn.bacSi', 'bs')
@@ -191,19 +197,88 @@ export class TiepNhanService implements OnModuleInit {
       qb.andWhere(DA_DONG_TAM_UNG, { maTu: MA_TAM_UNG_QUAY });
     }
 
-    const items = this.sapXepChoKham(await qb.getMany());
+    const items = await Promise.all(this.sapXepChoKham(await qb.getMany()).map(async (l) => {
+      const treHenPhut = l.trangThai === TrangThaiTiepNhan.CHO_KHAM ? soPhutTreHen(l) : 0;
+      // Lễ tân: bác sĩ chậm quá 30 phút → gợi ý chuyển sang bác sĩ cùng chuyên khoa đang trực
+      const goiYChuyenBacSi = currentUser?.vai_tro !== 'bac_si' && treHenPhut >= 30 ? await this.goiYBacSiThayThe(l) : null;
+      return Object.assign(l, { uuTien: doiTuongUuTien(l), treHenPhut, goiYChuyenBacSi });
+    }));
     return { data: items, message: 'Lấy hàng đợi thành công' };
   }
 
-  /** Thứ tự chờ khám: lịch hẹn đã đến giờ lên trước (theo giờ hẹn), còn lại theo giờ đến */
+  /**
+   * Thứ tự chờ khám: cấp cứu → đối tượng ưu tiên theo luật → lịch hẹn đã đến giờ và đến đúng hẹn (theo giờ hẹn)
+   * → còn lại theo giờ đến. Người đã qua lượt (gọi vắng mặt) xếp theo thời điểm qua lượt (trừ cấp cứu).
+   */
   private sapXepChoKham<T extends LuotTiepNhan>(items: T[]): T[] {
-    const now = new Date();
-    const gioHienTai = [now.getHours(), now.getMinutes(), now.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
+    const bayGio = gioHienTai();
     const key = (l: LuotTiepNhan) => {
+      const uuTien = doiTuongUuTien(l);
+      if (uuTien === 'cap_cuu') return `0|${new Date(l.thoiGianDen).toISOString()}`;
+      // Cùng thời điểm (DATETIME chỉ tới giây) thì người qua lượt xếp sau người mới đến (hậu tố |1)
+      if (l.quaLuotLuc) return `3|${new Date(l.quaLuotLuc).toISOString()}|1`;
+      const gioDen = new Date(l.thoiGianDen).toISOString();
+      if (uuTien) return `1|${gioDen}`;
       const gio = l.lichHen?.gioHen;
-      return gio && gio <= gioHienTai ? `0|${gio}` : `1|${new Date(l.thoiGianDen).toISOString()}`;
+      return gio && gio <= bayGio && denDungHen(l) ? `2|${gio}` : `3|${gioDen}|0`;
     };
     return [...items].sort((a, b) => key(a).localeCompare(key(b)) || a.id - b.id);
+  }
+
+  /**
+   * Bác sĩ cùng chuyên khoa đang trực, ít bệnh nhân chờ nhất (lễ tân chuyển khi bác sĩ hiện tại chậm quá lâu).
+   * Lượt có ghi chuyên khoa khám thì bác sĩ thay phải có chuyên khoa đó; không thì chỉ cần chung một chuyên khoa thành phần.
+   */
+  private async goiYBacSiThayThe(luot: LuotTiepNhan) {
+    const canCo = tachChuyenKhoa(luot.chuyenKhoa);
+    const cuaBsHienTai = tachChuyenKhoa(luot.bacSi?.chuyenKhoa);
+    if (!canCo.length && !cuaBsHienTai.length) return null;
+    const cungKhoa = (await this.bacSiRepo.find({ relations: ['nhanVien'] })).filter((d) => {
+      if (d.id === luot.bacSiId) return false;
+      const ck = tachChuyenKhoa(d.chuyenKhoa);
+      return canCo.length ? canCo.every((x) => ck.includes(x)) : ck.some((x) => cuaBsHienTai.includes(x));
+    });
+    const dangTruc = await this.locBacSiDangTruc(cungKhoa);
+    const chon = dangTruc.length ? await this.chonBacSiItTaiNhat(dangTruc) : null;
+    return chon ? { bacSiId: chon.doctor.id, hoTen: chon.doctor.nhanVien?.hoTen, soNguoiCho: chon.total } : null;
+  }
+
+  /** Bác sĩ có ca trực đang diễn ra */
+  private async locBacSiDangTruc(doctors: BacSi[]) {
+    if (!doctors.length) return [];
+    const now = new Date();
+    const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+    const bayGio = gioHienTai(now);
+    const shifts = await this.lichLamViecRepo.find({ where: { ngayLam: today }, relations: ['caLamViec'] });
+    return doctors.filter((doctor) => shifts.some((shift) =>
+      shift.nhanVienId === doctor.nhanVienId &&
+      shift.caLamViec.gioBatDau <= bayGio &&
+      shift.caLamViec.gioKetThuc > bayGio
+    ));
+  }
+
+  /** Khóa theo lịch hẹn (MySQL GET_LOCK, dùng được khi chạy nhiều instance): quầy và kiosk không tạo trùng lượt */
+  voiKhoaLichHen<T>(lichHenId: number, fn: () => Promise<T>): Promise<T> {
+    return voiKhoaDb(this.luotRepo.manager.connection, `luot_lich_hen:${lichHenId}`, fn);
+  }
+
+  /** Nhịp khám hôm nay của bác sĩ: trung bình khoảng cách giữa các lần gọi bệnh nhân mới (phút) */
+  private async nhipKham(bacSiId?: number) {
+    const MAC_DINH = 6;
+    if (!bacSiId) return { phutMoiLuot: MAC_DINH, phutTuLanGoiCuoi: null as number | null };
+    const rows: any[] = await this.luotRepo.manager.query(
+      `SELECT g.thoi_gian_goi AS t FROM lich_su_goi_kham g JOIN luot_tiep_nhan l ON l.id = g.luot_tiep_nhan_id
+       WHERE l.bac_si_id = ? AND g.loai_goi = 'goi_lan_dau' AND DATE(g.thoi_gian_goi) = CURDATE()
+       ORDER BY g.thoi_gian_goi DESC LIMIT 7`,
+      [bacSiId],
+    );
+    const ts = rows.map((r) => new Date(r.t).getTime());
+    // Bỏ các khoảng nghỉ dài (> 45 phút) để không làm sai nhịp khám
+    const gaps = ts.slice(1).map((t, i) => (ts[i] - t) / 60000).filter((g) => g > 0 && g <= 45);
+    const phutMoiLuot = gaps.length
+      ? Math.min(30, Math.max(3, Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length)))
+      : MAC_DINH;
+    return { phutMoiLuot, phutTuLanGoiCuoi: ts.length ? (Date.now() - ts[0]) / 60000 : null };
   }
 
   /** Bệnh nhân chờ khám hôm nay đã đóng tạm ứng (bác sĩ thấy được), theo thứ tự ưu tiên */
@@ -227,7 +302,7 @@ export class TiepNhanService implements OnModuleInit {
 
   // ─── THÔNG TIN PHIẾU KHÁM & TIẾN TRÌNH CHO BỆNH NHÂN ────────────
   async getPhieuKhamBenhNhan(currentUser: any) {
-    await this.syncLichHenDenGio();
+    await this.quetHangDoi();
 
     let benhNhan = null;
     const userId = currentUser?.id || currentUser?.userId;
@@ -250,6 +325,7 @@ export class TiepNhanService implements OnModuleInit {
       .leftJoinAndSelect('ltn.benhNhan', 'bn')
       .leftJoinAndSelect('ltn.bacSi', 'bs')
       .leftJoinAndSelect('bs.nhanVien', 'nv')
+      .leftJoinAndSelect('ltn.lichHen', 'lh')
       .where('ltn.benhNhanId = :bnId', { bnId: benhNhan.id })
       .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
       .andWhere('ltn.trangThai != :daHuy', { daHuy: TrangThaiTiepNhan.DA_HUY })
@@ -412,7 +488,16 @@ export class TiepNhanService implements OnModuleInit {
 
     const soDangGoi = currentServing?.maSoThuTu || (choKhamTrongPhong[0]?.maSoThuTu || '-');
     const soNguoiPhiaTruoc = (isDangKham || isCompleted || isDangCls || isDaCoKqCls) ? 0 : waitingBeforeMe.length;
-    const uocTinhPhut = isCompleted ? 0 : Math.max(2, soNguoiPhiaTruoc * 6);
+    const nhip = await this.nhipKham(luot.bacSiId);
+    const conLaiCaHienTai = currentServing && nhip.phutTuLanGoiCuoi !== null ? Math.max(0, nhip.phutMoiLuot - nhip.phutTuLanGoiCuoi) : 0;
+    const uocTinhPhut = (isDangKham || isCompleted || isDangCls || isDaCoKqCls)
+      ? 0
+      : Math.max(2, Math.round(conLaiCaHienTai + soNguoiPhiaTruoc * nhip.phutMoiLuot));
+    // Đã đóng đủ, quá giờ hẹn vì bác sĩ khám ca trước chậm → báo để bệnh nhân yên tâm chờ
+    const treHenPhut = luot.trangThai === TrangThaiTiepNhan.CHO_KHAM && tamUng?.trangThai !== 'cho_thanh_toan' ? soPhutTreHen(luot) : 0;
+    const thongBaoTre = treHenPhut >= 5
+      ? `Bác sĩ đang khám chậm khoảng ${treHenPhut} phút so với giờ hẹn của bạn. Bạn được ưu tiên vào khám ngay khi bác sĩ xong ca hiện tại. Mong bạn thông cảm.`
+      : null;
 
     const tenPhongKham = phongKhamId === 101 ? 'Phòng 101 - Khám Nội Tổng Quát' : `Phòng ${phongKhamId} - Khám Chuyên Khoa`;
     const tenBacSi = luot.bacSi?.nhanVien?.hoTen || 'BS. CKI Trần Văn Nam';
@@ -469,6 +554,8 @@ export class TiepNhanService implements OnModuleInit {
           soDangGoi,
           soNguoiPhiaTruoc,
           uocTinhPhut,
+          treHenPhut,
+          thongBaoTre,
           phongKham: tenPhongKham,
         },
         progress: [
@@ -527,69 +614,105 @@ export class TiepNhanService implements OnModuleInit {
     };
   }
 
-  private async syncLichHenDenGio() {
+  private async quetHangDoi() {
     const nowMs = Date.now();
-    // Throttle 5 giây & khóa Mutex để chống tạo trùng phiếu khám khi hàng chục màn hình TV/Bác sĩ gọi cùng lúc
+    // Throttle 5 giây: hàng chục màn hình TV/bác sĩ gọi cùng lúc chỉ quét 1 lần
     if (nowMs - this.lastSyncAt < 5000) return;
 
-    return this.withLock('sync:lich_hen_den_gio', async () => {
+    // Chạy nhiều instance: instance khác đang quét thì bỏ qua lần này
+    return voiKhoaDb(this.luotRepo.manager.connection, 'quet:hang_doi', async () => {
       if (Date.now() - this.lastSyncAt < 5000) return;
       this.lastSyncAt = Date.now();
 
       const now = new Date();
-      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
-      const appointments = await this.lichHenRepo.find({
-        where: {
-          ngayHen: today,
-          trangThai: TrangThaiLichHen.DA_XAC_NHAN,
-          hinhThuc: 'truc_tiep',
-        },
-      });
+      const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+      const hanChot = gioHienTai(new Date(now.getTime() - 15 * 60 * 1000));
+      await this.baoBacSiCham(today, hanChot).catch((e) => console.warn('[TiepNhan] Lỗi báo bác sĩ chậm:', e?.message));
+      await this.donLuotNgayCu(today).catch((e) => console.warn('[TiepNhan] Lỗi dọn lượt ngày cũ:', e?.message));
+    }, 0);
+  }
 
-      for (const appointment of appointments) {
-        if (appointment.hinhThuc === 'truc_tuyen') continue;
-        if (appointment.gioHen > currentTime) continue;
-        const existing = await this.luotRepo.findOne({ where: { lichHenId: appointment.id } });
-        if (existing) continue;
-        const maSoThuTu = await this.generateNextSoThuTu();
-        const luot = this.luotRepo.create({
-          benhNhanId: appointment.benhNhanId,
-          lichHenId: appointment.id,
-          phongKhamId: appointment.phongKhamId,
-          bacSiId: appointment.bacSiId,
-          maSoThuTu,
-          thoiGianDen: new Date(),
-          trangThai: TrangThaiTiepNhan.CHO_KHAM,
-          ghiChu: 'Tự động đưa vào hàng đợi khi đến giờ hẹn',
-        });
-        await this.luotRepo.save(luot);
-        await this.thanhToanService.taoPhieuTamUngTaiQuay(luot);
-      }
+  /** Lượt chờ khám của ngày trước còn sót (bệnh nhân bỏ về): hủy, tạm ứng đã đóng thì báo thu ngân hoàn */
+  private async donLuotNgayCu(today: string) {
+    const conSot = await this.luotRepo.createQueryBuilder('ltn')
+      .where('ltn.trangThai = :cho', { cho: TrangThaiTiepNhan.CHO_KHAM })
+      .andWhere('DATE(ltn.thoiGianDen) < :today', { today })
+      .getMany();
+    for (const l of conSot) await this.huyLuotVangMat(l, 'hết ngày khám, bệnh nhân không quay lại');
+  }
 
-      // Quá giờ hẹn 15 phút chưa đóng tạm ứng tại quầy → hủy ca, nhường lượt cho bệnh nhân khác (cọc không hoàn như no-show)
-      const han = new Date(now.getTime() - 15 * 60 * 1000);
-      const hanChot = [han.getHours(), han.getMinutes(), han.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
-      const quaHan = await this.luotRepo.createQueryBuilder('ltn')
-        .innerJoinAndSelect('ltn.lichHen', 'lh')
-        .where('ltn.trangThai = :cho', { cho: TrangThaiTiepNhan.CHO_KHAM })
-        .andWhere('lh.ngayHen = :today', { today })
-        .andWhere('lh.gioHen <= :hanChot', { hanChot })
-        .andWhere(`NOT (${DA_DONG_TAM_UNG})`, { maTu: MA_TAM_UNG_QUAY })
-        .getMany();
-      const lyDo = '[Tự động hủy: quá giờ hẹn 15 phút chưa đóng phí khám]';
-      for (const luot of quaHan) {
-        await this.luotRepo.update(luot.id, { trangThai: TrangThaiTiepNhan.DA_HUY });
-        await this.lichHenRepo.update(luot.lichHenId, {
-          trangThai: TrangThaiLichHen.DA_HUY,
-          ghiChu: `${luot.lichHen.ghiChu || ''} ${lyDo}`.trim(),
-        });
-        await this.luotRepo.manager.query(
-          `UPDATE hoa_don SET trang_thai = 'huy', ghi_chu = CONCAT(COALESCE(ghi_chu, ''), ?) WHERE ma_hoa_don = ? AND trang_thai = 'cho_thanh_toan'`,
-          [` ${lyDo}`, `${MA_TAM_UNG_QUAY}${luot.id}`],
-        );
-      }
+  /** Hủy lượt vì bệnh nhân vắng mặt: lịch hẹn → vắng mặt; tạm ứng chưa thu → hủy, đã thu → chờ thu ngân hoàn */
+  private async huyLuotVangMat(luot: LuotTiepNhan, lyDo: string) {
+    await this.luotRepo.update(luot.id, {
+      trangThai: TrangThaiTiepNhan.DA_HUY,
+      ghiChu: `${luot.ghiChu || ''} [Vắng mặt: ${lyDo}]`.trim(),
     });
+    if (luot.lichHenId) await this.lichHenRepo.update(luot.lichHenId, { trangThai: TrangThaiLichHen.VANG_MAT });
+    await this.thanhToanService.xuLyTamUngKhiHuyLuot(luot, `Vắng mặt: ${lyDo}`);
+  }
+
+  /**
+   * Bệnh nhân lịch hẹn đã đóng đủ nhưng chờ quá giờ hẹn 15 phút (bác sĩ khám ca trước quá giờ):
+   * báo lễ tân xin lỗi + báo bệnh nhân thời gian chậm; quá 30 phút gợi ý chuyển bác sĩ cùng chuyên khoa. Mỗi mốc báo 1 lần.
+   */
+  private async baoBacSiCham(today: string, hanChot: string) {
+    const dangCho = await this.luotRepo.createQueryBuilder('ltn')
+      .innerJoinAndSelect('ltn.lichHen', 'lh')
+      .leftJoinAndSelect('ltn.benhNhan', 'bn')
+      .leftJoinAndSelect('ltn.bacSi', 'bs')
+      .leftJoinAndSelect('bs.nhanVien', 'nv')
+      .where('ltn.trangThai = :cho', { cho: TrangThaiTiepNhan.CHO_KHAM })
+      .andWhere('lh.ngayHen = :today', { today })
+      .andWhere('lh.gioHen <= :hanChot', { hanChot })
+      .andWhere(DA_DONG_TAM_UNG, { maTu: MA_TAM_UNG_QUAY })
+      .getMany()
+      .then((ds) => ds.filter(denDungHen)); // đến muộn thì không phải lỗi bác sĩ chậm
+    if (!dangCho.length) return;
+
+    const daBao: any[] = await this.luotRepo.manager.query(
+      `SELECT DISTINCT doi_tuong_id AS id, loai FROM thong_bao
+       WHERE doi_tuong_bang = 'luot_tiep_nhan' AND loai IN ('tre_hen_15', 'tre_hen_30') AND doi_tuong_id IN (?)`,
+      [dangCho.map((l) => l.id)],
+    );
+    const coRoi = new Set(daBao.map((r) => `${r.id}:${r.loai}`));
+
+    for (const l of dangCho) {
+      const tre = soPhutTreHen(l);
+      const hoTen = l.benhNhan?.hoTen || 'Bệnh nhân';
+      const tenBs = l.bacSi?.nhanVien?.hoTen || 'bác sĩ phụ trách';
+      const gio = l.lichHen.gioHen.slice(0, 5);
+      const doiTuong = { doiTuongBang: 'luot_tiep_nhan', doiTuongId: l.id };
+
+      if (!coRoi.has(`${l.id}:tre_hen_15`)) {
+        await this.thongBaoService.taoThongBaoTheoRole('tiep_tan', {
+          tieuDe: `Bác sĩ chậm giờ hẹn: ${hoTen} (${l.maSoThuTu})`,
+          noiDung: `${hoTen} hẹn ${gio} với BS. ${tenBs} đã chờ ${tre} phút. Vui lòng xin lỗi và báo thời gian chờ dự kiến cho bệnh nhân.`,
+          loai: 'tre_hen_15',
+          ...doiTuong,
+        });
+        if (l.benhNhan?.nguoiDungId) {
+          await this.thongBaoService.taoThongBao({
+            nguoiNhanId: l.benhNhan.nguoiDungId,
+            tieuDe: 'Bác sĩ đang khám chậm so với giờ hẹn',
+            noiDung: `BS. ${tenBs} đang khám chậm khoảng ${tre} phút so với giờ hẹn ${gio} của bạn. Bạn được ưu tiên vào khám ngay khi bác sĩ xong ca hiện tại. Mong bạn thông cảm.`,
+            loai: 'tre_hen_15',
+            ...doiTuong,
+          });
+        }
+      }
+
+      if (tre >= 30 && !coRoi.has(`${l.id}:tre_hen_30`)) {
+        const goiY = await this.goiYBacSiThayThe(l);
+        await this.thongBaoService.taoThongBaoTheoRole('tiep_tan', {
+          tieuDe: `Chậm quá 30 phút: ${hoTen} (${l.maSoThuTu})`,
+          noiDung: `${hoTen} hẹn ${gio} với BS. ${tenBs} đã chờ ${tre} phút. ${goiY
+            ? `Có thể đề nghị bệnh nhân chuyển sang BS. ${goiY.hoTen} (đang có ${goiY.soNguoiCho} lượt) tại màn hình Hàng đợi.`
+            : 'Hiện không có bác sĩ cùng chuyên khoa khác đang trực.'}`,
+          loai: 'tre_hen_30',
+          ...doiTuong,
+        });
+      }
+    }
   }
 
   // ─── TẠO LƯỢT TIẾP NHẬN ──────────────────────────────────────
@@ -607,7 +730,6 @@ export class TiepNhanService implements OnModuleInit {
 
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
 
     let selectedDoctor = dto.bacSiId
       ? allDoctors.find((doctor) => doctor.id === dto.bacSiId)
@@ -617,17 +739,8 @@ export class TiepNhanService implements OnModuleInit {
       if (!doctors.length) {
         throw new BadRequestException({ code: 'KHONG_CO_BAC_SI', message: `Hiện chưa có bác sĩ thuộc chuyên khoa ${dto.chuyenKhoa}.` });
       }
-      const shifts = await this.lichLamViecRepo.find({
-        where: { ngayLam: today },
-        relations: ['caLamViec'],
-      });
-      const onDuty = doctors.filter((doctor) => shifts.some((shift) =>
-        shift.nhanVienId === doctor.nhanVienId &&
-        shift.caLamViec.gioBatDau <= currentTime &&
-        shift.caLamViec.gioKetThuc > currentTime
-      ));
-      const candidates = onDuty.length ? onDuty : doctors;
-      selectedDoctor = await this.chonBacSiItTaiNhat(candidates);
+      const onDuty = await this.locBacSiDangTruc(doctors);
+      selectedDoctor = (await this.chonBacSiItTaiNhat(onDuty.length ? onDuty : doctors))?.doctor;
     }
 
     if (!selectedDoctor) {
@@ -639,7 +752,7 @@ export class TiepNhanService implements OnModuleInit {
       patient = await this.benhNhanRepo.findOne({ where: { id: dto.benhNhanId } });
     }
     if (!patient && dto.soDienThoai) {
-      patient = await this.withLock(`bn_phone:${dto.soDienThoai.trim()}`, async () => {
+      patient = await voiKhoaDb(this.luotRepo.manager.connection, `bn_phone:${dto.soDienThoai.trim()}`, async () => {
         const found = await this.benhNhanRepo.findOne({ where: { soDienThoai: dto.soDienThoai.trim() } });
         if (found) return found;
         const maBn = await this.generateNextMaBenhNhan();
@@ -713,6 +826,7 @@ export class TiepNhanService implements OnModuleInit {
         loaiLuot: isSupplementaryVisit ? 'luot_bo_sung' : 'luot_chinh',
         lyDoTaoLuot: duplicateReason || null,
         luotGocId: dto.luotGocId || existing?.id || null,
+        doiTuongUuTien: dto.doiTuongUuTien || null,
         maSoThuTu,
         thoiGianDen: new Date(),
         trangThai: TrangThaiTiepNhan.CHO_KHAM,
@@ -725,12 +839,14 @@ export class TiepNhanService implements OnModuleInit {
       relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
     });
 
-    // Bệnh nhân đến quầy phải đóng tạm ứng; bác sĩ được báo khi thu ngân thu xong (ThanhToanService.thuTamUng)
-    await this.thanhToanService.taoPhieuTamUngTaiQuay(saved, withRelations?.benhNhan?.hoTen);
+    // Bệnh nhân đến quầy phải đóng tạm ứng (trừ cấp cứu); bác sĩ được báo khi thu ngân thu xong
+    const phieuTu = await this.thanhToanService.taoPhieuTamUngTaiQuay(saved, withRelations?.benhNhan?.hoTen);
 
     return {
       data: withRelations,
-      message: `Đã tiếp nhận trực tiếp. ${withRelations?.maSoThuTu} — ${withRelations?.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách'}. Mời bệnh nhân sang quầy thu ngân đóng tạm ứng.`,
+      message: `Đã tiếp nhận trực tiếp. ${withRelations?.maSoThuTu} — ${withRelations?.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách'}.${phieuTu
+        ? ' Mời bệnh nhân sang quầy thu ngân đóng tạm ứng.'
+        : ' Bệnh nhân cấp cứu được vào khám ngay, thanh toán sau.'}`,
     };
   }
 
@@ -750,10 +866,52 @@ export class TiepNhanService implements OnModuleInit {
       }),
     })));
     loads.sort((a, b) => a.total - b.total || a.doctor.id - b.doctor.id);
-    return loads[0]?.doctor;
+    return loads[0];
   }
 
   async create(dto: TaoTiepNhanDto, tiepTanId: number) {
+    if (!dto.lichHenId) return this.taoLuot(dto, tiepTanId);
+    return this.voiKhoaLichHen(dto.lichHenId, () => this.checkInLichHenTaiQuay(dto, tiepTanId));
+  }
+
+  /** Lễ tân check-in bệnh nhân có lịch hẹn: kiểm tra lịch hẹn hợp lệ, dùng lại lượt đã có (tự tạo lúc đến giờ / kiosk) */
+  private async checkInLichHenTaiQuay(dto: TaoTiepNhanDto, tiepTanId: number) {
+    const existing = await this.luotRepo.findOne({
+      where: { lichHenId: dto.lichHenId },
+      relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
+    });
+    if (existing && existing.trangThai !== TrangThaiTiepNhan.DA_HUY) {
+      return { data: existing, message: `Lịch hẹn đã được tiếp nhận trước đó. Số thứ tự: ${existing.maSoThuTu}.` };
+    }
+
+    const lh = await this.lichHenRepo.findOne({ where: { id: dto.lichHenId } });
+    if (!lh) throw new NotFoundException({ code: 'LICH_HEN_KHONG_TON_TAI', message: 'Không tìm thấy lịch hẹn.' });
+    if (lh.hinhThuc === 'truc_tuyen') {
+      throw new BadRequestException({ code: 'LICH_HEN_TRUC_TUYEN', message: `Lịch hẹn ${lh.maLichHen} là tư vấn trực tuyến, không check-in tại quầy.` });
+    }
+    if (lh.trangThai !== TrangThaiLichHen.DA_XAC_NHAN) {
+      throw new BadRequestException({
+        code: 'LICH_HEN_KHONG_HOP_LE',
+        message: lh.trangThai === TrangThaiLichHen.CHO_THANH_TOAN
+          ? `Lịch hẹn ${lh.maLichHen} chưa thanh toán tiền cọc.`
+          : `Lịch hẹn ${lh.maLichHen} đang ở trạng thái "${lh.trangThai}", không thể check-in.`,
+      });
+    }
+    const now = new Date();
+    const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+    if (String(lh.ngayHen).slice(0, 10) !== today) {
+      throw new BadRequestException({ code: 'LICH_HEN_KHONG_PHAI_HOM_NAY', message: `Lịch hẹn ${lh.maLichHen} hẹn ngày ${String(lh.ngayHen).slice(0, 10)}, chỉ check-in đúng ngày hẹn.` });
+    }
+
+    return this.taoLuot({
+      ...dto,
+      benhNhanId: lh.benhNhanId,
+      bacSiId: dto.bacSiId ?? lh.bacSiId,
+      phongKhamId: dto.phongKhamId ?? lh.phongKhamId,
+    }, tiepTanId);
+  }
+
+  private async taoLuot(dto: TaoTiepNhanDto, tiepTanId: number) {
     const maSoThuTu = await this.generateNextSoThuTu();
 
     const luot = this.luotRepo.create({
@@ -828,7 +986,7 @@ export class TiepNhanService implements OnModuleInit {
     const luot = await this.luotRepo.findOne({ where: { id: luotId } });
     if (!luot) throw new NotFoundException({ code: 'LUOT_KHONG_TON_TAI', message: 'Không tìm thấy lượt tiếp nhận' });
 
-    Object.assign(luot, { phongKhamId: dto.phongKhamId, bacSiId: dto.bacSiId });
+    Object.assign(luot, { phongKhamId: dto.phongKhamId ?? luot.phongKhamId, bacSiId: dto.bacSiId });
     const saved = await this.luotRepo.save(luot);
 
     try {
@@ -1026,6 +1184,51 @@ export class TiepNhanService implements OnModuleInit {
     return callEvent;
   }
 
+  /** Đổi đối tượng ưu tiên sau khi tiếp nhận (vd. bệnh nhân trở nặng khi đang chờ → cấp cứu) */
+  async capNhatUuTien(luotId: number, doiTuongUuTien: string | null) {
+    const luot = await this.luotRepo.findOne({ where: { id: luotId } });
+    if (!luot) throw new NotFoundException({ code: 'KHONG_TIM_THAY', message: 'Không tìm thấy lượt tiếp nhận' });
+    if (doiTuongUuTien && !DOI_TUONG_UU_TIEN.includes(doiTuongUuTien)) {
+      throw new BadRequestException({ code: 'UU_TIEN_KHONG_HOP_LE', message: 'Đối tượng ưu tiên không hợp lệ' });
+    }
+    if (![TrangThaiTiepNhan.CHO_KHAM, TrangThaiTiepNhan.DANG_KHAM].includes(luot.trangThai)) {
+      throw new BadRequestException({ code: 'LUOT_DA_KET_THUC', message: 'Lượt khám đã kết thúc, không đổi ưu tiên được.' });
+    }
+    await this.luotRepo.update(luotId, { doiTuongUuTien: doiTuongUuTien || null });
+    if (doiTuongUuTien === 'cap_cuu' && luot.doiTuongUuTien !== 'cap_cuu') await this.thanhToanService.chuyenCapCuu(luotId);
+    this.queueGateway.emitQueueUpdate();
+    return {
+      data: { id: luotId, doiTuongUuTien: doiTuongUuTien || null },
+      message: doiTuongUuTien ? `Đã đặt ${luot.maSoThuTu} là đối tượng ưu tiên.` : `Đã bỏ ưu tiên của ${luot.maSoThuTu}.`,
+    };
+  }
+
+  /** Gọi mà bệnh nhân không có mặt: trả về hàng chờ, xếp cuối hàng tính từ lúc này; quay lại thì gọi lại bình thường */
+  async quaLuot(luotId: number) {
+    const luot = await this.luotRepo.findOne({ where: { id: luotId } });
+    if (!luot) throw new NotFoundException({ code: 'KHONG_TIM_THAY', message: 'Không tìm thấy lượt tiếp nhận' });
+    if (luot.trangThai !== TrangThaiTiepNhan.DANG_KHAM) {
+      throw new BadRequestException({ code: 'KHONG_THE_QUA_LUOT', message: 'Chỉ qua lượt khi bệnh nhân vừa được gọi vào khám mà không có mặt.' });
+    }
+    const soLan = (luot.soLanQuaLuot || 0) + 1;
+    await this.luotRepo.manager.query(
+      `UPDATE lich_su_goi_kham SET ket_qua = 'vang_mat' WHERE luot_tiep_nhan_id = ? ORDER BY id DESC LIMIT 1`,
+      [luotId],
+    );
+    if (this.latestCallEvent?.id === luotId) this.latestCallEvent = null;
+    let message: string;
+    if (soLan >= SO_LAN_QUA_LUOT_TOI_DA) {
+      await this.luotRepo.update(luotId, { soLanQuaLuot: soLan });
+      await this.huyLuotVangMat(luot, `gọi ${soLan} lần không có mặt`);
+      message = `${luot.maSoThuTu} vắng mặt ${soLan} lần: đã hủy lượt khám. Tạm ứng đã đóng sẽ được thu ngân hoàn lại.`;
+    } else {
+      await this.luotRepo.update(luotId, { trangThai: TrangThaiTiepNhan.CHO_KHAM, quaLuotLuc: new Date(), soLanQuaLuot: soLan });
+      message = `${luot.maSoThuTu} vắng mặt, đã qua lượt (lần ${soLan}/${SO_LAN_QUA_LUOT_TOI_DA}). Bệnh nhân quay lại sẽ được gọi theo thứ tự mới.`;
+    }
+    this.queueGateway.emitQueueUpdate();
+    return { data: { id: luotId, soLanQuaLuot: soLan }, message };
+  }
+
   async goiSoLoa(luotId: number, nguoiThucHienId?: number) {
     const luot = await this.luotRepo.findOne({ where: { id: luotId } });
     if (!luot) throw new NotFoundException({ code: 'KHONG_TIM_THAY', message: 'Không tìm thấy lượt tiếp nhận' });
@@ -1067,7 +1270,7 @@ export class TiepNhanService implements OnModuleInit {
 
   // ─── DỮ LIỆU MÀN HÌNH TV SẢNH CHỜ TRUNG TÂM ───────────────────
   async getManHinhTVSanhCho() {
-    await this.syncLichHenDenGio();
+    await this.quetHangDoi();
 
     // 1. Lấy danh sách các phòng khám hoạt động
     const rooms: any[] = await this.luotRepo.manager.query(

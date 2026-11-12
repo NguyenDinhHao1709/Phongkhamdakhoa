@@ -8,7 +8,7 @@ import { NguoiDung, TrangThaiNguoiDung, LoaiTaiKhoan } from '../auth/entities/ng
 import { VaiTro } from '../auth/entities/vai-tro.entity';
 import { QuyenHan } from '../auth/entities/quyen-han.entity';
 import { VaiTroQuyenHan } from '../auth/entities/vai-tro-quyen-han.entity';
-import { MaGeneratorService } from '../../common/utils/ma-generator.util';
+import { maBenhNhanTiepTheo } from '../../common/utils/db-sequence.util';
 import { withColdStartRetry, isServiceWakingUp } from '../../common/utils/cold-start-retry.util';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { KyThuatVien } from '../nhan-vien/entities/ky-thuat-vien.entity';
@@ -451,9 +451,8 @@ export class QuanLyService implements OnModuleInit {
     });
     const savedUser = await this.nguoiDungRepo.save(newUser);
 
-    const bnCount = await this.benhNhanRepo.count();
     const newPatient = this.benhNhanRepo.create({
-      maBenhNhan: MaGeneratorService.generateMaBenhNhan(bnCount + 1),
+      maBenhNhan: await maBenhNhanTiepTheo(this.benhNhanRepo.manager),
       nguoiDungId: savedUser.id,
       hoTen: dto.hoTen,
       soDienThoai: dto.soDienThoai,
@@ -4475,6 +4474,10 @@ export class QuanLyService implements OnModuleInit {
     phanTramHoanCoc: number;
     choPhepDatTruocNgayMin: number;
     choPhepDatTruocNgayMax: number;
+    soLichHenToiDaMoiBuoi: number | null;
+    maCoSoKcb: string | null;
+    tyLeBhytTraiTuyen: number;
+    nguongBhytToanBo: number | null;
     apDungTuDong: boolean;
     moTa: string;
     ghiChuHoanCoc: string;
@@ -4507,6 +4510,13 @@ export class QuanLyService implements OnModuleInit {
       const val = Number(dto.choPhepDatTruocNgayMax);
       item.choPhepDatTruocNgayMax = Number.isNaN(val) ? 30 : Math.max(1, val);
     }
+    if (dto.soLichHenToiDaMoiBuoi !== undefined) {
+      const val = Number(dto.soLichHenToiDaMoiBuoi);
+      item.soLichHenToiDaMoiBuoi = dto.soLichHenToiDaMoiBuoi === null || !(val > 0) ? null : Math.floor(val);
+    }
+    if (dto.maCoSoKcb !== undefined) item.maCoSoKcb = dto.maCoSoKcb?.trim() || null;
+    if (dto.tyLeBhytTraiTuyen !== undefined) item.tyLeBhytTraiTuyen = Math.min(100, Math.max(0, Number(dto.tyLeBhytTraiTuyen) || 0));
+    if (dto.nguongBhytToanBo !== undefined) item.nguongBhytToanBo = Number(dto.nguongBhytToanBo) > 0 ? Math.floor(Number(dto.nguongBhytToanBo)) : null;
     if (dto.apDungTuDong !== undefined) item.apDungTuDong = Boolean(dto.apDungTuDong);
     if (dto.moTa !== undefined) item.moTa = dto.moTa?.trim() || null;
     if (dto.ghiChuHoanCoc !== undefined) item.ghiChuHoanCoc = dto.ghiChuHoanCoc?.trim() || null;

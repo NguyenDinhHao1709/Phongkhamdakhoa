@@ -31,6 +31,7 @@ import { apiGet, apiPost, apiPatch } from '../../../services/api';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { formatDate } from '../../../utils/formatDate';
+import { DOI_TUONG_UU_TIEN } from '../../../utils/constants';
 import DanhGiaCaKhamModal from '../../../components/Appointment/DanhGiaCaKhamModal';
 
 const CHUYEN_KHOA_LIST = [
@@ -100,6 +101,7 @@ export default function LichHenQuanLyPage() {
     bacSiId: '',
     lyDoKham: '',
     lyDoTaoLuot: '',
+    doiTuongUuTien: '',
   });
 
   // Debounce search
@@ -314,6 +316,20 @@ export default function LichHenQuanLyPage() {
     }
   };
 
+  // Bệnh nhân có lịch hẹn đến quầy: check-in vào hàng đợi (đóng nốt phí khám tại thu ngân rồi mới được gọi khám)
+  const handleCheckIn = async (lh) => {
+    setActionLoadingId(lh.id);
+    try {
+      const res = await apiPost('/tiep-nhan', { benhNhanId: lh.benhNhanId, lichHenId: lh.id });
+      alert(res?.message || 'Đã check-in bệnh nhân');
+      await fetchData();
+    } catch (err) {
+      alert(err?.error?.message || err?.message || 'Không check-in được lịch hẹn');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   const handleAutoAssign = async (id) => {
     setActionLoadingId(id);
     try {
@@ -346,6 +362,7 @@ export default function LichHenQuanLyPage() {
         chuyenKhoa: chosenSpecialty,
         ghiChu: formData.lyDoKham,
         lyDoTaoLuot: formData.lyDoTaoLuot || undefined,
+        doiTuongUuTien: formData.doiTuongUuTien || undefined,
       };
 
       let res;
@@ -378,6 +395,8 @@ export default function LichHenQuanLyPage() {
         chuyenKhoa: '',
         bacSiId: '',
         lyDoKham: '',
+        lyDoTaoLuot: '',
+        doiTuongUuTien: '',
       });
       fetchData();
     } catch (err) {
@@ -1081,6 +1100,19 @@ export default function LichHenQuanLyPage() {
                               </button>
                             )}
 
+                          {/* Check-in tại quầy (lịch khám trực tiếp đã xác nhận, đúng ngày hẹn) */}
+                          {isToday && lh.trangThai === 'da_xac_nhan' && lh.hinhThuc !== 'truc_tuyen' && (
+                            <button
+                              onClick={() => handleCheckIn(lh)}
+                              disabled={actionLoadingId === lh.id}
+                              title="Bệnh nhân đã đến quầy: check-in vào hàng đợi khám"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-xs transition-all active:scale-95"
+                            >
+                              <Check className="h-3 w-3" />
+                              <span>Check-in</span>
+                            </button>
+                          )}
+
                           {/* Hủy Lịch */}
                           {lh.trangThai !== 'da_huy' && lh.trangThai !== 'hoan_thanh' && (
                             <button
@@ -1493,6 +1525,19 @@ export default function LichHenQuanLyPage() {
                   placeholder="Triệu chứng ban đầu..."
                   className="w-full p-2.5 text-xs sm:text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary-500 text-gray-800"
                 />
+              </div>
+              <div>
+                <label className="block mb-1 font-semibold text-gray-700">Đối tượng ưu tiên khám</label>
+                <select
+                  value={formData.doiTuongUuTien}
+                  onChange={(e) => setFormData({ ...formData, doiTuongUuTien: e.target.value })}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800"
+                >
+                  <option value="">Không (trẻ dưới 6 tuổi, người từ 75 tuổi hệ thống tự nhận theo ngày sinh)</option>
+                  {Object.entries(DOI_TUONG_UU_TIEN).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block mb-1 font-semibold text-gray-700">Lý do tạo lượt bổ sung (nếu có)</label>

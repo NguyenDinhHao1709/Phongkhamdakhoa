@@ -72,6 +72,10 @@ export default function QuanLyBangGiaDichVuPage() {
     phanTramHoanCoc: 100,
     choPhepDatTruocNgayMin: 1,
     choPhepDatTruocNgayMax: 30,
+    soLichHenToiDaMoiBuoi: '',
+    maCoSoKcb: '',
+    tyLeBhytTraiTuyen: 0,
+    nguongBhytToanBo: '',
     apDungTuDong: true,
     moTa: '',
     ghiChuHoanCoc: '',
@@ -256,6 +260,10 @@ export default function QuanLyBangGiaDichVuPage() {
       phanTramHoanCoc: coc.phanTramHoanCoc || 100,
       choPhepDatTruocNgayMin: coc.choPhepDatTruocNgayMin !== undefined && coc.choPhepDatTruocNgayMin !== null ? Number(coc.choPhepDatTruocNgayMin) : 0,
       choPhepDatTruocNgayMax: coc.choPhepDatTruocNgayMax !== undefined && coc.choPhepDatTruocNgayMax !== null ? Number(coc.choPhepDatTruocNgayMax) : 30,
+      soLichHenToiDaMoiBuoi: coc.soLichHenToiDaMoiBuoi ?? '',
+      maCoSoKcb: coc.maCoSoKcb || '',
+      tyLeBhytTraiTuyen: coc.tyLeBhytTraiTuyen ?? 0,
+      nguongBhytToanBo: coc.nguongBhytToanBo ?? '',
       apDungTuDong: coc.apDungTuDong !== undefined ? coc.apDungTuDong : true,
       moTa: coc.moTa || '',
       ghiChuHoanCoc: coc.ghiChuHoanCoc || '',
@@ -278,6 +286,10 @@ export default function QuanLyBangGiaDichVuPage() {
         phanTramHoanCoc: Number(cocFormData.phanTramHoanCoc),
         choPhepDatTruocNgayMin: cocFormData.choPhepDatTruocNgayMin !== '' && !isNaN(cocFormData.choPhepDatTruocNgayMin) ? Math.max(0, Number(cocFormData.choPhepDatTruocNgayMin)) : 0,
         choPhepDatTruocNgayMax: cocFormData.choPhepDatTruocNgayMax !== '' && !isNaN(cocFormData.choPhepDatTruocNgayMax) ? Math.max(1, Number(cocFormData.choPhepDatTruocNgayMax)) : 30,
+        soLichHenToiDaMoiBuoi: Number(cocFormData.soLichHenToiDaMoiBuoi) > 0 ? Number(cocFormData.soLichHenToiDaMoiBuoi) : null,
+        maCoSoKcb: cocFormData.maCoSoKcb?.trim() || null,
+        tyLeBhytTraiTuyen: Number(cocFormData.tyLeBhytTraiTuyen) || 0,
+        nguongBhytToanBo: Number(cocFormData.nguongBhytToanBo) > 0 ? Number(cocFormData.nguongBhytToanBo) : null,
         apDungTuDong: cocFormData.apDungTuDong,
         moTa: cocFormData.moTa,
         ghiChuHoanCoc: cocFormData.ghiChuHoanCoc,
@@ -733,6 +745,22 @@ export default function QuanLyBangGiaDichVuPage() {
                         {coc.choPhepDatTruocNgayMin === 0 ? `Từ hôm nay (0) đến ${coc.choPhepDatTruocNgayMax} ngày` : `Từ ${coc.choPhepDatTruocNgayMin} đến ${coc.choPhepDatTruocNgayMax} ngày`}
                       </span>
                     </div>
+                    {coc.loaiHinhThuc === 'truc_tiep' && (
+                      <div className="flex items-center justify-between py-1 border-b border-slate-100">
+                        <span className="text-slate-500">Lịch hẹn tối đa / bác sĩ / buổi:</span>
+                        <span className="font-bold text-slate-800">
+                          {coc.soLichHenToiDaMoiBuoi ? `${coc.soLichHenToiDaMoiBuoi} lịch (còn lại chừa bù giờ)` : 'Không giới hạn'}
+                        </span>
+                      </div>
+                    )}
+                    {coc.loaiHinhThuc === 'truc_tiep' && (
+                      <div className="flex items-center justify-between py-1 border-b border-slate-100">
+                        <span className="text-slate-500">BHYT (mã cơ sở / trái tuyến):</span>
+                        <span className="font-bold text-slate-800">
+                          {coc.maCoSoKcb ? `${coc.maCoSoKcb} / hưởng ${coc.tyLeBhytTraiTuyen || 0}%` : 'Không kiểm tra tuyến'}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Policy Notes */}
@@ -944,6 +972,64 @@ export default function QuanLyBangGiaDichVuPage() {
                   />
                 </div>
               </div>
+
+              {editingCoc?.loaiHinhThuc === 'truc_tiep' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Số lịch hẹn tối đa của 1 bác sĩ mỗi buổi (bỏ trống = không giới hạn)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="4"
+                    value={cocFormData.soLichHenToiDaMoiBuoi}
+                    onChange={(e) => setCocFormData({ ...cocFormData, soLichHenToiDaMoiBuoi: e.target.value })}
+                    className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-hidden focus:border-primary-500 font-bold"
+                  />
+                  <div className="grid grid-cols-2 gap-3 mt-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Mã cơ sở KCB BHYT của phòng khám</label>
+                      <input
+                        type="text"
+                        value={cocFormData.maCoSoKcb}
+                        onChange={(e) => setCocFormData({ ...cocFormData, maCoSoKcb: e.target.value.toUpperCase() })}
+                        placeholder="Bỏ trống = không kiểm tra tuyến"
+                        className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-hidden focus:border-primary-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">% hưởng BHYT khi trái tuyến</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={cocFormData.tyLeBhytTraiTuyen}
+                        onChange={(e) => setCocFormData({ ...cocFormData, tyLeBhytTraiTuyen: e.target.value })}
+                        className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-hidden focus:border-primary-500 font-bold"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Ngưỡng BHYT chi trả 100% (đ)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1000"
+                      value={cocFormData.nguongBhytToanBo}
+                      onChange={(e) => setCocFormData({ ...cocFormData, nguongBhytToanBo: e.target.value })}
+                      placeholder="Bỏ trống = không áp dụng (quy định: 15% lương cơ sở)"
+                      className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-hidden focus:border-primary-500 font-bold"
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Thẻ đăng ký KCB ban đầu ở nơi khác (không phải cấp cứu, không có giấy chuyển tuyến còn hiệu lực) là trái tuyến, BHYT chỉ chi trả theo % này nhân mức hưởng của thẻ.
+                    Khám đúng tuyến có tổng chi phí dưới ngưỡng thì BHYT chi trả 100%.
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Mỗi buổi có 4 khung giờ. Các khung còn lại không cho bệnh nhân tự đặt, chừa để bác sĩ bù giờ khi khám ca trước quá giờ (lễ tân vẫn xếp được khi cần).
+                  </p>
+                </div>
+              )}
 
               {/* Ghi chú chính sách hoàn cọc hiển thị cho bệnh nhân */}
               <div>

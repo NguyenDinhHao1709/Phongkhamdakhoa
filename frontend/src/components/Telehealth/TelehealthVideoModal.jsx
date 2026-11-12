@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { BACKEND_URL } from '../../utils/backendUrl';
 import api from '../../services/api';
+import useAuthStore from '../../store/authStore';
 import {
   Mic, MicOff, Video, VideoOff, PhoneOff, Maximize2,
   Minimize2, Volume2, VolumeX, ShieldCheck, MessageSquare,
@@ -356,18 +357,21 @@ export default function TelehealthVideoModal({
         };
 
         let socket;
+        // Token để máy chủ ghi nhận bác sĩ / bệnh nhân đã vào phòng (căn cứ hoàn phí khi ca không diễn ra)
+        const auth = { token: useAuthStore.getState().accessToken };
         try {
           if (import.meta.env.VITE_WS_URL) {
-            socket = io(import.meta.env.VITE_WS_URL, { transports: ['websocket', 'polling'] });
+            socket = io(import.meta.env.VITE_WS_URL, { transports: ['websocket', 'polling'], auth });
           } else {
             socket = io(BACKEND_URL || window.location.origin, {
               path: '/socket.io',
               transports: ['websocket', 'polling'],
+              auth,
             });
           }
         } catch (sockErr) {
           console.warn('[Socket] Lỗi tạo kết nối socket:', sockErr);
-          socket = io(BACKEND_URL || window.location.origin, { transports: ['websocket', 'polling'] });
+          socket = io(BACKEND_URL || window.location.origin, { transports: ['websocket', 'polling'], auth });
         }
         socketRef.current = socket;
 

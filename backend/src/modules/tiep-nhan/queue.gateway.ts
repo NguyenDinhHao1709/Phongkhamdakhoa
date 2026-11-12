@@ -6,6 +6,7 @@ import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { JwtService } from '@nestjs/jwt';
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
 
 @WebSocketGateway({
@@ -173,6 +174,8 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.logger.error(`Lỗi kiểm tra lịch hẹn khi join call: ${err?.message}`);
     }
 
+    await this.ghiNhanVaoPhong(client, roomKey);
+
     const room = `call:${payload.roomId}`;
     client.join(room);
     this.logger.log(`Client ${client.id} (${payload.role} - ${payload.userName}) joined call room ${room}`);
@@ -191,6 +194,31 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
         role: payload.role === 'doctor' ? 'patient' : 'doctor',
         userName: 'Đối phương',
       });
+    }
+  }
+
+  private readonly jwt = new JwtService({ secret: process.env.JWT_SECRET });
+
+  /** Ghi lần đầu bác sĩ phụ trách / bệnh nhân của lịch hẹn vào phòng (token gửi kèm khi kết nối socket) */
+  private async ghiNhanVaoPhong(client: Socket, roomKey: string) {
+    try {
+      const token = client.handshake?.auth?.token;
+      if (!token) return;
+      const { sub, maVaiTro } = this.jwt.verify(token);
+      const laSo = /^\d+$/.test(roomKey);
+      const dieuKien = laSo ? '(lh.id = ? OR lh.ma_lich_hen = ?)' : 'lh.ma_lich_hen = ?';
+      const ts = laSo ? [Number(roomKey), roomKey] : [roomKey];
+      if (maVaiTro === 'bac_si') {
+        await this.lichHenRepo.query(
+          `UPDATE lich_hen lh JOIN bac_si bs ON bs.id = lh.bac_si_id JOIN nhan_vien nv ON nv.id = bs.nhan_vien_id
+           SET lh.bac_si_vao_luc = NOW() WHERE ${dieuKien} AND nv.nguoi_dung_id = ? AND lh.bac_si_vao_luc IS NULL`, [...ts, sub]);
+      } else if (maVaiTro === 'benh_nhan') {
+        await this.lichHenRepo.query(
+          `UPDATE lich_hen lh JOIN benh_nhan bn ON bn.id = lh.benh_nhan_id
+           SET lh.benh_nhan_vao_luc = NOW() WHERE ${dieuKien} AND bn.nguoi_dung_id = ? AND lh.benh_nhan_vao_luc IS NULL`, [...ts, sub]);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Không ghi nhận được người vào phòng ${roomKey}: ${err?.message}`);
     }
   }
 

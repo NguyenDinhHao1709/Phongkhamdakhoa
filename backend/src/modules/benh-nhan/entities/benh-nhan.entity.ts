@@ -42,6 +42,18 @@ export class BenhNhan {
   @Column({ name: 'so_bhyt', length: 20, nullable: true })
   soBhyt: string;
 
+  /** Hạn sử dụng thẻ BHYT; hết hạn thì không áp dụng BHYT */
+  @Column({ name: 'bhyt_han_den', type: 'date', nullable: true })
+  bhytHanDen: string;
+
+  /** Mã nơi đăng ký khám chữa bệnh ban đầu ghi trên thẻ BHYT (xác định đúng/trái tuyến) */
+  @Column({ name: 'bhyt_noi_dang_ky', length: 10, nullable: true })
+  bhytNoiDangKy: string;
+
+  /** Hiệu lực giấy chuyển tuyến đến ngày; còn hiệu lực thì khám tại phòng khám được tính đúng tuyến */
+  @Column({ name: 'bhyt_chuyen_tuyen_den', type: 'date', nullable: true })
+  bhytChuyenTuyenDen: string;
+
   @Column({ name: 'so_dien_thoai', length: 15, nullable: true })
   soDienThoai: string;
 

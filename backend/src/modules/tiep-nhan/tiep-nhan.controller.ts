@@ -44,6 +44,20 @@ export class TiepNhanController {
     return this.service.goiSoLoa(id, user?.id || user?.userId);
   }
 
+  @Patch(':id/uu-tien')
+  @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Đổi đối tượng ưu tiên của lượt khám (vd. chuyển cấp cứu)' })
+  capNhatUuTien(@Param('id', ParseIntPipe) id: number, @Body('doiTuongUuTien') doiTuongUuTien: string | null) {
+    return this.service.capNhatUuTien(id, doiTuongUuTien);
+  }
+
+  @Post(':id/qua-luot')
+  @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Gọi mà bệnh nhân vắng mặt: qua lượt, xếp cuối hàng chờ' })
+  quaLuot(@Param('id', ParseIntPipe) id: number) {
+    return this.service.quaLuot(id);
+  }
+
   @Get('hang-doi')
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien')
   @ApiOperation({ summary: 'Hàng đợi bệnh nhân chờ khám hôm nay' })

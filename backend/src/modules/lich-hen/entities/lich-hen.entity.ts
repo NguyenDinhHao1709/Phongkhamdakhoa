@@ -77,6 +77,13 @@ export class LichHen {
   @Column({ name: 'cap_nhat_luc', type: 'datetime', nullable: true })
   capNhatLuc: Date;
 
+  /** Lần đầu bác sĩ / bệnh nhân vào phòng tư vấn trực tuyến (xác thực bằng token) — căn cứ hoàn phí khi ca không diễn ra */
+  @Column({ name: 'bac_si_vao_luc', type: 'datetime', nullable: true })
+  bacSiVaoLuc: Date | null;
+
+  @Column({ name: 'benh_nhan_vao_luc', type: 'datetime', nullable: true })
+  benhNhanVaoLuc: Date | null;
+
   // Relations
   @ManyToOne(() => BenhNhan)
   @JoinColumn({ name: 'benh_nhan_id' })

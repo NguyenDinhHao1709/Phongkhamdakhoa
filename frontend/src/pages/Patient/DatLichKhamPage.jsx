@@ -821,7 +821,7 @@ export default function DatLichKhamPage() {
                                 ? 'bg-white text-blue-700 border border-blue-300 hover:border-blue-600 hover:bg-blue-50 shadow-2xs cursor-pointer'
                                 : 'bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-45 cursor-not-allowed'
                             }`}
-                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : slot.daQuaGio ? 'Khung giờ khám này đã qua so với thời điểm hiện tại' : slot.daDat ? 'Đã kín lịch' : 'Ngoài ca trực'}
+                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : slot.daQuaGio ? 'Khung giờ khám này đã qua so với thời điểm hiện tại' : slot.daDat || slot.hetSuat ? 'Đã kín lịch' : 'Ngoài ca trực'}
                           >
                             <span className="text-xs sm:text-sm font-extrabold">{slot.gio}</span>
                             {isAvailable ? (
@@ -830,7 +830,7 @@ export default function DatLichKhamPage() {
                               </span>
                             ) : (
                               <span className="text-[9px] text-slate-400 font-normal">
-                                {slot.daQuaGio ? 'Đã qua giờ' : slot.daDat ? 'Đã kín' : 'Ngoài ca'}
+                                {slot.daQuaGio ? 'Đã qua giờ' : slot.daDat || slot.hetSuat ? 'Đã kín' : 'Ngoài ca'}
                               </span>
                             )}
                           </button>
@@ -864,7 +864,7 @@ export default function DatLichKhamPage() {
                                 ? 'bg-white text-blue-700 border border-blue-300 hover:border-blue-600 hover:bg-blue-50 shadow-2xs cursor-pointer'
                                 : 'bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-45 cursor-not-allowed'
                             }`}
-                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : slot.daQuaGio ? 'Khung giờ khám này đã qua so với thời điểm hiện tại' : slot.daDat ? 'Đã kín lịch' : 'Ngoài ca trực'}
+                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : slot.daQuaGio ? 'Khung giờ khám này đã qua so với thời điểm hiện tại' : slot.daDat || slot.hetSuat ? 'Đã kín lịch' : 'Ngoài ca trực'}
                           >
                             <span className="text-xs sm:text-sm font-extrabold">{slot.gio}</span>
                             {isAvailable ? (
@@ -873,7 +873,7 @@ export default function DatLichKhamPage() {
                               </span>
                             ) : (
                               <span className="text-[9px] text-slate-400 font-normal">
-                                {slot.daQuaGio ? 'Đã qua giờ' : slot.daDat ? 'Đã kín' : 'Ngoài ca'}
+                                {slot.daQuaGio ? 'Đã qua giờ' : slot.daDat || slot.hetSuat ? 'Đã kín' : 'Ngoài ca'}
                               </span>
                             )}
                           </button>

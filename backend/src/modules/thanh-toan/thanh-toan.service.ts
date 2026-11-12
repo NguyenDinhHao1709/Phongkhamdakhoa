@@ -6,6 +6,8 @@ import { HoaDonChiTiet } from './entities/hoa-don-chi-tiet.entity';
 import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
+import { soTiepTheo, voiKhoaDb } from '../../common/utils/db-sequence.util';
+import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 
 import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { ChiDinhCanLamSang, TrangThaiChiDinh } from '../xet-nghiem/entities/xet-nghiem.entity';
@@ -19,51 +21,51 @@ import { ChotCaThuNgan } from './entities/chot-ca-thu-ngan.entity';
 // Phiếu tạm ứng tại quầy: mã = 'TU' + id lượt tiếp nhận (luot_tiep_nhan_id để NULL như cọc đặt lịch HDT…)
 export const MA_TAM_UNG_QUAY = 'TU';
 
+/**
+ * Tỷ lệ BHYT chi trả theo mức hưởng (ký tự thứ 3 của mã thẻ: 1, 2, 5 → 100%; 3 → 95%; 4 → 80%).
+ * Thẻ sai định dạng hoặc đã hết hạn → null (không có thẻ hợp lệ).
+ * Đúng tuyến: cấp cứu, phòng khám chưa cấu hình mã cơ sở KCB, thẻ đăng ký tại đây, hoặc giấy chuyển tuyến còn hiệu lực;
+ * khi đó chi phí lần khám thấp hơn ngưỡng cấu hình thì chi trả 100%. Trái tuyến: nhân tỷ lệ trái tuyến giám đốc cấu hình.
+ */
+const MUC_HUONG_BHYT: Record<string, number> = { '1': 1, '2': 1, '3': 0.95, '4': 0.8, '5': 1 };
+type CauHinhBhyt = { maCoSoKcb: string | null; tyLeTraiTuyen: number; nguongToanBo: number };
+function tyLeBhyt(
+  benhNhan: { soBhyt?: string; bhytHanDen?: string; bhytNoiDangKy?: string; bhytChuyenTuyenDen?: string } | null | undefined,
+  cauHinh: CauHinhBhyt,
+  chiPhi: number,
+  capCuu = false,
+): number | null {
+  const so = (benhNhan?.soBhyt || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}[1-5][0-9]{12}$/.test(so)) return null;
+  const now = new Date();
+  const homNay = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (benhNhan.bhytHanDen && String(benhNhan.bhytHanDen).slice(0, 10) < homNay) return null;
+  const mucHuong = MUC_HUONG_BHYT[so[2]];
+  const dungTuyen = capCuu || !cauHinh.maCoSoKcb
+    || (benhNhan.bhytNoiDangKy || '').trim().toUpperCase() === cauHinh.maCoSoKcb.trim().toUpperCase()
+    || (!!benhNhan.bhytChuyenTuyenDen && String(benhNhan.bhytChuyenTuyenDen).slice(0, 10) >= homNay);
+  if (!dungTuyen) return mucHuong * (cauHinh.tyLeTraiTuyen / 100);
+  return cauHinh.nguongToanBo > 0 && chiPhi < cauHinh.nguongToanBo ? 1 : mucHuong;
+}
+
 // Tiền thực nhận ròng của hóa đơn: thu vào trừ phần hoàn trả tạm ứng dư
 const thuRong = (h: HoaDon) => Number(h.thucThu || 0) - Number(h.tienHoanTra || 0);
 
 @Injectable()
 export class ThanhToanService {
-  private locks = new Map<string, Promise<any>>();
-  private lastMaHdSeq = 0;
   private lastDepositSyncAt = 0;
 
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) || Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const chain = prev.then(() => next);
-    this.locks.set(key, chain);
-
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === chain) {
-        this.locks.delete(key);
-      }
-    }
+  // Khóa MySQL GET_LOCK: thu tiền, hoàn tiền, phiếu chi, chốt ca an toàn khi chạy nhiều instance
+  private withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    return voiKhoaDb(this.hoaDonRepo.manager.connection, key, fn);
   }
 
   private async generateNextMaHoaDon(): Promise<string> {
-    return this.withLock('seq:ma_hoa_don', async () => {
-      const year = new Date().getFullYear();
-      const prefix = `HD${year}`;
-      if (this.lastMaHdSeq === 0) {
-        const rows: any[] = await this.hoaDonRepo.manager.query(
-          `SELECT MAX(CAST(SUBSTRING(ma_hoa_don, 7) AS UNSIGNED)) AS maxNum FROM hoa_don WHERE ma_hoa_don LIKE ?`,
-          [`${prefix}%`],
-        );
-        const dbMax = Number(rows?.[0]?.maxNum || 0);
-        const totalCount = await this.hoaDonRepo.count();
-        this.lastMaHdSeq = Math.max(dbMax, totalCount);
-      }
-      this.lastMaHdSeq += 1;
-      return MaGeneratorService.generateMaHoaDon(this.lastMaHdSeq);
-    });
+    const year = new Date().getFullYear();
+    const so = await soTiepTheo(this.hoaDonRepo.manager, `ma_hoa_don_${year}`,
+      `SELECT GREATEST(COALESCE(MAX(CAST(SUBSTRING(ma_hoa_don, 7) AS UNSIGNED)), 0), (SELECT COUNT(*) FROM hoa_don)) AS maxNum FROM hoa_don WHERE ma_hoa_don LIKE ?`,
+      [`HD${year}%`]);
+    return MaGeneratorService.generateMaHoaDon(so);
   }
 
   constructor(
@@ -392,8 +394,11 @@ export class ThanhToanService {
       }
 
       // 5. Tính toán BHYT, thu thêm hoặc hoàn trả phần tạm ứng dư
-      const coBhyt = apDungBhyt ?? (Boolean(luot.benhNhan?.soCmnd) || (luot.ghiChu || '').toLowerCase().includes('bhyt'));
-      const giamBhyt = coBhyt ? Math.round(tongTienDichVu * 0.8) : 0;
+      const tyLe = apDungBhyt === false
+        ? 0
+        : tyLeBhyt(luot.benhNhan, await this.layCauHinhBhyt(), tongTienDichVu, luot.doiTuongUuTien === 'cap_cuu') ?? (apDungBhyt ? 0.8 : 0);
+      const apBhyt = tyLe > 0;
+      const giamBhyt = Math.round(tongTienDichVu * tyLe);
       const soTienGiam = giamBhyt;
       const { thucThu, tienHoanTra } = this.tinhThuHoan(tongTienDichVu, giamBhyt, tienCocDaThu);
 
@@ -403,8 +408,8 @@ export class ThanhToanService {
       hd.tienHoanTra = tienHoanTra;
 
       const ghiChuParts: string[] = [];
-      if (coBhyt) {
-        ghiChuParts.push(`BHYT chi trả 80% danh mục viện phí (Giảm ${giamBhyt.toLocaleString('vi-VN')} đ)`);
+      if (apBhyt) {
+        ghiChuParts.push(`BHYT chi trả ${Math.round(tyLe * 100)}% danh mục viện phí (Giảm ${giamBhyt.toLocaleString('vi-VN')} đ)`);
       }
       if (tienCocDaThu > 0) {
         ghiChuParts.push(`Đã khấu trừ ${tienCocDaThu.toLocaleString('vi-VN')} đ ${tamUng.moTa} (${tamUng.maChungTu})`);
@@ -598,6 +603,18 @@ export class ThanhToanService {
     return { thucThu: Math.max(0, conLai), tienHoanTra: Math.max(0, -conLai) };
   }
 
+  /** Cấu hình tuyến BHYT của phòng khám (dòng truc_tiep) */
+  private async layCauHinhBhyt(): Promise<CauHinhBhyt> {
+    const rows: any[] = await this.hoaDonRepo.manager.query(
+      `SELECT ma_co_so_kcb, ty_le_bhyt_trai_tuyen, nguong_bhyt_toan_bo FROM cau_hinh_tien_coc WHERE loai_hinh_thuc = 'truc_tiep' LIMIT 1`,
+    );
+    return {
+      maCoSoKcb: rows[0]?.ma_co_so_kcb || null,
+      tyLeTraiTuyen: Number(rows[0]?.ty_le_bhyt_trai_tuyen || 0),
+      nguongToanBo: Number(rows[0]?.nguong_bhyt_toan_bo || 0),
+    };
+  }
+
   /** Phí khám trực tiếp theo cấu hình của giám đốc */
   private async layPhiKham(): Promise<number> {
     const rows = await this.hoaDonRepo.manager.query(
@@ -635,16 +652,25 @@ export class ThanhToanService {
    * (cọc đã đủ thì vào hàng đợi luôn, trả về null).
    */
   async taoPhieuTamUngTaiQuay(
-    luot: { id: number; benhNhanId: number; maSoThuTu?: string; lichHenId?: number },
+    luot: { id: number; benhNhanId: number; maSoThuTu?: string; lichHenId?: number; doiTuongUuTien?: string },
     hoTen?: string,
   ) {
+    // Cấp cứu: khám ngay, không bắt đóng tiền trước (thu khi quyết toán)
+    if (luot.doiTuongUuTien === 'cap_cuu') {
+      await this.baoBacSiVaoHangDoi(luot.id, 'là ca CẤP CỨU, vừa được xếp vào đầu danh sách khám của bạn');
+      return null;
+    }
     const maHoaDon = `${MA_TAM_UNG_QUAY}${luot.id}`;
     const existed = await this.hoaDonRepo.findOne({ where: { maHoaDon } });
     if (existed) return existed;
 
     let canThu = 0;
     if (luot.lichHenId) {
-      canThu = (await this.layPhiKham()) - (await this.layTamUngCuaLuot(luot)).soTien;
+      // Có BHYT: chỉ thu trước phần đồng chi trả của phí khám, tránh thu dư rồi phải hoàn
+      const benhNhan = await this.hoaDonRepo.manager.findOne(BenhNhan, { where: { id: luot.benhNhanId } });
+      const phiKham = await this.layPhiKham();
+      const phanBnTra = Math.round(phiKham * (1 - (tyLeBhyt(benhNhan, await this.layCauHinhBhyt(), phiKham) ?? 0)));
+      canThu = phanBnTra - (await this.layTamUngCuaLuot(luot)).soTien;
       if (canThu <= 0) {
         await this.baoBacSiVaoHangDoi(luot.id, 'vừa được xếp vào danh sách khám của bạn');
         return null;
@@ -669,6 +695,37 @@ export class ThanhToanService {
       doiTuongId: saved.id,
     }).catch((e) => console.warn('Lỗi gửi thông báo tạm ứng:', e?.message));
     return saved;
+  }
+
+  /** Chuyển lượt sang cấp cứu: hủy phiếu tạm ứng chưa thu (thu khi quyết toán) và báo bác sĩ */
+  async chuyenCapCuu(luotId: number) {
+    await this.hoaDonRepo.update(
+      { maHoaDon: `${MA_TAM_UNG_QUAY}${luotId}`, trangThai: 'cho_thanh_toan' },
+      { trangThai: 'huy', ghiChu: '[TẠM ỨNG TẠI QUẦY] Hủy: chuyển cấp cứu, thu khi quyết toán' },
+    );
+    await this.baoBacSiVaoHangDoi(luotId, 'được chuyển thành ca CẤP CỨU, đã lên đầu danh sách khám của bạn');
+  }
+
+  /** Lượt bị hủy (vắng mặt): phiếu tạm ứng chưa thu → hủy; đã thu → đánh dấu chờ hoàn để thu ngân hoàn tiền */
+  async xuLyTamUngKhiHuyLuot(luot: { id: number; maSoThuTu?: string }, lyDo: string) {
+    const hd = await this.hoaDonRepo.findOne({ where: { maHoaDon: `${MA_TAM_UNG_QUAY}${luot.id}` } });
+    if (!hd) return;
+    if (hd.trangThai === 'cho_thanh_toan') {
+      await this.hoaDonRepo.update(hd.id, { trangThai: 'huy', ghiChu: `${hd.ghiChu || ''} [Hủy: ${lyDo}]`.trim() });
+      return;
+    }
+    if (hd.trangThai !== 'da_thanh_toan' || hd.ghiChu?.includes('[CHỜ HOÀN CỌC')) return;
+    const soTien = Number(hd.thucThu);
+    await this.hoaDonRepo.update(hd.id, {
+      ghiChu: `${hd.ghiChu || ''} [CHỜ HOÀN CỌC ${soTien.toLocaleString('vi-VN')}đ] [LÝ_DO_HỦY: ${lyDo}]`.trim(),
+    });
+    await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+      tieuDe: `Cần hoàn tạm ứng ${hd.maHoaDon}`,
+      noiDung: `Lượt khám ${luot.maSoThuTu || `#${luot.id}`} đã hủy (${lyDo}). Vui lòng hoàn ${soTien.toLocaleString('vi-VN')} đ tạm ứng cho bệnh nhân.`,
+      loai: 'can_thanh_toan',
+      doiTuongBang: 'hoa_don',
+      doiTuongId: hd.id,
+    }).catch((e) => console.warn('Lỗi báo hoàn tạm ứng:', e?.message));
   }
 
   /** Báo bác sĩ phụ trách: bệnh nhân đã vào hàng đợi khám */
@@ -704,15 +761,19 @@ export class ThanhToanService {
       }
 
       const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
-      Object.assign(hd, {
-        tongTien: soTien,
-        thucThu: soTien,
-        trangThai: 'da_thanh_toan',
-        phuongThucThanhToan: dto.phuongThucThanhToan || 'tien_mat',
-        ngayThanhToan: new Date(),
-        thuNganId: nv?.id ?? hd.thuNganId,
-      });
-      const saved = await this.hoaDonRepo.save(hd);
+      const kq = await this.hoaDonRepo.update(
+        { id, trangThai: 'cho_thanh_toan' },
+        {
+          tongTien: soTien,
+          thucThu: soTien,
+          trangThai: 'da_thanh_toan',
+          phuongThucThanhToan: dto.phuongThucThanhToan || 'tien_mat',
+          ngayThanhToan: new Date(),
+          thuNganId: nv?.id ?? hd.thuNganId,
+        },
+      );
+      if (!kq.affected) throw new BadRequestException('Phiếu tạm ứng đã được xử lý');
+      const saved = await this.hoaDonRepo.findOne({ where: { id } });
       await this.baoBacSiVaoHangDoi(
         Number(hd.maHoaDon.slice(MA_TAM_UNG_QUAY.length)),
         'đã đóng tạm ứng và vào danh sách khám của bạn',
@@ -734,6 +795,10 @@ export class ThanhToanService {
    * UC-EXT: Hủy hóa đơn & Hoàn tiền viện phí (Refund / Void Invoice)
    */
   async huyHoaDon(id: number, userId: number, dto: { lyDoHuy: string; ghiChu?: string }) {
+    return this.withLock(`invoice:pay:${id}`, () => this.thucHienHuyHoaDon(id, userId, dto));
+  }
+
+  private async thucHienHuyHoaDon(id: number, userId: number, dto: { lyDoHuy: string; ghiChu?: string }) {
     const hd = await this.hoaDonRepo.findOne({
       where: { id },
       relations: ['benhNhan', 'thuNgan', 'chiTiet'],
@@ -752,6 +817,7 @@ export class ThanhToanService {
     const isTamUng = Boolean(
       hd.maHoaDon?.startsWith('HDT') || hd.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]')
     );
+    const soTienHoanText = `${Number(hd.thucThu || hd.tongTien || 0).toLocaleString('vi-VN')} đ`;
 
     // Chốt chặn đối soát Kho Dược - Thu Ngân: Không cho phép hủy hóa đơn viện phí nếu đơn thuốc đã xuất kho cấp phát
     if (!isTamUng && hd.luotTiepNhanId) {
@@ -815,8 +881,8 @@ export class ThanhToanService {
       if (hd.benhNhan?.nguoiDungId) {
         await this.thongBaoService.taoThongBao({
           nguoiNhanId: hd.benhNhan.nguoiDungId,
-          tieuDe: `Đã hoàn trả 40.000đ tiền tạm ứng đặt lịch ${maLichHen || hd.maHoaDon}`,
-          noiDung: `Quầy Thu Ngân (${nguoiThucHien}) đã hoàn trả thành công 100% tiền tạm ứng đặt lịch (40.000 đ) của phiếu ${hd.maHoaDon}.${dto.ghiChu ? ` Nội dung chứng từ: ${dto.ghiChu}.` : ''}`,
+          tieuDe: `Đã hoàn trả ${soTienHoanText} tiền tạm ứng đặt lịch ${maLichHen || hd.maHoaDon}`,
+          noiDung: `Quầy Thu Ngân (${nguoiThucHien}) đã hoàn trả thành công ${soTienHoanText} tiền tạm ứng đặt lịch của phiếu ${hd.maHoaDon}.${dto.ghiChu ? ` Nội dung chứng từ: ${dto.ghiChu}.` : ''}`,
           loai: 'thanh_toan',
           doiTuongBang: 'hoa_don',
           doiTuongId: hd.id,
@@ -827,7 +893,7 @@ export class ThanhToanService {
     return {
       success: true,
       message: isTamUng
-        ? 'Xác nhận đã chuyển hoàn tiền cọc đặt lịch (40.000 đ) cho bệnh nhân thành công!'
+        ? `Xác nhận đã chuyển hoàn tiền cọc đặt lịch (${soTienHoanText}) cho bệnh nhân thành công!`
         : 'Hủy hóa đơn và ghi nhận hoàn tiền viện phí thành công',
       data: updated,
     };

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { soTiepTheo, voiKhoaDb } from '../../common/utils/db-sequence.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
 import { Thuoc } from './entities/thuoc.entity';
@@ -15,45 +16,16 @@ import { ThongBaoService } from '../thong-bao/thong-bao.service';
 
 @Injectable()
 export class NhaThuocService {
-  private locks = new Map<string, Promise<any>>();
-  private lastMaDtSeq = 0;
-
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) || Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const chain = prev.then(() => next);
-    this.locks.set(key, chain);
-
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === chain) {
-        this.locks.delete(key);
-      }
-    }
-  }
-
+  /** Mã đơn thuốc theo ngày từ bộ đếm trong DB (không trùng khi chạy nhiều instance) */
   private async generateNextMaDonThuoc(): Promise<string> {
-    return this.withLock('seq:ma_don_thuoc', async () => {
-      const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const prefix = `DT${todayStr}`;
-      if (this.lastMaDtSeq === 0) {
-        const rows: any[] = await this.dataSource.query(
-          `SELECT MAX(CAST(SUBSTRING(ma_don_thuoc, 11) AS UNSIGNED)) AS maxNum FROM don_thuoc WHERE ma_don_thuoc LIKE ?`,
-          [`${prefix}%`],
-        );
-        const dbMax = Number(rows?.[0]?.maxNum || 0);
-        const totalCount = await this.donThuocRepo.count();
-        this.lastMaDtSeq = Math.max(dbMax, totalCount);
-      }
-      this.lastMaDtSeq += 1;
-      return `${prefix}${String(this.lastMaDtSeq).padStart(4, '0')}`;
-    });
+    // Ngày theo giờ địa phương (toISOString là UTC → từ 0h-7h sáng bị lùi 1 ngày)
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const prefix = `DT${todayStr}`;
+    const so = await soTiepTheo(this.dataSource.manager, `ma_don_thuoc_${todayStr}`,
+      `SELECT COALESCE(MAX(CAST(SUBSTRING(ma_don_thuoc, 11) AS UNSIGNED)), 0) AS maxNum FROM don_thuoc WHERE ma_don_thuoc LIKE ?`,
+      [`${prefix}%`]);
+    return `${prefix}${String(so).padStart(4, '0')}`;
   }
 
   constructor(
@@ -687,7 +659,7 @@ export class NhaThuocService {
     },
     nguoiChiTraId = 1,
   ) {
-    return this.withLock(`ncc:pay:${id}`, async () => {
+    return voiKhoaDb(this.dataSource, `ncc:pay:${id}`, async () => {
       const yc = await this.yeuCauNhapRepo.findOne({ where: { id } });
       if (!yc) throw new NotFoundException('Không tìm thấy yêu cầu nhập kho');
       if (!['da_nhap_kho', 'giao_mot_phan', 'da_kiem_nhan'].includes(yc.trangThai) || Number(yc.tongThucTe) <= 0) {
@@ -1512,7 +1484,7 @@ export class NhaThuocService {
     const tienSuDiUng = (bak?.hoSoBenhAn?.benhNhan?.diUng || '').trim().toLowerCase();
 
     // 3. Khóa nguyên tử khi kiểm tra tồn kho khả dụng (Tồn vật lý còn hạn - Số lượng đang giữ chỗ ở các đơn cho_duyet) & lưu đơn
-    const savedDon = await this.withLock('rx:create_prescription', async () => {
+    const savedDon = await voiKhoaDb(this.dataSource, 'rx:create_prescription', async () => {
       for (const item of body.chiTiet) {
         const reqQty = Number(item.soLuong || 0);
         if (!Number.isFinite(reqQty) || reqQty <= 0) {

@@ -219,7 +219,7 @@ export default function ThongKeKhachHangPage() {
     ];
     XLSX.utils.book_append_sheet(wb, wsDetail, 'Danh_Sach_Chi_Tiet');
 
-    const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 8);
+    const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 8);
     xuatExcel(wb, `Bao_Cao_Tiep_Don_${timestamp}.xlsx`);
   };
 

@@ -74,7 +74,8 @@ export class LuotTiepNhan {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'ma_so_thu_tu', length: 20, unique: true })
+  // Số thứ tự reset mỗi ngày: unique theo (ngày đến, số thứ tự) ở DB (uq_ngay_stt)
+  @Column({ name: 'ma_so_thu_tu', length: 20 })
   maSoThuTu: string;
 
   @Column({ name: 'benh_nhan_id' })
@@ -103,6 +104,17 @@ export class LuotTiepNhan {
 
   @Column({ name: 'luot_goc_id', nullable: true })
   luotGocId: number;
+
+  /** Đối tượng ưu tiên theo luật do lễ tân chọn (cap_cuu, phu_nu_co_thai, ...); tuổi được hệ thống tự nhận */
+  @Column({ name: 'doi_tuong_uu_tien', length: 30, nullable: true })
+  doiTuongUuTien: string;
+
+  /** Lần gần nhất gọi mà bệnh nhân vắng mặt (qua lượt): xếp cuối hàng chờ tính từ thời điểm này */
+  @Column({ name: 'qua_luot_luc', type: 'datetime', nullable: true })
+  quaLuotLuc: Date;
+
+  @Column({ name: 'so_lan_qua_luot', type: 'tinyint', default: 0 })
+  soLanQuaLuot: number;
 
   @Column({ name: 'thoi_gian_den', type: 'datetime' })
   thoiGianDen: Date;

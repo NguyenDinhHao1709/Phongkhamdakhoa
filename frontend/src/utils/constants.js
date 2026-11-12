@@ -14,6 +14,16 @@ export const TRANG_THAI_TIEP_NHAN = {
   da_huy:     'Đã hủy',
 };
 
+// Đối tượng ưu tiên khám theo luật (trẻ dưới 6 tuổi / người từ 75 tuổi hệ thống tự nhận theo ngày sinh)
+export const DOI_TUONG_UU_TIEN = {
+  cap_cuu:         'Cấp cứu',
+  tre_em_duoi_6:   'Trẻ dưới 6 tuổi',
+  nguoi_cao_tuoi:  'Người từ 75 tuổi',
+  phu_nu_co_thai:  'Phụ nữ có thai',
+  khuyet_tat_nang: 'Khuyết tật nặng',
+  nguoi_co_cong:   'Người có công',
+};
+
 export const TRANG_THAI_XET_NGHIEM = {
   cho_lay_mau:  'Chờ lấy mẫu',
   dang_lay_mau: 'Đang lấy mẫu',

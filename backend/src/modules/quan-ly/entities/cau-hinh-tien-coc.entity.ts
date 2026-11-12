@@ -32,6 +32,22 @@ export class CauHinhTienCoc {
   @Column({ name: 'cho_phep_dat_truoc_ngay_max', type: 'int', default: 30 })
   choPhepDatTruocNgayMax: number;
 
+  /** Số lịch hẹn tối đa của 1 bác sĩ mỗi buổi (chừa khung trống để bù giờ); null = không giới hạn. Dùng giá trị của dòng truc_tiep */
+  @Column({ name: 'so_lich_hen_toi_da_moi_buoi', type: 'int', nullable: true })
+  soLichHenToiDaMoiBuoi: number;
+
+  /** Mã cơ sở KCB BHYT của phòng khám (dòng truc_tiep); trống = không kiểm tra tuyến */
+  @Column({ name: 'ma_co_so_kcb', length: 10, nullable: true })
+  maCoSoKcb: string;
+
+  /** % mức hưởng BHYT áp dụng khi khám trái tuyến (thẻ đăng ký nơi khác, không cấp cứu) */
+  @Column({ name: 'ty_le_bhyt_trai_tuyen', type: 'int', default: 0 })
+  tyLeBhytTraiTuyen: number;
+
+  /** Chi phí một lần khám đúng tuyến thấp hơn mức này thì BHYT chi trả 100% (theo quy định: 15% lương cơ sở) */
+  @Column({ name: 'nguong_bhyt_toan_bo', type: 'int', nullable: true })
+  nguongBhytToanBo: number | null;
+
   @Column({ name: 'ap_dung_tu_dong', type: 'boolean', default: true })
   apDungTuDong: boolean;
 

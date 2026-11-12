@@ -87,6 +87,7 @@ export default function TienDoKhamPage() {
           soDangGoi: q.soDangGoi || '-',
           soNguoiPhiaTruoc: q.soNguoiPhiaTruoc ?? 0,
           uocTinhPhut: q.uocTinhPhut ?? 0,
+          thongBaoTre: q.thongBaoTre || null,
           trangThai: t.trangThai || 'cho_kham',
           dsChiDinh: t.dsChiDinh || [],
           hasCls: t.hasCls || false,
@@ -579,6 +580,12 @@ export default function TienDoKhamPage() {
                   </span>
                 </div>
               </div>
+
+              {ticketData.thongBaoTre && !isCompleted && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  {ticketData.thongBaoTre}
+                </div>
+              )}
 
               {/* Quy trình khám bệnh 4 bước */}
               <div className="pt-1">

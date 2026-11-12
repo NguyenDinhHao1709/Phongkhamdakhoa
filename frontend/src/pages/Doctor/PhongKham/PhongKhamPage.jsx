@@ -11,6 +11,7 @@ import { VitalsCard } from '../../../design-system/components/VitalSign/VitalDis
 import { apiGet, apiPost, apiPatch, apiDelete } from '../../../services/api';
 import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
+import NhanUuTienTre from '../../../components/Queue/NhanUuTienTre';
 import {
   Stethoscope, AlertTriangle, FileText, ClipboardList, FlaskConical,
   CheckCircle2, ChevronRight, Activity, Plus, X, HeartPulse, Pill, Calendar, Clock, Search, Sparkles, Printer, Trash2, Volume2, Tv, Compass, MessageSquare
@@ -255,6 +256,9 @@ function PatientCard({ luot, isSelected, onSelect }) {
       </div>
 
       <p className="font-semibold text-gray-900 text-sm truncate">{bn.hoTen || 'Chưa cập nhật tên'}</p>
+      <div className="flex flex-wrap gap-1 mt-0.5">
+        <NhanUuTienTre luot={luot} />
+      </div>
 
       <p className="text-xs text-gray-500 mt-0.5">
         {bn.maBenhNhan}
@@ -598,6 +602,25 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
                 }}
               >
                 {luot.trangThai === 'cho_kham' ? 'Gọi bệnh nhân' : 'Gọi lại'}
+              </MedButton>
+            )}
+            {luot.trangThai === 'dang_kham' && (
+              <MedButton
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  if (!window.confirm(`${bn.hoTen} (${luot.maSoThuTu}) không có mặt? Bệnh nhân sẽ được xếp cuối hàng chờ.`)) return;
+                  try {
+                    const result = await apiPost(`/tiep-nhan/${luot.id}/qua-luot`);
+                    qc.invalidateQueries(['tiep-nhan']);
+                    alert(result?.message || 'Đã qua lượt');
+                    onComplete();
+                  } catch (e) {
+                    alert(e?.error?.message || e?.message || 'Không qua lượt được');
+                  }
+                }}
+              >
+                Vắng – qua lượt
               </MedButton>
             )}
             <MedButton

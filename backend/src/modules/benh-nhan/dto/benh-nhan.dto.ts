@@ -36,7 +36,27 @@ export class TaoBenhNhanDto {
   @Transform(({ value }) => (value === '' ? null : value))
   @IsString()
   @MaxLength(20)
+  @Matches(/^[A-Z]{2}[1-5][0-9]{12}$/, { message: 'Mã thẻ BHYT gồm 15 ký tự: 2 chữ cái, mức hưởng (1-5) và 12 chữ số' })
   soBhyt?: string;
+
+  @ApiPropertyOptional({ example: '2026-12-31', description: 'Hạn sử dụng thẻ BHYT' })
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
+  @IsDateString()
+  bhytHanDen?: string;
+
+  @ApiPropertyOptional({ example: '79001', description: 'Mã nơi đăng ký KCB ban đầu trên thẻ BHYT' })
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
+  @IsString()
+  @MaxLength(10)
+  bhytNoiDangKy?: string;
+
+  @ApiPropertyOptional({ example: '2026-12-31', description: 'Giấy chuyển tuyến còn hiệu lực đến ngày' })
+  @IsOptional()
+  @Transform(({ value }) => (value === '' ? null : value))
+  @IsDateString()
+  bhytChuyenTuyenDen?: string;
 
   @ApiPropertyOptional({ example: '0901234567' })
   @IsOptional()

@@ -9,13 +9,6 @@ import { Repository } from 'typeorm';
 @Injectable()
 export class MaGeneratorService {
   /**
-   * Tạo mã bệnh nhân: BN000001, BN000002...
-   */
-  static generateMaBenhNhan(soThuTu: number): string {
-    return `BN${String(soThuTu).padStart(6, '0')}`;
-  }
-
-  /**
    * Tạo mã lịch hẹn: LH20260001
    */
   static generateMaLichHen(soThuTu: number): string {
@@ -45,13 +38,6 @@ export class MaGeneratorService {
   static generateMaDonThuoc(soThuTu: number): string {
     const year = new Date().getFullYear();
     return `DT${year}${String(soThuTu).padStart(4, '0')}`;
-  }
-
-  /**
-   * Tạo mã hồ sơ bệnh án: HS000001
-   */
-  static generateMaHoSo(soThuTu: number): string {
-    return `HS${String(soThuTu).padStart(6, '0')}`;
   }
 
   /**

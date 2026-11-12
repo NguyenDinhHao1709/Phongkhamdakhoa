@@ -1,3 +1,4 @@
+import { voiKhoaDb } from '../../common/utils/db-sequence.util';
 import {
   Injectable, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
@@ -42,28 +43,6 @@ function getVietnamNow(): { ngayCham: string; gio: string } {
 
 @Injectable()
 export class ChamCongService {
-  private locks = new Map<string, Promise<any>>();
-
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) || Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const chain = prev.then(() => next);
-    this.locks.set(key, chain);
-
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === chain) {
-        this.locks.delete(key);
-      }
-    }
-  }
-
   constructor(
     @InjectRepository(ChamCong)
     private chamCongRepo: Repository<ChamCong>,
@@ -267,7 +246,7 @@ export class ChamCongService {
   // ─── Check-in ────────────────────────────────────────────────────────────────
 
   async checkIn(userId: number, clientIp: string, frameBase64: string, framesB64?: string[]) {
-    return this.withLock(`cham_cong:${userId}`, async () => {
+    return voiKhoaDb(this.dataSource, `cham_cong:${userId}`, async () => {
       const nv = await this.layNhanVienTheoUserId(userId);
 
       const { ngayCham, gio: gioVao } = getVietnamNow();
@@ -353,7 +332,7 @@ export class ChamCongService {
   // ─── Check-out ───────────────────────────────────────────────────────────────
 
   async checkOut(userId: number, clientIp: string, frameBase64: string, framesB64?: string[]) {
-    return this.withLock(`cham_cong:${userId}`, async () => {
+    return voiKhoaDb(this.dataSource, `cham_cong:${userId}`, async () => {
       const nv = await this.layNhanVienTheoUserId(userId);
 
       const { ngayCham, gio: gioRa } = getVietnamNow();

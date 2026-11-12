@@ -19,6 +19,7 @@ import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { KyThuatVien } from '../nhan-vien/entities/ky-thuat-vien.entity';
 import { comparePassword, hashPassword } from '../../common/utils/hash.util';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
+import { maBenhNhanTiepTheo } from '../../common/utils/db-sequence.util';
 import {
   LoginDto, SendOtpDto, VerifyOtpDto, RegisterPatientDto,
   DoiMatKhauDto, QuenMatKhauSendOtpDto, DatLaiMatKhauDto,
@@ -156,9 +157,8 @@ export class AuthService {
     }
     savedUser.vaiTro = role;
 
-    const bnCount = await this.benhNhanRepo.count();
     const newPatient = this.benhNhanRepo.create({
-      maBenhNhan: MaGeneratorService.generateMaBenhNhan(bnCount + 1),
+      maBenhNhan: await maBenhNhanTiepTheo(this.benhNhanRepo.manager),
       nguoiDungId: savedUser.id,
       hoTen: dto.hoTen,
       soDienThoai: dto.soDienThoai,

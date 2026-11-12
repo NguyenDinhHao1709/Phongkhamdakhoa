@@ -1,3 +1,4 @@
+import { voiKhoaDb } from '../../common/utils/db-sequence.util';
 import {
   Injectable, NotFoundException, BadRequestException,
 } from '@nestjs/common';
@@ -72,28 +73,6 @@ export class TimKiemChiDinhDto {
 // ──── SERVICE ──────────────────────────────────────────────
 @Injectable()
 export class XetNghiemService {
-  private locks = new Map<string, Promise<any>>();
-
-  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prev = this.locks.get(key) || Promise.resolve();
-    let release!: () => void;
-    const next = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const chain = prev.then(() => next);
-    this.locks.set(key, chain);
-
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-      if (this.locks.get(key) === chain) {
-        this.locks.delete(key);
-      }
-    }
-  }
-
   constructor(
     @InjectRepository(DichVuXetNghiem)    private dvRepo: Repository<DichVuXetNghiem>,
     @InjectRepository(ChiDinhCanLamSang)  private cdRepo: Repository<ChiDinhCanLamSang>,
@@ -112,7 +91,7 @@ export class XetNghiemService {
 
   // ─── BÁC SĨ CHỈ ĐỊNH XÉT NGHIỆM ──────────────────────────
   async taoChiDinh(nguoiDungId: number, dto: TaoChiDinhDto) {
-    return this.withLock(`cls:create:${dto.benhAnKhamId}`, async () => {
+    return voiKhoaDb(this.cdRepo.manager.connection, `cls:create:${dto.benhAnKhamId}`, async () => {
       let bacSiId: number | null = null;
       if (nguoiDungId) {
         const nv = await this.cdRepo.manager.getRepository(NhanVien).findOne({ where: { nguoiDungId } });

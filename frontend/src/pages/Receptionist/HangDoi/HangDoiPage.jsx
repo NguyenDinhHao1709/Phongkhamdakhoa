@@ -7,9 +7,10 @@ import { DashboardLayout } from '../../../layouts/DashboardLayout';
 import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { VitalsCard } from '../../../design-system/components/VitalSign/VitalDisplay';
-import { apiGet, apiPost } from '../../../services/api';
+import { apiGet, apiPost, apiPatch } from '../../../services/api';
 import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
-import { GIOI_TINH } from '../../../utils/constants';
+import { GIOI_TINH, DOI_TUONG_UU_TIEN } from '../../../utils/constants';
+import NhanUuTienTre from '../../../components/Queue/NhanUuTienTre';
 import { Clock, AlertTriangle, User2, Tv, Volume2, Loader2, Download } from 'lucide-react';
 import useAuthStore from '../../../store/authStore';
 import { BACKEND_URL } from '../../../utils/backendUrl';
@@ -60,6 +61,26 @@ export default function HangDoiPage() {
     }
   };
 
+  const handleDoiUuTien = async (luot, doiTuongUuTien) => {
+    if (doiTuongUuTien === 'cap_cuu' && !window.confirm(`Chuyển ${luot.benhNhan?.hoTen || 'bệnh nhân'} thành CẤP CỨU? Bệnh nhân lên đầu hàng chờ và được khám trước, thu tiền sau.`)) return;
+    try {
+      await apiPatch(`/tiep-nhan/${luot.id}/uu-tien`, { doiTuongUuTien: doiTuongUuTien || null });
+      refetch();
+    } catch (err) {
+      alert(err?.error?.message || err?.message || 'Không đổi được đối tượng ưu tiên');
+    }
+  };
+
+  const handleQuaLuot = async (luot) => {
+    if (!window.confirm(`${luot.benhNhan?.hoTen || 'Bệnh nhân'} (${luot.maSoThuTu}) không có mặt? Bệnh nhân sẽ được xếp cuối hàng chờ.`)) return;
+    try {
+      await apiPost(`/tiep-nhan/${luot.id}/qua-luot`);
+      refetch();
+    } catch (err) {
+      alert(err?.error?.message || err?.message || 'Không qua lượt được');
+    }
+  };
+
   const handleExportExcel = () => {
     if (!items || items.length === 0) {
       alert('Hàng đợi hôm nay chưa có lượt tiếp đón nào để xuất file!');
@@ -93,7 +114,7 @@ export default function HangDoiPage() {
         'Phòng Khám': pk.ten_phong || pk.tenPhong || 'Chưa chỉ định',
         'Bác Sĩ Phụ Trách': bs.hoTen || 'Chưa chỉ định',
         'Thời Gian Tiếp Nhận': gioDenStr,
-        'Mức Độ Ưu Tiên': luot.mucDoUuTien === 'cap_cuu' ? 'Cấp cứu' : luot.mucDoUuTien === 'uu_tien' ? 'Ưu tiên' : 'Tiêu chuẩn',
+        'Mức Độ Ưu Tiên': DOI_TUONG_UU_TIEN[luot.uuTien] || 'Tiêu chuẩn',
         'Trạng Thái Khám': STATUS_MAP[luot.trangThai] || luot.trangThai || '',
         'Tiền Sử Dị Ứng': bn.diUng || 'Không',
       };
@@ -121,6 +142,18 @@ export default function HangDoiPage() {
     XLSX.utils.book_append_sheet(wb, ws, 'SoTiepDonHangDoi');
     const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     xuatExcel(wb, `So_Tiep_Don_Hang_Doi_${now}.xlsx`);
+  };
+
+  // Bác sĩ chậm quá 30 phút: chuyển bệnh nhân lịch hẹn sang bác sĩ cùng chuyên khoa đang trực (khi bệnh nhân đồng ý)
+  const handleChuyenBacSi = async (luot) => {
+    const goiY = luot.goiYChuyenBacSi;
+    if (!window.confirm(`Chuyển ${luot.benhNhan?.hoTen || 'bệnh nhân'} sang BS. ${goiY.hoTen}? Hãy hỏi ý kiến bệnh nhân trước.`)) return;
+    try {
+      await apiPatch(`/tiep-nhan/${luot.id}/phong-kham`, { bacSiId: goiY.bacSiId });
+      refetch();
+    } catch (err) {
+      alert(err?.error?.message || err?.message || 'Không chuyển được bác sĩ');
+    }
   };
 
   const dangKham = items.filter((i) => ['dang_kham', 'dang_cls', 'da_co_kq_cls'].includes(i.trangThai));
@@ -177,6 +210,7 @@ export default function HangDoiPage() {
                 <QueueCard
                   key={item.id}
                   luot={item}
+                  onQuaLuot={() => handleQuaLuot(item)}
                   onGoiLoa={() => handleGoiLoa(item.id)}
                   isCalling={callingId === item.id}
                 />
@@ -200,6 +234,8 @@ export default function HangDoiPage() {
                 <QueueRow
                   key={item.id}
                   luot={item}
+                  onChuyenBacSi={() => handleChuyenBacSi(item)}
+                  onDoiUuTien={(v) => handleDoiUuTien(item, v)}
                   onGoiLoa={() => handleGoiLoa(item.id)}
                   isCalling={callingId === item.id}
                 />
@@ -212,7 +248,7 @@ export default function HangDoiPage() {
   );
 }
 
-function QueueCard({ luot, onGoiLoa, isCalling }) {
+function QueueCard({ luot, onGoiLoa, onQuaLuot, isCalling }) {
   const bn = luot.benhNhan || {};
   const bs = luot.bacSi?.nhanVien || {};
 
@@ -233,6 +269,15 @@ function QueueCard({ luot, onGoiLoa, isCalling }) {
             {isCalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Volume2 className="w-3.5 h-3.5" />}
             Gọi lại loa
           </button>
+          {luot.trangThai === 'dang_kham' && (
+            <button
+              onClick={onQuaLuot}
+              className="px-2.5 py-1 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-semibold"
+              title="Gọi mà bệnh nhân không có mặt: xếp cuối hàng chờ"
+            >
+              Vắng – qua lượt
+            </button>
+          )}
           <StatusBadge status={luot.trangThai || 'dang_kham'} />
         </div>
       </div>
@@ -246,7 +291,7 @@ function QueueCard({ luot, onGoiLoa, isCalling }) {
   );
 }
 
-function QueueRow({ luot, onGoiLoa, isCalling }) {
+function QueueRow({ luot, onGoiLoa, onChuyenBacSi, onDoiUuTien, isCalling }) {
   const bn = luot.benhNhan || {};
 
   return (
@@ -262,12 +307,33 @@ function QueueRow({ luot, onGoiLoa, isCalling }) {
               <AlertTriangle className="h-2.5 w-2.5" /> DỊ ỨNG
             </span>
           )}
+          <NhanUuTienTre luot={luot} />
         </div>
+        {luot.goiYChuyenBacSi && (
+          <button
+            onClick={onChuyenBacSi}
+            className="mt-1 text-xs font-semibold text-amber-700 hover:underline cursor-pointer"
+          >
+            Gợi ý chuyển sang BS. {luot.goiYChuyenBacSi.hoTen} ({luot.goiYChuyenBacSi.soNguoiCho} lượt đang có)
+          </button>
+        )}
         <p className="text-xs text-gray-500 truncate">
           {tinhTuoi(bn.ngaySinh) && `${tinhTuoi(bn.ngaySinh)} tuổi`}
           {bn.soDienThoai && ` · ${bn.soDienThoai}`}
         </p>
       </div>
+
+      <select
+        value={luot.doiTuongUuTien || ''}
+        onChange={(e) => onDoiUuTien(e.target.value)}
+        title="Đối tượng ưu tiên (trẻ dưới 6 tuổi / người từ 75 tuổi hệ thống tự nhận)"
+        className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 flex-shrink-0"
+      >
+        <option value="">Ưu tiên: không</option>
+        {Object.entries(DOI_TUONG_UU_TIEN).map(([value, label]) => (
+          <option key={value} value={value}>{label}</option>
+        ))}
+      </select>
 
       <button
         onClick={onGoiLoa}

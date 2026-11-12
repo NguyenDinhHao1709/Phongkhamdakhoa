@@ -24,6 +24,7 @@ export default function KioskPage() {
     namSinh: '1990',
     gioiTinh: 'nam',
     trieuChung: '',
+    doiTuongUuTien: '',
   });
 
   // Dữ liệu vé sau khi lấy STT thành công
@@ -72,7 +73,7 @@ export default function KioskPage() {
     setMode('home');
     setSearchPhoneOrCode('');
     setFoundAppointments([]);
-    setFormData({ hoTen: '', soDienThoai: '', namSinh: '1990', gioiTinh: 'nam', trieuChung: '' });
+    setFormData({ hoTen: '', soDienThoai: '', namSinh: '1990', gioiTinh: 'nam', trieuChung: '', doiTuongUuTien: '' });
     setErrorMsg('');
     setTicketData(null);
   };
@@ -150,6 +151,7 @@ export default function KioskPage() {
         namSinh: formData.namSinh,
         gioiTinh: formData.gioiTinh,
         trieuChung: formData.trieuChung,
+        doiTuongUuTien: formData.doiTuongUuTien || undefined,
       });
 
       const ticket = res?.data?.ticket || res?.ticket;
@@ -504,6 +506,21 @@ export default function KioskPage() {
                     <option value="khac">Khác</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">Đối tượng ưu tiên (nếu có)</label>
+                <select
+                  value={formData.doiTuongUuTien}
+                  onChange={(e) => setFormData({ ...formData, doiTuongUuTien: e.target.value })}
+                  className="w-full p-3.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none text-sm"
+                >
+                  <option value="">Không (trẻ dưới 6 tuổi, người từ 75 tuổi được tự động ưu tiên)</option>
+                  <option value="phu_nu_co_thai">Phụ nữ có thai</option>
+                  <option value="khuyet_tat_nang">Người khuyết tật nặng</option>
+                  <option value="nguoi_co_cong">Người có công với cách mạng</option>
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">Trường hợp cấp cứu vui lòng báo ngay nhân viên tiếp đón.</p>
               </div>
 
               <div>
