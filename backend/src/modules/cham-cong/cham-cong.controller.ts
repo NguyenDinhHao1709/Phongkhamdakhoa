@@ -24,7 +24,7 @@ export class ChamCongController {
   @Post('check-in')
   async checkIn(
     @Request() req,
-    @Body() body: { frameBase64: string; framesB64?: string[] },
+    @Body() body: { frameBase64: string },
   ) {
     if (!body.frameBase64) throw new BadRequestException('Thiếu dữ liệu khuôn mặt');
 
@@ -33,14 +33,14 @@ export class ChamCongController {
       || req.socket.remoteAddress
       || req.ip;
 
-    return this.chamCongService.checkIn(userId, clientIp, body.frameBase64, body.framesB64);
+    return this.chamCongService.checkIn(userId, clientIp, body.frameBase64);
   }
 
   // ─── 2. Check-out ───────────────────────────────────────────────────────────
   @Post('check-out')
   async checkOut(
     @Request() req,
-    @Body() body: { frameBase64: string; framesB64?: string[] },
+    @Body() body: { frameBase64: string },
   ) {
     if (!body.frameBase64) throw new BadRequestException('Thiếu dữ liệu khuôn mặt');
 
@@ -49,7 +49,7 @@ export class ChamCongController {
       || req.socket.remoteAddress
       || req.ip;
 
-    return this.chamCongService.checkOut(userId, clientIp, body.frameBase64, body.framesB64);
+    return this.chamCongService.checkOut(userId, clientIp, body.frameBase64);
   }
 
   // ─── 3. Trạng thái hôm nay ──────────────────────────────────────────────────

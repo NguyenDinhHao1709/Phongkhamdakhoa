@@ -185,18 +185,18 @@ export default function PatientPortal() {
       </main>
 
       {/* ─── MOBILE BOTTOM NAVIGATION BAR (Điện thoại < 768px) ─────── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200 py-1 px-0.5 flex justify-around items-center shadow-lg">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200 pt-1 pb-safe px-1 flex justify-around items-center shadow-lg">
         {NAV_LINKS.map(({ to, end, icon: Icon, shortLabel, label }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
-            className={({ isActive }) => `flex flex-col items-center justify-center py-1 px-1 rounded-lg text-[10.5px] transition-colors flex-1 text-center ${
-              isActive ? 'text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-900'
+            className={({ isActive }) => `flex flex-col items-center justify-center py-1 px-0.5 rounded-lg text-[10px] transition-colors flex-1 min-w-0 text-center ${
+              isActive ? 'text-blue-600 font-bold bg-blue-50/60' : 'text-gray-500 hover:text-gray-900'
             }`}
           >
-            <Icon className="h-4 w-4 mb-0.5" />
-            <span className="whitespace-nowrap leading-none tracking-tight">{shortLabel || label}</span>
+            <Icon className="h-4 w-4 mb-0.5 flex-shrink-0" />
+            <span className="truncate w-full leading-tight tracking-tight">{shortLabel || label}</span>
           </NavLink>
         ))}
       </nav>

@@ -978,6 +978,30 @@ export default function DatLichKhamPage() {
                     ? `Xác nhận & Thanh toán ${formatVND(currentConfig.soTienCoc)} [${selectedSlot} ngày ${selectedNgayHen}]`
                     : `Xác nhận & Tạm ứng ${formatVND(currentConfig.soTienCoc)} [${selectedSlot} ngày ${selectedNgayHen}]`}
                 </button>
+
+                {/* THANH TÓM TẮT & ĐẶT LỊCH NHANH CỐ ĐỊNH TRÊN MOBILE KHI ĐÃ CHỌN GIỜ */}
+                {selectedDoctor && selectedSlot && (
+                  <div className="sm:hidden fixed bottom-[52px] left-0 right-0 z-30 px-3.5 py-2.5 bg-white/95 backdrop-blur-md border-t border-blue-200 shadow-lg flex items-center justify-between gap-2 animate-fade-in">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold text-gray-900 truncate">
+                        {selectedDoctor.hoTen} • <span className="text-blue-600">{selectedSlot}</span>
+                      </p>
+                      <p className="text-[10px] text-gray-500">
+                        {hinhThuc === 'truc_tuyen' ? 'Phí Telehealth:' : 'Tạm ứng giữ chỗ:'}{' '}
+                        <strong className="text-blue-700 font-extrabold">{formatVND(currentConfig.soTienCoc)}</strong>
+                      </p>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className={`px-3.5 py-2 rounded-xl text-white font-bold text-xs flex-shrink-0 shadow-xs cursor-pointer ${
+                        hinhThuc === 'truc_tuyen' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-blue-600 hover:bg-blue-700'
+                      }`}
+                    >
+                      {submitting ? 'Đang xử lý...' : 'Đặt lịch ngay'}
+                    </button>
+                  </div>
+                )}
               </>
             );
           })()}

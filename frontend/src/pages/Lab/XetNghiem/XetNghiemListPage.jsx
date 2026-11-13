@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { xuatExcel } from '../../../utils/xuatFile';
@@ -328,6 +328,17 @@ export default function XetNghiemListPage() {
   const [debouncedKeyword, setDebouncedKeyword] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedId, setSelectedId] = useState(null);
+  const detailPanelRef = useRef(null);
+
+  const handleSelectChiDinh = (id) => {
+    setSelectedId(id);
+    setSearchParams({ chiDinhId: id });
+    if (window.innerWidth < 1024) {
+      setTimeout(() => {
+        detailPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+    }
+  };
 
   // Debounce search
   useEffect(() => {
@@ -952,10 +963,7 @@ export default function XetNghiemListPage() {
                       return (
                         <tr
                           key={cd.id}
-                          onClick={() => {
-                            setSelectedId(cd.id);
-                            setSearchParams({ chiDinhId: cd.id });
-                          }}
+                          onClick={() => handleSelectChiDinh(cd.id)}
                           className={`cursor-pointer transition-all ${
                             isSelected
                               ? 'bg-primary-50/80 border-l-4 border-l-primary-600 shadow-2xs'
@@ -1033,8 +1041,7 @@ export default function XetNghiemListPage() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedId(cd.id);
-                                setSearchParams({ chiDinhId: cd.id });
+                                handleSelectChiDinh(cd.id);
                               }}
                               className={`p-1.5 rounded-lg border transition-colors ${
                                 isSelected
@@ -1085,9 +1092,21 @@ export default function XetNghiemListPage() {
         </div>
 
         {/* Right: Chi tiết chỉ định & Nhập kết quả */}
-        <div className="lg:col-span-5">
+        <div ref={detailPanelRef} className="lg:col-span-5 scroll-mt-16">
           {selectedId ? (
-            <ChiDinhDetailPanel id={selectedId} />
+            <div className="space-y-2.5">
+              <div className="lg:hidden flex items-center justify-between bg-primary-50 border border-primary-200 rounded-xl px-3.5 py-2 text-xs">
+                <span className="font-bold text-primary-800">Đang nhập kết quả chỉ định #{selectedId}</span>
+                <button
+                  type="button"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                  className="font-semibold text-primary-700 hover:underline flex items-center gap-1"
+                >
+                  ↑ Lên danh sách
+                </button>
+              </div>
+              <ChiDinhDetailPanel id={selectedId} />
+            </div>
           ) : (
             <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center text-gray-400 shadow-xs space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto text-gray-300">

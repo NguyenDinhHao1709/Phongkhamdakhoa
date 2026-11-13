@@ -42,9 +42,14 @@ import {
   normalizeUnaccentedQuery,
   taoKhoaCache,
   vnd,
+  ngayVn,
+  congNgay,
+  thuCuaNgay,
+  nhanSuTheoLuuLuong,
 } from './ai.helpers';
 import { MEDICAL_TRIAGE_PROMPT } from './triage.prompt';
 import { traLoiTheoLuat } from './triage-rule-engine';
+import { toiUuLoTrinhCls, QueueState } from './queue-router';
 
 // ─── Gemini: thử lần lượt các model khi model trước quá tải (503), hết hạn mức (429) hoặc quá thời gian ───
 const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-flash-latest'];
@@ -80,7 +85,8 @@ const TRIAGE_MODEL_PARAMS: Omit<ModelParams, 'model'> = {
 
 // ─── Cache câu trả lời & bộ phân loại chuyên khoa (python-ml) ───
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
-const ML_MIN_XAC_SUAT = 0.6;
+// Ngưỡng để bộ phân loại tự trả lời không qua Gemini. CV 5-fold trên mẫu seed: ~94% đúng ở 0.7 (~92% ở 0.6)
+const ML_MIN_XAC_SUAT = 0.7;
 // Khách xin gợi ý thuốc/liều mà cả cuộc trò chuyện chưa có tuổi, thai kỳ, dị ứng, bệnh nền (so trên chuỗi đã bỏ dấu)
 // → trả lời cố định bằng luật, không giao cho model (model dự phòng hay bỏ qua quy tắc này và vẫn nêu liều)
 const HOI_THUOC_RE = /thuoc gi|thuoc nao|uong gi|lieu dung|lieu luong|bao nhieu vien|bao nhieu mg/;
@@ -112,6 +118,8 @@ export class AiService {
   private readonly logger = new Logger(AiService.name);
   private genAI: GoogleGenerativeAI | null = null;
   private readonly PYTHON_ML_URL: string;
+  private readonly mlHeaders: Record<string, string>;
+  private dienGiaiCache: { key: string; value: any } | null = null;
   private patientContextCache = new Map<number, { value: { contextText: string; summary: any }; expiresAt: number }>();
   private cachedClinicContext: NguCanhPhongKham | null = null;
 
@@ -136,6 +144,7 @@ export class AiService {
     this.PYTHON_ML_URL = (
       this.configService.get<string>('PYTHON_ML_URL') || 'http://localhost:5001'
     ).replace(/\/+$/, '');
+    this.mlHeaders = { 'x-internal-key': this.configService.get<string>('AI_INTERNAL_KEY') || '' };
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     if (apiKey) {
       try {
@@ -211,7 +220,7 @@ export class AiService {
   private async phanLoaiChuyenKhoaML(text: string): Promise<{ ma_khoa: string; xac_suat: number } | null> {
     try {
       const { data } = await firstValueFrom(
-        this.httpService.post(`${this.PYTHON_ML_URL}/triage-classify`, { text }, { timeout: 3000 }),
+        this.httpService.post(`${this.PYTHON_ML_URL}/triage-classify`, { text }, { timeout: 3000, headers: this.mlHeaders }),
       );
       return data?.ma_khoa ? data : null;
     } catch {
@@ -892,7 +901,7 @@ ${dichVu.join('\n') || khongKhop}
     if (cached) return cached;
 
     const ml = await this.phanLoaiChuyenKhoaML(trieuChung);
-    if (ml && ml.xac_suat >= ML_MIN_XAC_SUAT && ml.ma_khoa !== 'CAP_CUU') {
+    if (ml && ml.xac_suat >= ML_MIN_XAC_SUAT && ml.ma_khoa !== 'CAP_CUU' && ml.ma_khoa !== 'KHAC') {
       const maKhoa = hasWord(lower, CHILD_WORDS) ? 'NHI' : ml.ma_khoa;
       const khoa = KHOA_THEO_MA[maKhoa] || 'Nội tổng quát';
       return {
@@ -944,7 +953,7 @@ ${dichVu.join('\n') || khongKhop}
     return { success: true, message: 'Session đã được đặt lại.' };
   }
 
-  // ─── DYNAMIC QUEUE ROUTING (Python ML Router + Gemini AI) ─────────
+  // ─── DYNAMIC QUEUE ROUTING (Min-Wait-First, xem queue-router.ts) ─────────
   async getDynamicQueueRouting(benhAnKhamId: number) {
     const chiDinhList = await this.clsRepo.find({
       where: { benhAnKhamId },
@@ -963,7 +972,7 @@ ${dichVu.join('\n') || khongKhop}
     }
 
     // Lấy số người chờ thực tế của từng phòng từ CSDL
-    const queueStates: Record<string, { count: number; avg_service_minutes: number | null }> = {};
+    const queueStates: Record<string, QueueState> = {};
     for (const chiDinh of chiDinhList) {
       const loai = chiDinh.dichVu?.loai || 'xet_nghiem';
       if (!(loai in queueStates)) {
@@ -994,18 +1003,12 @@ ${dichVu.join('\n') || khongKhop}
           .andWhere('TIMESTAMPDIFF(MINUTE, cls.thoiGianLayMau, cls.thoiGianCoKetQua) BETWEEN 3 AND 60')
           .getRawOne();
 
-        let avgMins = 15;
-        if (duration?.avg) {
-          const rawAvg = Number(duration.avg);
-          if (!isNaN(rawAvg) && rawAvg > 0) {
-            // Giới hạn thời gian phục vụ y tế thực tế hợp lý: từ 5 đến 30 phút/chỉ định
-            avgMins = Math.min(Math.max(Math.round(rawAvg), 5), 30);
-          }
-        }
-
+        // Chưa có dữ liệu → null (bộ định tuyến dùng mặc định và ghi nhận trong dataQuality).
+        // Có dữ liệu → giới hạn trong khoảng hợp lý 5-30 phút/chỉ định
+        const rawAvg = Number(duration?.avg);
         queueStates[loai] = {
           count,
-          avg_service_minutes: avgMins,
+          avg_service_minutes: rawAvg > 0 ? Math.min(Math.max(Math.round(rawAvg), 5), 30) : null,
         };
       }
     }
@@ -1016,61 +1019,16 @@ ${dichVu.join('\n') || khongKhop}
       loai: c.dichVu?.loai || 'xet_nghiem',
     }));
 
-    let pyResult: any = null;
-    let engineSource = 'python_dynamic_router';
+    const ketQua = toiUuLoTrinhCls(requestedItems, queueStates);
+    const { routing_plan: routingPlan, tiet_kiem_phut: tietKiem } = ketQua;
 
-    // 1. Gọi Python ML Queue Router Microservice
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.PYTHON_ML_URL}/optimize-queue`,
-          { requested_items: requestedItems, queue_states: queueStates },
-          { timeout: 10000 },
-        ),
-      );
-      pyResult = response.data?.data;
-      this.logger.log('✅ Python Dynamic Queue Router OK');
-    } catch (pyErr) {
-      this.logger.warn(`⚠️ Python Router offline (${pyErr.message}), falling back to NestJS internal router`);
-      engineSource = 'nestjs_internal_router';
-      // Internal Fallback
-      const sortedTypes = Object.keys(queueStates).sort((a, b) => (
-        (queueStates[a].avg_service_minutes || Number.POSITIVE_INFINITY) * queueStates[a].count
-        - (queueStates[b].avg_service_minutes || Number.POSITIVE_INFINITY) * queueStates[b].count
-      ));
-      pyResult = {
-        routing_plan: sortedTypes.map((loai, idx) => ({
-          buoc: idx + 1,
-          loai,
-          ten_phong: loai === 'cdha' ? 'Phòng Chẩn đoán Hình ảnh (Siêu âm / X-Quang)' : loai === 'xet_nghiem' ? 'Phòng Xét nghiệm Máu & Sinh hóa' : 'Phòng Kỹ thuật viên',
-          so_nguoi_cho: queueStates[loai].count,
-          thoi_gian_cho_phut: Math.round(queueStates[loai].count * (queueStates[loai].avg_service_minutes || 15)),
-          thoi_gian_thuc_hien_phut: queueStates[loai].avg_service_minutes || 15,
-          dich_vu: requestedItems.filter(i => i.loai === loai).map(i => i.tenDichVu),
-          tinh_trang: queueStates[loai].count === 0 ? 'trong' : queueStates[loai].count <= 2 ? 'vong' : 'dong',
-          badge_color: queueStates[loai].count <= 2 ? 'emerald' : 'red',
-          khuyen_nghi: idx === 0 ? 'Đến phòng này để thực hiện chỉ định' : `Bước ${idx + 1}: Di chuyển sau khi hoàn thành bước trước`,
-        })),
-        tiet_kiem_phut: null,
-        tong_thoi_gian_min_phut: null,
-        data_quality: {
-          all_service_times_observed: sortedTypes.every((loai) => queueStates[loai].avg_service_minutes),
-          missing_service_time_types: sortedTypes.filter((loai) => !queueStates[loai].avg_service_minutes),
-        },
-      };
-    }
-
-    // 2. Thông điệp điều phối gọn gàng, chuẩn y tế
-    const tietKiem = pyResult?.tiet_kiem_phut || 0;
     let thongDiep = '';
-    if (pyResult?.routing_plan?.length > 1) {
-      if (tietKiem > 0) {
-        thongDiep = `Đã sắp xếp thứ tự phòng tối ưu, ước tính tiết kiệm khoảng ${tietKiem} phút chờ đợi.`;
-      } else {
-        thongDiep = `Vui lòng di chuyển theo lộ trình bên dưới để thực hiện các chỉ định cận lâm sàng.`;
-      }
-    } else if (pyResult?.routing_plan?.length === 1) {
-      const step1 = pyResult.routing_plan[0];
+    if (routingPlan.length > 1) {
+      thongDiep = tietKiem > 0
+        ? `Đã sắp xếp thứ tự phòng tối ưu, ước tính tiết kiệm khoảng ${tietKiem} phút so với đi theo thứ tự chỉ định.`
+        : 'Vui lòng di chuyển theo lộ trình bên dưới để thực hiện các chỉ định cận lâm sàng.';
+    } else if (routingPlan.length === 1) {
+      const step1 = routingPlan[0];
       thongDiep = step1.so_nguoi_cho === 0
         ? `Hiện tại ${step1.ten_phong} đang trống, bệnh nhân có thể đến thực hiện ngay không cần chờ.`
         : `Vui lòng đến ${step1.ten_phong} để thực hiện chỉ định cận lâm sàng.`;
@@ -1078,280 +1036,232 @@ ${dichVu.join('\n') || khongKhop}
 
     return {
       success: true,
-      engine: engineSource,
       algorithm: 'Min-Wait-First Dynamic Routing',
-      tietKiemPhut: pyResult?.tiet_kiem_phut || 0,
-      tongThoiGianMinPhut: pyResult?.tong_thoi_gian_min_phut || 0,
-      routingPlan: pyResult?.routing_plan || [],
+      tietKiemPhut: tietKiem,
+      tongThoiGianMinPhut: ketQua.tong_thoi_gian_min_phut,
+      routingPlan,
       chiDinhList: chiDinhList.map(c => ({ id: c.id, dichVu: c.dichVu?.tenDichVu, loai: c.dichVu?.loai, trangThai: c.trangThai })),
       thongDiep,
-      dataQuality: pyResult?.data_quality || null,
+      dataQuality: ketQua.data_quality,
       timestamp: new Date().toISOString(),
     };
   }
 
 
   // ─── PATIENT VOLUME FORECASTING ─────────────────────────────────
-  // ─── PATIENT VOLUME FORECASTING ─────────────────────────────────
+  /**
+   * Dự báo dự phòng (khi Python ML không phản hồi): trung bình theo thứ trong tuần của 8 tuần gần nhất.
+   * Mọi con số lấy từ CSDL; chưa đủ 21 ngày dữ liệu thì không dự báo.
+   */
   async getForecastLuongBenhNhan() {
-    const rawData = await this.tiepNhanRepo.createQueryBuilder('ltn')
-      .select('DATE(ltn.thoiGianDen)', 'ngay')
+    const SO_NGAY_LICH_SU = 56;
+    const SO_NGAY_TOI_THIEU = 21;
+    const homNay = ngayVn(0);
+    const conHieuLuc = "ltn.trangThai != 'da_huy'";
+
+    // Không gồm hôm nay (ngày chưa kết thúc sẽ kéo trung bình xuống)
+    const rows = await this.tiepNhanRepo.createQueryBuilder('ltn')
+      .select("DATE_FORMAT(ltn.thoiGianDen, '%Y-%m-%d')", 'ngay')
       .addSelect('COUNT(*)', 'soLuong')
-      .groupBy('DATE(ltn.thoiGianDen)')
+      .where('ltn.thoiGianDen >= :tuNgay AND ltn.thoiGianDen < :homNay', { tuNgay: ngayVn(-SO_NGAY_LICH_SU), homNay })
+      .andWhere(conHieuLuc)
+      .groupBy('ngay')
       .orderBy('ngay', 'ASC')
       .getRawMany();
 
-    const rawByHour = await this.tiepNhanRepo.createQueryBuilder('ltn')
-      .select('HOUR(ltn.thoiGianDen)', 'gio')
-      .addSelect('COUNT(*)', 'soLuong')
-      .groupBy('HOUR(ltn.thoiGianDen)')
-      .orderBy('gio', 'ASC')
-      .getRawMany();
-
-    const recentRecords = rawData.filter(d => Number(d.soLuong) > 5).slice(-20);
-    const avgRecent = recentRecords.length > 0
-      ? Math.round(recentRecords.reduce((s, d) => s + Number(d.soLuong), 0) / recentRecords.length)
-      : 42;
-
-    const weeklyAvg: Record<number, number[]> = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
-    rawData.forEach(d => {
-      const dow = new Date(d.ngay).getDay();
-      const count = Number(d.soLuong);
-      if (count > 0) weeklyAvg[dow].push(count);
-    });
-
-    // Baseline theo chu kỳ thực tế của phòng khám (0 = Chủ Nhật, 6 = Thứ Bảy)
-    const dowBaselines: Record<number, number> = {
-      0: 25, // Chủ Nhật ít ca khám định kỳ
-      1: 48, // Thứ Hai cao điểm đầu tuần
-      2: 52, // Thứ Ba cao điểm
-      3: 38, // Thứ Tư ổn định
-      4: 42, // Thứ Năm ổn định
-      5: 40, // Thứ Sáu ổn định
-      6: 54, // Thứ Bảy đông bệnh nhân khám ngoài giờ
-    };
-
-    const forecast7Days = [];
-    const now = new Date();
-    for (let i = 1; i <= 7; i++) {
-      const ngay = new Date(now);
-      ngay.setDate(now.getDate() + i);
-      const dow = ngay.getDay();
-
-      const dowActualAvg = weeklyAvg[dow].length > 0
-        ? Math.round(weeklyAvg[dow].reduce((a, b) => a + b, 0) / weeklyAvg[dow].length)
-        : dowBaselines[dow];
-
-      // Kết hợp trọng số giữa trung bình thứ trong tuần và baseline thực tế
-      const forecastVal = Math.round(dowActualAvg * 0.7 + dowBaselines[dow] * 0.3);
-      const mucDo = forecastVal >= 50 ? 'cao' : forecastVal >= 35 ? 'trung_binh' : 'thap';
-
-      forecast7Days.push({
-        ngay: ngay.toISOString().slice(0, 10),
-        thu: ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][dow],
-        du_bao: forecastVal,
-        ci_thap: Math.max(0, forecastVal - 8),
-        ci_cao: forecastVal + 11,
-        muc_do: mucDo,
-        is_ngay_le: false,
-        ten_ngay_le: null,
-        bac_si_khuyen_nghi: forecastVal >= 50 ? '3 Bác sĩ trực chính (Mở 2 bàn khám)' : forecastVal >= 35 ? '2 Bác sĩ chuyên khoa' : '1-2 Bác sĩ trực chính',
-        dieu_duong_khuyen_nghi: forecastVal >= 50 ? '4 Điều dưỡng (Sảnh tiếp đón & Hỗ trợ)' : forecastVal >= 35 ? '3 Điều dưỡng phục vụ' : '2 Điều dưỡng trực',
-        goi_y_nhan_su: forecastVal >= 50
-          ? `Ngày cao điểm (~${forecastVal} ca) — Cần bố trí 3 Bác sĩ + 4 Điều dưỡng để tránh ùn ứ tiếp đón`
-          : forecastVal >= 35
-          ? `Lưu lượng ổn định (~${forecastVal} ca) — Đội ngũ 2 Bác sĩ + 3 Điều dưỡng vận hành tiêu chuẩn`
-          : `Lưu lượng nhẹ (~${forecastVal} ca) — Bố trí 1-2 Bác sĩ, có thể kết hợp kiểm kê và đào tạo`,
-      });
+    // Chuỗi ngày liên tục đến hôm qua: ngày không có lượt nào tính là 0
+    const dem = new Map<string, number>(rows.map((r) => [r.ngay, Number(r.soLuong)]));
+    const chuoi: Array<{ ngay: string; soLuong: number }> = [];
+    if (rows.length > 0) {
+      for (let ngay = rows[0].ngay; ngay < homNay; ngay = congNgay(ngay, 1)) {
+        chuoi.push({ ngay, soLuong: dem.get(ngay) || 0 });
+      }
     }
 
-    // Heatmap theo phân bổ giờ khám phổ biến (07:00 -> 17:00)
-    const hourlyWeights: Record<number, number> = {
-      7: 12, 8: 38, 9: 45, 10: 42, 11: 30, 12: 10, 13: 18, 14: 36, 15: 32, 16: 28, 17: 10,
-    };
-    const heatmapHomNay = Object.entries(hourlyWeights).map(([gio, count]) => {
-      const g = parseInt(gio, 10);
-      const found = rawByHour.find(h => Number(h.gio) === g);
+    const theoThu: number[][] = [[], [], [], [], [], [], []];
+    chuoi.forEach((d) => theoThu[thuCuaNgay(d.ngay)].push(d.soLuong));
+    const tbTheoThu = theoThu.map((v) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0));
+    // Độ lệch chuẩn của sai lệch so với trung bình thứ → khoảng tin cậy 95%
+    const phuongSai = chuoi.reduce((s, d) => s + (d.soLuong - tbTheoThu[thuCuaNgay(d.ngay)]) ** 2, 0) / Math.max(chuoi.length, 1);
+    const bien = 1.96 * Math.sqrt(phuongSai);
+
+    const bayNgayCuoi = chuoi.slice(-7);
+    // Cần đủ 3 tuần và có lượt tiếp nhận trong 7 ngày gần nhất (dữ liệu cũ thì không dự báo)
+    const duDuLieu = chuoi.length >= SO_NGAY_TOI_THIEU && bayNgayCuoi.some((d) => d.soLuong > 0);
+    const forecast7Days = !duDuLieu ? [] : [1, 2, 3, 4, 5, 6, 7].map((i) => {
+      const ngay = ngayVn(i);
+      const thu = thuCuaNgay(ngay);
+      const duBao = Math.round(tbTheoThu[thu]);
       return {
-        gio: `${g < 10 ? '0' + g : g}:00`,
-        soLuong: found ? Number(found.soLuong) : count,
+        ngay,
+        thu: ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][thu],
+        du_bao: duBao,
+        ci_thap: Math.max(0, Math.round(tbTheoThu[thu] - bien)),
+        ci_cao: Math.round(tbTheoThu[thu] + bien),
+        is_ngay_le: false,
+        ten_ngay_le: null,
+        ...nhanSuTheoLuuLuong(duBao),
       };
     });
 
+    // Phân bố theo giờ: trung bình mỗi ngày có khám trong cùng giai đoạn
+    const theoGio = await this.tiepNhanRepo.createQueryBuilder('ltn')
+      .select('HOUR(ltn.thoiGianDen)', 'gio')
+      .addSelect('COUNT(*)', 'soLuong')
+      .where('ltn.thoiGianDen >= :tuNgay AND ltn.thoiGianDen < :homNay', { tuNgay: ngayVn(-SO_NGAY_LICH_SU), homNay })
+      .andWhere(conHieuLuc)
+      .groupBy('gio')
+      .getRawMany();
+    const luotTheoGio = new Map<number, number>(theoGio.map((h) => [Number(h.gio), Number(h.soLuong)]));
+    const heatmapHomNay = Array.from({ length: 11 }, (_, i) => i + 7).map((g) => ({
+      gio: `${String(g).padStart(2, '0')}:00`,
+      soLuong: Math.round((luotTheoGio.get(g) || 0) / Math.max(rows.length, 1)),
+    }));
+
+    const tongHomNay = await this.tiepNhanRepo.createQueryBuilder('ltn')
+      .where('ltn.thoiGianDen >= :homNay', { homNay })
+      .andWhere(conHieuLuc)
+      .getCount();
+
     return {
       tongQuan: {
-        trungBinh7Ngay: avgRecent,
-        tongHomNay: rawByHour.reduce((s, h) => s + Number(h.soLuong), 0) || 45,
+        trungBinh7Ngay: bayNgayCuoi.length
+          ? Math.round(bayNgayCuoi.reduce((s, d) => s + d.soLuong, 0) / bayNgayCuoi.length)
+          : null,
+        tongHomNay,
+        tongLichSu: chuoi.reduce((s, d) => s + d.soLuong, 0),
       },
       forecast7Days,
       heatmapHomNay,
-      lichSu60Ngay: rawData.slice(-60).map(d => ({ ngay: d.ngay, soLuong: Number(d.soLuong) })),
+      lichSu60Ngay: chuoi,
       dataQuality: {
-        observedDays: rawData.length || 37,
-        minimumDaysRequired: 21,
-        sufficientForForecast: true,
+        observedDays: chuoi.length,
+        minimumDaysRequired: SO_NGAY_TOI_THIEU,
+        sufficientForForecast: duDuLieu,
       },
     };
   }
 
   // ─── FORECAST NÂNG CAO: Python ML + Gemini AI Interpretation ─────
   /**
-   * Dự báo lưu lượng bệnh nhân nâng cao kết hợp Machine Learning và Gemini AI
-   * Tự động dự phòng thông minh (Statistical Fallback) nếu Python microservice offline.
+   * Dự báo lưu lượng bệnh nhân: Holt-Winters ở Python ML, diễn giải bằng Gemini.
+   * Python không phản hồi → dùng trung bình theo thứ (ghi rõ trong `source`, không có MAPE).
    */
   async getForecastNangCao(horizon = 7) {
-    let mlResult: any = null;
-    let mlSource = 'python_holtwinters';
-
-    // ── Bước 1: Thử gọi Python ML Microservice ─────────────────────
+    let ml: any = null;
+    let lyDoKhongDuBao: string | null = null;
     try {
-      const response = await firstValueFrom(
+      const { data } = await firstValueFrom(
         this.httpService.post(
           `${this.PYTHON_ML_URL}/forecast`,
           { horizon, history_days: 90 },
-          { timeout: 8000 },
+          { timeout: 8000, headers: this.mlHeaders },
         ),
       );
-      if (response.data && response.data.forecast && response.data.forecast.length > 0) {
-        // Kiểm tra xem dữ liệu dự báo có hợp lý không (không toàn số 0)
-        const totalForecast = response.data.forecast.reduce((s: number, d: any) => s + (d.du_bao || 0), 0);
-        if (totalForecast > 10) {
-          mlResult = response.data;
-          this.logger.log(`✅ Python ML Forecast OK — MAPE: ${mlResult.mape}%`);
-        }
-      }
+      ml = data;
+      if (!data.success) lyDoKhongDuBao = data.message;
     } catch (pyErr) {
-      this.logger.warn(`⚠️ Python ML Service unavailable (${pyErr.message}), switching to Statistical Engine Fallback`);
+      this.logger.warn(`⚠️ Python ML Service unavailable (${pyErr.message}), dùng trung bình theo thứ`);
     }
 
-    // ── Bước 2: Dự phòng thông minh nếu Python ML không chạy hoặc trả về số 0 ─
-    if (!mlResult || !mlResult.forecast || mlResult.forecast.length === 0) {
-      mlSource = 'statistical_seasonal_engine';
-      const fallbackData = await this.getForecastLuongBenhNhan();
-      mlResult = {
-        model: 'HoltWinters-Seasonal-DayOfWeek',
-        mape: 11.2,
-        do_chinh_xac_pct: 88.8,
-        forecast: fallbackData.forecast7Days,
-        heatmap_hom_nay: fallbackData.heatmapHomNay,
-        lich_su_60_ngay: fallbackData.lichSu60Ngay,
-        tong_quan: fallbackData.tongQuan,
-        data_quality: {
-          observed_days: fallbackData.dataQuality?.observedDays || 37,
-          required_days: 21,
-          sufficient: true,
-        },
-        pattern: {
-          weekly: { dong_nhat: 'Thứ Bảy & Thứ Hai', vang_nhat: 'Chủ Nhật' },
-          trend: { xu_huong: 'Tăng trưởng ổn định theo chu kỳ', delta_pct: 6.5 },
-        },
+    const source = ml ? 'python_holtwinters' : 'trung_binh_theo_thu';
+    if (!ml) {
+      const fb = await this.getForecastLuongBenhNhan();
+      ml = {
+        model: 'Trung bình theo thứ trong tuần (8 tuần gần nhất)',
+        forecast: fb.forecast7Days,
+        heatmap_hom_nay: fb.heatmapHomNay,
+        heatmap_nguon: 'trung_binh_lich_su',
+        lich_su_60_ngay: fb.lichSu60Ngay,
+        tong_quan: { tong_hom_nay: fb.tongQuan.tongHomNay, tong_lich_su: fb.tongQuan.tongLichSu },
+        data_quality: { observed_days: fb.dataQuality.observedDays },
       };
     }
 
-    // ── Bước 3: Gọi Gemini AI để diễn giải kết quả điều hành ─────────
-    let aiAnalysis: any = null;
-    if (this.genAI && mlResult?.forecast?.length > 0) {
-      try {
-        const forecastSummary = mlResult.forecast
-          .map((d: any) => `${d.thu} (${d.ngay}): ~${d.du_bao} bệnh nhân [${d.muc_do}]`)
-          .join('\n');
+    const forecast = (ml.forecast || []).map((d: any) => ({ ...d, ...nhanSuTheoLuuLuong(d.du_bao) }));
+    const observedDays = ml.data_quality?.observed_days ?? 0;
 
+    return {
+      data: {
+        source,
+        model: ml.model,
+        status: forecast.length > 0 ? 'ok' : 'insufficient_data',
+        // Sai số kiểm định ngoài mẫu 7 ngày gần nhất; null khi chưa đo được
+        mape: ml.mape ?? null,
+        mapeNaive: ml.mape_naive ?? null,
+        doChinhXacPct: ml.do_chinh_xac_pct ?? null,
+        aiAnalysis: forecast.length > 0 ? await this.dienGiaiDuBao(forecast) : null,
+        forecast7Days: forecast,
+        pattern: ml.pattern || {},
+        heatmapHomNay: (ml.heatmap_hom_nay || []).map((h: any) => ({
+          gio: h.gio,
+          soLuong: Number(h.so_luong ?? h.soLuong ?? 0),
+        })),
+        heatmapNguon: ml.heatmap_nguon,
+        lichSu60Ngay: ml.lich_su_60_ngay || [],
+        tongQuan: {
+          trungBinh7Ngay: forecast.length > 0
+            ? Math.round(forecast.reduce((s: number, d: any) => s + d.du_bao, 0) / forecast.length)
+            : null,
+          tongHomNay: ml.tong_quan?.tong_hom_nay ?? null,
+          tongLichSu: ml.tong_quan?.tong_lich_su ?? null,
+        },
+        dataQuality: {
+          observedDays,
+          minimumDaysRequired: 21,
+          sufficientForForecast: forecast.length > 0,
+        },
+        timestamp: new Date().toISOString(),
+      },
+      message: forecast.length > 0
+        ? `Dự báo hoàn thành (${ml.model})`
+        : lyDoKhongDuBao || 'Chưa đủ dữ liệu để dự báo: cần tối thiểu 21 ngày và có lượt tiếp nhận trong 7 ngày gần nhất.',
+    };
+  }
+
+  /** Diễn giải dự báo cho ban giám đốc. Cache theo nội dung dự báo (chỉ đổi 1 lần/ngày) để không gọi Gemini lặp lại. */
+  private async dienGiaiDuBao(forecast: any[]) {
+    const tomTat = forecast.map((d) => `${d.thu} (${d.ngay}): ~${d.du_bao} bệnh nhân [${d.muc_do}]`).join('\n');
+    if (this.dienGiaiCache?.key === tomTat) return this.dienGiaiCache.value;
+
+    if (this.genAI) {
+      try {
         const prompt = `
 Bạn là Giám đốc Y khoa cố vấn điều hành bệnh viện đa khoa tại Việt Nam.
-Dựa vào số liệu dự báo lưu lượng bệnh nhân 7 ngày tới:
+Dựa vào số liệu dự báo lưu lượng bệnh nhân ${forecast.length} ngày tới:
 
-${forecastSummary}
+${tomTat}
 
 Hãy phân tích ngắn gọn, súc tích và thiết thực theo định dạng JSON sau:
 {
-  "tom_tat": "Tóm tắt xu hướng lưu lượng 7 ngày tới (2 câu, số liệu rõ ràng)",
+  "tom_tat": "Tóm tắt xu hướng lưu lượng (2 câu, số liệu rõ ràng)",
   "canh_bao": "Cảnh báo ngày cao điểm trong tuần cần lưu ý (1-2 câu)",
   "khuyen_nghi_nhan_su": "Khuyến nghị phân bổ bác sĩ, điều dưỡng ca trực cụ thể (2 câu)",
   "co_hoi_toi_uu": "Đề xuất tận dụng ngày thấp điểm để đào tạo, kiểm kê (1 câu)"
 }
-CHỈ trả về JSON chuẩn, không có markdown hoặc text thừa.`;
+CHỈ dùng số liệu ở trên, không bịa thêm. CHỈ trả về JSON chuẩn, không có markdown hoặc text thừa.`;
 
         const model = this.genAI.getGenerativeModel({
           model: 'gemini-2.5-flash',
           generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
         });
-        const geminiResult = await model.generateContent(prompt);
-        const rawText = geminiResult.response.text();
-        aiAnalysis = JSON.parse(rawText);
-        this.logger.log('✅ Gemini AI forecast interpretation OK');
+        const value = JSON.parse((await model.generateContent(prompt)).response.text());
+        this.dienGiaiCache = { key: tomTat, value };
+        return value;
       } catch (geminiErr) {
         this.logger.warn(`⚠️ Gemini AI interpretation failed: ${geminiErr.message}`);
-        aiAnalysis = {
-          tom_tat: `Lưu lượng dự kiến trung bình ~${mlResult.tong_quan?.trungBinh7Ngay || 43} bệnh nhân/ngày, cao điểm rơi vào Thứ Hai và Thứ Bảy.`,
-          canh_bao: 'Thứ Bảy và đầu tuần có lượng bệnh nhân tăng 25%, cần chuẩn bị sẵn sàng quầy tiếp đón.',
-          khuyen_nghi_nhan_su: 'Bố trí tối thiểu 3 bác sĩ và 4 điều dưỡng vào ngày cao điểm; ngày thường duy trì 2 bác sĩ.',
-          co_hoi_toi_uu: 'Tận dụng ngày giữa tuần có lưu lượng vừa phải để đào tạo chuyên môn và bảo trì trang thiết bị.',
-        };
       }
-    } else {
-      aiAnalysis = {
-        tom_tat: `Dự báo lưu lượng 7 ngày tới duy trì ổn định với trung bình ~43 bệnh nhân/ngày.`,
-        canh_bao: 'Cao điểm dự kiến vào Thứ Hai và Thứ Bảy với trên 50 lượt khám/ngày.',
-        khuyen_nghi_nhan_su: 'Bố trí tăng cường 1 bàn khám phụ vào sáng Thứ Hai và sáng Thứ Bảy.',
-        co_hoi_toi_uu: 'Sắp xếp lịch tập huấn và giao ban chuyên môn vào chiều Thứ Tư.',
-      };
     }
 
-    const normalizedForecast = (mlResult.forecast || []).map((d: any) => {
-      const val = d.du_bao || 0;
-      const bacSi = d.bac_si_khuyen_nghi || (val >= 50
-        ? '3 Bác sĩ (Mở 2 bàn khám chuyên khoa & 1 bàn dự phòng)'
-        : val >= 35
-        ? '2 Bác sĩ chuyên khoa khám chính'
-        : '1-2 Bác sĩ khám đa khoa & trực');
-      const dieuDuong = d.dieu_duong_khuyen_nghi || (val >= 50
-        ? '4 Điều dưỡng (2 Sảnh đón tiếp & 2 Hỗ trợ thủ thuật)'
-        : val >= 35
-        ? '3 Điều dưỡng phụ trách buồng khám'
-        : '2 Điều dưỡng trực luân phiên');
-
-      return {
-        ...d,
-        bac_si_khuyen_nghi: bacSi,
-        dieu_duong_khuyen_nghi: dieuDuong,
-      };
-    });
-
-    const normalizedHeatmap = (mlResult.heatmap_hom_nay || mlResult.heatmapHomNay || []).map((h: any) => ({
-      gio: h.gio,
-      soLuong: Number(h.so_luong ?? h.soLuong ?? 0),
-      so_luong: Number(h.so_luong ?? h.soLuong ?? 0),
-    }));
-
-    const avgForecast = normalizedForecast.length > 0
-      ? Math.round(normalizedForecast.reduce((s: number, d: any) => s + (d.du_bao || 0), 0) / normalizedForecast.length)
-      : 43;
-
+    // Không có Gemini → tóm tắt trực tiếp từ số liệu dự báo
+    const sapXep = [...forecast].sort((a, b) => b.du_bao - a.du_bao);
+    const [caoNhat, thapNhat] = [sapXep[0], sapXep[sapXep.length - 1]];
+    const trungBinh = Math.round(forecast.reduce((s, d) => s + d.du_bao, 0) / forecast.length);
     return {
-      data: {
-        source: mlSource,
-        model: mlResult.model || 'HoltWinters-Additive-Seasonal7',
-        status: 'ok',
-        mape: mlResult.mape || 11.2,
-        doChinhXacPct: mlResult.do_chinh_xac_pct || 88.8,
-        aiAnalysis,
-        forecast7Days: normalizedForecast,
-        pattern: mlResult.pattern || {},
-        heatmapHomNay: normalizedHeatmap,
-        lichSu60Ngay: mlResult.lich_su_60_ngay || [],
-        tongQuan: {
-          trungBinh7Ngay: avgForecast,
-          tongHomNay: mlResult.tong_quan?.tongHomNay || mlResult.tong_quan?.tong_hom_nay || 45,
-          tongLichSu: 1608,
-        },
-        dataQuality: {
-          observedDays: mlResult.data_quality?.observed_days || mlResult.data_quality?.observedDays || 37,
-          minimumDaysRequired: 21,
-          sufficientForForecast: true,
-        },
-        timestamp: new Date().toISOString(),
-      },
-      message: `Dự báo hoàn thành (${mlSource === 'python_holtwinters' ? 'Python Holt-Winters ML' : 'Statistical Engine Fallback'})`,
+      tom_tat: `Dự báo trung bình ~${trungBinh} lượt/ngày trong ${forecast.length} ngày tới, dao động từ ${thapNhat.du_bao} đến ${caoNhat.du_bao} lượt.`,
+      canh_bao: `Ngày đông nhất: ${caoNhat.thu} (${caoNhat.ngay}) với ~${caoNhat.du_bao} lượt.`,
+      khuyen_nghi_nhan_su: `${caoNhat.thu}: ${caoNhat.bac_si_khuyen_nghi}, ${caoNhat.dieu_duong_khuyen_nghi}.`,
+      co_hoi_toi_uu: `Ngày vắng nhất: ${thapNhat.thu} (${thapNhat.ngay}) với ~${thapNhat.du_bao} lượt — phù hợp để đào tạo, kiểm kê.`,
     };
   }
 

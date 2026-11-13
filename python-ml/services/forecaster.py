@@ -1,11 +1,11 @@
 """
-forecaster.py — ML Engine cho Dự Báo Lưu Lượng Bệnh Nhân
-Sử dụng: Holt-Winters Exponential Smoothing + STL Decomposition
+forecaster.py — Dự báo lưu lượng bệnh nhân
+Holt-Winters Exponential Smoothing (chu kỳ tuần) + phân rã mùa vụ.
 """
 import os
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional, Tuple
 
 import mysql.connector
@@ -15,13 +15,35 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 
 load_dotenv()
 
-# ─── Ngày lễ Việt Nam (cố định hàng năm) ─────────────────────────────
-NGAY_LE_VN = {
+# Múi giờ Việt Nam: backend lưu thoi_gian_den theo giờ +07:00, server chạy UTC
+VN_TZ = timezone(timedelta(hours=7))
+
+
+def today_vn() -> date:
+    return datetime.now(VN_TZ).date()
+
+
+# ─── Ngày lễ Việt Nam ─────────────────────────────────────────────────
+# Mô hình CHƯA học hiệu ứng ngày lễ (chưa đủ 1 năm dữ liệu) — chỉ gắn nhãn để người xem lưu ý.
+NGAY_LE_DUONG_LICH = {
     "01-01": "Tết Dương lịch",
     "04-30": "Ngày giải phóng 30/4",
     "05-01": "Quốc tế Lao động 1/5",
     "09-02": "Quốc khánh 2/9",
 }
+# Lễ âm lịch đổi ngày mỗi năm: mùng 1 Tết và Giỗ Tổ 10/3
+TET_MUNG_1 = [date(2026, 2, 17), date(2027, 2, 6), date(2028, 1, 26)]
+GIO_TO = [date(2026, 4, 26), date(2027, 4, 16), date(2028, 4, 4)]
+
+
+def ten_ngay_le(ngay: date) -> Optional[str]:
+    for mung_1 in TET_MUNG_1:
+        if -2 <= (ngay - mung_1).days <= 4:  # 29 Tết → mùng 5
+            return "Tết Nguyên đán"
+    if ngay in GIO_TO:
+        return "Giỗ Tổ Hùng Vương"
+    return NGAY_LE_DUONG_LICH.get(ngay.strftime("%m-%d"))
+
 
 # ─── Database Loader ───────────────────────────────────────────────────
 class DataLoader:
@@ -32,225 +54,133 @@ class DataLoader:
             "database": os.getenv("DB_NAME", "phong_kham"),
             "user":     os.getenv("DB_USER", "root"),
             "password": os.getenv("DB_PASSWORD", ""),
+            "time_zone": "+07:00",  # CURDATE()/NOW() theo giờ Việt Nam
         }
 
     def get_connection(self):
         return mysql.connector.connect(**self.config)
 
-    def load_daily_counts(self, days: int = 90) -> pd.DataFrame:
-        """Lấy dữ liệu lượt khám theo ngày trong N ngày gần nhất."""
-        conn = self.get_connection()
-        try:
-            query = """
-                SELECT
-                    DATE(thoi_gian_den) AS ngay,
-                    COUNT(*) AS so_luong
-                FROM luot_tiep_nhan
-                WHERE
-                    thoi_gian_den >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
-                    AND trang_thai != 'da_huy'
-                GROUP BY DATE(thoi_gian_den)
-                ORDER BY ngay ASC
-            """
-            df = pd.read_sql(query, conn, params=(days,))
-            df["ngay"] = pd.to_datetime(df["ngay"])
-            df = df.set_index("ngay")
-            df["so_luong"] = pd.to_numeric(df["so_luong"])
-            return df
-        finally:
-            conn.close()
-
-    def load_hourly_today(self) -> pd.DataFrame:
-        """Lấy phân bố lượt khám theo giờ trong hôm nay hoặc theo giờ chuẩn nếu hôm nay chưa có."""
-        conn = self.get_connection()
-        try:
-            query = """
-                SELECT
-                    HOUR(thoi_gian_den) AS gio,
-                    COUNT(*) AS so_luong
-                FROM luot_tiep_nhan
-                WHERE DATE(thoi_gian_den) = CURDATE()
-                    AND trang_thai != 'da_huy'
-                GROUP BY HOUR(thoi_gian_den)
-                ORDER BY gio ASC
-            """
-            df = pd.read_sql(query, conn)
-            # Nếu hôm nay chưa có dữ liệu hoặc quá ít (< 5), lấy phân bổ theo giờ thực tế trong lịch sử phòng khám
-            if df.empty or df["so_luong"].sum() < 5:
-                query_avg = """
-                    SELECT
-                        h.gio,
-                        ROUND(COALESCE(c.tong / NULLIF(c.so_ngay, 0), h.mac_dinh)) AS so_luong
-                    FROM (
-                        SELECT 7 AS gio, 8 AS mac_dinh UNION ALL
-                        SELECT 8, 22 UNION ALL
-                        SELECT 9, 38 UNION ALL
-                        SELECT 10, 35 UNION ALL
-                        SELECT 11, 20 UNION ALL
-                        SELECT 12, 8 UNION ALL
-                        SELECT 13, 14 UNION ALL
-                        SELECT 14, 32 UNION ALL
-                        SELECT 15, 34 UNION ALL
-                        SELECT 16, 24 UNION ALL
-                        SELECT 17, 10
-                    ) h
-                    LEFT JOIN (
-                        SELECT
-                            HOUR(thoi_gian_den) AS gio,
-                            COUNT(*) AS tong,
-                            COUNT(DISTINCT DATE(thoi_gian_den)) AS so_ngay
-                        FROM luot_tiep_nhan
-                        WHERE trang_thai != 'da_huy'
-                        GROUP BY HOUR(thoi_gian_den)
-                    ) c ON h.gio = c.gio
-                    ORDER BY h.gio ASC
-                """
-                df = pd.read_sql(query_avg, conn)
-            return df
-        finally:
-            conn.close()
-
-    def load_stats_summary(self, days: int = 60) -> Dict[str, Any]:
-        """Lấy các chỉ số tổng hợp."""
+    def _query(self, sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
         conn = self.get_connection()
         try:
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("""
-                SELECT
-                    COUNT(*) AS tong_luot,
-                    COUNT(DISTINCT DATE(thoi_gian_den)) AS so_ngay,
-                    SUM(CASE WHEN trang_thai = 'hoan_thanh' THEN 1 ELSE 0 END) AS hoan_thanh,
-                    SUM(CASE WHEN trang_thai = 'da_huy' THEN 1 ELSE 0 END) AS huy
-                FROM luot_tiep_nhan
-                WHERE thoi_gian_den >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
-            """, (days,))
-            row = cursor.fetchone()
-            cursor.close()
-            return row or {}
+            cursor.execute(sql, params)
+            return cursor.fetchall()
         finally:
             conn.close()
+
+    def load_daily_counts(self, days: int = 90) -> pd.DataFrame:
+        """
+        Lượt tiếp nhận theo ngày trong N ngày gần nhất, KHÔNG gồm hôm nay (ngày chưa kết thúc).
+        Chuỗi liên tục đến hôm qua; ngày không có lượt nào = 0 (giữ đúng chu kỳ tuần).
+        """
+        rows = self._query("""
+            SELECT DATE(thoi_gian_den) AS ngay, COUNT(*) AS so_luong
+            FROM luot_tiep_nhan
+            WHERE thoi_gian_den >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
+                AND thoi_gian_den < CURDATE()
+                AND trang_thai != 'da_huy'
+            GROUP BY DATE(thoi_gian_den)
+            ORDER BY ngay ASC
+        """, (days,))
+        df = pd.DataFrame(rows, columns=["ngay", "so_luong"])
+        df["ngay"] = pd.to_datetime(df["ngay"])
+        df["so_luong"] = df["so_luong"].astype(float)
+        df = df.set_index("ngay")
+        if df.empty:
+            return df
+        full_idx = pd.date_range(df.index.min(), pd.Timestamp(today_vn() - timedelta(days=1)), freq="D")
+        return df.reindex(full_idx, fill_value=0.0)
+
+    def load_hourly(self) -> Tuple[Dict[int, int], str]:
+        """
+        Phân bố lượt tiếp nhận theo giờ. Trả về ({giờ: số lượt}, nguồn):
+        'hom_nay' nếu hôm nay đã có ≥ 5 lượt, ngược lại 'trung_binh_lich_su' (trung bình thật mỗi ngày).
+        """
+        rows = self._query("""
+            SELECT HOUR(thoi_gian_den) AS gio, COUNT(*) AS so_luong
+            FROM luot_tiep_nhan
+            WHERE DATE(thoi_gian_den) = CURDATE() AND trang_thai != 'da_huy'
+            GROUP BY HOUR(thoi_gian_den)
+        """)
+        if sum(int(r["so_luong"]) for r in rows) >= 5:
+            return {int(r["gio"]): int(r["so_luong"]) for r in rows}, "hom_nay"
+        rows = self._query("""
+            SELECT HOUR(thoi_gian_den) AS gio,
+                   ROUND(COUNT(*) / (SELECT COUNT(DISTINCT DATE(thoi_gian_den)) FROM luot_tiep_nhan
+                                     WHERE trang_thai != 'da_huy')) AS so_luong
+            FROM luot_tiep_nhan
+            WHERE trang_thai != 'da_huy'
+            GROUP BY HOUR(thoi_gian_den)
+        """)
+        return {int(r["gio"]): int(r["so_luong"] or 0) for r in rows}, "trung_binh_lich_su"
+
+    def load_today_total(self) -> int:
+        rows = self._query("""
+            SELECT COUNT(*) AS tong FROM luot_tiep_nhan
+            WHERE DATE(thoi_gian_den) = CURDATE() AND trang_thai != 'da_huy'
+        """)
+        return int(rows[0]["tong"])
 
 
 # ─── Forecaster Engine ─────────────────────────────────────────────────
 class HoltWintersForecaster:
     """
-    Dự báo chuỗi thời gian bệnh nhân bằng Holt-Winters Exponential Smoothing
-    với seasonal_period=7 (tuần).
+    Holt-Winters cộng tính, chu kỳ 7 ngày, xu hướng có giảm chấn.
+    Kết quả là đầu ra thật của mô hình — không pha trộn hằng số, không chặn trần sai số.
     """
-    SEASONAL_PERIOD = 7  # Chu kỳ 7 ngày (1 tuần)
-    MIN_HISTORY_DAYS = 21  # Cần ít nhất 3 tuần dữ liệu
+    SEASONAL_PERIOD = 7
+    MIN_HISTORY_DAYS = 21  # tối thiểu 3 chu kỳ tuần
+    BACKTEST_DAYS = 7
 
     def __init__(self, df: pd.DataFrame):
-        self.df = df.copy()
-        self._fill_missing_dates()
-
-    def _fill_missing_dates(self):
-        """Bổ sung ngày không có lượt tiếp nhận bằng 0, không nội suy dữ liệu giả."""
-        if self.df.empty:
-            return
-        full_idx = pd.date_range(
-            start=self.df.index.min(),
-            end=self.df.index.max(),
-            freq="D"
-        )
-        self.df = self.df.reindex(full_idx)
-        self.df["so_luong"] = self.df["so_luong"].fillna(0)
+        self.series = df["so_luong"]
 
     def can_forecast(self) -> bool:
-        valid = self.df["so_luong"].dropna()
-        return len(valid) >= self.MIN_HISTORY_DAYS
+        return len(self.series) >= self.MIN_HISTORY_DAYS
+
+    def _fit(self, series: pd.Series):
+        return ExponentialSmoothing(
+            series,
+            trend="add",
+            damped_trend=True,
+            seasonal="add",
+            seasonal_periods=self.SEASONAL_PERIOD,
+            initialization_method="estimated",
+        ).fit()
 
     def forecast(self, horizon: int = 7) -> List[Dict[str, Any]]:
-        """Trả về dự báo `horizon` ngày tới với confidence interval."""
-        series = self.df["so_luong"].dropna()
-
+        """Dự báo `horizon` ngày kể từ ngày mai, kèm khoảng tin cậy 95% từ phần dư của mô hình."""
         if not self.can_forecast():
             return []
+        fit = self._fit(self.series)
+        # Chuỗi kết thúc hôm qua → bước 1 là hôm nay (bỏ), lấy từ ngày mai
+        values = fit.forecast(horizon + 1).iloc[1:]
+        margin = 1.96 * float(fit.resid.std())
 
-        try:
-            # Lọc chuỗi ngày hoạt động để tránh sập mô hình nếu các ngày gần nhất ít tương tác
-            active_series = series[series >= 5]
-            fit_series = active_series if len(active_series) >= self.MIN_HISTORY_DAYS else series
-
-            model = ExponentialSmoothing(
-                fit_series,
-                trend="add",
-                seasonal="add",
-                seasonal_periods=self.SEASONAL_PERIOD,
-                initialization_method="estimated",
-            )
-            fit = model.fit(optimized=True, use_brute=False)
-
-            forecast_values = fit.forecast(horizon)
-            residuals = fit.resid
-            sigma = float(residuals.std()) if len(residuals) > 0 and not np.isnan(residuals.std()) else 6.0
-            z_95 = 1.96
-
-            results = []
-            now_date = datetime.now().date()
-            # Mapping chính xác thứ trong tuần: 0 = Thứ Hai, 6 = Chủ Nhật
-            THU_MAP = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
-            DOW_BASELINES = { 0: 48, 1: 52, 2: 38, 3: 42, 4: 40, 5: 54, 6: 25 }
-
-            for i in range(horizon):
-                ngay = now_date + timedelta(days=i + 1)
-                dow = ngay.weekday()  # 0=T2, ..., 6=CN
-                thu = THU_MAP[dow]
-
-                raw_val = float(forecast_values.iloc[i]) if i < len(forecast_values) else DOW_BASELINES[dow]
-                # Nếu mô hình ngoại suy bị âm hoặc quá thấp do trailing zeros, hòa trộn với baseline thực tế
-                if raw_val < 15 or np.isnan(raw_val):
-                    val = max(18, round(DOW_BASELINES[dow]))
-                else:
-                    val = max(18, round(raw_val * 0.6 + DOW_BASELINES[dow] * 0.4))
-
-                ci_low = max(5, round(val - max(5.0, z_95 * min(sigma, 8.5))))
-                ci_high = round(val + max(8.0, z_95 * min(sigma, 9.5)))
-
-                muc_do = "cao" if val >= 50 else ("trung_binh" if val >= 35 else "thap")
-                is_holiday = ngay.strftime("%m-%d") in NGAY_LE_VN
-
-                results.append({
-                    "ngay": ngay.strftime("%Y-%m-%d"),
-                    "thu": thu,
-                    "du_bao": val,
-                    "ci_thap": ci_low,
-                    "ci_cao": ci_high,
-                    "muc_do": muc_do,
-                    "is_ngay_le": is_holiday,
-                    "ten_ngay_le": NGAY_LE_VN.get(ngay.strftime("%m-%d"), None),
-                    "goi_y_nhan_su": self._suggest_staffing(val, muc_do, is_holiday),
-                })
-            return results
-
-        except Exception as e:
-            print(f"[HoltWinters Error] {e}")
-            # Fallback kịch bản chuẩn nếu có lỗi thư viện statsmodels
-            results = []
-            now_date = datetime.now().date()
-            THU_MAP = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
-            DOW_BASELINES = { 0: 48, 1: 52, 2: 38, 3: 42, 4: 40, 5: 54, 6: 25 }
-            for i in range(horizon):
-                ngay = now_date + timedelta(days=i + 1)
-                dow = ngay.weekday()
-                val = DOW_BASELINES[dow]
-                muc_do = "cao" if val >= 50 else ("trung_binh" if val >= 35 else "thap")
-                results.append({
-                    "ngay": ngay.strftime("%Y-%m-%d"),
-                    "thu": THU_MAP[dow],
-                    "du_bao": val,
-                    "ci_thap": val - 7,
-                    "ci_cao": val + 10,
-                    "muc_do": muc_do,
-                    "is_ngay_le": False,
-                    "ten_ngay_le": None,
-                    "goi_y_nhan_su": self._suggest_staffing(val, muc_do, False),
-                })
-            return results
+        THU_MAP = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+        results = []
+        for ts, raw in values.items():
+            ngay = ts.date()
+            val = max(0, round(float(raw)))
+            muc_do = "cao" if val >= 50 else ("trung_binh" if val >= 35 else "thap")
+            le = ten_ngay_le(ngay)
+            results.append({
+                "ngay": ngay.strftime("%Y-%m-%d"),
+                "thu": THU_MAP[ngay.weekday()],
+                "du_bao": val,
+                "ci_thap": max(0, round(float(raw) - margin)),
+                "ci_cao": max(0, round(float(raw) + margin)),
+                "muc_do": muc_do,
+                "is_ngay_le": le is not None,
+                "ten_ngay_le": le,
+                "goi_y_nhan_su": self._suggest_staffing(val, muc_do, le is not None),
+            })
+        return results
 
     def _suggest_staffing(self, val: int, muc_do: str, is_holiday: bool) -> str:
         if is_holiday:
-            return f"Ngày lễ — Dự báo ~{val} ca. Bố trí kíp trực cấp cứu và 1 bàn khám trực."
+            return f"Ngày lễ — mô hình dự báo ~{val} ca nhưng chưa tính hiệu ứng nghỉ lễ. Bố trí kíp trực theo lịch nghỉ."
         if muc_do == "cao":
             return f"Ngày cao điểm (~{val} ca) — Bố trí 3 Bác sĩ + 4 Điều dưỡng để tránh ùn ứ tiếp đón"
         elif muc_do == "trung_binh":
@@ -258,61 +188,53 @@ class HoltWintersForecaster:
         else:
             return f"Lưu lượng nhẹ (~{val} ca) — Bố trí 1-2 Bác sĩ, có thể kết hợp kiểm kê và đào tạo"
 
-    def mape(self) -> Optional[float]:
-        """Tính MAPE (Mean Absolute Percentage Error) trên tập train."""
-        series = self.df["so_luong"].dropna()
-        if len(series) < self.MIN_HISTORY_DAYS:
-            return 11.2
-        try:
-            active_series = series[series >= 5]
-            target_series = active_series if len(active_series) >= self.MIN_HISTORY_DAYS else series
-            train = target_series.iloc[:-7]
-            test = target_series.iloc[-7:]
-            model = ExponentialSmoothing(
-                train, trend="add", seasonal="add",
-                seasonal_periods=self.SEASONAL_PERIOD,
-                initialization_method="estimated"
-            )
-            fit = model.fit(optimized=True, use_brute=False)
-            pred = fit.forecast(7)
-            errors = np.abs((test.values - pred.values) / np.maximum(test.values, 1)) * 100
-            res_mape = round(float(errors.mean()), 1)
-            return min(res_mape, 12.8)
-        except Exception:
-            return 10.5
+    def backtest(self) -> Optional[Dict[str, float]]:
+        """
+        Kiểm định ngoài mẫu: giấu 7 ngày cuối, huấn luyện trên phần còn lại rồi dự báo 7 ngày đó.
+        MAPE tính trên các ngày có lượt khám (> 0). So với mốc "naive": lấy đúng thứ đó của tuần trước.
+        Trả về None nếu chưa đủ dữ liệu để kiểm định.
+        """
+        if len(self.series) < self.MIN_HISTORY_DAYS + self.BACKTEST_DAYS:
+            return None
+        train = self.series.iloc[:-self.BACKTEST_DAYS]
+        test = self.series.iloc[-self.BACKTEST_DAYS:].values
+        co_luot = test > 0
+        if not co_luot.any():
+            return None
+        pred = np.maximum(self._fit(train).forecast(self.BACKTEST_DAYS).values, 0)
+        naive = train.iloc[-self.SEASONAL_PERIOD:].values
+
+        def mape(du_bao: np.ndarray) -> float:
+            return round(float((np.abs(test - du_bao)[co_luot] / test[co_luot]).mean() * 100), 1)
+
+        return {"mape": mape(pred), "mape_naive": mape(naive)}
 
 
 # ─── Pattern Analyzer ──────────────────────────────────────────────────
 class PatternAnalyzer:
-    """Phân tích các pattern: giờ cao điểm, thứ đông nhất, xu hướng dài hạn."""
+    """Phân tích pattern: thứ đông nhất, xu hướng, phân rã mùa vụ. Nhận chuỗi ngày liên tục."""
 
     def __init__(self, df: pd.DataFrame):
-        self.df = df
+        self.series = df["so_luong"]
 
     def analyze_weekly_pattern(self) -> Dict[str, Any]:
         """Phân bố theo thứ trong tuần."""
-        if self.df.empty:
+        if self.series.empty:
             return {}
-        self.df["thu"] = self.df.index.dayofweek
-        weekly = self.df.groupby("thu")["so_luong"].mean().round(1)
-        labels = {0: "T2", 1: "T3", 2: "T4", 3: "T5", 4: "T6", 5: "T7", 6: "CN"}
-        dong_nhat = int(weekly.idxmax())
-        it_nhat = int(weekly.idxmin())
+        weekly = self.series.groupby(self.series.index.dayofweek).mean().round(1)
+        labels = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
         return {
-            "phan_bo": [
-                {"thu": labels.get(i, str(i)), "trung_binh": round(float(weekly.get(i, 0)), 1)}
-                for i in range(7)
-            ],
-            "dong_nhat": labels.get(dong_nhat, "?"),
-            "it_nhat": labels.get(it_nhat, "?"),
+            "phan_bo": [{"thu": labels[i], "trung_binh": float(weekly.get(i, 0))} for i in range(7)],
+            "dong_nhat": labels[int(weekly.idxmax())],
+            "it_nhat": labels[int(weekly.idxmin())],
             "ty_le_dong_it": round(float(weekly.max() / max(weekly.min(), 1)), 2),
         }
 
     def analyze_trend(self) -> Dict[str, Any]:
-        """Phân tích xu hướng tăng/giảm 30 ngày qua."""
-        if len(self.df) < 14:
+        """So sánh 15 ngày gần nhất với 15 ngày trước đó."""
+        if len(self.series) < 30:
             return {"xu_huong": "khong_du_du_lieu"}
-        recent = self.df["so_luong"].tail(30).fillna(0)
+        recent = self.series.tail(30)
         first_half = recent.iloc[:15].mean()
         second_half = recent.iloc[15:].mean()
         delta_pct = ((second_half - first_half) / max(first_half, 1)) * 100
@@ -327,23 +249,18 @@ class PatternAnalyzer:
             mo_ta = "Lưu lượng bệnh nhân ổn định trong 30 ngày qua"
         return {
             "xu_huong": xu_huong,
-            "delta_pct": round(delta_pct, 1),
+            "delta_pct": round(float(delta_pct), 1),
             "mo_ta": mo_ta,
             "trung_binh_30_ngay": round(float(recent.mean()), 1),
         }
 
     def analyze_decomposition(self) -> Optional[Dict[str, Any]]:
-        """STL-style phân rã: trend + seasonal + residual."""
-        series = self.df["so_luong"].dropna()
-        if len(series) < 14:
+        """Phân rã cộng tính: trend + seasonal + residual."""
+        if len(self.series) < 14:
             return None
-        try:
-            result = seasonal_decompose(series, model="additive", period=7, extrapolate_trend="freq")
-            trend_vals = result.trend.dropna()
-            return {
-                "trend_cuoi": round(float(trend_vals.iloc[-1]), 1),
-                "trend_dau": round(float(trend_vals.iloc[0]), 1),
-                "seasonal_amplitude": round(float(result.seasonal.max() - result.seasonal.min()), 1),
-            }
-        except Exception:
-            return None
+        result = seasonal_decompose(self.series, model="additive", period=7, extrapolate_trend="freq")
+        return {
+            "trend_cuoi": round(float(result.trend.iloc[-1]), 1),
+            "trend_dau": round(float(result.trend.iloc[0]), 1),
+            "seasonal_amplitude": round(float(result.seasonal.max() - result.seasonal.min()), 1),
+        }

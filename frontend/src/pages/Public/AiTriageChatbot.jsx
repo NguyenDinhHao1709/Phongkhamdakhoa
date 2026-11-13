@@ -162,7 +162,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
   };
 
   return (
-    <div className={`flex flex-col bg-white overflow-hidden ${mode === 'floating' ? 'rounded-2xl shadow-2xl border border-slate-200 w-[370px] sm:w-[440px] max-w-[calc(100vw-24px)] h-[590px] max-h-[85vh]' : 'h-full w-full'}`}>
+    <div className={`flex flex-col bg-white overflow-hidden ${mode === 'floating' ? 'rounded-2xl shadow-2xl border border-slate-200 w-[calc(100vw-24px)] sm:w-[430px] h-[75dvh] sm:h-[580px] max-h-[82dvh]' : 'h-full w-full'}`}>
       {/* Header */}
       <div className="flex items-center justify-between bg-gradient-to-r from-primary-700 via-primary-600 to-indigo-700 text-white px-4 py-3 shrink-0 shadow-xs">
         <div className="flex items-center gap-2.5">

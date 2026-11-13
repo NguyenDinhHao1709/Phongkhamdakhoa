@@ -1113,7 +1113,7 @@ export default function TelehealthVideoModal({
           transform: `translate(${pipPosition.x}px, ${pipPosition.y}px)`,
         }}
         onPointerDown={handlePointerDown}
-        className="fixed bottom-4 right-4 z-[99999] w-36 h-52 sm:w-80 sm:h-52 bg-gray-950 rounded-2xl sm:rounded-3xl shadow-2xl border-2 border-emerald-500/80 sm:border-gray-700 overflow-hidden select-none touch-none animate-scale-in flex flex-col group cursor-move"
+        className="fixed bottom-16 md:bottom-4 right-3 sm:right-4 z-[99999] w-36 h-52 sm:w-80 sm:h-52 bg-gray-950 rounded-2xl sm:rounded-3xl shadow-2xl border-2 border-emerald-500/80 sm:border-gray-700 overflow-hidden select-none touch-none animate-scale-in flex flex-col group cursor-move"
       >
         {/* Vùng Video Người Đối Diện */}
         <div className="relative flex-1 w-full h-full bg-black overflow-hidden select-none">

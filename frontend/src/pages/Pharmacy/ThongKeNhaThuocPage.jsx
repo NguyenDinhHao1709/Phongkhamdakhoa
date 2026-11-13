@@ -107,8 +107,6 @@ export default function ThongKeNhaThuocPage() {
   });
 
   const forecastData = forecastRes?.data || [];
-  const forecastEngine = forecastRes?.engine || 'holt_winters_drug_demand_estimator';
-  const heSoTangTruongBenhNhan = forecastRes?.heSoTangTruongBenhNhan;
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
@@ -985,15 +983,10 @@ export default function ThongKeNhaThuocPage() {
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-purple-600" />
                 <span className="text-xs font-bold text-purple-900 uppercase tracking-wider">
-                  Thuật toán: {forecastEngine === 'internal_moving_average_estimator' ? 'Internal Moving Average + Reorder Point Estimator' : 'Holt-Winters Drug Demand Forecasting & Patient Flow Growth'}
+                  Thuật toán: Trung bình tiêu thụ 30 ngày + Điểm đặt hàng lại
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                {heSoTangTruongBenhNhan && (
-                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    📈 Hệ số tăng trưởng lượt khám: {heSoTangTruongBenhNhan}x
-                  </span>
-                )}
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
                   ⚡ Điểm đặt lại: Nhu cầu chu kỳ + 5 ngày Tồn An Toàn
                 </span>

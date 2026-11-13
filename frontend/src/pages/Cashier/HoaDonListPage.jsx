@@ -535,7 +535,7 @@ export default function HoaDonListPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-2 border-t border-gray-100 text-xs">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-gray-400 font-medium">Khoảng thời gian:</span>
-            <div className="flex items-center gap-1.5 bg-gray-50/80 p-1 rounded-xl border border-gray-200">
+            <div className="flex items-center gap-1 bg-gray-50/80 p-1 rounded-xl border border-gray-200 overflow-x-auto max-w-full">
               <input
                 type="date"
                 value={filterDateFrom}
@@ -571,10 +571,10 @@ export default function HoaDonListPage() {
             </div>
 
             {/* Quick date chips */}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 overflow-x-auto max-w-full pb-0.5">
               <button
                 onClick={() => handleQuickDate(0)}
-                className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap shrink-0 ${
                   filterDateFrom === todayStr && filterDateTo === todayStr
                     ? 'bg-primary-600 text-white shadow-xs'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -584,20 +584,20 @@ export default function HoaDonListPage() {
               </button>
               <button
                 onClick={() => handleQuickDate(7)}
-                className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 font-medium transition-colors"
+                className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 font-medium transition-colors whitespace-nowrap shrink-0"
               >
                 7 ngày qua
               </button>
               <button
                 onClick={() => handleQuickDate(30)}
-                className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 font-medium transition-colors"
+                className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 font-medium transition-colors whitespace-nowrap shrink-0"
               >
                 Tháng này
               </button>
               {(filterDateFrom || filterDateTo) && (
                 <button
                   onClick={() => handleQuickDate(-1)}
-                  className="px-2 py-1 text-xs text-primary-600 hover:underline font-semibold"
+                  className="px-2 py-1 text-xs text-primary-600 hover:underline font-semibold whitespace-nowrap shrink-0"
                 >
                   Tất cả ngày
                 </button>
@@ -653,7 +653,7 @@ export default function HoaDonListPage() {
                   <th className="py-3 px-4 text-right">Thực thu</th>
                   <th className="py-3 px-4">Trạng thái</th>
                   <th className="py-3 px-4">Thời gian tạo</th>
-                  <th className="py-3 px-4 text-right">Thao tác</th>
+                  <th className="py-3 px-4 text-right sticky right-0 bg-gray-50/95 backdrop-blur-xs">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 text-xs text-gray-700">
@@ -823,7 +823,7 @@ export default function HoaDonListPage() {
                       </td>
 
                       {/* Thao tác */}
-                      <td className="py-3.5 px-4 text-right">
+                      <td className="py-3.5 px-4 text-right sticky right-0 bg-white/95 group-hover:bg-blue-50/90 backdrop-blur-xs">
                         <div className="flex items-center justify-end gap-1.5">
                           {hd.trangThai === 'huy' ? (
                             <>

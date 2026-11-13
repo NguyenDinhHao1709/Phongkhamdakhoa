@@ -3870,7 +3870,6 @@ export class QuanLyService implements OnModuleInit {
             id: nv.id,
             ho_ten: nv.hoTen,
             chuc_vu: nv.chucVu,
-            anh_path: avatarPath,
             anh_base64: anhBase64,
           };
         })
@@ -3885,7 +3884,7 @@ export class QuanLyService implements OnModuleInit {
           this.httpService.post(
             `${PYTHON_ML_URL}/check-duplicate-face`,
             { target_image_base64: targetImageBase64, candidates },
-            { timeout: 75000 },
+            { timeout: 75000, headers: { 'x-internal-key': process.env.AI_INTERNAL_KEY || '' } },
           ),
         ));
         checkResult = response.data;

@@ -493,8 +493,8 @@ export default function DonThuocListPage() {
             )}
 
             {/* Lọc Ngày Nhanh */}
-            <div className="flex items-center gap-1">
-              <span className="text-gray-400 font-medium mr-0.5">Ngày kê:</span>
+            <div className="flex items-center gap-1 overflow-x-auto max-w-full pb-0.5">
+              <span className="text-gray-400 font-medium mr-0.5 shrink-0">Ngày kê:</span>
               {[
                 { key: 'all', label: 'Tất cả' },
                 { key: 'hom_nay', label: 'Hôm nay' },
@@ -508,7 +508,7 @@ export default function DonThuocListPage() {
                     setTuNgay('');
                     setDenNgay('');
                   }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                     dateRangePreset === p.key && !tuNgay && !denNgay
                       ? 'bg-gray-800 text-white shadow-xs'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -521,9 +521,9 @@ export default function DonThuocListPage() {
           </div>
 
           {/* Lọc khoảng ngày tùy chọn & Nút Xóa bộ lọc */}
-          <div className="flex items-center gap-2 ml-auto">
-            <div className="flex items-center gap-1.5 bg-gray-50 p-1 rounded-xl border border-gray-200 text-xs">
-              <Calendar className="h-3.5 w-3.5 text-gray-400 ml-1" />
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
+            <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-200 text-xs overflow-x-auto max-w-full">
+              <Calendar className="h-3.5 w-3.5 text-gray-400 ml-1 shrink-0" />
               <input
                 type="date"
                 value={tuNgay}
@@ -628,7 +628,7 @@ export default function DonThuocListPage() {
                   <th className="py-3.5 px-4 text-center">Viện Phí</th>
                   <th className="py-3.5 px-4 text-center">Trạng Thái Cấp Phát</th>
                   <th className="py-3.5 px-4">Ngày Kê</th>
-                  <th className="py-3.5 px-4 text-center">Thao Tác</th>
+                  <th className="py-3.5 px-4 text-center sticky right-0 bg-gray-50/95 backdrop-blur-xs">Thao Tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 text-gray-700">
@@ -738,7 +738,7 @@ export default function DonThuocListPage() {
                       </td>
 
                       {/* 8. Thao tác */}
-                      <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                      <td className="py-3.5 px-4 text-center sticky right-0 bg-white/95 group-hover:bg-blue-50/90 backdrop-blur-xs" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => setSelectedDonThuocId(dt.id)}

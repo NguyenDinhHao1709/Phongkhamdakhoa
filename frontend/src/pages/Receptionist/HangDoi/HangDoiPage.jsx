@@ -295,59 +295,68 @@ function QueueRow({ luot, onGoiLoa, onChuyenBacSi, onDoiUuTien, isCalling }) {
   const bn = luot.benhNhan || {};
 
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-gray-200 bg-white px-4 py-3 hover:border-primary-200 hover:bg-primary-50/30 transition-colors">
-      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-700 font-bold text-sm">
-        {luot.maSoThuTu}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="font-semibold text-gray-900 truncate">{bn.hoTen}</p>
-          {bn.diUng && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-danger-light border border-danger-main/20 px-1.5 py-0.5 text-xs font-medium text-danger-dark">
-              <AlertTriangle className="h-2.5 w-2.5" /> DỊ ỨNG
-            </span>
-          )}
-          <NhanUuTienTre luot={luot} />
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 rounded-xl border border-gray-200 bg-white px-3.5 sm:px-4 py-3 hover:border-primary-200 hover:bg-primary-50/30 transition-colors">
+      <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-700 font-bold text-sm">
+          {luot.maSoThuTu}
         </div>
-        {luot.goiYChuyenBacSi && (
-          <button
-            onClick={onChuyenBacSi}
-            className="mt-1 text-xs font-semibold text-amber-700 hover:underline cursor-pointer"
-          >
-            Gợi ý chuyển sang BS. {luot.goiYChuyenBacSi.hoTen} ({luot.goiYChuyenBacSi.soNguoiCho} lượt đang có)
-          </button>
-        )}
-        <p className="text-xs text-gray-500 truncate">
-          {tinhTuoi(bn.ngaySinh) && `${tinhTuoi(bn.ngaySinh)} tuổi`}
-          {bn.soDienThoai && ` · ${bn.soDienThoai}`}
-        </p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-semibold text-gray-900 truncate">{bn.hoTen}</p>
+            {bn.diUng && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-danger-light border border-danger-main/20 px-1.5 py-0.5 text-xs font-medium text-danger-dark">
+                <AlertTriangle className="h-2.5 w-2.5" /> DỊ ỨNG
+              </span>
+            )}
+            <NhanUuTienTre luot={luot} />
+          </div>
+          {luot.goiYChuyenBacSi && (
+            <button
+              onClick={onChuyenBacSi}
+              className="mt-1 text-xs font-semibold text-amber-700 hover:underline cursor-pointer text-left"
+            >
+              Gợi ý chuyển sang BS. {luot.goiYChuyenBacSi.hoTen} ({luot.goiYChuyenBacSi.soNguoiCho} lượt đang có)
+            </button>
+          )}
+          <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5 flex-wrap">
+            <span>
+              {tinhTuoi(bn.ngaySinh) && `${tinhTuoi(bn.ngaySinh)} tuổi`}
+              {bn.soDienThoai && ` · ${bn.soDienThoai}`}
+            </span>
+            <span className="sm:hidden inline-flex items-center gap-1 text-[11px] text-gray-400">
+              • <Clock className="h-3 w-3" /> {formatDateTime(luot.thoiGianDen)}
+            </span>
+          </div>
+        </div>
       </div>
 
-      <select
-        value={luot.doiTuongUuTien || ''}
-        onChange={(e) => onDoiUuTien(e.target.value)}
-        title="Đối tượng ưu tiên (trẻ dưới 6 tuổi / người từ 75 tuổi hệ thống tự nhận)"
-        className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 flex-shrink-0"
-      >
-        <option value="">Ưu tiên: không</option>
-        {Object.entries(DOI_TUONG_UU_TIEN).map(([value, label]) => (
-          <option key={value} value={value}>{label}</option>
-        ))}
-      </select>
+      <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 flex-shrink-0">
+        <select
+          value={luot.doiTuongUuTien || ''}
+          onChange={(e) => onDoiUuTien(e.target.value)}
+          title="Đối tượng ưu tiên (trẻ dưới 6 tuổi / người từ 75 tuổi hệ thống tự nhận)"
+          className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 flex-1 sm:flex-initial min-w-0"
+        >
+          <option value="">Ưu tiên: không</option>
+          {Object.entries(DOI_TUONG_UU_TIEN).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
 
-      <button
-        onClick={onGoiLoa}
-        disabled={isCalling}
-        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-colors flex-shrink-0"
-        title="Mời bệnh nhân vào khám và phát loa TV"
-      >
-        {isCalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Volume2 className="w-3.5 h-3.5" />}
-        Gọi vào khám
-      </button>
+        <button
+          onClick={onGoiLoa}
+          disabled={isCalling}
+          className="flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-colors flex-shrink-0 cursor-pointer"
+          title="Mời bệnh nhân vào khám và phát loa TV"
+        >
+          {isCalling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Volume2 className="w-3.5 h-3.5" />}
+          <span>Gọi vào khám</span>
+        </button>
 
-      <div className="flex items-center gap-1.5 text-xs text-gray-400 flex-shrink-0">
-        <Clock className="h-3.5 w-3.5" />
-        {formatDateTime(luot.thoiGianDen)}
+        <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-400 flex-shrink-0">
+          <Clock className="h-3.5 w-3.5" />
+          {formatDateTime(luot.thoiGianDen)}
+        </div>
       </div>
     </div>
   );

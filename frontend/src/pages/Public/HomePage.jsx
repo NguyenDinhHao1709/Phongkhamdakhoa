@@ -1418,7 +1418,7 @@ export default function HomePage() {
       )}
 
       {/* ─── FLOATING AI CHATBOT WIDGET ─── */}
-      <div className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-50 flex flex-col items-end pointer-events-none">
+      <div className="fixed bottom-4 right-3 sm:bottom-6 sm:right-6 z-50 flex flex-col items-end pointer-events-none pb-safe">
         {/* Floating Chat Window */}
         {isChatbotOpen && (
           <div className="pointer-events-auto mb-2 animate-fade-in origin-bottom-right">
@@ -1435,11 +1435,12 @@ export default function HomePage() {
           <div className="pointer-events-auto">
             <button
               onClick={() => setIsChatbotOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-primary-600 hover:bg-primary-700 text-white shadow-lg transition-all cursor-pointer border border-primary-500/30 text-xs font-bold"
+              className="flex items-center gap-2 px-3.5 py-2.5 sm:px-4 sm:py-2.5 rounded-full bg-primary-600 hover:bg-primary-700 text-white shadow-lg transition-all cursor-pointer border border-primary-500/30 text-xs font-bold"
               title="Chat với AI tư vấn triệu chứng"
             >
-              <Bot className="h-4 w-4" />
-              <span>Tư vấn triệu chứng AI</span>
+              <Bot className="h-4 w-4 flex-shrink-0" />
+              <span className="hidden xs:inline">Tư vấn triệu chứng AI</span>
+              <span className="xs:hidden">Bác sĩ AI</span>
             </button>
           </div>
         )}

@@ -64,5 +64,22 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
-viết ra phương án rồi để  tôi xác nhận mới làm 
+Việc lớn (sửa hơn 1 file) thì viết ra phương án rồi để tôi xác nhận mới làm; việc nhỏ làm luôn.
 Làm xong cái nào xóa code dư thừa ,tối ưu code 
+backend chạy trên render,frontend chạy trên cpanel ,database trên clever
+## 5. Tiết kiệm token
+
+**Claude phải làm:**
+- Đọc đúng file/đoạn cần thiết (dùng offset/limit, Grep trước khi Read). Không đọc lại file vừa sửa.
+- Không đọc `node_modules/`, `frontend/dist/`, `*.zip`, file build, log dài.
+- Không gọi subagent nếu tự làm được bằng Grep/Read.
+- Trả lời ngắn gọn, đi thẳng vào việc; không nhắc lại những gì đã nói.
+- Khi user đổi sang việc khác hẳn, nhắc user gõ `/clear`; phiên quá dài thì nhắc `/compact`.
+
+**Nhắc nhanh cho user:**
+- Một việc một phiên → `/clear` khi xong.
+- Chỉ rõ file bằng `@đường/dẫn`, tên hàm, tiêu chí "xong là gì".
+- Gom nhiều sửa nhỏ vào một tin nhắn; chỉ dán phần log lỗi liên quan.
+- Sai hướng → `Esc` dừng ngay; `Esc Esc` / `/rewind` để quay lại.
+- `/model`: Sonnet cho việc thường, Opus cho việc khó. Việc lớn dùng Plan mode (`Shift+Tab`).
+- `/context`, `/cost` để xem mức dùng token.

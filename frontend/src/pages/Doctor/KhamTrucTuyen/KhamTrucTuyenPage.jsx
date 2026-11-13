@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import useAuthStore from '../../../store/authStore';
 import { MedCard } from '../../../design-system/components/Card/MedCard';
@@ -29,6 +29,8 @@ export default function KhamTrucTuyenPage() {
   const queryClient = useQueryClient();
   const { startCall, isOpen: isCallOpen, maximizeCall } = useTelehealthStore();
   const [selectedLich, setSelectedLich] = useState(null);
+  const [mobileListOpen, setMobileListOpen] = useState(true);
+  const detailPanelRef = useRef(null);
   const [formAdvise, setFormAdvise] = useState({ chanDoan: '', loiKhuyen: '' });
   const [savingAdvise, setSavingAdvise] = useState(false);
   const [showDatLichModal, setShowDatLichModal] = useState(false);
@@ -281,24 +283,35 @@ export default function KhamTrucTuyenPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-auto lg:h-[calc(100vh-13rem)]">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 h-auto lg:h-[calc(100vh-13rem)]">
         {/* Danh sách ca tư vấn */}
-        <MedCard className="flex flex-col min-h-[350px] lg:h-full overflow-hidden p-4">
-          <div className="flex items-center justify-between mb-2.5">
-            <h3 className="text-base font-bold text-gray-900 flex items-center gap-1.5">
-              <Calendar className="h-4 w-4 text-primary-600" /> Lịch tư vấn trực tuyến
+        <MedCard className={`flex flex-col ${mobileListOpen ? 'min-h-[320px] max-h-[62dvh] lg:max-h-none' : 'h-auto'} lg:h-full overflow-hidden p-3.5 sm:p-4`}>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm sm:text-base font-bold text-gray-900 flex items-center gap-1.5">
+              <Calendar className="h-4 w-4 text-primary-600" /> Lịch tư vấn ({filteredItems.length})
             </h3>
-            {hasActiveFilter && (
+            <div className="flex items-center gap-1.5">
+              {hasActiveFilter && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="text-[11px] font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded border border-red-200 flex items-center gap-1 transition cursor-pointer"
+                >
+                  <RotateCcw className="h-3 w-3" /> Xóa lọc
+                </button>
+              )}
               <button
                 type="button"
-                onClick={handleResetFilters}
-                className="text-[11px] font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded border border-red-200 flex items-center gap-1 transition cursor-pointer"
+                onClick={() => setMobileListOpen((v) => !v)}
+                className="lg:hidden text-xs font-semibold text-primary-700 bg-primary-50 px-2.5 py-1 rounded-lg border border-primary-200 flex items-center gap-1"
               >
-                <RotateCcw className="h-3 w-3" /> Xóa lọc
+                <span>{mobileListOpen ? 'Thu gọn' : 'Mở danh sách'}</span>
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${mobileListOpen ? 'rotate-180' : ''}`} />
               </button>
-            )}
+            </div>
           </div>
 
+          <div className={`${mobileListOpen ? 'flex flex-col flex-1 min-h-0' : 'hidden lg:flex lg:flex-col lg:flex-1 lg:min-h-0'}`}>
           {/* Bộ lọc đa năng */}
           <div className="mb-3 space-y-2">
             {/* 1. Ô tìm kiếm từ khóa */}
@@ -440,7 +453,15 @@ export default function KhamTrucTuyenPage() {
               return (
                 <div
                   key={item.id}
-                  onClick={() => setSelectedLich(item)}
+                  onClick={() => {
+                    setSelectedLich(item);
+                    if (window.innerWidth < 1024) {
+                      setMobileListOpen(false);
+                      setTimeout(() => {
+                        detailPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }, 80);
+                    }
+                  }}
                   className={`p-3 rounded-xl border transition-all cursor-pointer ${
                     activeLich?.id === item.id
                       ? 'border-primary-500 bg-primary-50/60 ring-2 ring-primary-500/20'
@@ -499,11 +520,12 @@ export default function KhamTrucTuyenPage() {
               );
             })}
           </div>
+          </div>
         </MedCard>
 
         {/* Khung Khám & Chat Trực tuyến */}
         {activeLich && (
-          <div className="lg:col-span-2 flex flex-col min-w-0 h-full space-y-4">
+          <div ref={detailPanelRef} className="lg:col-span-2 flex flex-col min-w-0 h-full space-y-4 scroll-mt-16">
             {/* Header thông tin bệnh nhân */}
             <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
               <div className="flex items-center gap-3">

@@ -101,3 +101,42 @@ export function chonMucLienQuan<T>(items: T[], query: string, getText: (item: T)
     .slice(0, max)
     .map((x) => x.item);
 }
+
+// ─── Ngày theo giờ Việt Nam (server chạy UTC) ─────────────────────────
+/** 'YYYY-MM-DD' của hôm nay (giờ VN) cộng thêm `lech` ngày */
+export function ngayVn(lech: number): string {
+  return new Date(Date.now() + 7 * 3600_000 + lech * 86_400_000).toISOString().slice(0, 10);
+}
+export function congNgay(ngay: string, soNgay: number): string {
+  return new Date(Date.parse(ngay) + soNgay * 86_400_000).toISOString().slice(0, 10);
+}
+/** 0 = Chủ Nhật ... 6 = Thứ Bảy */
+export function thuCuaNgay(ngay: string): number {
+  return new Date(ngay).getUTCDay();
+}
+
+/** Mức độ đông và gợi ý nhân sự theo số lượt dự báo trong ngày */
+export function nhanSuTheoLuuLuong(duBao: number) {
+  if (duBao >= 50) {
+    return {
+      muc_do: 'cao',
+      bac_si_khuyen_nghi: '3 Bác sĩ (mở 2 bàn khám + 1 bàn dự phòng)',
+      dieu_duong_khuyen_nghi: '4 Điều dưỡng (tiếp đón & hỗ trợ)',
+      goi_y_nhan_su: `Ngày cao điểm (~${duBao} ca) — Bố trí 3 Bác sĩ + 4 Điều dưỡng để tránh ùn ứ tiếp đón`,
+    };
+  }
+  if (duBao >= 35) {
+    return {
+      muc_do: 'trung_binh',
+      bac_si_khuyen_nghi: '2 Bác sĩ chuyên khoa',
+      dieu_duong_khuyen_nghi: '3 Điều dưỡng',
+      goi_y_nhan_su: `Lưu lượng ổn định (~${duBao} ca) — Đội ngũ 2 Bác sĩ + 3 Điều dưỡng vận hành tiêu chuẩn`,
+    };
+  }
+  return {
+    muc_do: 'thap',
+    bac_si_khuyen_nghi: '1-2 Bác sĩ',
+    dieu_duong_khuyen_nghi: '2 Điều dưỡng',
+    goi_y_nhan_su: `Lưu lượng nhẹ (~${duBao} ca) — Bố trí 1-2 Bác sĩ, có thể kết hợp kiểm kê và đào tạo`,
+  };
+}

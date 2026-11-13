@@ -38,8 +38,6 @@ services:
     restart: unless-stopped
     env_file: ./python-ml.staging.env
     expose: ["5001"]
-    volumes:
-      - uploads:/app/uploads
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health')"]
       interval: 15s

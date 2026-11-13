@@ -49,7 +49,7 @@
    │ REST /api · WebSocket · Bull (Redis)
    ├──► ai-service      (NestJS, :5002)  — chatbot, RAG, Gemini
    ├──► office-service  (NestJS, :5003)  — chat nội bộ nhân viên
-   ├──► python-ml       (FastAPI, :5001) — dự báo nhu cầu thuốc
+   ├──► python-ml       (FastAPI, :5001) — dự báo lượt khám, phân loại chuyên khoa, khuôn mặt
    └──► PayOS · SMTP
 ```
 

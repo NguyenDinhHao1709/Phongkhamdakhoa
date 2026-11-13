@@ -19,6 +19,7 @@ import { withColdStartRetry, isServiceWakingUp } from '../../common/utils/cold-s
 
 const PYTHON_ML_URL = process.env.PYTHON_ML_URL || 'http://localhost:5001';
 const PYTHON_ML_TIMEOUT_MS = 75000;
+const PYTHON_ML_HEADERS = { 'x-internal-key': process.env.AI_INTERNAL_KEY || '' };
 const CHAM_CONG_KEY = 'CHAM_CONG_CONFIG';
 const VIETNAM_TIME_ZONE = 'Asia/Ho_Chi_Minh';
 
@@ -68,7 +69,7 @@ export class ChamCongService {
 
   // ─── Lấy ảnh mẫu nhân viên (chỉ Admin mới có quyền cập nhật ảnh) ─────────────
 
-  async layAnhMauNhanVien(nv: NhanVien): Promise<{ path?: string; base64: string }> {
+  async layAnhMauNhanVien(nv: NhanVien): Promise<string> {
     if (!nv.anhDaiDien) {
       throw new BadRequestException(
         'Hồ sơ của bạn chưa có ảnh khuôn mặt mẫu trong hệ thống. Vui lòng liên hệ Quản trị viên (Admin) để cập nhật ảnh nhận diện trước khi chấm công.',
@@ -81,9 +82,7 @@ export class ChamCongService {
           responseType: 'arraybuffer',
           timeout: 15000,
         });
-        return {
-          base64: Buffer.from(response.data).toString('base64'),
-        };
+        return Buffer.from(response.data).toString('base64');
       } catch (error) {
         const detail = error?.response?.status
           ? `HTTP ${error.response.status}`
@@ -100,10 +99,7 @@ export class ChamCongService {
       );
     }
 
-    return {
-      path: fullPath,
-      base64: fs.readFileSync(fullPath).toString('base64'),
-    };
+    return fs.readFileSync(fullPath).toString('base64');
   }
 
   // ─── Lấy lịch phân ca của nhân viên hôm nay ────────────────────────────────
@@ -199,24 +195,20 @@ export class ChamCongService {
     return { ok: true };
   }
 
-  // ─── Gọi Python ML xác thực khuôn mặt & Live Presence ───────────────────────
+  // ─── Gọi Python ML xác thực khuôn mặt ───────────────────────────────────────
 
   async xacThucKhuonMat(params: {
     frameBase64: string;
-    refImagePath?: string;
     refImageBase64: string;
-    framesB64?: string[];
   }): Promise<{ hopLe: boolean; doKhop: number; liveness: boolean; lyDo?: string }> {
     const body = {
       frame_base64: params.frameBase64,
-      ref_image_path: params.refImagePath,
       ref_image_base64: params.refImageBase64,
-      frames_b64: params.framesB64 && params.framesB64.length >= 2 ? params.framesB64 : null,
     };
     let data: any;
     try {
       const response = await withColdStartRetry(() => firstValueFrom(
-        this.httpService.post(`${PYTHON_ML_URL}/verify-face`, body, { timeout: PYTHON_ML_TIMEOUT_MS }),
+        this.httpService.post(`${PYTHON_ML_URL}/verify-face`, body, { timeout: PYTHON_ML_TIMEOUT_MS, headers: PYTHON_ML_HEADERS }),
       ));
       data = response.data;
     } catch (err) {
@@ -245,7 +237,7 @@ export class ChamCongService {
 
   // ─── Check-in ────────────────────────────────────────────────────────────────
 
-  async checkIn(userId: number, clientIp: string, frameBase64: string, framesB64?: string[]) {
+  async checkIn(userId: number, clientIp: string, frameBase64: string) {
     return voiKhoaDb(this.dataSource, `cham_cong:${userId}`, async () => {
       const nv = await this.layNhanVienTheoUserId(userId);
 
@@ -268,14 +260,9 @@ export class ChamCongService {
       }
 
       // 4. Lấy ảnh mẫu nhân viên (chỉ Admin mới có quyền cập nhật)
-      const refImage = await this.layAnhMauNhanVien(nv);
-      // 5. Xác thực khuôn mặt (ngưỡng ~70%, thực thể sống)
-      const faceCheck = await this.xacThucKhuonMat({
-        frameBase64,
-        refImagePath: refImage.path,
-        refImageBase64: refImage.base64,
-        framesB64,
-      });
+      const refImageBase64 = await this.layAnhMauNhanVien(nv);
+      // 5. Xác thực khuôn mặt (ngưỡng ~70%)
+      const faceCheck = await this.xacThucKhuonMat({ frameBase64, refImageBase64 });
       if (!faceCheck.hopLe) throw new BadRequestException(faceCheck.lyDo);
       const doKhop = faceCheck.doKhop;
 
@@ -331,7 +318,7 @@ export class ChamCongService {
 
   // ─── Check-out ───────────────────────────────────────────────────────────────
 
-  async checkOut(userId: number, clientIp: string, frameBase64: string, framesB64?: string[]) {
+  async checkOut(userId: number, clientIp: string, frameBase64: string) {
     return voiKhoaDb(this.dataSource, `cham_cong:${userId}`, async () => {
       const nv = await this.layNhanVienTheoUserId(userId);
 
@@ -357,14 +344,9 @@ export class ChamCongService {
       if (!ipCheck.hopLe) throw new ForbiddenException(ipCheck.lyDo);
 
       // 4. Lấy ảnh mẫu (chỉ Admin mới có quyền cập nhật)
-      const refImage = await this.layAnhMauNhanVien(nv);
+      const refImageBase64 = await this.layAnhMauNhanVien(nv);
       // 5. Xác thực khuôn mặt
-      const faceCheck = await this.xacThucKhuonMat({
-        frameBase64,
-        refImagePath: refImage.path,
-        refImageBase64: refImage.base64,
-        framesB64,
-      });
+      const faceCheck = await this.xacThucKhuonMat({ frameBase64, refImageBase64 });
       if (!faceCheck.hopLe) throw new BadRequestException(faceCheck.lyDo);
 
       // 6. Tính thời gian về so với ca muộn nhất

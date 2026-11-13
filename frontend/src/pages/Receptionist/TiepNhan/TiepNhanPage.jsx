@@ -27,7 +27,7 @@ function TimBenhNhan({ onSelect }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
@@ -39,10 +39,12 @@ function TimBenhNhan({ onSelect }) {
             className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           />
         </div>
-        <MedButton variant="primary" loading={isLoading} onClick={handleSearch}>Tìm</MedButton>
-        <MedButton variant="secondary" leftIcon={<UserPlus className="h-4 w-4" />} onClick={() => onSelect(null, true)}>
-          Bệnh nhân mới
-        </MedButton>
+        <div className="flex items-center gap-2">
+          <MedButton variant="primary" loading={isLoading} onClick={handleSearch} className="flex-1 sm:flex-initial">Tìm</MedButton>
+          <MedButton variant="secondary" leftIcon={<UserPlus className="h-4 w-4" />} onClick={() => onSelect(null, true)} className="flex-1 sm:flex-initial whitespace-nowrap">
+            Bệnh nhân mới
+          </MedButton>
+        </div>
       </div>
 
       {searched && items.length === 0 && !isLoading && (

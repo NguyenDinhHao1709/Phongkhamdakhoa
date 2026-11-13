@@ -121,11 +121,21 @@ function formatFileSize(bytes) {
   return `${(b / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function cleanRoomName(name) {
+  if (!name) return '';
+  return String(name).replace(/^[\?\uFFFD]+\s*/, '').trim() || String(name).trim();
+}
+
 function getInitials(name) {
-  if (!name) return 'NV';
-  const parts = String(name).trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  const cleaned = cleanRoomName(name);
+  if (!cleaned) return 'NV';
+  const words = cleaned
+    .split(/\s+/)
+    .map((w) => w.replace(/[^A-Za-zÀ-ỹĐđ0-9]/g, ''))
+    .filter(Boolean);
+  if (words.length === 0) return 'NV';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
 }
 
 const AVATAR_COLORS = [
@@ -151,6 +161,7 @@ export default function OfficeWorkspacePage() {
   const [chatSubTab, setChatSubTab] = useState('messages'); // 'messages' | 'pinned' | 'images' | 'files' | 'patients'
   const [showRightInfo, setShowRightInfo] = useState(false);
   const [mobileShowChat, setMobileShowChat] = useState(false);
+  const [activeMobileMsgId, setActiveMobileMsgId] = useState(null);
 
   // Workspace Data
   const [loadingInit, setLoadingInit] = useState(true);
@@ -872,24 +883,27 @@ export default function OfficeWorkspacePage() {
     : 'bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold';
 
   return (
-    <div className={`flex flex-col h-[calc(100dvh-56px)] -m-2.5 sm:-m-4 md:-m-5 overflow-hidden select-none ${bgMain}`}>
-      {/* ─── TOP HEADER BAR (NEXTX AI OFFICE STYLE) ───────────────────── */}
-      <div className={`h-12 px-4 flex items-center justify-between border-b shrink-0 ${bgHeader}`}>
-        <div className="flex items-center gap-6">
+    <div className={`flex flex-col h-[calc(100dvh-112px)] md:h-[calc(100dvh-56px)] -m-2.5 sm:-m-4 md:-m-5 overflow-hidden select-none ${bgMain}`}>
+      {/* ─── TOP HEADER BAR (Ẩn trên mobile khi đang mở cửa sổ chat để tiết kiệm diện tích) ─── */}
+      <div className={`${mobileShowChat ? 'hidden md:flex' : 'flex'} h-11 sm:h-12 px-3 sm:px-4 items-center justify-between border-b shrink-0 ${bgHeader}`}>
+        <div className="flex items-center gap-2 sm:gap-6 min-w-0">
           {/* Brand Logo */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-sm">
               O
             </div>
-            <span className="font-bold tracking-tight text-sm">Office</span>
+            <span className="font-bold tracking-tight text-xs sm:text-sm hidden xs:inline">Office</span>
           </div>
 
-          {/* Top Navigation Tabs */}
-          <div className="hidden md:flex items-center gap-1">
+          {/* Top Navigation Tabs (Hiển thị cả trên Mobile khi ở màn hình danh sách) */}
+          <div className="flex items-center gap-1 overflow-x-auto">
             <button
-              onClick={() => setLeftNav('chat')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition ${
-                leftNav === 'chat'
+              onClick={() => {
+                setLeftNav('chat');
+                setChatSubTab('messages');
+              }}
+              className={`px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition ${
+                leftNav === 'chat' && chatSubTab !== 'files'
                   ? darkMode
                     ? 'text-emerald-400 border-b-2 border-emerald-500 bg-emerald-500/10'
                     : 'text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50'
@@ -897,14 +911,14 @@ export default function OfficeWorkspacePage() {
               }`}
             >
               <span>Trao đổi</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-emerald-500 text-white">
+              <span className="px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-bold bg-emerald-500 text-white">
                 {totalUnread > 0 ? `${totalUnread}+` : 'Live'}
               </span>
             </button>
 
             <button
               onClick={() => setLeftNav('directory')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+              className={`px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition ${
                 leftNav === 'directory'
                   ? darkMode
                     ? 'text-emerald-400 border-b-2 border-emerald-500 bg-emerald-500/10'
@@ -912,9 +926,9 @@ export default function OfficeWorkspacePage() {
                   : `${textMuted} ${hoverItem}`
               }`}
             >
-              <span>Danh bạ Khoa/Phòng</span>
+              <span>Danh bạ</span>
               <span
-                className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                className={`px-1.5 py-0.2 rounded text-[9px] sm:text-[10px] font-bold ${
                   darkMode ? 'bg-slate-700 text-slate-200' : 'bg-gray-200 text-gray-700'
                 }`}
               >
@@ -926,8 +940,9 @@ export default function OfficeWorkspacePage() {
               onClick={() => {
                 setLeftNav('chat');
                 setChatSubTab('files');
+                if (activeRoom) setMobileShowChat(true);
               }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`hidden sm:inline-flex px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                 chatSubTab === 'files'
                   ? darkMode
                     ? 'text-emerald-400 border-b-2 border-emerald-500 bg-emerald-500/10'
@@ -1324,7 +1339,7 @@ export default function OfficeWorkspacePage() {
                     {/* Room Title & Last Message Preview */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2 mb-0.5">
-                        <span className="font-semibold text-xs truncate">{room.tenPhong}</span>
+                        <span className="font-semibold text-xs truncate">{cleanRoomName(room.tenPhong)}</span>
                         <span className={`text-[10px] shrink-0 ${textMuted}`}>
                           {formatTimeShort(room.lastMessage?.taoLuc || room.capNhatLuc)}
                         </span>
@@ -1370,8 +1385,8 @@ export default function OfficeWorkspacePage() {
           ) : (
             <>
               {/* 1. Chat Window Header */}
-              <div className={`px-3 sm:px-5 py-2.5 sm:py-3 border-b flex items-center justify-between shrink-0 ${bgHeader}`}>
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className={`px-2.5 sm:px-5 py-2 sm:py-3 border-b flex items-center justify-between gap-2 shrink-0 ${bgHeader}`}>
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                   <button
                     type="button"
                     onClick={() => setMobileShowChat(false)}
@@ -1381,9 +1396,9 @@ export default function OfficeWorkspacePage() {
                     <ChevronLeft className="w-5 h-5" />
                   </button>
                   <div
-                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br ${getAvatarGradient(
+                    className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br ${getAvatarGradient(
                       activeRoom.id,
-                    )} flex items-center justify-center text-white font-bold text-xs shrink-0 relative`}
+                    )} flex items-center justify-center text-white font-bold text-[11px] sm:text-xs shrink-0 relative`}
                   >
                     {getInitials(activeRoom.tenPhong)}
                     {activeRoom.loai === 'nhom' && (
@@ -1392,13 +1407,13 @@ export default function OfficeWorkspacePage() {
                       </span>
                     )}
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <Lock className={`w-3.5 h-3.5 shrink-0 ${textMuted}`} />
-                      <h3 className="font-bold text-sm truncate">{activeRoom.tenPhong}</h3>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {activeRoom.loai === 'nhom' && <Lock className={`w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0 ${textMuted}`} />}
+                      <h3 className="font-bold text-xs sm:text-sm truncate">{cleanRoomName(activeRoom.tenPhong)}</h3>
                     </div>
-                    <div className={`flex items-center gap-2 text-[11px] ${textMuted}`}>
-                      <span>
+                    <div className={`flex items-center gap-1.5 text-[11px] min-w-0 ${textMuted}`}>
+                      <span className="whitespace-nowrap shrink-0">
                         {activeRoom.loai === 'nhom'
                           ? `${activeRoom.soThanhVien} thành viên`
                           : activeRoom.directPartner?.online
@@ -1407,8 +1422,8 @@ export default function OfficeWorkspacePage() {
                       </span>
                       {activeRoom.moTa && (
                         <>
-                          <span>•</span>
-                          <span className="truncate max-w-md">{activeRoom.moTa}</span>
+                          <span className="hidden sm:inline shrink-0">•</span>
+                          <span className="hidden sm:inline truncate max-w-md">{activeRoom.moTa}</span>
                         </>
                       )}
                     </div>
@@ -1416,12 +1431,12 @@ export default function OfficeWorkspacePage() {
                 </div>
 
                 {/* Header Right Actions */}
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-0.5 sm:gap-1.5 shrink-0">
                   {activeRoom.loai === 'nhom' && (
                     <button
                       onClick={() => setShowAddMemberModal(true)}
                       title="Thêm thành viên vào nhóm"
-                      className={`p-2 rounded-lg transition ${textSubtle} ${hoverItem}`}
+                      className={`p-1.5 sm:p-2 rounded-lg transition ${textSubtle} ${hoverItem}`}
                     >
                       <UserPlus className="w-4 h-4" />
                     </button>
@@ -1429,7 +1444,7 @@ export default function OfficeWorkspacePage() {
                   <button
                     onClick={() => setShowMessageSearch(!showMessageSearch)}
                     title="Tìm kiếm tin nhắn trong hội thoại"
-                    className={`p-2 rounded-lg transition ${
+                    className={`p-1.5 sm:p-2 rounded-lg transition ${
                       showMessageSearch
                         ? darkMode
                           ? 'text-emerald-400 bg-slate-800'
@@ -1442,7 +1457,7 @@ export default function OfficeWorkspacePage() {
                   <button
                     onClick={() => setShowRightInfo(!showRightInfo)}
                     title="Thông tin hội thoại & Thành viên"
-                    className={`p-2 rounded-lg transition ${
+                    className={`p-1.5 sm:p-2 rounded-lg transition ${
                       showRightInfo
                         ? darkMode
                           ? 'text-emerald-400 bg-slate-800'
@@ -1456,8 +1471,8 @@ export default function OfficeWorkspacePage() {
               </div>
 
               {/* 2. Sub-Tabs Bar (Trò chuyện | Đã ghim | Ảnh & Media | Tệp) */}
-              <div className={`px-5 flex items-center justify-between border-b shrink-0 ${bgHeader}`}>
-                <div className="flex items-center gap-5 overflow-x-auto">
+              <div className={`px-3 sm:px-5 flex flex-wrap items-center justify-between border-b shrink-0 ${bgHeader}`}>
+                <div className="flex items-center gap-3.5 sm:gap-5 overflow-x-auto max-w-full">
                   {[
                     { key: 'messages', label: '💬 Trò chuyện' },
                     { key: 'pinned', label: `📌 Ghim (${pinnedMessages.length})` },
@@ -1467,7 +1482,7 @@ export default function OfficeWorkspacePage() {
                     <button
                       key={t.key}
                       onClick={() => setChatSubTab(t.key)}
-                      className={`py-2.5 text-xs font-semibold border-b-2 whitespace-nowrap transition ${
+                      className={`py-2 sm:py-2.5 text-[11px] sm:text-xs font-semibold border-b-2 whitespace-nowrap transition ${
                         chatSubTab === t.key
                           ? darkMode
                             ? 'border-emerald-500 text-emerald-400'
@@ -1536,7 +1551,10 @@ export default function OfficeWorkspacePage() {
                   {chatSubTab === 'messages' ? (
                     <>
                       {/* Messages Scroll Stream */}
-                      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                      <div
+                        onClick={() => setActiveMobileMsgId(null)}
+                        className="flex-1 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 space-y-3 sm:space-y-4"
+                      >
                         {loadingMessages ? (
                           <div className={`text-center py-12 text-xs ${textMuted}`}>
                             Đang đồng bộ tin nhắn thời gian thực...
@@ -1567,11 +1585,12 @@ export default function OfficeWorkspacePage() {
                             const roleBadge = ROLE_BADGE_MAP[msg.nguoiGui?.maVaiTro];
                             const groupedRx = groupReactions(msg.reactions);
                             const isLastMessage = index === displayedMessages.length - 1;
+                            const isMobileToolbarOpen = activeMobileMsgId === msg.id;
 
                             return (
                               <div
                                 key={msg.id}
-                                className={`group flex items-start gap-3 ${
+                                className={`group flex items-start gap-2 sm:gap-3 ${
                                   isMe ? 'flex-row-reverse' : 'flex-row'
                                 }`}
                               >
@@ -1580,22 +1599,22 @@ export default function OfficeWorkspacePage() {
                                   <div
                                     onClick={() => handleStartDirectChat(msg.nguoiGuiId)}
                                     title={`Nhắn tin riêng với ${msg.nguoiGui?.hoTen}`}
-                                    className={`w-8 h-8 rounded-full bg-gradient-to-br ${getAvatarGradient(
+                                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br ${getAvatarGradient(
                                       msg.nguoiGuiId,
-                                    )} flex items-center justify-center text-white font-bold text-xs shrink-0 cursor-pointer mt-1`}
+                                    )} flex items-center justify-center text-white font-bold text-[11px] sm:text-xs shrink-0 cursor-pointer mt-1`}
                                   >
                                     {getInitials(msg.nguoiGui?.hoTen)}
                                   </div>
                                 )}
 
                                 <div
-                                  className={`flex flex-col max-w-[72%] ${
+                                  className={`flex flex-col max-w-[82%] sm:max-w-[72%] ${
                                     isMe ? 'items-end' : 'items-start'
                                   }`}
                                 >
                                   {/* Sender Name & Role Badge */}
                                   {!isMe && (
-                                    <div className="flex items-center gap-2 mb-1 px-1">
+                                    <div className="flex items-center gap-1.5 sm:gap-2 mb-1 px-1 flex-wrap">
                                       <span className={`text-xs font-semibold ${textSubtle}`}>
                                         {msg.nguoiGui?.hoTen}
                                       </span>
@@ -1613,13 +1632,17 @@ export default function OfficeWorkspacePage() {
 
                                   {/* Bubble + Hover Toolbar Wrapper */}
                                   <div
-                                    className={`relative flex items-center gap-2 ${
+                                    className={`relative flex items-center gap-2 max-w-full ${
                                       isMe ? 'flex-row-reverse' : 'flex-row'
                                     }`}
                                   >
                                     {/* Message Bubble */}
                                     <div
-                                      className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed relative ${
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveMobileMsgId((prev) => (prev === msg.id ? null : msg.id));
+                                      }}
+                                      className={`w-fit max-w-full rounded-2xl px-3.5 sm:px-4 py-2 sm:py-2.5 text-sm leading-relaxed relative ${
                                         msg.daThuHoi
                                           ? darkMode
                                             ? 'bg-slate-800/50 text-slate-500 italic border border-slate-700/50'
@@ -1719,20 +1742,25 @@ export default function OfficeWorkspacePage() {
 
                                       {/* Timestamp & Checkmark Footer inside Bubble */}
                                       <div
-                                        className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${
+                                        className={`mt-1 flex items-center justify-end gap-1 text-[10px] whitespace-nowrap ${
                                           isMe ? 'text-emerald-100/90' : textMuted
                                         }`}
                                       >
-                                        {msg.daGhim && <Pin className="w-3 h-3 text-amber-400" />}
+                                        {msg.daGhim && <Pin className="w-3 h-3 text-amber-400 shrink-0" />}
                                         <span>{formatTimeShort(msg.taoLuc)}</span>
-                                        {isMe && <CheckCheck className="w-3.5 h-3.5" />}
+                                        {isMe && <CheckCheck className="w-3.5 h-3.5 shrink-0" />}
                                       </div>
                                     </div>
 
-                                    {/* Hover Action Bar (NextX Style: Emoji + Reply + Pin + Recall) */}
+                                    {/* Hover / Tap Action Bar (Không chiếm diện tích ngang của bong bóng trên điện thoại) */}
                                     {!msg.daThuHoi && (
                                       <div
-                                        className={`opacity-0 group-hover:opacity-100 transition flex items-center gap-0.5 px-2 py-1 rounded-full border shadow-lg shrink-0 z-10 ${
+                                        onClick={(e) => e.stopPropagation()}
+                                        className={`${
+                                          isMobileToolbarOpen ? 'flex' : 'hidden md:group-hover:flex'
+                                        } absolute md:static ${
+                                          isMe ? 'right-0' : 'left-0'
+                                        } -bottom-9 md:bottom-auto items-center gap-0.5 px-2 py-1 rounded-full border shadow-xl shrink-0 z-20 ${
                                           darkMode
                                             ? 'bg-[#1b2230] border-slate-700 text-slate-200'
                                             : 'bg-white border-gray-200 text-gray-700'
@@ -1741,7 +1769,10 @@ export default function OfficeWorkspacePage() {
                                         {QUICK_EMOJIS.map((emo) => (
                                           <button
                                             key={emo}
-                                            onClick={() => handleToggleReaction(msg.id, emo)}
+                                            onClick={() => {
+                                              handleToggleReaction(msg.id, emo);
+                                              setActiveMobileMsgId(null);
+                                            }}
                                             className="hover:scale-125 transition px-1 text-xs"
                                             title={`Thả ${emo}`}
                                           >
@@ -1750,14 +1781,20 @@ export default function OfficeWorkspacePage() {
                                         ))}
                                         <div className={`w-px h-3.5 mx-1 ${darkMode ? 'bg-slate-700' : 'bg-gray-200'}`} />
                                         <button
-                                          onClick={() => setReplyTarget(msg)}
+                                          onClick={() => {
+                                            setReplyTarget(msg);
+                                            setActiveMobileMsgId(null);
+                                          }}
                                           title="Trả lời tin nhắn"
                                           className={`p-1 rounded ${hoverItem}`}
                                         >
                                           <Reply className="w-3.5 h-3.5" />
                                         </button>
                                         <button
-                                          onClick={() => handleTogglePin(msg.id)}
+                                          onClick={() => {
+                                            handleTogglePin(msg.id);
+                                            setActiveMobileMsgId(null);
+                                          }}
                                           title={msg.daGhim ? 'Bỏ ghim' : 'Ghim tin nhắn'}
                                           className={`p-1 rounded ${hoverItem} ${
                                             msg.daGhim ? 'text-amber-500' : ''
@@ -1773,6 +1810,7 @@ export default function OfficeWorkspacePage() {
                                                 return;
                                               }
                                               handleRecallMessage(msg.id, 'recall');
+                                              setActiveMobileMsgId(null);
                                             }}
                                             title={
                                               canRecallByTime(msg.taoLuc)
@@ -1789,7 +1827,10 @@ export default function OfficeWorkspacePage() {
                                           </button>
                                         )}
                                         <button
-                                          onClick={() => handleRecallMessage(msg.id, 'delete_for_me')}
+                                          onClick={() => {
+                                            handleRecallMessage(msg.id, 'delete_for_me');
+                                            setActiveMobileMsgId(null);
+                                          }}
                                           title="Xóa ở phía tôi (bên kia vẫn thấy bình thường)"
                                           className={`p-1 rounded ${hoverItem} hover:text-rose-500`}
                                         >
@@ -1870,7 +1911,7 @@ export default function OfficeWorkspacePage() {
                       )}
 
                       {/* 5. Bottom Message Composer */}
-                      <div className={`p-3 border-t relative shrink-0 ${bgHeader}`}>
+                      <div className={`px-2.5 py-2 sm:p-3 border-t relative shrink-0 ${bgHeader}`}>
                         {/* Reply Banner */}
                         {replyTarget && (
                           <div
@@ -2022,98 +2063,138 @@ export default function OfficeWorkspacePage() {
                           </div>
                         )}
 
-                        {/* Toolbar Icons Row (Identical to NextX Bottom Toolbar) */}
-                        <div className="flex items-center gap-1 mb-2">
-                          <input
-                            ref={imageInputRef}
-                            type="file"
-                            accept="image/*"
-                            onChange={handleUploadAttachment}
-                            className="hidden"
-                          />
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            onChange={handleUploadAttachment}
-                            className="hidden"
-                          />
+                        {/* Toolbar Icons + Input Form (Gọn 1 hàng trên Mobile, 2 tầng thoáng trên Desktop) */}
+                        <input
+                          ref={imageInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleUploadAttachment}
+                          className="hidden"
+                        />
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          onChange={handleUploadAttachment}
+                          className="hidden"
+                        />
 
-                          <button
-                            type="button"
-                            onClick={() => setShowStickerPopover(!showStickerPopover)}
-                            title="Nhãn dán & Biểu tượng cảm xúc"
-                            className={`p-2 rounded-lg transition ${textMuted} ${hoverItem}`}
-                          >
-                            <Smile className="w-4 h-4" />
-                          </button>
+                        {uploadingFile && (
+                          <div className="text-[11px] text-emerald-500 animate-pulse mb-1 px-1">
+                            Đang tải tệp lên...
+                          </div>
+                        )}
 
-                          <button
-                            type="button"
-                            onClick={() => imageInputRef.current?.click()}
-                            disabled={uploadingFile}
-                            title="Gửi hình ảnh (X-Quang, kết quả khám...)"
-                            className={`p-2 rounded-lg transition ${textMuted} ${hoverItem}`}
-                          >
-                            <ImageIcon className="w-4 h-4" />
-                          </button>
+                        <form onSubmit={handleSendTextMessage} className="flex flex-col sm:space-y-1.5">
+                          <div className="hidden sm:flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setShowStickerPopover(!showStickerPopover)}
+                              title="Nhãn dán & Biểu tượng cảm xúc"
+                              className={`p-1.5 rounded-lg transition ${textMuted} ${hoverItem}`}
+                            >
+                              <Smile className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => imageInputRef.current?.click()}
+                              disabled={uploadingFile}
+                              title="Gửi hình ảnh (X-Quang, kết quả khám...)"
+                              className={`p-1.5 rounded-lg transition ${textMuted} ${hoverItem}`}
+                            >
+                              <ImageIcon className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={uploadingFile}
+                              title="Đính kèm tệp tài liệu (PDF, Excel, Word...)"
+                              className={`p-1.5 rounded-lg transition ${textMuted} ${hoverItem}`}
+                            >
+                              <Paperclip className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setInputText((prev) => `${prev}@`);
+                                setMentionQuery('');
+                                setShowMentionList(true);
+                              }}
+                              title="Nhắc tên đồng nghiệp (@mention)"
+                              className={`p-1.5 rounded-lg transition ${textMuted} ${hoverItem}`}
+                            >
+                              <AtSign className="w-4 h-4" />
+                            </button>
+                          </div>
 
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={uploadingFile}
-                            title="Đính kèm tệp tài liệu (PDF, Excel, Word...)"
-                            className={`p-2 rounded-lg transition ${textMuted} ${hoverItem}`}
-                          >
-                            <Paperclip className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1.5 sm:gap-2">
+                            {/* Các nút đính kèm nhanh nằm cùng dòng trên Mobile */}
+                            <div className="flex sm:hidden items-center gap-0.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setShowStickerPopover(!showStickerPopover)}
+                                title="Nhãn dán & Emoji"
+                                className={`p-1.5 rounded-lg transition ${textMuted} ${hoverItem}`}
+                              >
+                                <Smile className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => imageInputRef.current?.click()}
+                                disabled={uploadingFile}
+                                title="Gửi ảnh"
+                                className={`p-1.5 rounded-lg transition ${textMuted} ${hoverItem}`}
+                              >
+                                <ImageIcon className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={uploadingFile}
+                                title="Đính kèm tệp"
+                                className={`p-1.5 rounded-lg transition ${textMuted} ${hoverItem}`}
+                              >
+                                <Paperclip className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setInputText((prev) => `${prev}@`);
+                                  setMentionQuery('');
+                                  setShowMentionList(true);
+                                }}
+                                title="Nhắc tên @"
+                                className={`p-1.5 rounded-lg transition ${textMuted} ${hoverItem}`}
+                              >
+                                <AtSign className="w-4 h-4" />
+                              </button>
+                            </div>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setInputText((prev) => `${prev}@`);
-                              setMentionQuery('');
-                              setShowMentionList(true);
-                            }}
-                            title="Nhắc tên đồng nghiệp (@mention)"
-                            className={`p-2 rounded-lg transition ${textMuted} ${hoverItem}`}
-                          >
-                            <AtSign className="w-4 h-4" />
-                          </button>
-
-                          {uploadingFile && (
-                            <span className="text-xs text-emerald-500 animate-pulse ml-2">
-                              Đang tải tệp lên...
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Input Form */}
-                        <form onSubmit={handleSendTextMessage} className="flex items-end gap-2">
-                          <textarea
-                            rows={1}
-                            value={inputText}
-                            onChange={handleInputChange}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handleSendTextMessage();
-                              }
-                            }}
-                            placeholder={`Nhắn tin tới ${activeRoom.tenPhong} (Gõ @ để nhắc tên, Enter để gửi)...`}
-                            className={`flex-1 px-3.5 py-2.5 rounded-xl text-sm outline-none border resize-none max-h-28 ${
-                              darkMode
-                                ? 'bg-[#11151c] border-slate-700/80 text-slate-100 placeholder-slate-500 focus:border-emerald-500'
-                                : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:bg-white'
-                            }`}
-                          />
-                          <button
-                            type="submit"
-                            disabled={!inputText.trim()}
-                            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition"
-                          >
-                            <Send className="w-4 h-4" />
-                            <span>Gửi</span>
-                          </button>
+                            <textarea
+                              rows={1}
+                              value={inputText}
+                              onChange={handleInputChange}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleSendTextMessage();
+                                }
+                              }}
+                              placeholder={`Nhắn tin tới ${cleanRoomName(activeRoom.tenPhong)}...`}
+                              className={`flex-1 min-w-0 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm outline-none border resize-none max-h-24 ${
+                                darkMode
+                                  ? 'bg-[#11151c] border-slate-700/80 text-slate-100 placeholder-slate-500 focus:border-emerald-500'
+                                  : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-emerald-500 focus:bg-white'
+                              }`}
+                            />
+                            <button
+                              type="submit"
+                              disabled={!inputText.trim()}
+                              className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-xs transition shrink-0"
+                            >
+                              <Send className="w-4 h-4" />
+                              <span className="hidden xs:inline">Gửi</span>
+                            </button>
+                          </div>
                         </form>
                       </div>
                     </>
@@ -2258,7 +2339,7 @@ export default function OfficeWorkspacePage() {
                         >
                           {getInitials(activeRoom.tenPhong)}
                         </div>
-                        <div className="font-bold text-sm">{activeRoom.tenPhong}</div>
+                        <div className="font-bold text-sm">{cleanRoomName(activeRoom.tenPhong)}</div>
                         <div className={`text-xs ${textMuted}`}>{activeRoom.moTa}</div>
                       </div>
 

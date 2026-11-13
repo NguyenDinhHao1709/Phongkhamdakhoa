@@ -32,10 +32,15 @@ export default function ForecastDashboard() {
   const forecastResult = data?.data || {};
   const forecast7Days = forecastResult.forecast7Days || [];
   const hourlyData = forecastResult.heatmapHomNay || [];
+  // Giờ cao điểm = đạt từ 80% mức cao nhất trong ngày
+  const nguongCaoDiem = Math.max(...hourlyData.map((h) => h.soLuong), 1) * 0.8;
   const dataQuality = forecastResult.dataQuality || {};
   const aiAnalysis = forecastResult.aiAnalysis || {};
   const pattern = forecastResult.pattern || {};
   const tongQuan = forecastResult.tongQuan || {};
+  const mape = forecastResult.mape;
+  // Chưa có dự báo: đang tải, hoặc server báo chưa đủ dữ liệu
+  const emptyText = isLoading ? 'Đang tải dữ liệu dự báo...' : (data?.message || 'Chưa có dữ liệu dự báo');
 
   return (
     <div className="space-y-5 animate-fadeIn pb-10">
@@ -45,7 +50,9 @@ export default function ForecastDashboard() {
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200/70">
               <BrainCircuit className="w-3.5 h-3.5" />
-              Mô Hình Dự Báo Holt-Winters ML & Gemini AI
+              {forecastResult.source === 'trung_binh_theo_thu'
+                ? 'Dự phòng: Trung bình theo thứ (dịch vụ ML chưa phản hồi)'
+                : 'Mô Hình Dự Báo Holt-Winters ML & Gemini AI'}
             </span>
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -98,7 +105,7 @@ export default function ForecastDashboard() {
               <span>Xu Hướng 7 Ngày</span>
             </div>
             <p className="text-slate-200 leading-relaxed text-[11px]">
-              {aiAnalysis?.tom_tat || 'Lưu lượng dự kiến trung bình ~43 ca/ngày, phân bố cao vào các ngày đầu tuần và cuối tuần.'}
+              {aiAnalysis?.tom_tat || emptyText}
             </p>
           </div>
 
@@ -109,7 +116,7 @@ export default function ForecastDashboard() {
               <span>Cảnh Báo Cao Điểm</span>
             </div>
             <p className="text-amber-100/90 leading-relaxed text-[11px]">
-              {aiAnalysis?.canh_bao || 'Thứ Bảy và Thứ Ba dự báo lưu lượng vượt 50 lượt, tiềm ẩn nguy cơ ùn ứ tại quầy lễ tân.'}
+              {aiAnalysis?.canh_bao || '—'}
             </p>
           </div>
 
@@ -120,7 +127,7 @@ export default function ForecastDashboard() {
               <span>Bố Trí Nhân Lực</span>
             </div>
             <p className="text-blue-100/90 leading-relaxed text-[11px]">
-              {aiAnalysis?.khuyen_nghi_nhan_su || 'Bố trí tối thiểu 3 Bác sĩ và 4 Điều dưỡng vào ngày cao điểm; ngày thường duy trì 2 Bác sĩ.'}
+              {aiAnalysis?.khuyen_nghi_nhan_su || '—'}
             </p>
           </div>
 
@@ -131,7 +138,7 @@ export default function ForecastDashboard() {
               <span>Tối Ưu Vận Hành</span>
             </div>
             <p className="text-emerald-100/90 leading-relaxed text-[11px]">
-              {aiAnalysis?.co_hoi_toi_uu || 'Tận dụng ngày Chủ Nhật hoặc giữa tuần để giao ban chuyên môn, đào tạo nội bộ và kiểm kê dược.'}
+              {aiAnalysis?.co_hoi_toi_uu || '—'}
             </p>
           </div>
         </div>
@@ -147,7 +154,7 @@ export default function ForecastDashboard() {
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Dự Báo Ngày Gần Nhất</p>
             <div className="flex items-baseline gap-1.5 mt-0.5">
               <span className="text-2xl font-black text-slate-900">
-                {forecast7Days[0]?.du_bao ?? 54}
+                {forecast7Days[0]?.du_bao ?? '—'}
               </span>
               <span className="text-xs font-semibold text-slate-500">lượt khám</span>
             </div>
@@ -165,12 +172,12 @@ export default function ForecastDashboard() {
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Lưu Lượng TB Tuần</p>
             <div className="flex items-baseline gap-1.5 mt-0.5">
               <span className="text-2xl font-black text-indigo-900">
-                {tongQuan.trungBinh7Ngay || 43}
+                {tongQuan.trungBinh7Ngay ?? '—'}
               </span>
               <span className="text-xs font-semibold text-slate-500">ca / ngày</span>
             </div>
             <p className="text-[11px] text-indigo-700 font-medium mt-0.5">
-              Chu kỳ 7 ngày ổn định
+              Trung bình các ngày dự báo
             </p>
           </div>
         </div>
@@ -183,14 +190,18 @@ export default function ForecastDashboard() {
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Độ Tin Cậy Mô Hình</p>
             <div className="flex items-baseline gap-1.5 mt-0.5">
               <span className="text-2xl font-black text-emerald-700">
-                {forecastResult.doChinhXacPct ?? 87.2}%
+                {mape != null ? `${forecastResult.doChinhXacPct}%` : 'Chưa đo'}
               </span>
-              <span className="text-[10px] font-bold bg-emerald-100/80 text-emerald-800 px-1.5 py-0.5 rounded">
-                MAPE {forecastResult.mape ?? 12.8}%
-              </span>
+              {mape != null && (
+                <span className="text-[10px] font-bold bg-emerald-100/80 text-emerald-800 px-1.5 py-0.5 rounded">
+                  MAPE {mape}%
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-              Đạt chuẩn sai số y tế &lt;15%
+              {mape == null
+                ? 'Chưa đủ dữ liệu để kiểm định sai số'
+                : `Kiểm định 7 ngày gần nhất · mốc so sánh tuần trước: ${forecastResult.mapeNaive}%`}
             </p>
           </div>
         </div>
@@ -203,12 +214,12 @@ export default function ForecastDashboard() {
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Cơ Sở Dữ Liệu Lịch Sử</p>
             <div className="flex items-baseline gap-1.5 mt-0.5">
               <span className="text-2xl font-black text-slate-900">
-                {tongQuan.tongLichSu ?? '1.608'}
+                {tongQuan.tongLichSu ?? '—'}
               </span>
               <span className="text-xs font-semibold text-slate-500">lượt khám</span>
             </div>
             <p className="text-[11px] text-amber-700 font-medium mt-0.5">
-              Huấn luyện trên {dataQuality?.observedDays || 37} ngày vận hành
+              Huấn luyện trên {dataQuality?.observedDays ?? 0} ngày vận hành
             </p>
           </div>
         </div>
@@ -225,7 +236,9 @@ export default function ForecastDashboard() {
             <p className="text-xs text-slate-500 mt-0.5">
               {timeViewTab === 'weekly'
                 ? 'Đường xu hướng kết hợp dải khoảng tin cậy 95% (95% Confidence Interval)'
-                : 'Thời gian tập trung bệnh nhân trong ngày từ 07:00 đến 17:00 (Nhận diện đỉnh điểm)'}
+                : forecastResult.heatmapNguon === 'hom_nay'
+                  ? 'Lượt tiếp nhận hôm nay theo giờ, từ 07:00 đến 17:00'
+                  : 'Trung bình lịch sử theo giờ, từ 07:00 đến 17:00 (hôm nay chưa đủ dữ liệu)'}
             </p>
           </div>
 
@@ -256,7 +269,7 @@ export default function ForecastDashboard() {
             <div className="h-72 w-full pt-1">
               {forecast7Days.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-sm text-slate-500">
-                  Đang tải dữ liệu dự báo...
+                  {emptyText}
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -340,7 +353,7 @@ export default function ForecastDashboard() {
                     content={({ active, payload }) => {
                       if (!active || !payload?.length) return null;
                       const d = payload[0].payload;
-                      const isPeak = d.soLuong >= 8 || d.gio === '09:00' || d.gio === '10:00' || d.gio === '14:00' || d.gio === '15:00';
+                      const isPeak = d.soLuong >= nguongCaoDiem;
                       return (
                         <div className="bg-slate-900 text-white rounded-xl shadow-xl p-2.5 text-xs space-y-1 border border-slate-700">
                           <p className="font-bold text-cyan-300">Khung giờ: {d.gio}</p>
@@ -356,7 +369,7 @@ export default function ForecastDashboard() {
                   />
                   <Bar dataKey="soLuong" radius={[6, 6, 0, 0]} maxBarSize={44}>
                     {hourlyData.map((entry, i) => {
-                      const isHigh = entry.soLuong >= 8 || entry.gio === '09:00' || entry.gio === '10:00' || entry.gio === '14:00' || entry.gio === '15:00';
+                      const isHigh = entry.soLuong >= nguongCaoDiem;
                       return (
                         <Cell
                           key={i}
@@ -409,7 +422,7 @@ export default function ForecastDashboard() {
               {forecast7Days.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-6 text-center text-slate-500">
-                    Đang tính toán kịch bản phân bổ nhân sự...
+                    {emptyText}
                   </td>
                 </tr>
               ) : (

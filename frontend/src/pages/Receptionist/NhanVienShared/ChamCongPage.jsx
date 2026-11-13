@@ -4,10 +4,8 @@ import { Camera, CheckCircle2, XCircle, LogIn, LogOut, Clock, AlertTriangle, Wif
 import { apiGet, apiPost } from '../../../services/api';
 import useAuthStore from '../../../store/authStore';
 
-// Số frame cần thu thập cho kiểm tra thực thể sống
-const FRAMES_NEEDED = 10;
-// Thời gian quét nhận diện (6 giây để người dùng dễ dàng căn chỉnh khuôn mặt)
-const CAPTURE_DURATION_SEC = 6;
+// Thời gian đếm ngược để người dùng căn chỉnh khuôn mặt trước khi chụp
+const CAPTURE_DURATION_SEC = 3;
 
 // Tính thời lượng làm việc chính xác (số giờ, số phút; nếu dưới 1 giờ thì hiện đúng số phút làm)
 function tinhThoiLuongLamViec(gioVao, gioRa) {
@@ -47,14 +45,12 @@ export default function ChamCongPage() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  const captureIntervalRef = useRef(null);
 
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [mode, setMode] = useState(null); // 'checkin' | 'checkout'
   const [step, setStep] = useState('idle'); // 'idle' | 'capturing' | 'processing' | 'done' | 'error'
   const [countdown, setCountdown] = useState(0);
-  const [frames, setFrames] = useState([]);
   const [result, setResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -175,8 +171,7 @@ export default function ChamCongPage() {
 
   // ─── Mutation check-in / check-out ──────────────────────────────────────────
   const chamCongMutation = useMutation({
-    mutationFn: ({ endpoint, frameBase64, framesB64 }) =>
-      apiPost(endpoint, { frameBase64, framesB64 }),
+    mutationFn: ({ endpoint, frameBase64 }) => apiPost(endpoint, { frameBase64 }),
     onSuccess: (res) => {
       setResult(res?.data?.data || res?.data || res);
       setStep('done');
@@ -210,7 +205,6 @@ export default function ChamCongPage() {
   }, []);
 
   const stopCamera = useCallback(() => {
-    if (captureIntervalRef.current) clearInterval(captureIntervalRef.current);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
@@ -235,12 +229,10 @@ export default function ChamCongPage() {
   const batDauChamCong = useCallback(async (loai) => {
     setMode(loai);
     setStep('capturing');
-    setFrames([]);
     setResult(null);
     setErrorMsg('');
     await startCamera();
 
-    let collectedFrames = [];
     let cd = CAPTURE_DURATION_SEC;
     setCountdown(cd);
 
@@ -249,26 +241,18 @@ export default function ChamCongPage() {
       setCountdown(cd);
     }, 1000);
 
-    captureIntervalRef.current = setInterval(() => {
-      const frame = captureFrame(320, 240, 0.6);
-      if (frame) collectedFrames.push(frame);
-    }, Math.floor((CAPTURE_DURATION_SEC * 1000) / FRAMES_NEEDED));
-
     setTimeout(async () => {
-      clearInterval(captureIntervalRef.current);
       clearInterval(cdInterval);
       setCountdown(0);
       setStep('processing');
 
       // Frame chất lượng cao để đối sánh khuôn mặt
       const finalFrame = captureFrame(640, 480, 0.85);
-      setFrames(collectedFrames);
 
       const endpoint = loai === 'checkin' ? '/cham-cong/check-in' : '/cham-cong/check-out';
       chamCongMutation.mutate({
         endpoint,
         frameBase64: finalFrame,
-        framesB64: collectedFrames,
       });
     }, CAPTURE_DURATION_SEC * 1000);
   }, [startCamera, captureFrame, chamCongMutation]);
@@ -278,7 +262,6 @@ export default function ChamCongPage() {
     setMode(null);
     setResult(null);
     setErrorMsg('');
-    setFrames([]);
     stopCamera();
   };
 
@@ -468,7 +451,7 @@ export default function ChamCongPage() {
                 <ShieldCheck className="h-5 w-5 flex-shrink-0 text-blue-600" />
                 <div>
                   <p className="text-sm font-semibold">
-                    Đang quét xác thực thực thể sống
+                    Đang nhận diện khuôn mặt
                   </p>
                   <p className="text-xs text-blue-600 mt-0.5">
                     Vui lòng nhìn thẳng vào camera và giữ yên khuôn mặt trong khung hình

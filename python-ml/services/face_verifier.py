@@ -1,9 +1,9 @@
 """
-services/face_verifier.py — Nhận diện khuôn mặt + Kiểm tra thực thể sống (Live Face)
-Dùng InsightFace ArcFace embedding + Phân tích thực thể sống (Live Face Presence)
-Ngưỡng đối sánh: ~70% (chuẩn hóa thang điểm 100%)
+services/face_verifier.py — Nhận diện khuôn mặt chấm công
+InsightFace (buffalo_sc) → embedding ArcFace → cosine similarity với ảnh mẫu.
+Trước khi so khớp có kiểm tra chất lượng khung hình (đủ nét, có mặt, mặt đủ lớn).
+LƯU Ý: đây KHÔNG phải chống giả mạo (anti-spoofing) — ảnh/video phát lại vẫn có thể qua.
 """
-import os
 import base64
 import hashlib
 import io
@@ -20,6 +20,8 @@ from insightface.app import FaceAnalysis
 MAX_SIDE = 800
 # Mặt khi chấm công/ảnh thẻ luôn lớn → khung dò 320 đủ chính xác, nhanh hơn ~3-4 lần so với 640
 DET_SIZE = (320, 320)
+# Ngưỡng chấp nhận trên thang phần trăm hiển thị (xem similarity_percent): 70% ⇔ cosine 0.445
+NGUONG_KHOP_PCT = 70.0
 
 # ─── Khởi tạo InsightFace ───────────────────────────────────────────────────
 
@@ -65,119 +67,85 @@ def get_face_info(img_bgr: np.ndarray):
 # Ảnh mẫu nhân viên ít thay đổi → không chạy lại model mỗi lần quét/đối soát trùng
 _FACE_CACHE_MAX = 500
 _face_cache: 'OrderedDict[str, object]' = OrderedDict()
+_face_cache_lock = threading.Lock()
 
 
-def get_cached_face(b64: str | None = None, path: str | None = None):
-    """Nhận diện ảnh (base64 hoặc đường dẫn) có cache. Trả về face hoặc None; raise nếu ảnh hỏng."""
-    key = hashlib.sha1(b64.encode()).hexdigest() if b64 else f'{path}|{os.path.getmtime(path)}'
-    if key in _face_cache:
-        _face_cache.move_to_end(key)
-        return _face_cache[key]
-    img = decode_base64_image(b64) if b64 else cv2.imread(path)
-    if img is None:
-        raise ValueError('ảnh hỏng hoặc sai định dạng')
-    face = get_face_info(img)
-    _face_cache[key] = face
-    if len(_face_cache) > _FACE_CACHE_MAX:
-        _face_cache.popitem(last=False)
+def get_cached_face(b64: str):
+    """Nhận diện ảnh base64 có cache. Trả về face hoặc None; raise nếu ảnh hỏng."""
+    key = hashlib.sha1(b64.encode()).hexdigest()
+    with _face_cache_lock:
+        if key in _face_cache:
+            _face_cache.move_to_end(key)
+            return _face_cache[key]
+    face = get_face_info(decode_base64_image(b64))
+    with _face_cache_lock:
+        _face_cache[key] = face
+        if len(_face_cache) > _FACE_CACHE_MAX:
+            _face_cache.popitem(last=False)
     return face
 
 
-def cosine_similarity(a, b) -> float:
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
+def similarity_percent(a, b) -> tuple[float, float]:
+    """
+    Trả về (cosine, điểm phần trăm hiển thị) giữa 2 embedding ArcFace.
+    Thang hiển thị tuyến tính: cosine 0.20 → 0%, 0.445 → 70% (ngưỡng), 0.55 → 100%.
+    """
+    cos_sim = float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
+    pct = (cos_sim - 0.20) / (0.55 - 0.20) * 100.0
+    return cos_sim, round(max(0.0, min(100.0, pct)), 2)
 
 
-def check_live_entity(frame_img: np.ndarray, frames_b64: list[str] | None = None) -> dict:
+def check_frame_quality(frame_img: np.ndarray) -> dict:
     """
-    Xác định đối tượng trước camera là thực thể sống (Live entity):
-    - Có khuôn mặt người thực tế với 5 điểm mốc landmarks (2 mắt, mũi, 2 khóe miệng).
-    - Độ sắc nét (Laplacian variance) và ánh sáng tự nhiên, không phải màn hình đen/ảnh nhiễu.
-    - Không bắt buộc chớp mắt.
+    Kiểm tra khung hình camera dùng được để so khớp:
+    đủ nét (Laplacian variance), phát hiện được khuôn mặt, mặt đủ lớn.
     """
-    # 1. Kiểm tra độ sắc nét / độ tương phản của frame
     gray = cv2.cvtColor(frame_img, cv2.COLOR_BGR2GRAY)
-    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-    if laplacian_var < 10.0:
-        return {
-            'is_live': False,
-            'reason': 'Hình ảnh quá mờ hoặc camera bị che khuất',
-        }
+    if cv2.Laplacian(gray, cv2.CV_64F).var() < 10.0:
+        return {'ok': False, 'reason': 'Hình ảnh quá mờ hoặc camera bị che khuất'}
 
-    # 2. Kiểm tra khuôn mặt và các điểm mốc sinh trắc
     face_info = get_face_info(frame_img)
     if face_info is None or face_info.det_score < 0.5:
-        return {
-            'is_live': False,
-            'reason': 'Không phát hiện khuôn mặt hợp lệ trước camera',
-        }
+        return {'ok': False, 'reason': 'Không phát hiện khuôn mặt hợp lệ trước camera'}
 
-    # 3. Kiểm tra kích thước khuôn mặt đủ lớn trong khung hình
     bbox = face_info.bbox
-    face_w = bbox[2] - bbox[0]
-    face_h = bbox[3] - bbox[1]
-    if face_w < 60 or face_h < 60:
-        return {
-            'is_live': False,
-            'reason': 'Vui lòng lại gần camera hơn để nhận diện',
-        }
+    if bbox[2] - bbox[0] < 60 or bbox[3] - bbox[1] < 60:
+        return {'ok': False, 'reason': 'Vui lòng lại gần camera hơn để nhận diện'}
 
-    return {
-        'is_live': True,
-        'face': face_info,  # dùng lại để so khớp, không chạy model lần 2
-        'det_score': float(face_info.det_score),
-        'reason': 'Thực thể sống hợp lệ',
-    }
+    return {'ok': True, 'face': face_info}  # face dùng lại để so khớp, không chạy model lần 2
 
 
-def verify_face(
-    frame_b64: str,
-    ref_image_path: str | None = None,
-    ref_image_base64: str | None = None,
-    frames_b64: list[str] | None = None,
-) -> dict:
+def verify_face(frame_b64: str, ref_image_base64: str) -> dict:
     """
     Xác thực khuôn mặt:
-    1. Kiểm tra thực thể sống trước camera (Live Entity)
-    2. Đối sánh khuôn mặt với ảnh đại diện theo ngưỡng ~70%
+    1. Kiểm tra khung hình camera có khuôn mặt hợp lệ
+    2. Đối sánh với ảnh mẫu nhân viên theo ngưỡng NGUONG_KHOP_PCT
+    Trường `liveness` = khung hình có khuôn mặt hợp lệ (giữ tên cũ cho backend).
     """
     def fail(reason: str) -> dict:
         return {'verified': False, 'liveness': False, 'similarity': 0.0, 'reason': reason}
 
     # ── 1. Ảnh mẫu (có cache embedding) ──
-    if not ref_image_base64 and not (ref_image_path and os.path.exists(ref_image_path)):
-        return fail('Không nhận được ảnh mẫu nhân viên từ backend')
     try:
-        ref_face = get_cached_face(ref_image_base64, ref_image_path)
+        ref_face = get_cached_face(ref_image_base64)
     except Exception as e:
         return fail(f'Không thể đọc ảnh mẫu nhân viên: {e}')
     if ref_face is None:
         return fail('Ảnh mẫu trong hệ thống không phát hiện được khuôn mặt')
 
-    # ── 2. Đọc frame camera và kiểm tra thực thể sống ──
+    # ── 2. Đọc frame camera và kiểm tra chất lượng ──
     try:
         frame_img = decode_base64_image(frame_b64)
     except Exception as e:
         return fail(f'Lỗi giải mã ảnh camera: {e}')
 
-    live_check = check_live_entity(frame_img, frames_b64)
-    if not live_check['is_live']:
-        return fail(live_check['reason'])
-    frame_face = live_check['face']
+    quality = check_frame_quality(frame_img)
+    if not quality['ok']:
+        return fail(quality['reason'])
 
     # ── 3. So khớp khuôn mặt ──
-    cos_sim = cosine_similarity(ref_face.embedding, frame_face.embedding)
-
-    # Chuẩn hóa cosine similarity (ArcFace) sang thang điểm phần trăm 0 - 100%:
-    # 0.20 -> 0%
-    # 0.35 -> ~70% (ngưỡng xác nhận theo yêu cầu người dùng)
-    # 0.55 -> ~100%
-    score_pct = (cos_sim - 0.20) / (0.55 - 0.20) * 100.0
-    score_pct = max(0.0, min(100.0, score_pct))
-    score_pct = round(score_pct, 2)
-
-    # Ngưỡng chấp nhận: tầm 70% (tương đương cosine similarity >= 0.35)
-    TARGET_THRESHOLD_PCT = 70.0
-    verified = score_pct >= TARGET_THRESHOLD_PCT
+    cos_sim, score_pct = similarity_percent(ref_face.embedding, quality['face'].embedding)
+    verified = score_pct >= NGUONG_KHOP_PCT
 
     return {
         'verified': verified,
@@ -185,31 +153,19 @@ def verify_face(
         'similarity': score_pct / 100.0,  # dạng thập phân cho backend (vd 0.75)
         'similarity_percent': score_pct,
         'raw_cosine': round(cos_sim, 4),
-        'reason': 'OK' if verified else f'Độ khớp khuôn mặt đạt {score_pct}%, chưa đạt yêu cầu ({TARGET_THRESHOLD_PCT}%)',
+        'reason': 'OK' if verified else f'Độ khớp khuôn mặt đạt {score_pct}%, chưa đạt yêu cầu ({NGUONG_KHOP_PCT}%)',
     }
 
 
-def check_duplicate_face(
-    target_image_path: str | None = None,
-    target_image_base64: str | None = None,
-    candidate_list: list[dict] | None = None,
-) -> dict:
+def check_duplicate_face(target_image_base64: str, candidate_list: list[dict]) -> dict:
     """
     Kiểm tra tính hợp lệ và chống trùng lặp khuôn mặt:
-    1. Kiểm tra ảnh tải lên có phát hiện được khuôn mặt người rõ nét không.
-    2. So khớp Face Embedding với tất cả các nhân viên khác trong candidate_list.
-    Ngưỡng phát hiện trùng lặp: >= 70% (~ cosine similarity >= 0.35)
+    1. Ảnh tải lên phải phát hiện được khuôn mặt người rõ nét.
+    2. So khớp embedding với từng nhân viên khác trong candidate_list ({id, ho_ten, chuc_vu, anh_base64}).
     """
-    candidate_list = candidate_list or []
-    if not target_image_base64 and not (target_image_path and os.path.exists(target_image_path)):
-        return {
-            'valid_face': False,
-            'is_duplicate': False,
-            'reason': 'Không thể đọc dữ liệu ảnh tải lên hoặc đường dẫn ảnh không tồn tại',
-        }
     try:
         # Có cache: ảnh này sau thành ảnh mẫu, lần đối soát/chấm công sau không phải chạy lại model
-        target_face = get_cached_face(target_image_base64, target_image_path)
+        target_face = get_cached_face(target_image_base64)
     except Exception as exc:
         return {
             'valid_face': False,
@@ -224,24 +180,18 @@ def check_duplicate_face(
             'reason': 'Không phát hiện rõ khuôn mặt người trong ảnh. Vui lòng chọn ảnh chụp thẳng, rõ nét khuôn mặt.',
         }
 
-    # So sánh với từng ứng viên
     for cand in candidate_list:
-        cand_path = cand.get('anh_path')
-        if not cand.get('anh_base64') and not (cand_path and os.path.exists(cand_path)):
+        if not cand.get('anh_base64'):
             continue
         try:
-            cand_face = get_cached_face(cand.get('anh_base64'), cand_path)
+            cand_face = get_cached_face(cand['anh_base64'])
         except Exception:
             continue
         if cand_face is None:
             continue
 
-        cos_sim = cosine_similarity(target_face.embedding, cand_face.embedding)
-        score_pct = (cos_sim - 0.20) / (0.55 - 0.20) * 100.0
-        score_pct = max(0.0, min(100.0, score_pct))
-        score_pct = round(score_pct, 2)
-
-        if score_pct >= 70.0:
+        _, score_pct = similarity_percent(target_face.embedding, cand_face.embedding)
+        if score_pct >= NGUONG_KHOP_PCT:
             return {
                 'valid_face': True,
                 'is_duplicate': True,

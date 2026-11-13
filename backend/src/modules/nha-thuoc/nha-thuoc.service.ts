@@ -1935,45 +1935,14 @@ export class NhaThuocService {
       };
     });
 
-    try {
-      // 1. Thử gọi sang Python ML Microservice (cổng 5001)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
-
-      const pythonMlUrl = process.env.PYTHON_ML_URL || 'http://localhost:5001';
-      const response = await fetch(`${pythonMlUrl.replace(/\/+$/, '')}/forecast-medicine`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          horizon_days: horizonDays,
-          items: itemsForForecast,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const mlData: any = await response.json();
-        return {
-          message: 'Dự báo nhu cầu thuốc thành công',
-          engine: mlData.engine || 'holt_winters_drug_demand_estimator',
-          heSoTangTruongBenhNhan: mlData.heSoTangTruongBenhNhan ?? null,
-          soLuongThuocDuBao: mlData.soLuongThuocDuBao || (mlData.data || []).length,
-          data: mlData.data || [],
-        };
-      }
-    } catch (mlErr) {
-      console.warn('[DuBaoThuoc] Không thể kết nối Python ML microservice, kích hoạt thuật toán fallback nội bộ:', mlErr.message);
-    }
-
-    // Fallback tính toán nội bộ (Moving Average + Reorder Point Estimator)
-    const fallbackResults = itemsForForecast
+    // Trung bình tiêu thụ 30 ngày + điểm đặt hàng lại (tồn an toàn = 5 ngày tiêu thụ)
+    const results = itemsForForecast
       .filter((item) => item.tieuThuTrungBinhNgay && item.tieuThuTrungBinhNgay > 0)
       .map((item) => {
         const velocity = item.tieuThuTrungBinhNgay!;
         const projected_demand_7d = Math.round(velocity * 7);
         const projected_demand_horizon = Math.round(velocity * horizonDays);
-        const days_left = velocity > 0 ? Number((item.tonKhoTong / velocity).toFixed(1)) : 999;
+        const days_left = Number((item.tonKhoTong / velocity).toFixed(1));
         const safety_stock = Math.round(velocity * 5);
         const reorder_needed = item.tonKhoTong <= safety_stock || days_left <= 7;
         const suggested_reorder_qty = Math.max(0, projected_demand_horizon + safety_stock - item.tonKhoTong);
@@ -2001,11 +1970,9 @@ export class NhaThuocService {
       });
 
     return {
-      message: 'Dự báo nhu cầu thuốc (tính toán nội bộ fallback)',
-      engine: 'internal_moving_average_estimator',
-      heSoTangTruongBenhNhan: null,
-      soLuongThuocDuBao: fallbackResults.length,
-      data: fallbackResults,
+      message: 'Dự báo nhu cầu thuốc thành công',
+      soLuongThuocDuBao: results.length,
+      data: results,
     };
   }
 }
