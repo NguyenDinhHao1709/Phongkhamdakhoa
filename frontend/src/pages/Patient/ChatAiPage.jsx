@@ -131,7 +131,7 @@ export default function ChatAiPage() {
   const [messages, setMessages] = useState([
     {
       sender: 'ai',
-      text: 'Xin chào! Tôi là **Bác Sĩ Gia Đình AI 24/7** của Phòng Khám Đa Khoa.\n\nTôi luôn sẵn sàng đồng hành và giải đáp thắc mắc về tình trạng sức khỏe, hướng dẫn dùng thuốc an toàn hay tư vấn chế độ dinh dưỡng, sinh hoạt phù hợp cho bạn. Bạn cần tôi hỗ trợ vấn đề gì hôm nay?',
+      text: 'Xin chào! Tôi là **Trợ lý sức khỏe AI 24/7** của Phòng Khám Đa Khoa.\n\nTôi luôn sẵn sàng đồng hành và giải đáp thắc mắc về tình trạng sức khỏe, hướng dẫn dùng thuốc an toàn hay tư vấn chế độ dinh dưỡng, sinh hoạt phù hợp cho bạn. Bạn cần tôi hỗ trợ vấn đề gì hôm nay?',
     },
   ]);
   const [input, setInput] = useState('');
@@ -912,7 +912,7 @@ export default function ChatAiPage() {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-gray-900 text-sm sm:text-base">Bác Sĩ Gia Đình AI 24/7</h3>
+                  <h3 className="font-bold text-gray-900 text-sm sm:text-base">Trợ lý sức khỏe AI 24/7</h3>
                   <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Trực tuyến
                   </span>
@@ -969,7 +969,7 @@ export default function ChatAiPage() {
                         {/* Nút Nghe giọng đọc tiếng Việt cho câu trả lời của AI */}
                         <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
                           <span className="flex items-center gap-1">
-                            <span className="italic">Bác sĩ gia đình AI</span>
+                            <span className="italic">Trợ lý sức khỏe AI</span>
                             {msg.messageId && (
                               <>
                                 <button type="button" title="Hữu ích" onClick={() => handleDanhGia(idx, msg.messageId, 1)} className={`p-1 rounded-md hover:bg-gray-100 ${msg.danhGia === 1 ? 'text-emerald-600' : ''}`}>

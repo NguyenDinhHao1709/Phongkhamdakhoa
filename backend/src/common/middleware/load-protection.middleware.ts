@@ -108,6 +108,13 @@ export function loadProtectionMiddleware(req: Request, res: Response, next: Next
       success: true,
       status: 'healthy',
       load: getLoadMetrics(),
+      // TẠM THỜI: đo chuỗi proxy của Render để lấy đúng IP khách cho rate limit — sẽ gỡ ngay sau khi đo
+      proxyChain: {
+        xff: req.headers['x-forwarded-for'],
+        cf: req.headers['cf-connecting-ip'],
+        trueClient: req.headers['true-client-ip'],
+        remote: req.socket?.remoteAddress,
+      },
       timestamp: new Date().toISOString(),
     });
   }
