@@ -7,31 +7,35 @@ import { AiService } from './ai.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsArray, ArrayMaxSize, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+const MAX_MESSAGE_LENGTH = 1000;
+// Phiên chat bệnh nhân luôn gắn với tài khoản → không dùng chung/xóa được phiên của người khác
+const patientSessionKey = (userId: number, sessionId?: string) => `patient_${userId}_${sessionId ?? ''}`;
 
 class TriageChatDto {
   @ApiProperty({ example: 'session_uuid_xyz', description: 'Session ID (UUID frontend tạo)' })
-  @IsString() sessionId: string;
+  @IsString() @MaxLength(100) sessionId: string;
 
   @ApiProperty({ example: 'Tôi bị ho nhiều và sốt từ sáng', description: 'Triệu chứng người dùng nhập' })
-  @IsString() message: string;
+  @IsString() @MaxLength(MAX_MESSAGE_LENGTH) message: string;
 
   @ApiPropertyOptional({ description: 'Lịch sử hội thoại gần nhất (role: user/model/bot, text)' })
-  @IsOptional() history?: Array<{ role: string; text?: string; content?: string }>;
+  @IsOptional() @IsArray() @ArrayMaxSize(20) history?: Array<{ role: string; text?: string; content?: string }>;
 }
 
 class PatientChatDto {
   @ApiPropertyOptional({ example: 'patient_session_uuid_xyz', description: 'Session ID (tùy chọn, mặc định dùng userId)' })
-  @IsOptional() @IsString() sessionId?: string;
+  @IsOptional() @IsString() @MaxLength(100) sessionId?: string;
 
   @ApiProperty({ example: 'Giải thích giúp tôi kết quả khám gần nhất', description: 'Câu hỏi của bệnh nhân' })
-  @IsString() message: string;
+  @IsString() @MaxLength(MAX_MESSAGE_LENGTH) message: string;
 }
 
 class PhanLuongNhanhDto {
   @ApiProperty({ example: 'Tức ngực, khó thở, hồi hộp' })
-  @IsString() trieuChung: string;
+  @IsString() @MaxLength(MAX_MESSAGE_LENGTH) trieuChung: string;
 }
 
 @ApiTags('🤖 AI Assistant & Triage')
@@ -45,8 +49,7 @@ export class AiController {
   @Post('patient-chat')
   @ApiOperation({ summary: 'Chat Bác Sĩ Gia Đình AI (RAG ngữ cảnh bệnh án cá nhân)' })
   patientChat(@Body() dto: PatientChatDto, @CurrentUser() user: any) {
-    const sessionId = dto.sessionId ?? `patient_${user.id}`;
-    return this.aiService.patientChat(user.id, sessionId, dto.message);
+    return this.aiService.patientChat(user.id, patientSessionKey(user.id, dto.sessionId), dto.message);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -61,8 +64,8 @@ export class AiController {
   @ApiBearerAuth()
   @Post('patient-reset-session')
   @ApiOperation({ summary: 'Làm mới phiên chat với Bác Sĩ Gia Đình AI' })
-  resetPatientSession(@Body() dto: { sessionId: string }) {
-    return this.aiService.resetPatientSession(dto.sessionId);
+  resetPatientSession(@Body() dto: { sessionId: string }, @CurrentUser() user: any) {
+    return this.aiService.resetPatientSession(patientSessionKey(user.id, dto.sessionId));
   }
 
   @Public()

@@ -14,6 +14,14 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.enableCors({ origin: '*', credentials: true });
 
+  // Chỉ backend (gửi kèm x-internal-key) được gọi service này; /health mở để Render kiểm tra
+  const internalKey = process.env.AI_INTERNAL_KEY;
+  if (!internalKey) console.warn('⚠️ AI_INTERNAL_KEY chưa đặt — AI Microservice đang mở cho mọi nguồn gọi');
+  app.use((req, res, next) => {
+    if (!internalKey || req.path === '/api/ai/health' || req.headers['x-internal-key'] === internalKey) return next();
+    res.status(401).json({ success: false, message: 'Unauthorized' });
+  });
+
   const config = new DocumentBuilder()
     .setTitle('Phòng Khám AI & Clinical RAG Microservice')
     .setDescription('Standalone AI Microservice (Gemini LLM, RAG, Clinical Triage & ML Gateway)')

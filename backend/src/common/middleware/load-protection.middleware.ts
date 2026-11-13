@@ -7,6 +7,7 @@ interface RateBucket {
 
 const generalBuckets = new Map<string, RateBucket>();
 const authBuckets = new Map<string, RateBucket>();
+const aiBuckets = new Map<string, RateBucket>();
 
 // Dọn dẹp bộ nhớ Rate Limiter mỗi 60s
 setInterval(() => {
@@ -17,15 +18,40 @@ setInterval(() => {
   for (const [k, b] of authBuckets.entries()) {
     if (b.resetAt <= now) authBuckets.delete(k);
   }
+  for (const [k, b] of aiBuckets.entries()) {
+    if (b.resetAt <= now) aiBuckets.delete(k);
+  }
 }, 60_000).unref();
 
 // Giới hạn số lượng request xử lý đồng thời (In-Flight Requests) để bảo vệ RAM & Event Loop
 const MAX_CONCURRENT_REQUESTS = 5000;
 const REQUEST_TIMEOUT_MS = 30_000;
+const AI_REQUEST_TIMEOUT_MS = 100_000; // chat AI: backend chờ AI service tối đa 90s (cold start + Gemini)
 
 // Ngưỡng Rate Limit cao cho môi trường Phòng khám (nhiều máy dùng chung mạng LAN/Wi-Fi bệnh viện)
 const GENERAL_LIMIT_PER_MINUTE = 6000; // 6.000 req/phút/IP (~100 req/giây/IP cho mạng nội bộ bệnh viện)
 const AUTH_LIMIT_PER_MINUTE = 120;     // 120 req/phút/IP cho đăng nhập / đăng ký (chống brute-force)
+
+
+// Giới hạn riêng cho chat AI (mỗi request tốn quota Gemini / TTS)
+const AI_PUBLIC_ROUTES = ['/api/ai/triage-chat', '/api/ai/phan-luong-nhanh', '/api/ai/triage', '/api/ai/reset-session'];
+
+function aiRateRules(req: Request, url: string, ip: string): Array<{ key: string; limit: number; windowMs: number }> {
+  // Chat bệnh nhân (bắt buộc đăng nhập): đếm theo token để không bị vạ lây khi dùng chung mạng
+  if (url.startsWith('/api/ai/patient-')) {
+    return [{ key: `patient:${req.headers.authorization || ip}`, limit: 30, windowMs: 60_000 }];
+  }
+  if (url.startsWith('/api/ai/tts')) {
+    return [{ key: `tts:${ip}`, limit: 60, windowMs: 60_000 }];
+  }
+  if (AI_PUBLIC_ROUTES.some((route) => url === route || url.startsWith(`${route}?`))) {
+    return [
+      { key: `phut:${ip}`, limit: 20, windowMs: 60_000 },
+      { key: `gio:${ip}`, limit: 200, windowMs: 3_600_000 },
+    ];
+  }
+  return [];
+}
 
 let activeRequests = 0;
 let totalProcessedRequests = 0;
@@ -141,6 +167,21 @@ export function loadProtectionMiddleware(req: Request, res: Response, next: Next
     }
   }
 
+  for (const rule of aiRateRules(req, url, ip)) {
+    const check = checkRateLimit(aiBuckets, rule.key, rule.limit, rule.windowMs);
+    if (!check.allowed) {
+      const cho = check.resetInSec >= 60 ? `${Math.ceil(check.resetInSec / 60)} phút` : `${check.resetInSec} giây`;
+      res.setHeader('Retry-After', String(check.resetInSec));
+      return res.status(429).json({
+        success: false,
+        error: {
+          code: 'TOO_MANY_REQUESTS',
+          message: `Bạn đang gửi yêu cầu tới trợ lý AI quá nhanh. Vui lòng thử lại sau ${cho}.`,
+        },
+      });
+    }
+  }
+
   // 4. Theo dõi số lượng kết nối đồng thời & tự động giải phóng nếu treo quá 30s
   activeRequests += 1;
   totalProcessedRequests += 1;
@@ -159,13 +200,14 @@ export function loadProtectionMiddleware(req: Request, res: Response, next: Next
   res.on('finish', decrement);
   res.on('close', decrement);
 
-  req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+  const timeoutMs = url.startsWith('/api/ai/') ? AI_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
+  req.setTimeout(timeoutMs, () => {
     if (!res.headersSent) {
       res.status(408).json({
         success: false,
         error: {
           code: 'REQUEST_TIMEOUT',
-          message: 'Yêu cầu xử lý quá thời gian quy định (30s).',
+          message: `Yêu cầu xử lý quá thời gian quy định (${timeoutMs / 1000}s).`,
         },
       });
     }

@@ -501,10 +501,12 @@ export default function ChatAiPage() {
         res.data?.reply ||
         'Tôi đã tiếp nhận câu hỏi của bạn. Bác sĩ khuyên bạn tiếp tục tuân thủ đơn thuốc và nghỉ ngơi điều độ.';
       replaceWaiting({ sender: 'ai', text: aiReply });
-    } catch {
+    } catch (err) {
       replaceWaiting({
         sender: 'ai',
-        text: 'Xin lỗi, kết nối tới trợ lý AI gặp chút gián đoạn. Bạn thử bấm gửi lại hoặc tải lại trang nhé!',
+        text: err?.error?.code === 'TOO_MANY_REQUESTS'
+          ? err.error.message
+          : 'Xin lỗi, kết nối tới trợ lý AI gặp chút gián đoạn. Bạn thử bấm gửi lại hoặc tải lại trang nhé!',
       });
     } finally {
       setLoading(false);

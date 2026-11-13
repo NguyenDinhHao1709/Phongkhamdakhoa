@@ -49,6 +49,7 @@ export class AiService {
             method,
             url: `${this.AI_SERVICE_URL}/${path}`,
             ...options,
+            headers: { ...options.headers, 'x-internal-key': this.configService.get<string>('AI_INTERNAL_KEY') || '' },
             timeout: AI_SERVICE_TIMEOUT_MS,
           }),
         ),

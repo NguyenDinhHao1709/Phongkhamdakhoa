@@ -107,7 +107,9 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
     } catch (err) {
       replaceWaiting({
         id: Date.now() + 1, role: 'bot',
-        text: `⚠️ Xin lỗi, tôi đang gặp sự cố kết nối. Vui lòng thử lại hoặc liên hệ nhân viên tiếp tân qua hotline ${hospitalInfo.tongDai || '1900 8888'}.`,
+        text: err?.error?.code === 'TOO_MANY_REQUESTS'
+          ? `⚠️ ${err.error.message}`
+          : `⚠️ Xin lỗi, tôi đang gặp sự cố kết nối. Vui lòng thử lại hoặc liên hệ nhân viên tiếp tân qua hotline ${hospitalInfo.tongDai || '1900 8888'}.`,
         timestamp: new Date(),
       });
     } finally {

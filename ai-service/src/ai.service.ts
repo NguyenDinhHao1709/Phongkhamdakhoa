@@ -335,10 +335,7 @@ export class AiService {
    * Truy xuất và tổng hợp toàn bộ hồ sơ bệnh án thật từ CSDL của bệnh nhân (RAG)
    */
   async buildPatientClinicalContext(userId: number) {
-    let benhNhan = await this.benhNhanRepo.findOne({ where: { nguoiDungId: userId } });
-    if (!benhNhan) {
-      benhNhan = await this.benhNhanRepo.findOne({ where: { id: userId } });
-    }
+    const benhNhan = await this.benhNhanRepo.findOne({ where: { nguoiDungId: userId } });
 
     if (!benhNhan) {
       return {
