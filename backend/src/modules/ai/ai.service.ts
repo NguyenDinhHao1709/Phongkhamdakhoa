@@ -82,7 +82,7 @@ export class AiService {
     } catch (err: any) {
       this.logger.warn(`[AI Gateway fallback] Microservice 5002 không phản hồi: ${err.message}`);
       return {
-        reply: `Chào bạn! Tôi là Bác Sĩ Gia Đình AI 24/7 của Phòng Khám Đa Khoa.\n\nTôi đã ghi nhận câu hỏi của bạn: "${message}".\n\nĐối với việc theo dõi sức khỏe và đơn thuốc hiện tại:\n- Bạn vui lòng xem kỹ danh sách và tích chọn cữ uống thuốc trong mục **"Lịch Uống Thuốc Hôm Nay"** ở cột bên trái.\n- Luôn uống thuốc sau bữa ăn 15-30 phút (trừ các thuốc bảo vệ niêm mạc dạ dày cần uống trước ăn) và uống đủ 1.5 - 2 lít nước mỗi ngày.\n- Nếu bạn đang có lịch hẹn tái khám với Bác sĩ, hãy bấm nút **"Đặt lịch tái khám với Bác sĩ"** để chọn khung giờ phù hợp nhất.\n\n*(Ghi chú kỹ thuật: Để kích hoạt động cơ trí tuệ nhân tạo Gemini phân tích sâu toàn diện, hãy bật microservice: \`npm --prefix ai-service run start\`)*`,
+        reply: 'Xin lỗi, trợ lý AI đang tạm thời không hoạt động nên **chưa trả lời được câu hỏi này**. Bạn vui lòng thử lại sau ít phút, hoặc xem đơn thuốc và lịch tái khám ngay trong trang này. Nếu có dấu hiệu bất thường, hãy gọi hotline phòng khám hoặc đến khám ngay.',
       };
     }
   }
