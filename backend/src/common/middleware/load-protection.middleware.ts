@@ -69,6 +69,10 @@ export function getLoadMetrics() {
 }
 
 function getClientIp(req: Request): string {
+  // Render đứng sau Cloudflare: cf-connecting-ip luôn là IP thật (Cloudflare từ chối request tự gửi header này),
+  // còn giá trị đầu của x-forwarded-for do khách tự đặt được — đã đo trên bản production 13/11/2026
+  const cfIp = req.headers['cf-connecting-ip'];
+  if (typeof cfIp === 'string' && cfIp.length > 0) return cfIp;
   const xff = req.headers['x-forwarded-for'];
   if (typeof xff === 'string' && xff.length > 0) {
     return xff.split(',')[0].trim();
@@ -108,13 +112,6 @@ export function loadProtectionMiddleware(req: Request, res: Response, next: Next
       success: true,
       status: 'healthy',
       load: getLoadMetrics(),
-      // TẠM THỜI: đo chuỗi proxy của Render để lấy đúng IP khách cho rate limit — sẽ gỡ ngay sau khi đo
-      proxyChain: {
-        xff: req.headers['x-forwarded-for'],
-        cf: req.headers['cf-connecting-ip'],
-        trueClient: req.headers['true-client-ip'],
-        remote: req.socket?.remoteAddress,
-      },
       timestamp: new Date().toISOString(),
     });
   }
