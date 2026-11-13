@@ -37,7 +37,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
   const [messages, setMessages] = useState([
     {
       id: 1, role: 'bot',
-      text: `🏥 Xin chào! Tôi là **Bác Sĩ & Dược Sĩ AI Tư Vấn Y Tế** của ${hospitalInfo.tenBenhVien || 'Phòng Khám Đa Khoa'}.\n\nBạn có thể hỏi tôi bất kỳ vấn đề y tế nào:\n• **Triệu chứng & Bệnh lý:** Sốt, ho, đau dạ dày, đau đầu, tức ngực...\n• **Tư vấn Thuốc:** Bị bệnh này uống thuốc gì? Uống trước hay sau ăn, cách mấy tiếng?\n• **Chỉ số Sức khỏe:** Huyết áp, đường huyết, mỡ máu, chế độ ăn uống & gợi ý chuyên khoa.`,
+      text: `🏥 Xin chào! Tôi là **Trợ lý Y tế AI** của ${hospitalInfo.tenBenhVien || 'Phòng Khám Đa Khoa'}.\n\nBạn có thể hỏi tôi bất kỳ vấn đề y tế nào:\n• **Triệu chứng & Bệnh lý:** Sốt, ho, đau dạ dày, đau đầu, tức ngực...\n• **Tư vấn Thuốc:** Bị bệnh này uống thuốc gì? Uống trước hay sau ăn, cách mấy tiếng?\n• **Chỉ số Sức khỏe:** Huyết áp, đường huyết, mỡ máu, chế độ ăn uống & gợi ý chuyên khoa.`,
       data: null, timestamp: new Date(),
     },
   ]);
@@ -152,7 +152,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
     const lines = text.split('\n');
     return lines.map((line, i) => (
       <span key={i} className="block leading-relaxed">
-        {line.split(/(\*\*.*?\*\*)/g).map((part, j) =>
+        {line.replace(/^(\s*)[*-]\s+/, '$1• ').split(/(\*\*.*?\*\*)/g).map((part, j) =>
           part.startsWith('**') && part.endsWith('**')
             ? <strong key={j} className="font-bold text-gray-900">{part.slice(2, -2)}</strong>
             : part
@@ -174,7 +174,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
           </div>
           <div>
             <p className="font-extrabold text-sm leading-tight flex items-center gap-1.5">
-              Bác Sĩ & Dược Sĩ AI 24/7
+              Trợ lý Y tế AI 24/7
             </p>
             <p className="text-[11px] text-blue-200 flex items-center gap-1 font-medium">
               <Zap className="h-3 w-3 text-amber-300" /> Tư vấn Bệnh lý • Thuốc • Chuyên khoa
@@ -323,7 +323,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
                 {[0, 1, 2].map(i => (
                   <span key={i} className="h-2 w-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }}></span>
                 ))}
-                <span className="text-xs text-gray-500 ml-1 font-medium">Bác sĩ AI đang phân tích y khoa...</span>
+                <span className="text-xs text-gray-500 ml-1 font-medium">Trợ lý AI đang phân tích...</span>
               </div>
             </div>
           </div>
