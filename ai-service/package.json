@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node -r ./register-paths.js dist/main.js",
-    "start:dev": "node -r ./register-paths.js dist/main.js"
+    "start:dev": "node -r ./register-paths.js dist/main.js",
+    "test:chat": "node test/chat-eval.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

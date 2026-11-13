@@ -34,7 +34,7 @@ const AUTH_LIMIT_PER_MINUTE = 120;     // 120 req/phút/IP cho đăng nhập / �
 
 
 // Giới hạn riêng cho chat AI (mỗi request tốn quota Gemini / TTS)
-const AI_PUBLIC_ROUTES = ['/api/ai/triage-chat', '/api/ai/phan-luong-nhanh', '/api/ai/triage', '/api/ai/reset-session'];
+const AI_PUBLIC_ROUTES = ['/api/ai/triage-chat', '/api/ai/phan-luong-nhanh', '/api/ai/triage', '/api/ai/reset-session', '/api/ai/chat-feedback', '/api/ai/chat-event'];
 
 function aiRateRules(req: Request, url: string, ip: string): Array<{ key: string; limit: number; windowMs: number }> {
   // Chat bệnh nhân (bắt buộc đăng nhập): đếm theo token để không bị vạ lây khi dùng chung mạng

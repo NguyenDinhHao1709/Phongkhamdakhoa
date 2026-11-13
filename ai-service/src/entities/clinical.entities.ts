@@ -171,6 +171,37 @@ export class AiCauTraLoiCache {
   ngayCapNhat: Date;
 }
 
+// Lịch sử chat AI + số liệu vận hành (nguồn trả lời, độ trễ, đánh giá, lượt bấm đặt lịch)
+@Entity('ai_chat_tin_nhan')
+export class AiChatTinNhan {
+  @PrimaryGeneratedColumn({ type: 'bigint' })
+  id: number;
+
+  @Column({ name: 'khoa_phien', length: 160 })
+  khoaPhien: string;
+
+  @Column({ length: 20 })
+  loai: string;
+
+  @Column({ name: 'nguoi_dung_id', type: 'int', nullable: true })
+  nguoiDungId: number | null;
+
+  @Column({ name: 'vai_tro', length: 10 })
+  vaiTro: string;
+
+  @Column({ name: 'noi_dung', type: 'text', nullable: true, transformer: new Aes256Transformer() })
+  noiDung: string | null;
+
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  nguon: string | null;
+
+  @Column({ name: 'do_tre_ms', type: 'int', nullable: true })
+  doTreMs: number | null;
+
+  @Column({ name: 'danh_gia', type: 'tinyint', nullable: true })
+  danhGia: number | null;
+}
+
 @Entity('dich_vu_xet_nghiem')
 export class DichVuXetNghiem {
   @PrimaryGeneratedColumn()

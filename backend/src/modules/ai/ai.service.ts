@@ -100,6 +100,22 @@ export class AiService {
     return this.forwardPost('patient-reset-session', { sessionId });
   }
 
+  getChatHistory(sessionId: string) {
+    return this.forwardGet('chat-history', { sessionId }).catch(() => []);
+  }
+
+  chatFeedback(sessionId: string, messageId: number, danhGia: number) {
+    return this.forwardPost('chat-feedback', { sessionId, messageId, danhGia });
+  }
+
+  chatEvent(sessionId: string, loai: string, nguoiDungId?: number) {
+    return this.forwardPost('chat-event', { sessionId, loai, nguoiDungId });
+  }
+
+  chatStats(days: number) {
+    return this.forwardGet('chat-stats', { days });
+  }
+
   triageChat(sessionId: string, message: string, history?: Array<{ role: string; text?: string; content?: string }>) {
     return this.forwardPost('triage-chat', { sessionId, message, history });
   }

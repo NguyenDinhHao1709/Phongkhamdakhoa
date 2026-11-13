@@ -18,6 +18,8 @@ import {
   Mic,
   MicOff,
   Volume2,
+  ThumbsUp,
+  ThumbsDown,
   VolumeX,
   ArrowRight,
 } from 'lucide-react';
@@ -257,6 +259,26 @@ export default function ChatAiPage() {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [messages, loading]);
+
+  // Hiển thị lại cuộc trò chuyện đang dở (lưu ở server nên có trên mọi thiết bị)
+  useEffect(() => {
+    apiGet('/ai/patient-history')
+      .then((res) => {
+        const cu = (res?.data || []).map((m) => ({
+          sender: m.sender,
+          text: m.text,
+          messageId: m.sender === 'ai' ? m.id : undefined,
+          danhGia: m.danhGia,
+        }));
+        if (cu.length) setMessages((prev) => [prev[0], ...cu, ...prev.slice(1)]);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleDanhGia = (idx, messageId, danhGia) => {
+    setMessages((prev) => prev.map((m, i) => (i === idx ? { ...m, danhGia } : m)));
+    apiPost('/ai/patient-feedback', { messageId, danhGia }).catch(() => {});
+  };
 
   // Nạp danh sách voices hỗ trợ tiếng Việt trên trình duyệt
   useEffect(() => {
@@ -500,7 +522,7 @@ export default function ChatAiPage() {
       const aiReply =
         res.data?.reply ||
         'Tôi đã tiếp nhận câu hỏi của bạn. Bác sĩ khuyên bạn tiếp tục tuân thủ đơn thuốc và nghỉ ngơi điều độ.';
-      replaceWaiting({ sender: 'ai', text: aiReply });
+      replaceWaiting({ sender: 'ai', text: aiReply, messageId: res.data?.messageId });
     } catch (err) {
       replaceWaiting({
         sender: 'ai',
@@ -579,6 +601,7 @@ export default function ChatAiPage() {
   // Đặt lịch tái khám nhanh với bác sĩ điều trị
   const handleBookFollowUp = () => {
     const bs = patientSummary?.bacSiDieuTri;
+    apiPost('/ai/patient-chat-event').catch(() => {});
     navigate('/benh-nhan/dat-lich', {
       state: {
         bacSiId: bs?.id,
@@ -945,7 +968,19 @@ export default function ChatAiPage() {
 
                         {/* Nút Nghe giọng đọc tiếng Việt cho câu trả lời của AI */}
                         <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
-                          <span className="italic">Bác sĩ gia đình AI</span>
+                          <span className="flex items-center gap-1">
+                            <span className="italic">Bác sĩ gia đình AI</span>
+                            {msg.messageId && (
+                              <>
+                                <button type="button" title="Hữu ích" onClick={() => handleDanhGia(idx, msg.messageId, 1)} className={`p-1 rounded-md hover:bg-gray-100 ${msg.danhGia === 1 ? 'text-emerald-600' : ''}`}>
+                                  <ThumbsUp className="h-3.5 w-3.5" />
+                                </button>
+                                <button type="button" title="Chưa hữu ích" onClick={() => handleDanhGia(idx, msg.messageId, -1)} className={`p-1 rounded-md hover:bg-gray-100 ${msg.danhGia === -1 ? 'text-rose-600' : ''}`}>
+                                  <ThumbsDown className="h-3.5 w-3.5" />
+                                </button>
+                              </>
+                            )}
+                          </span>
                           <button
                             type="button"
                             onClick={() => toggleSpeak(msg.text, idx)}

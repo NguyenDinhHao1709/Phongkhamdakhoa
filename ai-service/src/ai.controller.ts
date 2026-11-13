@@ -37,6 +37,30 @@ export class AiController {
     return this.aiService.resetPatientSession(dto.sessionId);
   }
 
+  @Get('chat-history')
+  @ApiOperation({ summary: 'Lịch sử phiên chat hiện tại (từ lần làm mới gần nhất)' })
+  getChatHistory(@Query('sessionId') sessionId: string) {
+    return this.aiService.layLichSuHienThi(sessionId);
+  }
+
+  @Post('chat-feedback')
+  @ApiOperation({ summary: 'Đánh giá 👍/👎 một câu trả lời của AI' })
+  chatFeedback(@Body() dto: { sessionId: string; messageId: number; danhGia: number }) {
+    return this.aiService.danhGiaTinNhan(dto.sessionId, Number(dto.messageId), Number(dto.danhGia));
+  }
+
+  @Post('chat-event')
+  @ApiOperation({ summary: 'Ghi nhận khách bấm đặt lịch từ chat' })
+  chatEvent(@Body() dto: { sessionId: string; loai: string; nguoiDungId?: number }) {
+    return this.aiService.ghiSuKienDatLich(dto.sessionId, dto.loai, dto.nguoiDungId);
+  }
+
+  @Get('chat-stats')
+  @ApiOperation({ summary: 'Thống kê vận hành chat AI N ngày gần nhất' })
+  chatStats(@Query('days') days?: string) {
+    return this.aiService.thongKeChat(Number(days) || 30);
+  }
+
   // ─── 1. CHAT MULTI-TURN (Trang chủ + Tiếp tân) ─────────────────
   @Post('triage-chat')
   @ApiOperation({ summary: 'Chat AI Triage multi-turn (Gemini NLP — hỗ trợ cả tiếng Việt)' })

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Bot, Send, X, RotateCcw, AlertTriangle, Stethoscope, Zap, Minus, Calendar, Pill } from 'lucide-react';
+import { Bot, Send, X, RotateCcw, AlertTriangle, Stethoscope, Zap, Minus, Calendar, Pill, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { apiPost } from '../../services/api';
 import { postWithWakeRetry } from '../../utils/serviceWakeUp';
 import { useNavigate } from 'react-router-dom';
@@ -95,6 +95,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
         role: 'bot',
         text: d?.cau_tra_loi || 'Tôi đã tiếp nhận câu hỏi của bạn và đang tổng hợp tư vấn y khoa phù hợp.',
         data: d,
+        messageId: d?.messageId,
         timestamp: new Date(),
       };
 
@@ -129,7 +130,13 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
     setKhanCap(false);
   };
 
+  const handleDanhGia = (msg, danhGia) => {
+    setMessages(prev => prev.map(m => (m.id === msg.id ? { ...m, danhGia } : m)));
+    apiPost('/ai/chat-feedback', { sessionId, messageId: msg.messageId, danhGia }).catch(() => {});
+  };
+
   const handleDatLich = (chuyenKhoa = null) => {
+    apiPost('/ai/chat-event', { sessionId }).catch(() => {});
     if (mode === 'floating' && onClose) onClose();
     const query = chuyenKhoa ? `?chuyenKhoa=${encodeURIComponent(chuyenKhoa)}` : '';
     const target = `/benh-nhan/dat-lich${query}`;
@@ -237,6 +244,18 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
                 {renderText(msg.text)}
               </div>
 
+              {msg.role === 'bot' && msg.messageId && (
+                <div className="mt-1 flex items-center gap-1 text-[11px] text-gray-400">
+                  <span>Câu trả lời này có hữu ích không?</span>
+                  <button type="button" title="Hữu ích" onClick={() => handleDanhGia(msg, 1)} className={`p-1 rounded-md hover:bg-gray-100 ${msg.danhGia === 1 ? 'text-emerald-600' : ''}`}>
+                    <ThumbsUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button type="button" title="Chưa hữu ích" onClick={() => handleDanhGia(msg, -1)} className={`p-1 rounded-md hover:bg-gray-100 ${msg.danhGia === -1 ? 'text-rose-600' : ''}`}>
+                    <ThumbsDown className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+
               {/* Hộp Lưu ý sử dụng thuốc an toàn (khi hỏi về thuốc/cách uống) */}
               {msg.data && msg.data.luu_y_dung_thuoc && (
                 <div className="mt-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900 flex items-start gap-2 shadow-2xs">
@@ -265,7 +284,7 @@ export default function AiTriageChatbot({ mode = 'floating', onClose, onMinimize
                   <div className="p-3 space-y-1.5 text-xs text-gray-600 bg-white">
                     {msg.data.loi_khuyen_so_bo && (
                       <p className="leading-relaxed">
-                        <strong className="text-gray-900 font-semibold">Lời khuyên Bác sĩ:</strong> {msg.data.loi_khuyen_so_bo}
+                        <strong className="text-gray-900 font-semibold">Lời khuyên sơ bộ:</strong> {msg.data.loi_khuyen_so_bo}
                       </p>
                     )}
                     <div className="flex items-center justify-between text-[11px] text-gray-500 pt-1 border-t border-slate-100">

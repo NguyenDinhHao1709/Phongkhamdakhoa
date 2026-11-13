@@ -6,14 +6,16 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AiService } from './ai.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { IsString, IsOptional, IsArray, ArrayMaxSize, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsIn, IsInt, ArrayMaxSize, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 const MAX_MESSAGE_LENGTH = 1000;
-// Phiên chat bệnh nhân luôn gắn với tài khoản → không dùng chung/xóa được phiên của người khác
-const patientSessionKey = (userId: number, sessionId?: string) => `patient_${userId}_${sessionId ?? ''}`;
-
+// Khóa phiên do server đặt: bệnh nhân theo tài khoản (nhớ qua mọi thiết bị, không đụng được phiên người khác), khách theo sessionId
+const patientSessionKey = (userId: number) => `patient_${userId}`;
+const guestSessionKey = (sessionId: string) => `guest_${sessionId}`;
 class TriageChatDto {
   @ApiProperty({ example: 'session_uuid_xyz', description: 'Session ID (UUID frontend tạo)' })
   @IsString() @MaxLength(100) sessionId: string;
@@ -33,6 +35,16 @@ class PatientChatDto {
   @IsString() @MaxLength(MAX_MESSAGE_LENGTH) message: string;
 }
 
+class ChatFeedbackDto {
+  @IsOptional() @IsString() @MaxLength(100) sessionId?: string;
+  @IsInt() messageId: number;
+  @IsIn([1, -1]) danhGia: number;
+}
+
+class ChatEventDto {
+  @IsString() @MaxLength(100) sessionId: string;
+}
+
 class PhanLuongNhanhDto {
   @ApiProperty({ example: 'Tức ngực, khó thở, hồi hộp' })
   @IsString() @MaxLength(MAX_MESSAGE_LENGTH) trieuChung: string;
@@ -40,19 +52,18 @@ class PhanLuongNhanhDto {
 
 @ApiTags('🤖 AI Assistant & Triage')
 @Controller('ai')
+@UseGuards(JwtAuthGuard) // mặc định phải đăng nhập; route cho khách đánh dấu @Public()
 export class AiController {
   constructor(private readonly aiService: AiService) {}
 
   // ─── 0. TRỢ LÝ AI BỆNH NHÂN (CONTEXT-AWARE RAG) ───────────────────
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Post('patient-chat')
   @ApiOperation({ summary: 'Chat Bác Sĩ Gia Đình AI (RAG ngữ cảnh bệnh án cá nhân)' })
   patientChat(@Body() dto: PatientChatDto, @CurrentUser() user: any) {
-    return this.aiService.patientChat(user.id, patientSessionKey(user.id, dto.sessionId), dto.message);
+    return this.aiService.patientChat(user.id, patientSessionKey(user.id), dto.message);
   }
 
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Get('patient-summary')
   @ApiOperation({ summary: 'Lấy tóm tắt hồ sơ y tế bệnh nhân cho header AI' })
@@ -60,12 +71,55 @@ export class AiController {
     return this.aiService.getPatientSummary(user.id);
   }
 
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Post('patient-reset-session')
   @ApiOperation({ summary: 'Làm mới phiên chat với Bác Sĩ Gia Đình AI' })
-  resetPatientSession(@Body() dto: { sessionId: string }, @CurrentUser() user: any) {
-    return this.aiService.resetPatientSession(patientSessionKey(user.id, dto.sessionId));
+  resetPatientSession(@CurrentUser() user: any) {
+    return this.aiService.resetPatientSession(patientSessionKey(user.id));
+  }
+
+  @ApiBearerAuth()
+  @Get('patient-history')
+  @ApiOperation({ summary: 'Tin nhắn của phiên chat hiện tại (để hiển thị lại khi bệnh nhân quay lại)' })
+  getPatientHistory(@CurrentUser() user: any) {
+    return this.aiService.getChatHistory(patientSessionKey(user.id));
+  }
+
+  @ApiBearerAuth()
+  @Post('patient-feedback')
+  @ApiOperation({ summary: 'Bệnh nhân đánh giá 👍/👎 một câu trả lời của AI' })
+  patientFeedback(@Body() dto: ChatFeedbackDto, @CurrentUser() user: any) {
+    return this.aiService.chatFeedback(patientSessionKey(user.id), dto.messageId, dto.danhGia);
+  }
+
+  @ApiBearerAuth()
+  @Post('patient-chat-event')
+  @ApiOperation({ summary: 'Ghi nhận bệnh nhân bấm đặt lịch từ chat' })
+  patientChatEvent(@CurrentUser() user: any) {
+    return this.aiService.chatEvent(patientSessionKey(user.id), 'benh_nhan', user.id);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(RolesGuard)
+  @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Get('chat-stats')
+  @ApiOperation({ summary: 'Thống kê vận hành chat AI (lượng dùng, nguồn trả lời, độ trễ, đánh giá, tỉ lệ bấm đặt lịch)' })
+  chatStats(@Query('days') days?: string) {
+    return this.aiService.chatStats(Number(days) || 30);
+  }
+
+  @Public()
+  @Post('chat-feedback')
+  @ApiOperation({ summary: 'Khách đánh giá 👍/👎 một câu trả lời của AI ở trang chủ' })
+  chatFeedback(@Body() dto: ChatFeedbackDto) {
+    return this.aiService.chatFeedback(guestSessionKey(dto.sessionId || ''), dto.messageId, dto.danhGia);
+  }
+
+  @Public()
+  @Post('chat-event')
+  @ApiOperation({ summary: 'Ghi nhận khách bấm đặt lịch từ chat trang chủ' })
+  chatEvent(@Body() dto: ChatEventDto) {
+    return this.aiService.chatEvent(guestSessionKey(dto.sessionId), 'trang_chu');
   }
 
   @Public()
@@ -91,7 +145,7 @@ export class AiController {
   @Post('triage-chat')
   @ApiOperation({ summary: 'Chat AI Triage multi-turn (Gemini NLP — hỗ trợ cả tiếng Việt)' })
   triageChat(@Body() dto: TriageChatDto) {
-    return this.aiService.triageChat(dto.sessionId, dto.message, dto.history);
+    return this.aiService.triageChat(guestSessionKey(dto.sessionId), dto.message, dto.history);
   }
 
   // ─── 2. PHÂN LUỒNG NHANH (Single-turn — dùng cho tiếp tân check-in) ──
@@ -110,7 +164,7 @@ export class AiController {
   @Post('reset-session')
   @ApiOperation({ summary: 'Xóa lịch sử chat và bắt đầu phiên mới' })
   resetSession(@Body() dto: { sessionId: string }) {
-    return this.aiService.resetSession(dto.sessionId);
+    return this.aiService.resetSession(guestSessionKey(dto.sessionId));
   }
 
   // ─── 4. DYNAMIC QUEUE ROUTING ────────────────────────────────────
@@ -134,14 +188,12 @@ export class AiController {
     return this.aiService.getForecastNangCao(horizon ? parseInt(horizon, 10) : 7);
   }
 
-  @Public()
   @Post('forecast')
   @ApiOperation({ summary: 'Dự báo lưu lượng bệnh nhân 7 ngày tới (POST kịch bản test)' })
   postForecast(@Body() body: { horizon?: number; history_days?: number }) {
     return this.aiService.getForecastNangCao(body?.horizon || 7);
   }
 
-  @Public()
   @Post('forecast-medicine')
   @ApiOperation({ summary: 'Dự báo nhu cầu thuốc 14 ngày tới' })
   postForecastMedicine(@Body() body: { horizon_days?: number; items?: any[] }) {
@@ -156,7 +208,6 @@ export class AiController {
   }
 
   // ─── 7. LEGACY ──────────────────────────────────────────────────
-  @Public()
   @Post('goi-y-chuyen-khoa')
   @ApiOperation({ summary: '[Legacy] Khai báo triệu chứng & Nhận gợi ý chuyên khoa (Public)' })
   goiYChuyenKhoa(@Body() body: { trieuChung: string }) {
@@ -164,7 +215,6 @@ export class AiController {
   }
 
   // ─── 8. CLINICAL AI 3.1: RAG PHÁC ĐỒ BỘ Y TẾ ───────────────────
-  @Public()
   @Post('clinical-protocol-rag')
   @ApiOperation({ summary: 'RAG truy xuất Phác đồ Chẩn đoán & Điều trị chuẩn Bộ Y tế' })
   clinicalProtocolRag(@Body() body: any) {
@@ -172,7 +222,6 @@ export class AiController {
   }
 
   // ─── 9. CLINICAL AI 3.2: COMPUTER VISION & ĐỌC KẾT QUẢ CLS ──────
-  @Public()
   @Post('analyze-lab-vision')
   @ApiOperation({ summary: 'AI Computer Vision & Phân tích đa chỉ số Cận lâm sàng' })
   analyzeLabVision(@Body() body: any) {
@@ -180,7 +229,6 @@ export class AiController {
   }
 
   // ─── 10. CLINICAL AI 3.3: KIỂM TRA TƯƠNG TÁC THUỐC & DỊ ỨNG ─────
-  @Public()
   @Post('check-drug-interactions')
   @ApiOperation({ summary: 'Kiểm tra tương tác thuốc, dị ứng chéo và chức năng Gan/Thận thời gian thực' })
   checkDrugInteractions(@Body() body: any) {

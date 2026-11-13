@@ -20,10 +20,12 @@ import {
   NhanVien,
   CauHinhTienCoc,
   AiCauTraLoiCache,
+  AiChatTinNhan,
 } from './entities/clinical.entities';
 
 const ENTITIES = [
   AiCauTraLoiCache,
+  AiChatTinNhan,
   LuotTiepNhan,
   SinhHieu,
   ChiDinhCanLamSang,
