@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Body, Param, Query,
   ParseIntPipe, UseGuards,
 } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import {
   HoSoBenhAnService,
@@ -11,13 +12,17 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { assertBenhNhanSoHuu } from '../../common/utils/benh-nhan-so-huu.util';
 
 @ApiTags('Hồ sơ bệnh án')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('ho-so-benh-an')
 export class HoSoBenhAnController {
-  constructor(private readonly service: HoSoBenhAnService) {}
+  constructor(
+    private readonly service: HoSoBenhAnService,
+    private readonly dataSource: DataSource,
+  ) {}
 
   @Get('cua-toi')
   @Roles('benh_nhan', 'bac_si', 'tiep_tan', 'quan_tri_vien')
@@ -29,7 +34,8 @@ export class HoSoBenhAnController {
   @Get('lich-su/:benhNhanId')
   @Roles('bac_si', 'tiep_tan', 'quan_tri_vien', 'benh_nhan')
   @ApiOperation({ summary: 'Lịch sử khám của bệnh nhân' })
-  lichSuKham(@Param('benhNhanId', ParseIntPipe) benhNhanId: number) {
+  async lichSuKham(@Param('benhNhanId', ParseIntPipe) benhNhanId: number, @CurrentUser() user: any) {
+    await assertBenhNhanSoHuu(this.dataSource, user, 'benh_nhan', benhNhanId);
     return this.service.lichSuKham(benhNhanId);
   }
 

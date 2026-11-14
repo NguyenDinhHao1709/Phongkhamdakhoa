@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Patch, Body, Param, Query,
-  ParseIntPipe, UseGuards, ForbiddenException,
+  ParseIntPipe, UseGuards,
 } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { BenhNhanService } from './benh-nhan.service';
 import { TaoBenhNhanDto, CapNhatBenhNhanDto, TimKiemBenhNhanDto } from './dto/benh-nhan.dto';
@@ -9,13 +10,17 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { assertBenhNhanSoHuu } from '../../common/utils/benh-nhan-so-huu.util';
 
 @ApiTags('Bệnh nhân')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('benh-nhan')
 export class BenhNhanController {
-  constructor(private readonly service: BenhNhanService) {}
+  constructor(
+    private readonly service: BenhNhanService,
+    private readonly dataSource: DataSource,
+  ) {}
 
   @Get()
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
@@ -27,7 +32,8 @@ export class BenhNhanController {
   @Get(':id')
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'benh_nhan')
   @ApiOperation({ summary: 'Xem chi tiết bệnh nhân' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  async findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    await assertBenhNhanSoHuu(this.dataSource, user, 'benh_nhan', id);
     return this.service.findOne(id);
   }
 
@@ -55,14 +61,12 @@ export class BenhNhanController {
   @Patch(':id')
   @Roles('tiep_tan', 'quan_tri_vien', 'benh_nhan')
   @ApiOperation({ summary: 'Cập nhật thông tin bệnh nhân' })
-  update(
+  async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CapNhatBenhNhanDto,
     @CurrentUser() user: any,
   ) {
-    if (user?.vaiTro === 'benh_nhan' && user?.benhNhanId !== id) {
-      throw new ForbiddenException('Bạn chỉ có quyền cập nhật hồ sơ cá nhân của chính mình');
-    }
+    await assertBenhNhanSoHuu(this.dataSource, user, 'benh_nhan', id);
     return this.service.update(id, dto);
   }
 }

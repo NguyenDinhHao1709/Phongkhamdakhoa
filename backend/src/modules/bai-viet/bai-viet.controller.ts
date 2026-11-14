@@ -26,6 +26,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { chiChoPhepDuoi, DUOI_ANH } from '../../common/utils/upload-filter.util';
 
 @ApiTags('Bài Viết & Cẩm Nang Y Khoa')
 @Controller('bai-viet')
@@ -68,12 +69,7 @@ export class BaiVietController {
         },
       }),
       limits: { fileSize: 10 * 1024 * 1024 }, // Tối đa 10MB
-      fileFilter: (req, file, cb) => {
-        if (!file.mimetype.match(/\/(jpg|jpeg|png|webp|gif)$/i)) {
-          return cb(new BadRequestException('Chỉ chấp nhận file hình ảnh (JPG, PNG, WEBP, GIF)'), false);
-        }
-        cb(null, true);
-      },
+      fileFilter: chiChoPhepDuoi(DUOI_ANH, 'Chỉ chấp nhận file hình ảnh (JPG, PNG, WEBP, GIF)'),
     }),
   )
   @ApiConsumes('multipart/form-data')

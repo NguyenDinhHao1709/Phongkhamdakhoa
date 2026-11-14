@@ -31,6 +31,10 @@ const AI_REQUEST_TIMEOUT_MS = 100_000; // chat AI: backend chờ AI service tố
 // Ngưỡng Rate Limit cao cho môi trường Phòng khám (nhiều máy dùng chung mạng LAN/Wi-Fi bệnh viện)
 const GENERAL_LIMIT_PER_MINUTE = 6000; // 6.000 req/phút/IP (~100 req/giây/IP cho mạng nội bộ bệnh viện)
 const AUTH_LIMIT_PER_MINUTE = 120;     // 120 req/phút/IP cho đăng nhập / đăng ký (chống brute-force)
+const AUTH_SENSITIVE_ROUTES = [
+  '/api/auth/login', '/api/auth/register', '/api/auth/send-otp', '/api/auth/verify-otp',
+  '/api/auth/forgot-password-otp', '/api/auth/reset-password', '/api/auth/refresh',
+];
 
 
 // Giới hạn riêng cho chat AI (mỗi request tốn quota Gemini / TTS)
@@ -137,9 +141,7 @@ export function loadProtectionMiddleware(req: Request, res: Response, next: Next
   const ip = getClientIp(req);
   const isSensitiveAuthRoute =
     req.method === 'POST' &&
-    (url.includes('/api/auth/login') ||
-      url.includes('/api/auth/register') ||
-      url.includes('/api/auth/quen-mat-khau'));
+    AUTH_SENSITIVE_ROUTES.some((route) => url.startsWith(route));
 
   if (isSensitiveAuthRoute) {
     const check = checkRateLimit(authBuckets, ip, AUTH_LIMIT_PER_MINUTE, 60_000);

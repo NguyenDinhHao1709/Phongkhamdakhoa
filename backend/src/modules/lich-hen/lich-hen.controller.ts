@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Patch, Body, Param, Query,
-  ParseIntPipe, UseGuards,
+  ParseIntPipe, UseGuards, BadRequestException,
 } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { LichHenService } from './lich-hen.service';
 import {
@@ -13,13 +14,21 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { assertBenhNhanSoHuu } from '../../common/utils/benh-nhan-so-huu.util';
 
 @ApiTags('Lịch hẹn')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('lich-hen')
 export class LichHenController {
-  constructor(private readonly service: LichHenService) {}
+  constructor(
+    private readonly service: LichHenService,
+    private readonly dataSource: DataSource,
+  ) {}
+
+  private soHuu(user: any, id: number) {
+    return assertBenhNhanSoHuu(this.dataSource, user, 'lich_hen', id);
+  }
 
   @Public()
   @Post('dat-lich-khach')
@@ -70,7 +79,8 @@ export class LichHenController {
   @Get(':id')
   @Roles('tiep_tan', 'bac_si', 'benh_nhan')
   @ApiOperation({ summary: 'Chi tiết lịch hẹn' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  async findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    await this.soHuu(user, id);
     return this.service.findOne(id);
   }
 
@@ -84,33 +94,36 @@ export class LichHenController {
   @Patch(':id/huy')
   @Roles('benh_nhan', 'tiep_tan', 'quan_tri_vien', 'bac_si')
   @ApiOperation({ summary: 'Bệnh nhân hủy lịch hẹn (Kiểm tra ranh giới 24h & Gửi thông tin STK nhận hoàn cọc 1/5)' })
-  huyLichHen(
+  async huyLichHen(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { phuongThucNhan?: 'chuyen_khoan' | 'tien_mat'; nganHang?: string; soTaiKhoan?: string; chuTaiKhoan?: string; lyDoHuy?: string },
     @CurrentUser() user: any,
   ) {
+    await this.soHuu(user, id);
     return this.service.huyLichHenBoiBenhNhan(id, user.id, body);
   }
 
   @Patch(':id/cap-nhat-tk-hoan-coc')
   @Roles('benh_nhan', 'tiep_tan', 'quan_tri_vien')
   @ApiOperation({ summary: 'Bệnh nhân cập nhật thông tin tài khoản ngân hàng nhận hoàn cọc cho lịch hẹn đã hủy' })
-  capNhatTkHoanCoc(
+  async capNhatTkHoanCoc(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { phuongThucNhan?: 'chuyen_khoan' | 'tien_mat'; nganHang?: string; soTaiKhoan?: string; chuTaiKhoan?: string },
     @CurrentUser() user: any,
   ) {
+    await this.soHuu(user, id);
     return this.service.capNhatThongTinHoanCoc(id, user.id, body);
   }
 
   @Patch(':id/chinh-sua')
   @Roles('benh_nhan', 'tiep_tan', 'quan_tri_vien')
   @ApiOperation({ summary: 'Bệnh nhân chỉnh sửa / đổi lịch hẹn (Tối thiểu trước 24h, kiểm tra trùng slot)' })
-  chinhSuaLichHen(
+  async chinhSuaLichHen(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ChinhSuaLichHenDto,
     @CurrentUser() user: any,
   ) {
+    await this.soHuu(user, id);
     return this.service.chinhSuaLichHenBoiBenhNhan(id, dto, user?.id);
   }
 
@@ -138,7 +151,15 @@ export class LichHenController {
   @Post(':id/xac-nhan-thanh-toan')
   @Roles('benh_nhan', 'tiep_tan', 'quan_tri_vien')
   @ApiOperation({ summary: 'Xác nhận thanh toán — tự động phân công bác sĩ nếu bệnh nhân chưa chọn' })
-  xacNhanSauThanhToan(@Param('id', ParseIntPipe) id: number) {
+  async xacNhanSauThanhToan(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    // Bệnh nhân không được tự xác nhận: chỉ PayOS (webhook / đối soát) mới đánh dấu đã trả tiền
+    if (user?.vai_tro === 'benh_nhan') {
+      await this.soHuu(user, id);
+      const [lh] = await this.dataSource.query('SELECT ghi_chu FROM lich_hen WHERE id = ?', [id]);
+      if (!lh?.ghi_chu?.includes('[ĐÃ_THANH_TOÁN_THÀNH_CÔNG]')) {
+        throw new BadRequestException({ code: 'CHUA_THANH_TOAN', message: 'Hệ thống chưa nhận được thanh toán từ ngân hàng.' });
+      }
+    }
     return this.service.xacNhanSauThanhToan(id);
   }
 

@@ -11,12 +11,23 @@ import { ResponseTransformInterceptor } from './common/interceptors/response-tra
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { json, urlencoded } from 'express';
+import helmet from 'helmet';
 import { loadProtectionMiddleware } from './common/middleware/load-protection.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['error', 'warn', 'log'],
   });
+
+  const isProd = process.env.NODE_ENV === 'production';
+
+  // Header bảo mật; cho phép frontend (domain khác) tải ảnh /uploads, tắt CSP ở dev để Swagger chạy
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      contentSecurityPolicy: isProd ? undefined : false,
+    }),
+  );
 
   // Kích hoạt lớp bảo vệ chống quá tải, Rate Limiting & Health Check tức thì (/api/health)
   app.use(loadProtectionMiddleware);
@@ -41,18 +52,16 @@ async function bootstrap() {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
-  const allowedOrigins = new Set([
-    ...configuredOrigins,
-    'http://localhost:3000',
-    'http://localhost:8081',
-    'http://localhost:19006',
-  ]);
+  const allowedOrigins = new Set(
+    isProd ? configuredOrigins : [...configuredOrigins, 'http://localhost:3000', 'http://localhost:8081', 'http://localhost:19006'],
+  );
+  const devOrigin = /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/;
   app.enableCors({
     origin: (origin, callback) => {
       if (
         !origin ||
         allowedOrigins.has(origin) ||
-        /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)
+        (!isProd && devOrigin.test(origin))
       ) {
         callback(null, true);
         return;
@@ -75,7 +84,7 @@ async function bootstrap() {
   app.useGlobalInterceptors(new ResponseTransformInterceptor());
 
   // Swagger (chỉ dev)
-  if (process.env.NODE_ENV !== 'production') {
+  if (!isProd) {
     const config = new DocumentBuilder()
       .setTitle('Phòng Khám Đa Khoa API')
       .setDescription('API quản lý hệ thống phòng khám - Schema v2')

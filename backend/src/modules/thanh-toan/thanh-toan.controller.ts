@@ -1,19 +1,28 @@
 import {
   Controller, Get, Post, Patch, Param, Query, Body, ParseIntPipe, UseGuards,
 } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ThanhToanService } from './thanh-toan.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { assertBenhNhanSoHuu } from '../../common/utils/benh-nhan-so-huu.util';
 
 @ApiTags('Thu ngân & Thanh toán')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('thanh-toan')
 export class ThanhToanController {
-  constructor(private readonly thanhToanService: ThanhToanService) {}
+  constructor(
+    private readonly thanhToanService: ThanhToanService,
+    private readonly dataSource: DataSource,
+  ) {}
+
+  private soHuu(user: any, hoaDonId: number) {
+    return assertBenhNhanSoHuu(this.dataSource, user, 'hoa_don', hoaDonId);
+  }
 
   @Get('danh-sach')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
@@ -143,7 +152,8 @@ export class ThanhToanController {
   @Get(':id')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc', 'benh_nhan')
   @ApiOperation({ summary: 'Xem chi tiết hóa đơn' })
-  getChiTiet(@Param('id', ParseIntPipe) id: number) {
+  async getChiTiet(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    await this.soHuu(user, id);
     return this.thanhToanService.getChiTietHoaDon(id);
   }
 
@@ -166,7 +176,7 @@ export class ThanhToanController {
   }
 
   @Patch([':id/xac-nhan', 'hoa-don/:id/xac-nhan'])
-  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'benh_nhan')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Xác nhận thu tiền hóa đơn' })
   xacNhanThanhToan(
     @Param('id', ParseIntPipe) id: number,
@@ -195,17 +205,20 @@ export class ThanhToanController {
   @Patch('hoa-don/:id/lua-chon-thuoc')
   @Roles('thu_ngan', 'tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'benh_nhan')
   @ApiOperation({ summary: 'Chọn mua thuốc tại bệnh viện hoặc mua ngoài trước khi thanh toán' })
-  capNhatLuaChonThuoc(
+  async capNhatLuaChonThuoc(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { luaChonMua: 'mua_tai_benh_vien' | 'mua_ngoai' },
+    @CurrentUser() user: any,
   ) {
+    await this.soHuu(user, id);
     return this.thanhToanService.capNhatLuaChonThuocHoaDon(id, body.luaChonMua);
   }
 
   @Post('vnpay/tao-url')
   @Roles('thu_ngan', 'benh_nhan', 'quan_tri_vien')
   @ApiOperation({ summary: 'Tạo URL thanh toán VNPay Sandbox' })
-  taoUrlVNPay(@Body() body: { hoaDonId: number; soTien?: number; nganHang?: string }) {
+  async taoUrlVNPay(@Body() body: { hoaDonId: number; soTien?: number; nganHang?: string }, @CurrentUser() user: any) {
+    await this.soHuu(user, Number(body.hoaDonId));
     return this.thanhToanService.taoUrlVNPay(body.hoaDonId, body.soTien, body.nganHang);
   }
 
@@ -218,7 +231,8 @@ export class ThanhToanController {
   @Get('in-hoa-don/:id')
   @Roles('thu_ngan', 'quan_tri_vien', 'benh_nhan')
   @ApiOperation({ summary: 'Lấy dữ liệu in biên lai tài chính song ngữ' })
-  inHoaDon(@Param('id', ParseIntPipe) id: number) {
+  async inHoaDon(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    await this.soHuu(user, id);
     return this.thanhToanService.getInHoaDon(id);
   }
 

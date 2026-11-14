@@ -1,16 +1,25 @@
-import { Controller, Post, Get, Body, Param, ParseIntPipe, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, ParseIntPipe, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { PayosService } from './payos.service';
 import { Public } from '../../common/decorators/public.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { assertBenhNhanSoHuu } from '../../common/utils/benh-nhan-so-huu.util';
 
 @ApiTags('PayOS - Cổng thanh toán ngân hàng phòng khám')
+@UseGuards(JwtAuthGuard)
 @Controller('payos')
 export class PayosController {
-  constructor(private readonly payosService: PayosService) {}
+  constructor(
+    private readonly payosService: PayosService,
+    private readonly dataSource: DataSource,
+  ) {}
 
   @Post('tao-link/:lichHenId')
   @ApiOperation({ summary: 'Tạo mã VietQR động PayOS kết nối trực tiếp tài khoản ngân hàng phòng khám' })
-  taoLinkThanhToan(@Param('lichHenId', ParseIntPipe) lichHenId: number) {
+  async taoLinkThanhToan(@Param('lichHenId', ParseIntPipe) lichHenId: number, @CurrentUser() user: any) {
+    await assertBenhNhanSoHuu(this.dataSource, user, 'lich_hen', lichHenId);
     return this.payosService.taoLinkThanhToanLichHen(lichHenId);
   }
 
@@ -22,7 +31,8 @@ export class PayosController {
 
   @Get('kiem-tra-lich-hen/:lichHenId')
   @ApiOperation({ summary: 'Kiểm tra trạng thái thanh toán và đồng bộ theo ID lịch hẹn' })
-  kiemTraTheoLichHen(@Param('lichHenId', ParseIntPipe) lichHenId: number) {
+  async kiemTraTheoLichHen(@Param('lichHenId', ParseIntPipe) lichHenId: number, @CurrentUser() user: any) {
+    await assertBenhNhanSoHuu(this.dataSource, user, 'lich_hen', lichHenId);
     return this.payosService.kiemTraTheoLichHen(lichHenId);
   }
 

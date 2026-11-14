@@ -51,6 +51,9 @@ export class NguoiDung {
   @Column({ name: 'lan_dang_nhap_cuoi', type: 'datetime', nullable: true })
   lanDangNhapCuoi: Date;
 
+  @Column({ name: 'phien_ban_token', type: 'int', default: 0 })
+  phienBanToken: number;
+
   @CreateDateColumn({ name: 'tao_luc' })
   taoLuc: Date;
 

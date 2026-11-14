@@ -25,6 +25,7 @@ import {
   DoiMatKhauDto, QuenMatKhauSendOtpDto, DatLaiMatKhauDto,
 } from './dto/auth.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
+import { MemoryCacheService } from '../../common/cache/memory-cache.service';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -39,6 +40,7 @@ export class AuthService {
     private jwtService: JwtService,
     private config: ConfigService,
     private dataSource: DataSource,
+    private cache: MemoryCacheService,
   ) {
     this.mailer = nodemailer.createTransport({
       host: config.get('MAIL_HOST', 'smtp.gmail.com'),
@@ -279,7 +281,6 @@ export class AuthService {
     const smsContent = `[${brandname}] Ma OTP xac thuc cua quy khach la: ${otp}. Ma co hieu luc trong ${hetHanPhut} phut. Vui long khong cung cap ma nay cho bat ky ai.`;
 
     console.log(`[SMS Gateway Dispatcher] 📱 Gửi SMS OTP tới SĐT: ${cleanPhone}`);
-    console.log(`[SMS Gateway Body] >>> ${smsContent}`);
 
     // Hỗ trợ kết nối webhook Gateway thực tế nếu có cấu hình SMS_GATEWAY_URL
     const gatewayUrl = this.config.get<string>('SMS_GATEWAY_URL');
@@ -411,7 +412,11 @@ export class AuthService {
         relations: ['vaiTro'],
       });
 
-      if (!nguoiDung || nguoiDung.trangThai !== TrangThaiNguoiDung.HOAT_DONG) {
+      if (
+        !nguoiDung ||
+        nguoiDung.trangThai !== TrangThaiNguoiDung.HOAT_DONG ||
+        (payload.tv ?? 0) !== nguoiDung.phienBanToken
+      ) {
         throw new UnauthorizedException({ code: 'TOKEN_KHONG_HOP_LE', message: 'Phiên đăng nhập không hợp lệ' });
       }
 
@@ -437,7 +442,9 @@ export class AuthService {
 
     // Băm mật khẩu mới và lưu vào CSDL
     nguoiDung.matKhauHash = await hashPassword(dto.matKhauMoi);
+    nguoiDung.phienBanToken += 1; // đăng xuất mọi thiết bị đang dùng mật khẩu cũ
     await this.nguoiDungRepo.save(nguoiDung);
+    this.cache.del(`tv:${nguoiDung.id}`);
 
     return { message: 'Đổi mật khẩu tài khoản thành công' };
   }
@@ -499,17 +506,24 @@ export class AuthService {
     const maOtp = dto.maOtp.trim();
 
     // 1. Kiểm tra OTP
+    // Lấy mã mới nhất còn hiệu lực rồi so khớp, đếm số lần sai để chống dò OTP
     const otpRecord = await this.otpRepo.findOne({
-      where: { email, maOtp, loai: LoaiOtp.QUEN_MAT_KHAU, daSuDung: false as any },
+      where: { email, loai: LoaiOtp.QUEN_MAT_KHAU, daSuDung: false as any, hetHanLuc: MoreThan(new Date()) },
       order: { taoLuc: 'DESC' },
     });
 
     if (!otpRecord) {
-      throw new BadRequestException({ code: 'OTP_KHONG_DUNG', message: 'Mã OTP xác thực không chính xác' });
+      throw new BadRequestException({ code: 'OTP_HET_HAN', message: 'Mã OTP không hợp lệ hoặc đã hết hạn. Vui lòng gửi lại yêu cầu mới.' });
     }
 
-    if (new Date() > new Date(otpRecord.hetHanLuc)) {
-      throw new BadRequestException({ code: 'OTP_HET_HAN', message: 'Mã OTP đã hết hạn. Vui lòng gửi lại yêu cầu mới.' });
+    if (otpRecord.soLanThu >= 5) {
+      await this.otpRepo.update(otpRecord.id, { daSuDung: true as any });
+      throw new BadRequestException({ code: 'OTP_QUA_NHIEU_LAN_THU', message: 'Đã nhập sai quá 5 lần. Vui lòng yêu cầu mã mới.' });
+    }
+
+    if (otpRecord.maOtp !== maOtp) {
+      await this.otpRepo.update(otpRecord.id, { soLanThu: otpRecord.soLanThu + 1 });
+      throw new BadRequestException({ code: 'OTP_KHONG_DUNG', message: 'Mã OTP xác thực không chính xác' });
     }
 
     // 2. Tìm người dùng
@@ -524,7 +538,9 @@ export class AuthService {
 
     // 3. Cập nhật mật khẩu mới băm Bcrypt
     nguoiDung.matKhauHash = await hashPassword(dto.matKhauMoi);
+    nguoiDung.phienBanToken += 1;
     await this.nguoiDungRepo.save(nguoiDung);
+    this.cache.del(`tv:${nguoiDung.id}`);
 
     // 4. Đánh dấu OTP đã dùng
     otpRecord.daSuDung = true as any;
@@ -624,6 +640,13 @@ export class AuthService {
     };
   }
 
+  // ─── ĐĂNG XUẤT: thu hồi toàn bộ access/refresh token đã cấp ───
+  async logout(userId: number) {
+    await this.nguoiDungRepo.increment({ id: userId }, 'phienBanToken', 1);
+    this.cache.del(`tv:${userId}`);
+    return { message: 'Đăng xuất thành công' };
+  }
+
   // ─── HELPER: TẠO JWT TOKENS ───────────────────────────────────
   private async taoTokens(nguoiDung: NguoiDung) {
     const payload: JwtPayload = {
@@ -632,6 +655,7 @@ export class AuthService {
       vaiTroId: nguoiDung.vaiTroId,
       maVaiTro: nguoiDung.vaiTro?.maVaiTro || '',
       loaiTaiKhoan: nguoiDung.loaiTaiKhoan,
+      tv: nguoiDung.phienBanToken ?? 0,
     };
 
     const [accessToken, refreshToken] = await Promise.all([

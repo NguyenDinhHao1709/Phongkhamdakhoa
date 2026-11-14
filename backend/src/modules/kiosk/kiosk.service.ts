@@ -106,16 +106,11 @@ export class KioskService {
           maLichHen: lh.maLichHen,
           ngayHen: lh.ngayHen,
           gioHen: lh.gioHen,
-          lyDoKham: lh.lyDoKham,
           trangThai: lh.trangThai,
           isToday,
           daCheckIn: !!existingLuot,
           maSoThuTu: existingLuot ? existingLuot.maSoThuTu : null,
-          benhNhan: {
-            id: lh.benhNhan?.id,
-            hoTen: lh.benhNhan?.hoTen,
-            soDienThoai: lh.benhNhan?.soDienThoai,
-          },
+          benhNhan: { hoTen: lh.benhNhan?.hoTen },
           bacSi: {
             id: lh.bacSi?.id,
             hoTen: lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ chuyên khoa',
@@ -136,14 +131,16 @@ export class KioskService {
   /**
    * 2. Bệnh nhân bấm Check-in tại Kiosk -> Sinh STT thật & đưa vào hàng đợi
    */
-  async checkInLichHen(lichHenId: number) {
+  async checkInLichHen(lichHenId: number, search: string) {
     return this.tiepNhanService.voiKhoaLichHen(lichHenId, async () => {
       const lh = await this.lichHenRepo.findOne({
         where: { id: lichHenId },
         relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
       });
 
-      if (!lh) {
+      // Kiosk public: bắt buộc khớp SĐT / mã lịch hẹn đã tra cứu để không dò được bằng ID
+      const term = (search || '').trim();
+      if (!lh || !term || (lh.maLichHen !== term && lh.benhNhan?.soDienThoai !== term)) {
         throw new NotFoundException('Không tìm thấy thông tin lịch hẹn.');
       }
 

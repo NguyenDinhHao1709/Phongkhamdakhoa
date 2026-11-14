@@ -13,6 +13,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { chiChoPhepDuoi, DUOI_ANH } from '../../common/utils/upload-filter.util';
 
 @ApiTags('Quản lý & Ban Giám Đốc')
 @Controller('quan-ly')
@@ -404,6 +405,8 @@ export class QuanLyController {
         cb(null, `${uniqueSuffix}${ext}`);
       },
     }),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: chiChoPhepDuoi(DUOI_ANH, 'Ảnh đại diện phải là JPG, PNG, WEBP hoặc GIF'),
   }))
   async uploadAvatar(
     @UploadedFile() file: Express.Multer.File,

@@ -118,7 +118,7 @@ export default function KioskPage() {
     setLoading(true);
     setErrorMsg('');
     try {
-      const res = await apiPost('/kiosk/check-in', { lichHenId });
+      const res = await apiPost('/kiosk/check-in', { lichHenId, search: searchPhoneOrCode.trim() });
       const ticket = res?.data?.ticket || res?.ticket;
       if (ticket) {
         setTicketData(ticket);

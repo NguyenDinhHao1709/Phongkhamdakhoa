@@ -18,8 +18,8 @@ export class KioskController {
   @Public()
   @Post('check-in')
   @ApiOperation({ summary: 'Kiosk check-in lịch hẹn & in phiếu số thứ tự tiếp nhận (Public)' })
-  checkInLichHen(@Body('lichHenId') lichHenId: number) {
-    return this.kioskService.checkInLichHen(Number(lichHenId));
+  checkInLichHen(@Body('lichHenId') lichHenId: number, @Body('search') search: string) {
+    return this.kioskService.checkInLichHen(Number(lichHenId), search);
   }
 
   @Public()

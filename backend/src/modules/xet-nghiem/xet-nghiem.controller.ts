@@ -18,6 +18,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { chiChoPhepDuoi, DUOI_ANH } from '../../common/utils/upload-filter.util';
 
 @ApiTags('Xét nghiệm & CLS')
 @ApiBearerAuth()
@@ -40,6 +41,7 @@ export class XetNghiemController {
         },
       }),
       limits: { fileSize: 15 * 1024 * 1024 },
+      fileFilter: chiChoPhepDuoi([...DUOI_ANH, 'pdf'], 'Chỉ chấp nhận ảnh (JPG, PNG, WEBP, GIF) hoặc PDF'),
     }),
   )
   @ApiOperation({ summary: 'Upload file / ảnh kết quả xét nghiệm (X-Quang, siêu âm, tài liệu...)' })

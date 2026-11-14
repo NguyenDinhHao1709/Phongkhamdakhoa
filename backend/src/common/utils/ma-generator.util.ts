@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { randomInt } from 'crypto';
 
 /**
  * Tạo mã tự động theo định dạng PREFIX + số thứ tự padding.
@@ -44,7 +45,7 @@ export class MaGeneratorService {
    * Tạo OTP 6 số ngẫu nhiên
    */
   static generateOtp(): string {
-    return String(Math.floor(100000 + Math.random() * 900000));
+    return String(randomInt(100000, 1000000));
   }
 
   /**
