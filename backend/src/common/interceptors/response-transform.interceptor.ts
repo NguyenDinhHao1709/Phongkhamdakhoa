@@ -32,7 +32,8 @@ function decryptPayload(val: any, depth = 0): any {
     const res: any = {};
     for (const key of Object.keys(val)) {
       const field = val[key];
-      res[key] = DATE_ONLY_FIELDS.has(key) && (field instanceof Date || typeof field === 'string')
+      // Chỉ chuẩn hóa Date hoặc chuỗi ISO; nhãn hiển thị kiểu 'dd/mm' giữ nguyên
+      res[key] = DATE_ONLY_FIELDS.has(key) && (field instanceof Date || (typeof field === 'string' && /^\d{4}-\d{2}-\d{2}/.test(field)))
         ? normalizeDateOnly(field)
         : decryptPayload(field, depth + 1);
     }
