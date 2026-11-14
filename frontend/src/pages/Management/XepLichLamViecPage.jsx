@@ -504,7 +504,7 @@ export default function XepLichLamViecPage() {
                                   <button
                                     type="button"
                                     onClick={() => moKhungOnline(s, nv)}
-                                    className="text-purple-400 hover:text-purple-700 opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
+                                    className="text-purple-500 hover:text-purple-700 p-0.5 flex-shrink-0"
                                     title="Cấu hình khung tư vấn online"
                                   >
                                     <Video className="h-3 w-3" />
