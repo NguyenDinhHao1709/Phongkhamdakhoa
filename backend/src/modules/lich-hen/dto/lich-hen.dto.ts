@@ -159,6 +159,11 @@ export class LaySlotTrongDto {
   @ApiProperty({ example: '2026-09-10' })
   @IsDateString()
   ngay: string;
+
+  @ApiPropertyOptional({ enum: ['truc_tiep', 'truc_tuyen'], default: 'truc_tiep' })
+  @IsOptional()
+  @IsIn(['truc_tiep', 'truc_tuyen'])
+  hinhThuc?: string;
 }
 
 export class ChinhSuaLichHenDto {

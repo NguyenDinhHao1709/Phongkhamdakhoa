@@ -98,6 +98,7 @@ export default function RescheduleAppointmentModal({
         const res = await apiGet('/lich-hen/bac-si-ca-trong', {
           ngay: newDate,
           chuyenKhoa,
+          hinhThuc,
         });
 
         if (!isMounted) return;
@@ -122,7 +123,7 @@ export default function RescheduleAppointmentModal({
 
     fetchDoctors();
     return () => { isMounted = false; };
-  }, [isOpen, newDate, appointment]);
+  }, [isOpen, newDate, appointment, hinhThuc]);
 
   if (!isOpen || !appointment) return null;
 
@@ -461,6 +462,7 @@ export default function RescheduleAppointmentModal({
                               type="button"
                               disabled={!isAvailable}
                               onClick={() => handleSelectSlot(slot)}
+                              title={!isAvailable && slot.inShift && slot.khacHinhThuc ? (hinhThuc === 'truc_tuyen' ? 'Khung giờ dành cho khám trực tiếp' : 'Khung giờ dành cho tư vấn online') : undefined}
                               className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center ${
                                 isSelected
                                   ? 'bg-blue-600 text-white shadow-xs scale-105'
@@ -493,6 +495,7 @@ export default function RescheduleAppointmentModal({
                               type="button"
                               disabled={!isAvailable}
                               onClick={() => handleSelectSlot(slot)}
+                              title={!isAvailable && slot.inShift && slot.khacHinhThuc ? (hinhThuc === 'truc_tuyen' ? 'Khung giờ dành cho khám trực tiếp' : 'Khung giờ dành cho tư vấn online') : undefined}
                               className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center ${
                                 isSelected
                                   ? 'bg-blue-600 text-white shadow-xs scale-105'

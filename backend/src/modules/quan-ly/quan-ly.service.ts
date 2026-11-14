@@ -9,6 +9,7 @@ import { VaiTro } from '../auth/entities/vai-tro.entity';
 import { QuyenHan } from '../auth/entities/quyen-han.entity';
 import { VaiTroQuyenHan } from '../auth/entities/vai-tro-quyen-han.entity';
 import { maBenhNhanTiepTheo } from '../../common/utils/db-sequence.util';
+import { slotHopHinhThuc, moKhungOnlineChoTrucTiep, layMinNgayDatOnline } from '../../common/utils/khung-online.util';
 import { withColdStartRetry, isServiceWakingUp } from '../../common/utils/cold-start-retry.util';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { KyThuatVien } from '../nhan-vien/entities/ky-thuat-vien.entity';
@@ -2166,6 +2167,8 @@ export class QuanLyService implements OnModuleInit {
         tenCa: l.caLamViec?.tenCa,
         ngayLam: toDateOnly(l.ngayLam),
         ghiChu: l.ghiChu,
+        onlineTu: l.onlineTu,
+        onlineDen: l.onlineDen,
       })),
     };
   }
@@ -2244,6 +2247,73 @@ export class QuanLyService implements OnModuleInit {
       success: true,
       message: 'Lưu phân ca lịch làm việc thành công!',
     };
+  }
+
+  /**
+   * Giám đốc cấu hình khung tư vấn online trên ca trực của bác sĩ (tu/den null = cả ca khám trực tiếp).
+   * Không cho đổi nếu lịch hẹn đã đặt sẽ nằm sai khung — hệ thống không tự dời lịch của bệnh nhân.
+   */
+  async capNhatKhungOnline(body: { ids: number[]; onlineTu?: string | null; onlineDen?: string | null }) {
+    const ids = [...new Set((body?.ids || []).map(Number).filter((x) => x > 0))];
+    if (!ids.length) throw new BadRequestException('Chưa chọn ca trực cần cấu hình');
+    const tu = body.onlineTu ? String(body.onlineTu).slice(0, 5) : null;
+    const den = body.onlineDen ? String(body.onlineDen).slice(0, 5) : null;
+    if (!tu !== !den || (tu && tu >= den)) {
+      throw new BadRequestException({ code: 'KHUNG_ONLINE_KHONG_HOP_LE', message: 'Giờ bắt đầu khung online phải trước giờ kết thúc.' });
+    }
+
+    const dsCa = await this.lichLamViecRepo.find({ where: { id: In(ids) }, relations: ['caLamViec', 'nhanVien'] });
+    if (dsCa.length !== ids.length) throw new NotFoundException('Không tìm thấy ca trực cần cấu hình');
+
+    const homNay = toDateOnly(new Date());
+    const minNgayDatOnline = await layMinNgayDatOnline(this.lichHenRepo.manager);
+    const khungMoi = { onlineTu: tu, onlineDen: den };
+    const loi: string[] = [];
+    const bacSiNhanTin = new Map<number, number>();
+
+    for (const ca of dsCa) {
+      const ngay = toDateOnly(ca.ngayLam);
+      const batDau = (ca.caLamViec?.gioBatDau || '00:00').slice(0, 5);
+      const ketThuc = (ca.caLamViec?.gioKetThuc || '23:59').slice(0, 5);
+      const ten = `${ca.nhanVien?.hoTen} – ${ca.caLamViec?.tenCa} ${ngay}`;
+
+      const bs = await this.bacSiRepo.findOne({ where: { nhanVienId: ca.nhanVienId } });
+      if (!bs) { loi.push(`${ten}: không phải bác sĩ, không có khung online.`); continue; }
+      if (ngay < homNay) { loi.push(`${ten}: ca trực đã qua, không thể thay đổi.`); continue; }
+      if (tu && (tu < batDau || den > ketThuc)) { loi.push(`${ten}: khung online phải nằm trong giờ ca ${batDau}–${ketThuc}.`); continue; }
+
+      const lichHen = await this.lichHenRepo.find({
+        where: { bacSiId: bs.id, ngayHen: ngay, trangThai: Not(In([TrangThaiLichHen.DA_HUY, TrangThaiLichHen.HOAN_THANH])) },
+        select: ['maLichHen', 'gioHen', 'hinhThuc'],
+      });
+      const moKhungOnline = moKhungOnlineChoTrucTiep(ngay, minNgayDatOnline);
+      const saiKhung = lichHen.filter((lh) => {
+        const gio = (lh.gioHen || '').slice(0, 5);
+        return gio >= batDau && gio < ketThuc && !slotHopHinhThuc(gio, [khungMoi], lh.hinhThuc, moKhungOnline);
+      });
+      if (saiKhung.length) {
+        const ds = saiKhung.map((lh) => `${lh.maLichHen} (${lh.gioHen.slice(0, 5)}, ${lh.hinhThuc === 'truc_tuyen' ? 'online' : 'trực tiếp'})`).join(', ');
+        loi.push(`${ten}: lịch hẹn ${ds} sẽ nằm sai khung. Vui lòng đổi lịch các ca này trước.`);
+        continue;
+      }
+      if (ca.nhanVien?.nguoiDungId) bacSiNhanTin.set(ca.nhanVien.nguoiDungId, ca.id);
+    }
+    if (loi.length) throw new ConflictException({ code: 'KHUNG_ONLINE_XUNG_DOT', message: loi.join('\n') });
+
+    await this.lichLamViecRepo.update({ id: In(ids) }, { onlineTu: tu && `${tu}:00`, onlineDen: den && `${den}:00` });
+
+    const moTa = tu ? `khung tư vấn online ${tu}–${den}` : 'bỏ khung tư vấn online (cả ca khám trực tiếp)';
+    for (const [nguoiNhanId, caId] of bacSiNhanTin) {
+      await this.thongBaoService.taoThongBao({
+        nguoiNhanId,
+        tieuDe: 'Cập nhật khung tư vấn online',
+        noiDung: `Ban Giám Đốc vừa cập nhật ca trực của bạn: ${moTa}.`,
+        loai: 'phan_ca',
+        doiTuongBang: 'lich_lam_viec',
+        doiTuongId: caId,
+      }).catch(() => {});
+    }
+    return { success: true, message: `Đã cập nhật ${moTa} cho ${ids.length} ca trực.` };
   }
 
   async xoaLichPhanCa(id: number) {

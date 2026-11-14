@@ -55,8 +55,9 @@ export class LichHenController {
   layBacSiVaCaTrong(
     @Query('chuyenKhoa') chuyenKhoa?: string,
     @Query('ngay') ngay?: string,
+    @Query('hinhThuc') hinhThuc?: string,
   ) {
-    return this.service.layBacSiVaCaTrong(chuyenKhoa, ngay);
+    return this.service.layBacSiVaCaTrong(chuyenKhoa, ngay, hinhThuc === 'truc_tuyen' ? 'truc_tuyen' : 'truc_tiep');
   }
 
   @Public()

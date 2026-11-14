@@ -19,6 +19,7 @@ import { TaoLichHenDto, CapNhatTrangThaiLichHenDto, TimKiemLichHenDto, LaySlotTr
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 import { MemoryCacheService } from '../../common/cache/memory-cache.service';
 import { soTiepTheo, voiKhoaDb, maBenhNhanTiepTheo, maHoSoTiepTheo } from '../../common/utils/db-sequence.util';
+import { slotHopHinhThuc, moKhungOnlineChoTrucTiep, layMinNgayDatOnline } from '../../common/utils/khung-online.util';
 
 // Các slot giờ khám trong ngày (mỗi ca khám cách nhau 1 tiếng)
 const ALL_SLOTS = [
@@ -625,9 +626,9 @@ export class LichHenService implements OnModuleInit {
   }
 
   // ─── DANH SÁCH BÁC SĨ TRỰC VÀ CA KHÁM TRỐNG ──────────────────
-  async layBacSiVaCaTrong(chuyenKhoa?: string, ngay?: string) {
+  async layBacSiVaCaTrong(chuyenKhoa?: string, ngay?: string, hinhThuc = 'truc_tiep') {
     const ngayKham = ngay || getLocalDateString();
-    const cacheKey = `lich_hen:bac_si_ca_trong:${ngayKham}:${(chuyenKhoa || 'ALL').trim().toLowerCase()}`;
+    const cacheKey = `lich_hen:bac_si_ca_trong:${ngayKham}:${hinhThuc}:${(chuyenKhoa || 'ALL').trim().toLowerCase()}`;
 
     return this.cache.getOrSet(cacheKey, 5_000, async () => {
       // Chạy song song 4 truy vấn thay vì tuần tự để giảm 70% độ trễ
@@ -645,7 +646,11 @@ export class LichHenService implements OnModuleInit {
           select: ['bacSiId', 'gioHen'],
         }),
       ]);
-      const toiDaMoiBuoi = await this.laySoLichHenToiDaMoiBuoi();
+      const [toiDaMoiBuoi, minNgayDatOnline] = await Promise.all([
+        this.laySoLichHenToiDaMoiBuoi(),
+        layMinNgayDatOnline(this.dataSource),
+      ]);
+      const moKhungOnline = moKhungOnlineChoTrucTiep(ngayKham, minNgayDatOnline);
 
       let filteredDoctors = allDoctors;
       if (chuyenKhoa && chuyenKhoa.trim()) {
@@ -708,6 +713,8 @@ export class LichHenService implements OnModuleInit {
           const daQuaGio = isToday && slot <= currentTimeStr;
           // Đủ số lịch hẹn tối đa của buổi → khung còn lại để bác sĩ bù giờ
           const hetSuat = !daDat && toiDaMoiBuoi !== null && soDaDat(ca) >= toiDaMoiBuoi;
+          // Slot dành cho hình thức khác theo khung online giám đốc cấu hình trên ca trực
+          const khacHinhThuc = !slotHopHinhThuc(slot, docShifts, hinhThuc, moKhungOnline);
           return {
             gio: slot,
             ca,
@@ -715,11 +722,14 @@ export class LichHenService implements OnModuleInit {
             daDat,
             daQuaGio,
             hetSuat,
-            conTrong: inShift && !daDat && !daQuaGio && !hetSuat,
+            khacHinhThuc,
+            conTrong: inShift && !khacHinhThuc && !daDat && !daQuaGio && !hetSuat,
           };
         });
 
         const soSlotTrong = slots.filter((s) => s.conTrong).length;
+        // Tư vấn online: chỉ hiện bác sĩ có khung online trong ca trực ngày đó
+        const nhanHinhThuc = slots.some((s) => s.inShift && !s.khacHinhThuc);
 
         return {
           id: doc.id,
@@ -728,7 +738,7 @@ export class LichHenService implements OnModuleInit {
           bangCap: doc.bangCap,
           soChungChiHanhNghe: doc.soChungChiHanhNghe,
           anhDaiDien: doc.nhanVien?.anhDaiDien,
-          dangTruc: worksMorning || worksAfternoon,
+          dangTruc: (worksMorning || worksAfternoon) && nhanHinhThuc,
           phongKham: matchedRoom
             ? {
                 id: matchedRoom.id,
@@ -755,18 +765,44 @@ export class LichHenService implements OnModuleInit {
 
   // ─── SLOT TRỐNG CỦA BÁC SĨ ────────────────────────────────────
   async laySlotTrong(dto: LaySlotTrongDto) {
-    const [daDat, toiDa] = await Promise.all([
+    const hinhThuc = dto.hinhThuc || 'truc_tiep';
+    const [daDat, toiDa, caTruc, minNgayDatOnline] = await Promise.all([
       this.repo.find({
         where: { bacSiId: dto.bacSiId, ngayHen: dto.ngay, trangThai: In(TRANG_THAI_GIU_SUAT) },
         select: ['gioHen'],
       }),
       this.laySoLichHenToiDaMoiBuoi(),
+      this.layCaTrucBacSi(dto.bacSiId, dto.ngay),
+      layMinNgayDatOnline(this.dataSource),
     ]);
+    const moKhungOnline = moKhungOnlineChoTrucTiep(dto.ngay, minNgayDatOnline);
     const daDatSet = new Set(daDat.map((lh) => lh.gioHen.substring(0, 5)));
     const hetSuat = (gio: string) =>
       toiDa !== null && daDat.filter((lh) => laCaSang(lh.gioHen) === laCaSang(gio)).length >= toiDa;
-    const slotsTrong = ALL_SLOTS.filter((s) => !daDatSet.has(s) && !hetSuat(s));
-    return { data: { bacSiId: dto.bacSiId, ngay: dto.ngay, slotsTrong }, message: 'OK' };
+    const slotsTrong = ALL_SLOTS.filter(
+      (s) => !daDatSet.has(s) && !hetSuat(s) && slotHopHinhThuc(s, caTruc, hinhThuc, moKhungOnline),
+    );
+    return { data: { bacSiId: dto.bacSiId, ngay: dto.ngay, hinhThuc, slotsTrong }, message: 'OK' };
+  }
+
+  private async layCaTrucBacSi(bacSiId: number, ngay: string): Promise<LichLamViec[]> {
+    const bacSi = await this.bacSiRepo.findOne({ where: { id: bacSiId }, select: ['id', 'nhanVienId'] });
+    return bacSi ? this.lichLamViecRepo.find({ where: { nhanVienId: bacSi.nhanVienId, ngayLam: ngay } }) : [];
+  }
+
+  /** Lịch hẹn phải nằm đúng khung theo hình thức (khung online giám đốc cấu hình trên ca trực) — áp dụng mọi người đặt */
+  private async kiemTraKhungOnline(bacSiId: number, ngay: string, gioHen: string, hinhThuc: string) {
+    const gio = (gioHen || '').substring(0, 5);
+    const [caTruc, minNgayDatOnline] = await Promise.all([
+      this.layCaTrucBacSi(bacSiId, ngay),
+      layMinNgayDatOnline(this.dataSource),
+    ]);
+    if (slotHopHinhThuc(gio, caTruc, hinhThuc, moKhungOnlineChoTrucTiep(ngay, minNgayDatOnline))) return;
+    throw new BadRequestException(
+      hinhThuc === 'truc_tuyen'
+        ? { code: 'NGOAI_KHUNG_ONLINE', message: `Bác sĩ không có khung tư vấn online lúc ${gio} ngày ${ngay}. Vui lòng chọn khung giờ online do phòng khám bố trí.` }
+        : { code: 'SLOT_DANH_CHO_ONLINE', message: `Khung ${gio} ngày ${ngay} của bác sĩ đang dành cho tư vấn online. Vui lòng chọn khung giờ khám trực tiếp khác.` },
+    );
   }
 
   /** Số lịch hẹn tối đa của 1 bác sĩ mỗi buổi do giám đốc cấu hình (dòng truc_tiep); null = không giới hạn */
@@ -1054,6 +1090,7 @@ export class LichHenService implements OnModuleInit {
             message: `Bác sĩ đã có lịch hẹn vào khung giờ ${gioHenShort} ngày ${dto.ngayHen}. Vui lòng chọn khung giờ khác.`,
           });
         }
+        await this.kiemTraKhungOnline(dto.bacSiId, dto.ngayHen, dto.gioHen, dto.hinhThuc || 'truc_tiep');
         // Bệnh nhân tự đặt không được lấn vào khung chừa bù giờ; lễ tân/bác sĩ vẫn xếp thêm được khi cần
         if (nguoiDatVaiTro === 'benh_nhan') {
           await this.kiemTraSuatBuoi(dto.bacSiId, dto.ngayHen, dto.gioHen);
@@ -1677,6 +1714,7 @@ export class LichHenService implements OnModuleInit {
           });
         }
         await this.kiemTraSuatBuoi(targetBacSiId, dto.ngayHen, dto.gioHen, lh.id);
+        await this.kiemTraKhungOnline(targetBacSiId, dto.ngayHen, dto.gioHen, dto.hinhThuc || lh.hinhThuc || 'truc_tiep');
       }
 
       const ngayHenCu = lh.ngayHen;

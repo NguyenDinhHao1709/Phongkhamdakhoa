@@ -19,6 +19,13 @@ export class LichLamViec {
   @Column({ name: 'ghi_chu', type: 'text', nullable: true })
   ghiChu: string;
 
+  /** Khung tư vấn online trong ca (giám đốc cấu hình); null = cả ca khám trực tiếp */
+  @Column({ name: 'online_tu', type: 'time', nullable: true })
+  onlineTu: string | null;
+
+  @Column({ name: 'online_den', type: 'time', nullable: true })
+  onlineDen: string | null;
+
   @ManyToOne(() => NhanVien)
   @JoinColumn({ name: 'nhan_vien_id' })
   nhanVien: NhanVien;

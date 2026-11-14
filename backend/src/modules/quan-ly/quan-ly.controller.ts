@@ -327,6 +327,13 @@ export class QuanLyController {
     return this.quanLyService.xepLichLamViec(list);
   }
 
+  @Patch('lich-lam-viec/khung-online')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Cấu hình khung tư vấn online trên ca trực của bác sĩ' })
+  capNhatKhungOnline(@Body() body: { ids: number[]; onlineTu?: string | null; onlineDen?: string | null }) {
+    return this.quanLyService.capNhatKhungOnline(body);
+  }
+
   @Delete('lich-lam-viec/:id')
   @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Xóa ca trực' })

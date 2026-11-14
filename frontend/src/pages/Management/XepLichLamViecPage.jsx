@@ -2,14 +2,16 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { xuatExcel } from '../../utils/xuatFile';
-import { apiGet, apiPost, apiDelete } from '../../services/api';
+import { apiGet, apiPost, apiDelete, apiPatch } from '../../services/api';
 import {
   Calendar as CalendarIcon, Clock, Plus, Trash2, RefreshCw,
   ChevronLeft, ChevronRight, Users, Check, AlertCircle, Sparkles,
-  Layers, CheckSquare, Square, X, Info, Download
+  Layers, CheckSquare, Square, X, Info, Download, Video
 } from 'lucide-react';
 
 const DAYS_OF_WEEK = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+// Giờ bắt đầu các slot khám (khớp ALL_SLOTS ở backend lich-hen.service)
+const SLOT_GIO = ['08:00', '09:00', '10:00', '11:00', '13:30', '14:30', '15:30', '16:30'];
 
 // Lấy ngày Thứ 2 đầu tuần của ngày hiện tại
 function getMonday(d) {
@@ -115,6 +117,48 @@ export default function XepLichLamViecPage() {
     },
     onError: (err) => {
       alert(`Lỗi xóa ca trực: ${err?.response?.data?.message || err?.message}`);
+    },
+  });
+
+  // Khung tư vấn online trên ca trực bác sĩ: { shift, nv, tu, den, apDungTuan }
+  const [khungOnline, setKhungOnline] = useState(null);
+  const homNayStr = formatDateISO(new Date());
+  const gioCa = (caId) => {
+    const ca = caList.find((c) => Number(c.id) === Number(caId));
+    return { batDau: formatTimeShort(ca?.gioBatDau), ketThuc: formatTimeShort(ca?.gioKetThuc) };
+  };
+  const slotTrongCa = (caId) => {
+    const { batDau, ketThuc } = gioCa(caId);
+    return SLOT_GIO.filter((g) => g >= batDau && g < ketThuc);
+  };
+  const moKhungOnline = (shift, nv) => {
+    const slots = slotTrongCa(shift.caLamViecId);
+    setKhungOnline({
+      shift,
+      nv,
+      tu: formatTimeShort(shift.onlineTu) || slots[0],
+      den: formatTimeShort(shift.onlineDen) || gioCa(shift.caLamViecId).ketThuc,
+      apDungTuan: false,
+    });
+  };
+
+  const khungOnlineMutation = useMutation({
+    mutationFn: ({ boKhung }) => {
+      const { shift, tu, den, apDungTuan } = khungOnline;
+      const ids = apDungTuan
+        ? phanCaList
+            .filter((p) => Number(p.nhanVienId) === Number(shift.nhanVienId) && Number(p.caLamViecId) === Number(shift.caLamViecId) && normalizeDateOnly(p.ngayLam) >= homNayStr)
+            .map((p) => p.id)
+        : [shift.id];
+      return apiPatch('/quan-ly/lich-lam-viec/khung-online', { ids, onlineTu: boKhung ? null : tu, onlineDen: boKhung ? null : den });
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['quan-ly-lich-lam-viec'] });
+      setKhungOnline(null);
+      alert(res?.message || res?.data?.message || 'Đã cập nhật khung tư vấn online');
+    },
+    onError: (err) => {
+      alert(`⚠️ KHÔNG THỂ CẬP NHẬT KHUNG ONLINE:\n${err?.error?.message || err?.response?.data?.error?.message || err?.response?.data?.message || err?.message}`);
     },
   });
 
@@ -448,7 +492,24 @@ export default function XepLichLamViecPage() {
                                 key={s.id}
                                 className="group relative bg-blue-50/80 hover:bg-blue-100 border border-blue-200 rounded-md p-1 text-[11px] text-blue-900 font-bold flex items-center justify-between transition"
                               >
-                                <span className="truncate pr-1">{s.tenCa}</span>
+                                <div className="min-w-0 pr-1">
+                                  <span className="truncate block">{s.tenCa}</span>
+                                  {s.onlineTu && (
+                                    <span className="flex items-center gap-0.5 text-[10px] text-purple-700 font-semibold">
+                                      <Video className="h-2.5 w-2.5" /> Online {formatTimeShort(s.onlineTu)}–{formatTimeShort(s.onlineDen)}
+                                    </span>
+                                  )}
+                                </div>
+                                {nv.maVaiTro === 'bac_si' && slotTrongCa(s.caLamViecId).length > 0 && d.dateStr >= homNayStr && (
+                                  <button
+                                    type="button"
+                                    onClick={() => moKhungOnline(s, nv)}
+                                    className="text-purple-400 hover:text-purple-700 opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
+                                    title="Cấu hình khung tư vấn online"
+                                  >
+                                    <Video className="h-3 w-3" />
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -706,6 +767,93 @@ export default function XepLichLamViecPage() {
           </div>
         </div>
       )}
+
+      {/* ─── MODAL KHUNG TƯ VẤN ONLINE ─────────────── */}
+      {khungOnline && (() => {
+        const { shift, nv, tu, den, apDungTuan } = khungOnline;
+        const { batDau, ketThuc } = gioCa(shift.caLamViecId);
+        const tuOptions = slotTrongCa(shift.caLamViecId);
+        const denOptions = [...tuOptions.filter((g) => g > tu), ketThuc];
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-md p-5 space-y-4 text-xs">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base flex items-center gap-1.5">
+                    <Video className="h-4 w-4 text-purple-600" /> Khung tư vấn online
+                  </h3>
+                  <p className="text-[11px] text-gray-500">
+                    {nv.hoTen} · {shift.tenCa} ({batDau}–{ketThuc}) · {normalizeDateOnly(shift.ngayLam)}
+                  </p>
+                </div>
+                <button type="button" onClick={() => setKhungOnline(null)} className="text-gray-400 hover:text-gray-600 p-1">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="space-y-1">
+                  <span className="font-bold text-gray-800">Từ</span>
+                  <select
+                    value={tu}
+                    onChange={(e) => {
+                      const moi = e.target.value;
+                      setKhungOnline({ ...khungOnline, tu: moi, den: den > moi ? den : ketThuc });
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-2 py-1.5"
+                  >
+                    {tuOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="font-bold text-gray-800">Đến</span>
+                  <select
+                    value={den}
+                    onChange={(e) => setKhungOnline({ ...khungOnline, den: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-2 py-1.5"
+                  >
+                    {denOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={apDungTuan}
+                  onChange={(e) => setKhungOnline({ ...khungOnline, apDungTuan: e.target.checked })}
+                />
+                Áp dụng cho mọi "{shift.tenCa}" của {nv.hoTen} từ hôm nay trong tuần này
+              </label>
+
+              <div className="bg-purple-50 border border-purple-100 rounded-xl p-3 text-[11px] text-purple-900 space-y-1">
+                <p>• Slot trong khung chỉ nhận lịch tư vấn online; slot còn lại của ca nhận khám trực tiếp.</p>
+                <p>• Khi bệnh nhân không còn đặt online được cho ngày đó (hết hạn đặt trước), slot online còn trống tự mở cho khám trực tiếp.</p>
+                <p>• Không đổi được nếu lịch hẹn đã đặt sẽ nằm sai khung — cần đổi lịch các ca đó trước.</p>
+              </div>
+
+              <div className="flex justify-between gap-2 pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  disabled={khungOnlineMutation.isPending || !shift.onlineTu}
+                  onClick={() => khungOnlineMutation.mutate({ boKhung: true })}
+                  className="px-3 py-2 border border-red-200 text-red-600 rounded-xl font-bold hover:bg-red-50 disabled:opacity-40 cursor-pointer"
+                >
+                  Bỏ khung online
+                </button>
+                <button
+                  type="button"
+                  disabled={khungOnlineMutation.isPending}
+                  onClick={() => khungOnlineMutation.mutate({ boKhung: false })}
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold rounded-xl cursor-pointer"
+                >
+                  {khungOnlineMutation.isPending ? 'Đang lưu...' : 'Lưu khung online'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ─── MODAL PHÂN CA THÔNG MINH (AI & ĐỊNH MỨC) ─────────────── */}
       {autoModalOpen && (

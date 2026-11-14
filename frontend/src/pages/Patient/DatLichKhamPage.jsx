@@ -156,6 +156,7 @@ export default function DatLichKhamPage() {
         const res = await apiGet('/lich-hen/bac-si-ca-trong', {
           chuyenKhoa: selectedChuyenKhoa,
           ngay: selectedNgayHen,
+          hinhThuc,
         });
         if (!isMounted) return;
 
@@ -190,7 +191,7 @@ export default function DatLichKhamPage() {
 
     fetchDoctorsAndSlots();
     return () => { isMounted = false; };
-  }, [selectedChuyenKhoa, selectedNgayHen]);
+  }, [selectedChuyenKhoa, selectedNgayHen, hinhThuc]);
 
   const handleSelectHinhThuc = (type) => {
     setHinhThuc(type);
@@ -821,7 +822,7 @@ export default function DatLichKhamPage() {
                                 ? 'bg-white text-blue-700 border border-blue-300 hover:border-blue-600 hover:bg-blue-50 shadow-2xs cursor-pointer'
                                 : 'bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-45 cursor-not-allowed'
                             }`}
-                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : slot.daQuaGio ? 'Khung giờ khám này đã qua so với thời điểm hiện tại' : slot.daDat || slot.hetSuat ? 'Đã kín lịch' : 'Ngoài ca trực'}
+                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : slot.daQuaGio ? 'Khung giờ khám này đã qua so với thời điểm hiện tại' : slot.daDat || slot.hetSuat ? 'Đã kín lịch' : slot.inShift && slot.khacHinhThuc ? (hinhThuc === 'truc_tuyen' ? 'Khung giờ dành cho khám trực tiếp' : 'Khung giờ dành cho tư vấn online') : 'Ngoài ca trực'}
                           >
                             <span className="text-xs sm:text-sm font-extrabold">{slot.gio}</span>
                             {isAvailable ? (
@@ -830,7 +831,7 @@ export default function DatLichKhamPage() {
                               </span>
                             ) : (
                               <span className="text-[9px] text-slate-400 font-normal">
-                                {slot.daQuaGio ? 'Đã qua giờ' : slot.daDat || slot.hetSuat ? 'Đã kín' : 'Ngoài ca'}
+                                {slot.daQuaGio ? 'Đã qua giờ' : slot.daDat || slot.hetSuat ? 'Đã kín' : slot.inShift && slot.khacHinhThuc ? (hinhThuc === 'truc_tuyen' ? 'Trực tiếp' : 'Khung online') : 'Ngoài ca'}
                               </span>
                             )}
                           </button>
@@ -864,7 +865,7 @@ export default function DatLichKhamPage() {
                                 ? 'bg-white text-blue-700 border border-blue-300 hover:border-blue-600 hover:bg-blue-50 shadow-2xs cursor-pointer'
                                 : 'bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-45 cursor-not-allowed'
                             }`}
-                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : slot.daQuaGio ? 'Khung giờ khám này đã qua so với thời điểm hiện tại' : slot.daDat || slot.hetSuat ? 'Đã kín lịch' : 'Ngoài ca trực'}
+                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : slot.daQuaGio ? 'Khung giờ khám này đã qua so với thời điểm hiện tại' : slot.daDat || slot.hetSuat ? 'Đã kín lịch' : slot.inShift && slot.khacHinhThuc ? (hinhThuc === 'truc_tuyen' ? 'Khung giờ dành cho khám trực tiếp' : 'Khung giờ dành cho tư vấn online') : 'Ngoài ca trực'}
                           >
                             <span className="text-xs sm:text-sm font-extrabold">{slot.gio}</span>
                             {isAvailable ? (
@@ -873,7 +874,7 @@ export default function DatLichKhamPage() {
                               </span>
                             ) : (
                               <span className="text-[9px] text-slate-400 font-normal">
-                                {slot.daQuaGio ? 'Đã qua giờ' : slot.daDat || slot.hetSuat ? 'Đã kín' : 'Ngoài ca'}
+                                {slot.daQuaGio ? 'Đã qua giờ' : slot.daDat || slot.hetSuat ? 'Đã kín' : slot.inShift && slot.khacHinhThuc ? (hinhThuc === 'truc_tuyen' ? 'Trực tiếp' : 'Khung online') : 'Ngoài ca'}
                               </span>
                             )}
                           </button>
