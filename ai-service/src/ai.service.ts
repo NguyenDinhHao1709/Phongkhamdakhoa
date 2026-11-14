@@ -53,6 +53,14 @@ import { toiUuLoTrinhCls, PhongCls, PHUT_MAC_DINH } from './queue-router';
 
 // ─── Gemini: thử lần lượt các model khi model trước quá tải (503), hết hạn mức (429) hoặc quá thời gian ───
 const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-flash-latest'];
+
+/** Production thiếu PYTHON_ML_URL (hoặc để localhost) thì trỏ về python-ml trên Render, tránh âm thầm rơi về dự phòng */
+function resolvePythonMlUrl(configured?: string): string {
+  const isProd = process.env.NODE_ENV === 'production';
+  const isLocal = !configured || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(configured.trim());
+  const url = isProd && isLocal ? 'https://phongkham-python-ml.onrender.com' : (configured || 'http://localhost:5001');
+  return url.trim().replace(/\/+$/, '');
+}
 const GEMINI_ATTEMPT_TIMEOUT_MS = 20000;
 const GEMINI_TOTAL_BUDGET_MS = 45000; // backend & frontend chờ AI tối đa 90s
 
@@ -141,9 +149,7 @@ export class AiService {
     @InjectRepository(AiCauTraLoiCache) private cacheRepo: Repository<AiCauTraLoiCache>,
     @InjectRepository(AiChatTinNhan) private chatRepo: Repository<AiChatTinNhan>,
   ) {
-    this.PYTHON_ML_URL = (
-      this.configService.get<string>('PYTHON_ML_URL') || 'http://localhost:5001'
-    ).replace(/\/+$/, '');
+    this.PYTHON_ML_URL = resolvePythonMlUrl(this.configService.get<string>('PYTHON_ML_URL'));
     this.mlHeaders = { 'x-internal-key': this.configService.get<string>('AI_INTERNAL_KEY') || '' };
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     if (apiKey) {

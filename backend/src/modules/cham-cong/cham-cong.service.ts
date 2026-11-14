@@ -17,8 +17,8 @@ import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { NhatKyHeThong, LoaiNhatKy } from '../quan-ly/entities/nhat-ky-he-thong.entity';
 import { withColdStartRetry, isServiceWakingUp } from '../../common/utils/cold-start-retry.util';
 import { Aes256Transformer } from '../../common/transformers/aes-256.transformer';
+import { PYTHON_ML_URL } from '../../common/utils/python-ml-url.util';
 
-const PYTHON_ML_URL = process.env.PYTHON_ML_URL || 'http://localhost:5001';
 const PYTHON_ML_TIMEOUT_MS = 75000;
 const PYTHON_ML_HEADERS = { 'x-internal-key': process.env.AI_INTERNAL_KEY || '' };
 // Embedding khuôn mặt là dữ liệu sinh trắc → mã hóa AES-256 khi lưu (cùng khóa với hồ sơ bệnh án)

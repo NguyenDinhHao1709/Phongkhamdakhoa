@@ -11,6 +11,7 @@ import { VaiTroQuyenHan } from '../auth/entities/vai-tro-quyen-han.entity';
 import { maBenhNhanTiepTheo } from '../../common/utils/db-sequence.util';
 import { slotHopHinhThuc, moKhungOnlineChoTrucTiep, layMinNgayDatOnline } from '../../common/utils/khung-online.util';
 import { withColdStartRetry, isServiceWakingUp } from '../../common/utils/cold-start-retry.util';
+import { PYTHON_ML_URL } from '../../common/utils/python-ml-url.util';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { KyThuatVien } from '../nhan-vien/entities/ky-thuat-vien.entity';
 import { DonGui, TrangThaiDonGui } from '../nhan-vien/entities/don-gui.entity';
@@ -3861,7 +3862,6 @@ export class QuanLyService implements OnModuleInit {
   // XÁC THỰC & CHỐNG TRÙNG LẶP AVATAR NHÂN VIÊN
   // ==========================================
   async kiemTraVaLuuAvatar(file: Express.Multer.File, nhanVienId?: number) {
-    const PYTHON_ML_URL = process.env.PYTHON_ML_URL || 'http://localhost:5001';
     const absolutePath = path.resolve(file.path);
     const cloudinaryConfigured = Boolean(
       process.env.CLOUDINARY_CLOUD_NAME &&
