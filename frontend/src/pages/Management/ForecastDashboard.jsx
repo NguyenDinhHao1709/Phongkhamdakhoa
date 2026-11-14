@@ -55,7 +55,8 @@ export default function ForecastDashboard() {
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['ai-forecast-nang-cao', soNgay],
     queryFn: () => apiGet(`/ai/du-bao-nang-cao?horizon=${soNgay}`),
-    refetchInterval: 5 * 60 * 1000,
+    // Mô hình ML đang thức dậy (Render free ~1 phút) → tải lại sớm để thay kết quả dự phòng
+    refetchInterval: (query) => (query.state.data?.data?.mlDangKhoiDong ? 30 * 1000 : 5 * 60 * 1000),
   });
 
   const forecastResult = data?.data || {};
@@ -92,7 +93,9 @@ export default function ForecastDashboard() {
             <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200/70">
               <BrainCircuit className="w-3.5 h-3.5" />
               {forecastResult.source === 'trung_binh_theo_thu'
-                ? 'Dự phòng: Trung bình theo thứ (dịch vụ ML chưa phản hồi)'
+                ? forecastResult.mlDangKhoiDong
+                  ? 'Dự phòng: Trung bình theo thứ (mô hình ML đang khởi động, tự cập nhật sau ít giây)'
+                  : 'Dự phòng: Trung bình theo thứ (dịch vụ ML chưa phản hồi)'
                 : 'Mô Hình Dự Báo Holt-Winters ML & Gemini AI'}
             </span>
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">

@@ -106,7 +106,7 @@ export default function SearchResultsModal({ keyword, onClose, onSelectDoctor, o
               activeTab === 'bai_viet' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-800'
             }`}
           >
-            📰 Bài viết ({filteredBaiViet.length})
+            📰 Bài viết ({dbArticles.length})
           </button>
         </div>
 

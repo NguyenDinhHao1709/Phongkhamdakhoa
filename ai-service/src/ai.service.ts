@@ -1190,6 +1190,7 @@ ${dichVu.join('\n') || khongKhop}
     horizon = Math.min(30, Math.max(1, Number.isFinite(horizon) ? horizon : 7));
     let ml: any = null;
     let lyDoKhongDuBao: string | null = null;
+    let mlDangKhoiDong = false;
     try {
       const { data } = await firstValueFrom(
         this.httpService.post(
@@ -1202,6 +1203,13 @@ ${dichVu.join('\n') || khongKhop}
       if (!data.success) lyDoKhongDuBao = data.message;
     } catch (pyErr) {
       this.logger.warn(`⚠️ Python ML Service unavailable (${pyErr.message}), dùng trung bình theo thứ`);
+      // Render free: service ngủ trả 502/503/504, từ chối kết nối hoặc quá hạn → đánh thức, frontend tự tải lại.
+      // Lỗi khác (vd 401 sai AI_INTERNAL_KEY) là lỗi cấu hình, không chờ được.
+      const status = pyErr.response?.status;
+      mlDangKhoiDong = [502, 503, 504].includes(status) || ['ECONNREFUSED', 'ECONNRESET', 'ECONNABORTED', 'ETIMEDOUT'].includes(pyErr.code);
+      if (mlDangKhoiDong) {
+        firstValueFrom(this.httpService.get(`${this.PYTHON_ML_URL}/health`, { timeout: 90000 })).catch(() => undefined);
+      }
     }
 
     const source = ml ? 'python_holtwinters' : 'trung_binh_theo_thu';
@@ -1225,6 +1233,7 @@ ${dichVu.join('\n') || khongKhop}
     return {
       data: {
         source,
+        mlDangKhoiDong,
         model: ml.model,
         status: forecast.length > 0 ? 'ok' : 'insufficient_data',
         // Sai số kiểm định ngoài mẫu 7 ngày gần nhất; null khi chưa đo được
