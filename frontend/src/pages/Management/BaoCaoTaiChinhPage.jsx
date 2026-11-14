@@ -912,8 +912,8 @@ export default function BaoCaoTaiChinhPage() {
                   <Clock className="h-5 w-5" />
                 </div>
               </div>
-              <p className="text-2xl font-black text-teal-700 mt-2">{cls?.thoiGianChoTB || '14.5 phút'}</p>
-              <p className="text-xs text-gray-500 mt-1">Tối ưu nhờ định tuyến thông minh</p>
+              <p className="text-2xl font-black text-teal-700 mt-2">{cls?.thoiGianChoTB || '—'}</p>
+              <p className="text-xs text-gray-500 mt-1">Từ lúc chỉ định đến lúc lấy mẫu</p>
             </div>
 
             <div

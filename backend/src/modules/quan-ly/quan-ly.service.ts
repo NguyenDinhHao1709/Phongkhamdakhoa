@@ -1473,6 +1473,20 @@ export class QuanLyService implements OnModuleInit {
       donGia: Number(r.donGia || 0),
     }));
 
+    // Thời gian chờ CLS TB: từ lúc chỉ định đến lúc lấy mẫu (hoặc có kết quả nếu không lấy mẫu)
+    let choSql = `
+      SELECT AVG(TIMESTAMPDIFF(SECOND, thoi_gian_chi_dinh, COALESCE(thoi_gian_lay_mau, thoi_gian_co_ket_qua))) / 60 AS phut
+      FROM chi_dinh_can_lam_sang
+      WHERE COALESCE(thoi_gian_lay_mau, thoi_gian_co_ket_qua) >= thoi_gian_chi_dinh
+    `;
+    const choParams: any[] = [];
+    if (tuNgayStr && denNgayStr) {
+      choSql += ` AND thoi_gian_chi_dinh BETWEEN ? AND ? `;
+      choParams.push(tuNgayStr, denNgayStr);
+    }
+    const [choRow] = await this.clsRepo.query(choSql, choParams).catch(() => [{}]);
+    const phutCho = choRow?.phut == null ? null : Number(choRow.phut);
+
     const clsStats = {
       tongChiDinh: clsTong,
       daHoanThanh: clsHoanThanh,
@@ -1481,7 +1495,7 @@ export class QuanLyService implements OnModuleInit {
       choTiepNhan: clsCho,
       choThucHien: clsDangThucHien + clsCho,
       tyLeHoanThanh: clsTong > 0 ? `${((clsHoanThanh / clsTong) * 100).toFixed(1)}%` : '100%',
-      thoiGianChoTB: '14.5 phút',
+      thoiGianChoTB: phutCho == null ? '—' : `${phutCho.toFixed(1)} phút`,
       danhMucDichVu,
       danhSachChiDinhCls,
     };
