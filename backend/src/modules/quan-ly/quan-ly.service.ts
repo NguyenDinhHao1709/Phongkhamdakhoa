@@ -1279,9 +1279,9 @@ export class QuanLyService implements OnModuleInit {
 
     let tnStatsQb = this.tiepNhanRepo.createQueryBuilder('ltn')
       .select('COUNT(*)', 'total')
-      .addSelect("SUM(CASE WHEN ltn.trangThai IN ('hoan_thanh', 'hoan_tat', 'da_kham') THEN 1 ELSE 0 END)", 'daKham')
-      .addSelect("SUM(CASE WHEN ltn.trangThai = 'dang_kham' THEN 1 ELSE 0 END)", 'dangKham')
-      .addSelect("SUM(CASE WHEN ltn.trangThai IN ('cho_kham', 'dang_cho', 'tiep_nhan') THEN 1 ELSE 0 END)", 'choKham');
+      .addSelect("SUM(CASE WHEN ltn.trangThai = 'hoan_thanh' THEN 1 ELSE 0 END)", 'daKham')
+      .addSelect("SUM(CASE WHEN ltn.trangThai IN ('dang_kham', 'dang_cls', 'da_co_kq_cls', 'cho_thanh_toan') THEN 1 ELSE 0 END)", 'dangKham')
+      .addSelect("SUM(CASE WHEN ltn.trangThai = 'cho_kham' THEN 1 ELSE 0 END)", 'choKham');
 
     if (tuNgayStr && denNgayStr) {
       tnStatsQb = tnStatsQb.where('ltn.thoiGianDen BETWEEN :s AND :e', { s: tuNgayStr, e: denNgayStr });

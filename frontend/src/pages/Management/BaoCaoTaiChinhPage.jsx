@@ -36,6 +36,16 @@ const PHUONG_THUC_LABEL = {
   bao_hiem: 'BHYT chi trả',
 };
 
+const TRANG_THAI_TIEP_NHAN = {
+  cho_kham: ['Chờ khám', 'bg-amber-100 text-amber-800'],
+  dang_kham: ['Đang khám', 'bg-blue-100 text-blue-800'],
+  dang_cls: ['Đang làm CLS', 'bg-purple-100 text-purple-800'],
+  da_co_kq_cls: ['Đã có KQ CLS', 'bg-indigo-100 text-indigo-800'],
+  cho_thanh_toan: ['Chờ thanh toán', 'bg-orange-100 text-orange-800'],
+  hoan_thanh: ['Hoàn thành', 'bg-emerald-100 text-emerald-800'],
+  da_huy: ['Đã hủy', 'bg-gray-200 text-gray-700'],
+};
+
 const COLORS = ['#2563EB', '#0D9488', '#F59E0B', '#8B5CF6', '#EC4899', '#6B7280'];
 
 function PaginationControl({ currentPage, totalItems, pageSize = 20, onPageChange }) {
@@ -1106,14 +1116,8 @@ export default function BaoCaoTaiChinhPage() {
                             {tn.thoiGianDen ? new Date(tn.thoiGianDen).toLocaleString('vi-VN') : '-'}
                           </td>
                           <td className="py-3 px-4 text-center">
-                            <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] ${
-                              tn.trangThai === 'hoan_tat' || tn.trangThai === 'da_kham'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : tn.trangThai === 'dang_kham'
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}>
-                              {tn.trangThai === 'hoan_tat' || tn.trangThai === 'da_kham' ? 'Đã khám' : tn.trangThai === 'dang_kham' ? 'Đang khám' : 'Đang chờ'}
+                            <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] ${(TRANG_THAI_TIEP_NHAN[tn.trangThai] || TRANG_THAI_TIEP_NHAN.cho_kham)[1]}`}>
+                              {(TRANG_THAI_TIEP_NHAN[tn.trangThai] || TRANG_THAI_TIEP_NHAN.cho_kham)[0]}
                             </span>
                           </td>
                         </tr>
