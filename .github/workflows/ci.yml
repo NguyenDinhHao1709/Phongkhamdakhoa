@@ -46,7 +46,9 @@ jobs:
         working-directory: python-ml
         run: |
           python -m pip install -r requirements.txt
-          python -m compileall -q main.py services
+          python -m compileall -q main.py services scripts
+          python -m pip install pytest httpx
+          python -m pytest tests -q
 
       - name: Validate compose configuration
         run: |

@@ -1,0 +1,34 @@
+name: Keep services awake
+
+# Render gói miễn phí cho service ngủ sau 15 phút không có request; lần gọi kế tiếp phải chờ ~50 giây,
+# đúng lúc nhân viên chấm công đầu ca. Workflow này đánh thức backend và python-ml quanh các khung giờ chấm công.
+#
+# Chỉ gọi MỘT địa chỉ: /api/cham-cong/warmup của backend — backend thức dậy và tự gọi /health của python-ml.
+#
+# KHÔNG mở rộng ra cả ngày hoặc thêm service khác khi chưa tính lại: gói miễn phí của Render có hạn mức
+# giờ chạy mỗi tháng cho cả tài khoản (750 giờ tại thời điểm viết), service ngủ thì không tính giờ.
+# Lịch hiện tại ≈ 4,5 giờ/ngày × 26 ngày × 2 service ≈ 234 giờ/tháng. Vượt hạn mức thì mọi service bị tạm dừng.
+#
+# Lịch chạy của GitHub có thể trễ vài phút. Chạy tay: tab Actions → Keep services awake → Run workflow.
+
+on:
+  schedule:
+    # Giờ UTC = giờ Việt Nam − 7. Thứ Hai–thứ Bảy.
+    - cron: "30,40,50 23 * * 0-5"   # 06:30–06:50 VN
+    - cron: "*/10 0 * * 1-6"        # 07:00–07:50 VN
+    - cron: "0,10,20,30 1 * * 1-6"  # 08:00–08:30 VN
+    - cron: "30,40,50 5 * * 1-6"    # 12:30–12:50 VN
+    - cron: "0,10,20,30 6 * * 1-6"  # 13:00–13:30 VN
+    - cron: "30,40,50 9 * * 1-6"    # 16:30–16:50 VN
+    - cron: "*/10 10 * * 1-6"       # 17:00–17:50 VN
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake backend and python-ml
+        run: |
+          # Service đang ngủ cần tới ~60 giây để thức dậy
+          curl -sS -o /dev/null --max-time 100 -w "%{http_code} %{time_total}s\n" \
+            https://phongkham-backend-i06n.onrender.com/api/cham-cong/warmup
