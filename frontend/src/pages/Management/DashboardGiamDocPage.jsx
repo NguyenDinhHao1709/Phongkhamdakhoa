@@ -673,7 +673,7 @@ export default function DashboardGiamDocPage() {
         <div>
           <MedCard
             title="📱 Phân Bổ Kênh Tiếp Nhận"
-            subtitle="Tỷ trọng bệnh nhân hẹn trước qua App/Web vs Trực tiếp tại quầy"
+            subtitle="Tỷ trọng đặt lịch online, hẹn qua nhân viên và vãng lai tại quầy"
           >
             <div className="space-y-4 pt-3">
               {kenhData.map((k, idx) => (

@@ -1,13 +1,13 @@
 name: Keep services awake
 
 # Render gói miễn phí cho service ngủ sau 15 phút không có request; lần gọi kế tiếp phải chờ ~50 giây,
-# đúng lúc nhân viên chấm công đầu ca. Workflow này đánh thức backend và python-ml quanh các khung giờ chấm công.
+# đúng lúc nhân viên chấm công đầu ca. Workflow này đánh thức backend, python-ml và ai-service quanh các khung giờ chấm công.
 #
-# Chỉ gọi MỘT địa chỉ: /api/cham-cong/warmup của backend — backend thức dậy và tự gọi /health của python-ml.
+# Gọi /api/cham-cong/warmup của backend (backend thức dậy và tự gọi /health của python-ml) và /api/ai/health của ai-service.
 #
 # KHÔNG mở rộng ra cả ngày hoặc thêm service khác khi chưa tính lại: gói miễn phí của Render có hạn mức
 # giờ chạy mỗi tháng cho cả tài khoản (750 giờ tại thời điểm viết), service ngủ thì không tính giờ.
-# Lịch hiện tại ≈ 4,5 giờ/ngày × 26 ngày × 2 service ≈ 234 giờ/tháng. Vượt hạn mức thì mọi service bị tạm dừng.
+# Lịch hiện tại ≈ 4,5 giờ/ngày × 26 ngày × 3 service ≈ 351 giờ/tháng. Vượt hạn mức thì mọi service bị tạm dừng.
 #
 # Lịch chạy của GitHub có thể trễ vài phút. Chạy tay: tab Actions → Keep services awake → Run workflow.
 
@@ -27,8 +27,11 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Wake backend and python-ml
+      - name: Wake backend, python-ml and ai-service
         run: |
-          # Service đang ngủ cần tới ~60 giây để thức dậy
-          curl -sS -o /dev/null --max-time 100 -w "%{http_code} %{time_total}s\n" \
-            https://phongkham-backend-i06n.onrender.com/api/cham-cong/warmup
+          # Service đang ngủ cần tới ~60 giây để thức dậy; gọi song song, lỗi 1 service không chặn service kia
+          curl -sS -o /dev/null --max-time 100 -w "backend %{http_code} %{time_total}s\n" \
+            https://phongkham-backend-i06n.onrender.com/api/cham-cong/warmup &
+          curl -sS -o /dev/null --max-time 100 -w "ai %{http_code} %{time_total}s\n" \
+            https://phongkham-ai.onrender.com/api/ai/health &
+          wait

@@ -20,17 +20,47 @@ const MUC_DO_CONFIG = {
   rat_cao:    { label: 'Rất cao (≥70)',     color: '#EF4444', bg: 'bg-red-50 text-red-800 border-red-200' },
 };
 
+// Mô hình học nhịp theo thứ trên ~90 ngày lịch sử → tối đa 30 ngày (backend cũng chặn ở 30)
+const KHOANG_DU_BAO = [
+  { soNgay: 7, nhan: 'Tuần' },
+  { soNgay: 14, nhan: '2 tuần' },
+  { soNgay: 30, nhan: 'Tháng' },
+];
+const SO_NGAY_GOP_TUAN = 14; // dài hơn mức này thì bảng gộp theo tuần
+
+const ddmm = (ngay) => `${ngay.slice(8)}/${ngay.slice(5, 7)}`;
+
+/** Gộp chuỗi dự báo theo từng 7 ngày: tổng lượt và ngày đông nhất của mỗi tuần */
+function gopTheoTuan(days) {
+  const tuan = [];
+  for (let i = 0; i < days.length; i += 7) {
+    const nhom = days.slice(i, i + 7);
+    tuan.push({
+      tu: nhom[0].ngay,
+      den: nhom[nhom.length - 1].ngay,
+      soNgay: nhom.length,
+      tong: nhom.reduce((s, d) => s + d.du_bao, 0),
+      dongNhat: nhom.reduce((a, b) => (b.du_bao > a.du_bao ? b : a)),
+    });
+  }
+  return tuan;
+}
+
 export default function ForecastDashboard() {
   const [timeViewTab, setTimeViewTab] = useState('weekly'); // 'weekly' | 'hourly'
+  const [soNgay, setSoNgay] = useState(7);
+  const nhanKhoang = `${soNgay} Ngày`;
+  const gopTuan = soNgay > SO_NGAY_GOP_TUAN;
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ['ai-forecast-nang-cao'],
-    queryFn: () => apiGet('/ai/du-bao-nang-cao'),
+    queryKey: ['ai-forecast-nang-cao', soNgay],
+    queryFn: () => apiGet(`/ai/du-bao-nang-cao?horizon=${soNgay}`),
     refetchInterval: 5 * 60 * 1000,
   });
 
   const forecastResult = data?.data || {};
-  const forecast7Days = forecastResult.forecast7Days || [];
+  const forecast = forecastResult.forecast7Days || [];
+  const forecastTuan = gopTuan ? gopTheoTuan(forecast) : [];
   const hourlyData = forecastResult.heatmapHomNay || [];
   // Giờ cao điểm = đạt từ 80% mức cao nhất trong ngày
   const nguongCaoDiem = Math.max(...hourlyData.map((h) => h.soLuong), 1) * 0.8;
@@ -42,7 +72,7 @@ export default function ForecastDashboard() {
   const theoChuyenKhoa = forecastResult.theoChuyenKhoa || [];
   const saiSoThucTe = forecastResult.saiSoThucTe;
   // Ngày đã được nhân hệ số ngày lễ / mùa vụ học từ lịch sử (cần hơn 1 năm dữ liệu mới có)
-  const ngayDieuChinh = forecast7Days.filter((d) => d.he_so_ngay_le != null || (d.he_so_mua_vu != null && d.he_so_mua_vu !== 1));
+  const ngayDieuChinh = forecast.filter((d) => d.he_so_ngay_le != null || (d.he_so_mua_vu != null && d.he_so_mua_vu !== 1));
 
   const { data: phanLoaiRes } = useQuery({
     queryKey: ['ai-phan-loai-stats'],
@@ -74,11 +104,25 @@ export default function ForecastDashboard() {
             Dự Báo Lưu Lượng Bệnh Nhân & Điều Phối Nguồn Lực
           </h1>
           <p className="text-xs md:text-sm text-slate-500">
-            Dự báo chuỗi thời gian 7 ngày tới kết hợp tham vấn nhân sự phục vụ Ban Giám Đốc
+            Dự báo chuỗi thời gian {soNgay} ngày tới kết hợp tham vấn nhân sự phục vụ Ban Giám Đốc
+            {soNgay === 30 && <span className="text-amber-700 font-semibold"> · Dự báo 1 tháng chỉ mang tính tham khảo</span>}
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 self-start md:self-auto">
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+            {KHOANG_DU_BAO.map((k) => (
+              <button
+                key={k.soNgay}
+                onClick={() => setSoNgay(k.soNgay)}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  soNgay === k.soNgay ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {k.nhan}
+              </button>
+            ))}
+          </div>
           <button
             onClick={() => refetch()}
             disabled={isLoading || isRefetching}
@@ -113,7 +157,7 @@ export default function ForecastDashboard() {
           <div className="bg-white/5 border border-white/10 rounded-xl p-3 backdrop-blur-xs space-y-1">
             <div className="flex items-center gap-1.5 text-cyan-300 font-bold">
               <TrendingUp className="w-3.5 h-3.5" />
-              <span>Xu Hướng 7 Ngày</span>
+              <span>Xu Hướng {nhanKhoang}</span>
             </div>
             <p className="text-slate-200 leading-relaxed text-[11px]">
               {aiAnalysis?.tom_tat || emptyText}
@@ -165,12 +209,12 @@ export default function ForecastDashboard() {
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Dự Báo Ngày Gần Nhất</p>
             <div className="flex items-baseline gap-1.5 mt-0.5">
               <span className="text-2xl font-black text-slate-900">
-                {forecast7Days[0]?.du_bao ?? '—'}
+                {forecast[0]?.du_bao ?? '—'}
               </span>
               <span className="text-xs font-semibold text-slate-500">lượt khám</span>
             </div>
             <p className="text-[11px] text-blue-700 font-medium truncate mt-0.5">
-              {forecast7Days[0]?.thu ? `${forecast7Days[0]?.thu} (${forecast7Days[0]?.ngay})` : 'Ngày mai'}
+              {forecast[0]?.thu ? `${forecast[0]?.thu} (${forecast[0]?.ngay})` : 'Ngày mai'}
             </p>
           </div>
         </div>
@@ -180,7 +224,7 @@ export default function ForecastDashboard() {
             <BarChart3 className="w-5 h-5" />
           </div>
           <div className="min-w-0">
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Lưu Lượng TB Tuần</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Lưu Lượng TB {nhanKhoang}</p>
             <div className="flex items-baseline gap-1.5 mt-0.5">
               <span className="text-2xl font-black text-indigo-900">
                 {tongQuan.trungBinh7Ngay ?? '—'}
@@ -242,7 +286,7 @@ export default function ForecastDashboard() {
           <div>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-blue-600" />
-              {timeViewTab === 'weekly' ? 'Biểu Đồ Dự Báo Lưu Lượng 7 Ngày Tới' : 'Phân Bố Lưu Lượng Theo Khung Giờ Khám'}
+              {timeViewTab === 'weekly' ? `Biểu Đồ Dự Báo Lưu Lượng ${nhanKhoang} Tới` : 'Phân Bố Lưu Lượng Theo Khung Giờ Khám'}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               {timeViewTab === 'weekly'
@@ -261,7 +305,7 @@ export default function ForecastDashboard() {
                 timeViewTab === 'weekly' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Theo 7 Ngày Trong Tuần
+              Theo Ngày
             </button>
             <button
               onClick={() => setTimeViewTab('hourly')}
@@ -274,17 +318,17 @@ export default function ForecastDashboard() {
           </div>
         </div>
 
-        {/* ── VIEW 1: DỰ BÁO 7 NGÀY ───────────────────────────────── */}
+        {/* ── VIEW 1: DỰ BÁO THEO NGÀY ────────────────────────────── */}
         {timeViewTab === 'weekly' ? (
           <div className="space-y-3">
             <div className="h-72 w-full pt-1">
-              {forecast7Days.length === 0 ? (
+              {forecast.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-sm text-slate-500">
                   {emptyText}
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={forecast7Days} margin={{ top: 15, right: 20, left: -10, bottom: 0 }}>
+                  <ComposedChart data={forecast} margin={{ top: 15, right: 20, left: -10, bottom: 0 }}>
                     <defs>
                       <linearGradient id="ciBandGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.18} />
@@ -293,9 +337,9 @@ export default function ForecastDashboard() {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                     <XAxis
-                      dataKey="thu"
-                      tick={{ fontSize: 12, fill: '#475569', fontWeight: 600 }}
-                      tickFormatter={(val, i) => `${val} (${forecast7Days[i]?.ngay?.slice(5) || ''})`}
+                      dataKey="ngay"
+                      tick={{ fontSize: soNgay > 7 ? 11 : 12, fill: '#475569', fontWeight: 600 }}
+                      tickFormatter={(ngay, i) => (soNgay > 7 ? ddmm(ngay) : `${forecast[i]?.thu} (${ddmm(ngay)})`)}
                     />
                     <YAxis tick={{ fontSize: 11, fill: '#64748B' }} domain={[0, 'dataMax + 15']} />
                     <Tooltip
@@ -327,7 +371,7 @@ export default function ForecastDashboard() {
                     <Area type="monotone" dataKey="ci_cao" stroke="none" fill="url(#ciBandGrad)" name="Khoảng tin cậy 95%" />
                     <Area type="monotone" dataKey="ci_thap" stroke="none" fill="#FFFFFF" />
                     <Bar dataKey="du_bao" radius={[6, 6, 0, 0]} maxBarSize={48}>
-                      {forecast7Days.map((entry, i) => (
+                      {forecast.map((entry, i) => (
                         <Cell key={i} fill={MUC_DO_CONFIG[entry.muc_do]?.color || '#3B82F6'} />
                       ))}
                     </Bar>
@@ -335,8 +379,8 @@ export default function ForecastDashboard() {
                       type="monotone"
                       dataKey="du_bao"
                       stroke="#1E40AF"
-                      strokeWidth={3}
-                      dot={{ r: 4, fill: '#1E40AF', stroke: '#FFFFFF', strokeWidth: 2 }}
+                      strokeWidth={soNgay > 14 ? 2 : 3}
+                      dot={soNgay > 14 ? false : { r: 4, fill: '#1E40AF', stroke: '#FFFFFF', strokeWidth: 2 }}
                     />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -406,14 +450,16 @@ export default function ForecastDashboard() {
           <div>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <UserCheck className="w-5 h-5 text-blue-600" />
-              Phương Án Phân Bổ Nhân Lực & Bàn Khám Khuyến Nghị (7 Ngày Tới)
+              Phương Án Phân Bổ Nhân Lực & Bàn Khám Khuyến Nghị ({nhanKhoang} Tới)
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Được tự động tính toán dựa trên khối lượng ca khám dự báo và chuẩn định mức y tế
+              {gopTuan
+                ? 'Gộp theo tuần: nhân lực khuyến nghị tính theo ngày đông nhất của mỗi tuần'
+                : 'Được tự động tính toán dựa trên khối lượng ca khám dự báo và chuẩn định mức y tế'}
             </p>
           </div>
           <span className="text-xs font-semibold text-slate-500">
-            Tổng cộng: {forecast7Days.length} ngày dự báo
+            Tổng cộng: {forecast.length} ngày dự báo
           </span>
         </div>
 
@@ -421,7 +467,7 @@ export default function ForecastDashboard() {
           <table className="w-full text-xs text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider border-y border-slate-200 text-[11px]">
-                <th className="py-2.5 px-3">Ngày Khám</th>
+                <th className="py-2.5 px-3">{gopTuan ? 'Tuần' : 'Ngày Khám'}</th>
                 <th className="py-2.5 px-3 text-center">Dự Báo</th>
                 <th className="py-2.5 px-3">Mức Độ</th>
                 <th className="py-2.5 px-3">Bác Sĩ Trực Khuyến Nghị</th>
@@ -430,14 +476,37 @@ export default function ForecastDashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {forecast7Days.length === 0 ? (
+              {forecast.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-6 text-center text-slate-500">
                     {emptyText}
                   </td>
                 </tr>
+              ) : gopTuan ? (
+                forecastTuan.map((t) => (
+                  <tr key={t.tu} className="hover:bg-blue-50/40 transition-colors">
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      <div className="font-bold text-slate-900 text-sm">{ddmm(t.tu)} – {ddmm(t.den)}</div>
+                      <div className="text-[11px] text-slate-500">{t.soNgay} ngày</div>
+                    </td>
+                    <td className="py-3 px-3 text-center whitespace-nowrap">
+                      <span className="font-black text-slate-900 text-sm">{t.tong}</span>
+                      <span className="text-[10px] text-slate-400 block">~{Math.round(t.tong / t.soNgay)} ca/ngày</span>
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-full border ${MUC_DO_CONFIG[t.dongNhat.muc_do]?.bg || 'bg-slate-100 text-slate-700'}`}>
+                        {MUC_DO_CONFIG[t.dongNhat.muc_do]?.label || t.dongNhat.muc_do}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 font-semibold text-slate-900">{t.dongNhat.bac_si_khuyen_nghi}</td>
+                    <td className="py-3 px-3 font-semibold text-slate-700">{t.dongNhat.dieu_duong_khuyen_nghi}</td>
+                    <td className="py-3 px-3 text-slate-600 leading-relaxed text-[11px]">
+                      Cao điểm {t.dongNhat.thu} {ddmm(t.dongNhat.ngay)} (~{t.dongNhat.du_bao} ca). {t.dongNhat.goi_y_nhan_su}
+                    </td>
+                  </tr>
+                ))
               ) : (
-                forecast7Days.map((item, idx) => (
+                forecast.map((item, idx) => (
                   <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
                     <td className="py-3 px-3 whitespace-nowrap">
                       <div className="font-bold text-slate-900 text-sm">{item.thu}</div>
@@ -491,7 +560,7 @@ export default function ForecastDashboard() {
           <div>
             <h3 className="text-base font-bold text-slate-900">Dự Báo Theo Chuyên Khoa</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Số lượt dự kiến mỗi ngày của từng chuyên khoa (mô hình riêng cho mỗi khoa) — dùng để xếp lịch bác sĩ.
+              Số lượt dự kiến {gopTuan ? 'mỗi tuần' : 'mỗi ngày'} của từng chuyên khoa (mô hình riêng cho mỗi khoa) — dùng để xếp lịch bác sĩ.
               Tổng các khoa có thể lệch nhẹ so với dự báo chung.
             </p>
           </div>
@@ -500,20 +569,30 @@ export default function ForecastDashboard() {
               <thead>
                 <tr className="text-left text-slate-500 border-b border-slate-200">
                   <th className="py-2 pr-3 font-bold">Chuyên khoa</th>
-                  {theoChuyenKhoa[0].forecast.map((d) => (
-                    <th key={d.ngay} className="py-2 px-2 font-bold text-center whitespace-nowrap">{d.thu} {d.ngay.slice(8)}/{d.ngay.slice(5, 7)}</th>
-                  ))}
+                  {gopTuan
+                    ? gopTheoTuan(theoChuyenKhoa[0].forecast).map((t) => (
+                      <th key={t.tu} className="py-2 px-2 font-bold text-center whitespace-nowrap">{ddmm(t.tu)} – {ddmm(t.den)}</th>
+                    ))
+                    : theoChuyenKhoa[0].forecast.map((d) => (
+                      <th key={d.ngay} className="py-2 px-2 font-bold text-center whitespace-nowrap">{d.thu} {ddmm(d.ngay)}</th>
+                    ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {theoChuyenKhoa.map((k) => (
                   <tr key={k.chuyen_khoa}>
                     <td className="py-2 pr-3 font-semibold text-slate-800">{k.chuyen_khoa}</td>
-                    {k.forecast.map((d) => (
-                      <td key={d.ngay} className="py-2 px-2 text-center" title={`Khoảng tin cậy 95%: ${d.ci_thap} - ${d.ci_cao}`}>
-                        <span className="font-bold text-slate-900">{d.du_bao}</span>
-                      </td>
-                    ))}
+                    {gopTuan
+                      ? gopTheoTuan(k.forecast).map((t) => (
+                        <td key={t.tu} className="py-2 px-2 text-center" title="Tổng lượt dự kiến trong tuần">
+                          <span className="font-bold text-slate-900">{t.tong}</span>
+                        </td>
+                      ))
+                      : k.forecast.map((d) => (
+                        <td key={d.ngay} className="py-2 px-2 text-center" title={`Khoảng tin cậy 95%: ${d.ci_thap} - ${d.ci_cao}`}>
+                          <span className="font-bold text-slate-900">{d.du_bao}</span>
+                        </td>
+                      ))}
                   </tr>
                 ))}
               </tbody>

@@ -1091,7 +1091,7 @@ ${dichVu.join('\n') || khongKhop}
    * Dự báo dự phòng (khi Python ML không phản hồi): trung bình theo thứ trong tuần của 8 tuần gần nhất.
    * Mọi con số lấy từ CSDL; chưa đủ 21 ngày dữ liệu thì không dự báo.
    */
-  async getForecastLuongBenhNhan() {
+  async getForecastLuongBenhNhan(horizon = 7) {
     const SO_NGAY_LICH_SU = 56;
     const SO_NGAY_TOI_THIEU = 21;
     const homNay = ngayVn(0);
@@ -1126,8 +1126,8 @@ ${dichVu.join('\n') || khongKhop}
     const bayNgayCuoi = chuoi.slice(-7);
     // Cần đủ 3 tuần và có lượt tiếp nhận trong 7 ngày gần nhất (dữ liệu cũ thì không dự báo)
     const duDuLieu = chuoi.length >= SO_NGAY_TOI_THIEU && bayNgayCuoi.some((d) => d.soLuong > 0);
-    const forecast7Days = !duDuLieu ? [] : [1, 2, 3, 4, 5, 6, 7].map((i) => {
-      const ngay = ngayVn(i);
+    const forecast7Days = !duDuLieu ? [] : Array.from({ length: horizon }, (_, i) => {
+      const ngay = ngayVn(i + 1);
       const thu = thuCuaNgay(ngay);
       const duBao = Math.round(tbTheoThu[thu]);
       return {
@@ -1186,6 +1186,8 @@ ${dichVu.join('\n') || khongKhop}
    * Python không phản hồi → dùng trung bình theo thứ (ghi rõ trong `source`, không có MAPE).
    */
   async getForecastNangCao(horizon = 7) {
+    // Mô hình chỉ học nhịp theo thứ trên ~90 ngày lịch sử → dự báo xa hơn 30 ngày không còn ý nghĩa
+    horizon = Math.min(30, Math.max(1, Number.isFinite(horizon) ? horizon : 7));
     let ml: any = null;
     let lyDoKhongDuBao: string | null = null;
     try {
@@ -1204,7 +1206,7 @@ ${dichVu.join('\n') || khongKhop}
 
     const source = ml ? 'python_holtwinters' : 'trung_binh_theo_thu';
     if (!ml) {
-      const fb = await this.getForecastLuongBenhNhan();
+      const fb = await this.getForecastLuongBenhNhan(horizon);
       ml = {
         model: 'Trung bình theo thứ trong tuần (8 tuần gần nhất)',
         forecast: fb.forecast7Days,

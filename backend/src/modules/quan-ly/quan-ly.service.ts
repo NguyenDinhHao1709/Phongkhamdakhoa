@@ -44,6 +44,23 @@ function toDateOnly(value: string | Date): string {
 import { v2 as cloudinary } from 'cloudinary';
 import { DEFAULT_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, NHOM_CHUC_NANG_ORDER } from '../auth/rbac-defaults';
 
+// Kênh tiếp nhận: alias ltn = luot_tiep_nhan, lh = lich_hen (LEFT JOIN)
+const KENH_SQL = {
+  online: "SUM(CASE WHEN lh.nguon_dat = 'benh_nhan_tu_dat' THEN 1 ELSE 0 END)",
+  quaNhanVien: "SUM(CASE WHEN lh.id IS NOT NULL AND (lh.nguon_dat IS NULL OR lh.nguon_dat != 'benh_nhan_tu_dat') THEN 1 ELSE 0 END)",
+  vangLai: 'SUM(CASE WHEN lh.id IS NULL THEN 1 ELSE 0 END)',
+};
+
+function tinhKenhTiepNhan(raw: any) {
+  const kenh = [
+    { kenh: 'Đặt lịch online (bệnh nhân tự đặt)', soLuot: Number(raw?.online || 0), color: '#2563EB', moTa: 'Bệnh nhân tự đặt khám qua website / ứng dụng' },
+    { kenh: 'Hẹn qua nhân viên (tiếp tân, tái khám)', soLuot: Number(raw?.quaNhanVien || 0), color: '#7C3AED', moTa: 'Lịch hẹn do tiếp tân đặt hộ hoặc bác sĩ hẹn tái khám' },
+    { kenh: 'Vãng lai tại quầy', soLuot: Number(raw?.vangLai || 0), color: '#0D9488', moTa: 'Bệnh nhân đến lấy số trực tiếp, không có lịch hẹn' },
+  ];
+  const tong = kenh.reduce((s, k) => s + k.soLuot, 0);
+  return kenh.map((k) => ({ ...k, tyLe: tong > 0 ? Math.round((k.soLuot / tong) * 1000) / 10 : 0 }));
+}
+
 @Injectable()
 export class QuanLyService implements OnModuleInit {
   constructor(
@@ -984,35 +1001,16 @@ export class QuanLyService implements OnModuleInit {
     // 9. Thống kê Kênh tiếp nhận bệnh nhân thực tế
     let kenhQb = this.tiepNhanRepo.createQueryBuilder('ltn')
       .leftJoin('ltn.lichHen', 'lh')
-      .select('COUNT(*)', 'tong')
-      .addSelect('SUM(CASE WHEN lh.nguon_dat = "benh_nhan_tu_dat" THEN 1 ELSE 0 END)', 'online')
-      .addSelect('SUM(CASE WHEN lh.id IS NULL OR lh.nguon_dat != "benh_nhan_tu_dat" THEN 1 ELSE 0 END)', 'taiQuay');
+      .select(KENH_SQL.online, 'online')
+      .addSelect(KENH_SQL.quaNhanVien, 'quaNhanVien')
+      .addSelect(KENH_SQL.vangLai, 'vangLai');
 
     if (startDateTime && endDateTime) {
       kenhQb = kenhQb.where('ltn.thoiGianDen BETWEEN :s AND :e', { s: startDateTime, e: endDateTime });
     }
-    const kenhRaw = await kenhQb.getRawOne();
-    const tongKenh = Number(kenhRaw?.tong || 0);
-    const onlineCount = Number(kenhRaw?.online || 0);
-    const taiQuayCount = Number(kenhRaw?.taiQuay || 0);
-
-    const kenhTiepNhan = tongKenh > 0 ? [
-      {
-        name: 'Hẹn trước (Trực tuyến / App)',
-        value: Math.round((onlineCount / tongKenh) * 100),
-        soCa: onlineCount,
-        color: '#2563EB',
-      },
-      {
-        name: 'Tiếp nhận trực tiếp tại quầy',
-        value: Math.round((taiQuayCount / tongKenh) * 100),
-        soCa: taiQuayCount,
-        color: '#0D9488',
-      },
-    ] : [
-      { name: 'Hẹn trước (Trực tuyến / App)', value: 50, soCa: 0, color: '#2563EB' },
-      { name: 'Tiếp nhận trực tiếp tại quầy', value: 50, soCa: 0, color: '#0D9488' },
-    ];
+    const kenhTiepNhan = tinhKenhTiepNhan(await kenhQb.getRawOne()).map((k) => ({
+      name: k.kenh, value: k.tyLe, soCa: k.soLuot, color: k.color,
+    }));
 
     // 10. Hoạt động Cận lâm sàng chi tiết
     let clsDetailQuery = `
@@ -1299,10 +1297,7 @@ export class QuanLyService implements OnModuleInit {
 
     // Phân tích Kênh tiếp nhận bệnh nhân
     let kenhSql = `
-      SELECT 
-        COUNT(*) AS total,
-        SUM(CASE WHEN lh.nguon_dat = 'benh_nhan_tu_dat' THEN 1 ELSE 0 END) AS henTruoc,
-        SUM(CASE WHEN lh.id IS NULL OR lh.nguon_dat != 'benh_nhan_tu_dat' THEN 1 ELSE 0 END) AS taiQuay
+      SELECT ${KENH_SQL.online} AS online, ${KENH_SQL.quaNhanVien} AS quaNhanVien, ${KENH_SQL.vangLai} AS vangLai
       FROM luot_tiep_nhan ltn
       LEFT JOIN lich_hen lh ON ltn.lich_hen_id = lh.id
     `;
@@ -1312,24 +1307,9 @@ export class QuanLyService implements OnModuleInit {
       kenhParams.push(tuNgayStr, denNgayStr);
     }
     const kenhRaw = await this.tiepNhanRepo.query(kenhSql, kenhParams);
-    const kTotal = Number(kenhRaw[0]?.total || 0);
-    const kHenTruoc = Number(kenhRaw[0]?.henTruoc || 0);
-    const kTaiQuay = Number(kenhRaw[0]?.taiQuay || 0);
-
-    const kenhTiepNhan = [
-      {
-        kenh: 'Hẹn trước (Trực tuyến / App)',
-        soLuot: kHenTruoc,
-        tyLe: kTotal > 0 ? `${((kHenTruoc / kTotal) * 100).toFixed(1)}%` : '0%',
-        moTa: 'Bệnh nhân đặt khám chủ động qua Cổng thông tin / Ứng dụng',
-      },
-      {
-        kenh: 'Tiếp nhận trực tiếp tại quầy',
-        soLuot: kTaiQuay,
-        tyLe: kTotal > 0 ? `${((kTaiQuay / kTotal) * 100).toFixed(1)}%` : '0%',
-        moTa: 'Bệnh nhân đến lấy số thứ tự trực tiếp tại sảnh đón tiếp',
-      },
-    ];
+    const kenhTiepNhan = tinhKenhTiepNhan(kenhRaw[0]).map(({ kenh, soLuot, tyLe, moTa }) => ({
+      kenh, soLuot, tyLe: `${tyLe}%`, moTa,
+    }));
 
     // Thống kê theo chuyên khoa
     let chuyenKhoaSql = `
@@ -1376,7 +1356,8 @@ export class QuanLyService implements OnModuleInit {
         COALESCE(bn.gioi_tinh, 'Khác') AS benhNhanGioiTinh,
         COALESCE(nv_bs.ho_ten, 'Chưa chỉ định') AS bacSiTen,
         COALESCE(pk.ten_phong, 'Phòng tiếp nhận') AS tenPhong,
-        CASE WHEN lh.nguon_dat = 'benh_nhan_tu_dat' THEN 'Đặt hẹn online' ELSE 'Tiếp nhận quầy' END AS nguonDonTiep
+        CASE WHEN lh.nguon_dat = 'benh_nhan_tu_dat' THEN 'Đặt hẹn online'
+             WHEN lh.id IS NOT NULL THEN 'Hẹn qua nhân viên' ELSE 'Vãng lai tại quầy' END AS nguonDonTiep
       FROM luot_tiep_nhan ltn
       LEFT JOIN benh_nhan bn ON ltn.benh_nhan_id = bn.id
       LEFT JOIN bac_si bs ON ltn.bac_si_id = bs.id
