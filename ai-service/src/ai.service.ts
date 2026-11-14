@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, LessThan, Repository } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { GoogleGenerativeAI, GenerativeModel, ModelParams } from '@google/generative-ai';
@@ -49,7 +49,7 @@ import {
 } from './ai.helpers';
 import { MEDICAL_TRIAGE_PROMPT } from './triage.prompt';
 import { traLoiTheoLuat } from './triage-rule-engine';
-import { toiUuLoTrinhCls, QueueState } from './queue-router';
+import { toiUuLoTrinhCls, PhongCls, PHUT_MAC_DINH } from './queue-router';
 
 // ─── Gemini: thử lần lượt các model khi model trước quá tải (503), hết hạn mức (429) hoặc quá thời gian ───
 const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-flash-latest'];
@@ -312,7 +312,24 @@ export class AiService {
   async danhGiaTinNhan(khoaPhien: string, messageId: number, danhGia: number) {
     if (!messageId || ![1, -1].includes(danhGia)) return { success: false };
     const kq = await this.chatRepo.update({ id: messageId, khoaPhien, vaiTro: 'model' }, { danhGia }).catch(() => null);
+    if (kq?.affected && danhGia === -1) await this.xoaCacheCuaCauTraLoi(khoaPhien, messageId);
     return { success: !!kq?.affected };
+  }
+
+  /**
+   * Câu trả lời bị đánh giá "chưa hữu ích": xóa bản lưu trong cache của câu hỏi đó, để không phát lại
+   * cho người sau và không dùng nhãn chuyên khoa của nó huấn luyện bộ phân loại (python-ml đọc bảng cache).
+   */
+  private async xoaCacheCuaCauTraLoi(khoaPhien: string, messageId: number) {
+    try {
+      const cauHoi = await this.chatRepo.findOne({
+        where: { khoaPhien, vaiTro: 'user', id: LessThan(messageId) },
+        order: { id: 'DESC' },
+      });
+      if (cauHoi?.noiDung) await this.cacheRepo.delete({ khoaCache: taoKhoaCache(cauHoi.noiDung) });
+    } catch (err) {
+      this.logger.warn(`Không xóa được cache của câu trả lời bị đánh giá thấp: ${err.message}`);
+    }
   }
 
   async ghiSuKienDatLich(khoaPhien: string, loai: string, nguoiDungId?: number) {
@@ -971,55 +988,76 @@ ${dichVu.join('\n') || khongKhop}
       };
     }
 
-    // Lấy số người chờ thực tế của từng phòng từ CSDL
-    const queueStates: Record<string, QueueState> = {};
-    for (const chiDinh of chiDinhList) {
-      const loai = chiDinh.dichVu?.loai || 'xet_nghiem';
-      if (!(loai in queueStates)) {
-        // Đếm số bệnh nhân khác đang chờ trước bệnh nhân này TRONG NGÀY HÔM NAY
-        const countQuery = this.clsRepo.createQueryBuilder('cls')
-          .innerJoin('cls.dichVu', 'dv')
-          .where('dv.loai = :loai', { loai })
-          .andWhere('cls.trangThai IN (:...statuses)', { statuses: ['cho_lay_mau', 'dang_lay_mau'] })
-          .andWhere('DATE(cls.thoiGianChiDinh) = CURDATE()');
+    // Chỉ định tuyến các chỉ định CHƯA làm: xong phòng nào thì phòng đó rời khỏi lộ trình ở lần cập nhật kế tiếp
+    const DANG_CHO = ['cho_lay_mau', 'dang_lay_mau'];
+    const loaiCua = (c: ChiDinhCanLamSang) => c.dichVu?.loai || 'xet_nghiem';
+    const conLai = chiDinhList.filter((c) => DANG_CHO.includes(c.trangThai));
+    const cacLoai = [...new Set(conLai.map(loaiCua))];
 
-        if (benhAnKhamId) {
-          countQuery.andWhere('cls.benhAnKhamId != :benhAnKhamId', { benhAnKhamId });
-        }
-
-        const countResult = await countQuery
-          .select('COUNT(DISTINCT cls.benhAnKhamId)', 'cnt')
-          .getRawOne();
-        const count = countResult?.cnt ? Number(countResult.cnt) : 0;
-
-        const duration = await this.clsRepo.createQueryBuilder('cls')
-          .innerJoin('cls.dichVu', 'dv')
-          .select('AVG(TIMESTAMPDIFF(MINUTE, cls.thoiGianLayMau, cls.thoiGianCoKetQua))', 'avg')
-          .where('dv.loai = :loai', { loai })
-          .andWhere('cls.trangThai = :status', { status: 'co_ket_qua' })
-          .andWhere('cls.thoiGianLayMau IS NOT NULL')
-          .andWhere('cls.thoiGianCoKetQua IS NOT NULL')
-          .andWhere('cls.thoiGianCoKetQua >= DATE_SUB(NOW(), INTERVAL 90 DAY)')
-          .andWhere('TIMESTAMPDIFF(MINUTE, cls.thoiGianLayMau, cls.thoiGianCoKetQua) BETWEEN 3 AND 60')
-          .getRawOne();
-
-        // Chưa có dữ liệu → null (bộ định tuyến dùng mặc định và ghi nhận trong dataQuality).
-        // Có dữ liệu → giới hạn trong khoảng hợp lý 5-30 phút/chỉ định
-        const rawAvg = Number(duration?.avg);
-        queueStates[loai] = {
-          count,
-          avg_service_minutes: rawAvg > 0 ? Math.min(Math.max(Math.round(rawAvg), 5), 30) : null,
-        };
+    let phongs: PhongCls[] = [];
+    if (cacLoai.length > 0) {
+      // Thời gian phục vụ trung bình 90 ngày gần nhất, theo TỪNG DỊCH VỤ (siêu âm khác X-quang dù cùng phòng)
+      const thoiGian = await this.clsRepo.createQueryBuilder('cls')
+        .innerJoin('cls.dichVu', 'dv')
+        .select('cls.dichVuXetNghiemId', 'dichVuId')
+        .addSelect('dv.loai', 'loai')
+        .addSelect('AVG(TIMESTAMPDIFF(MINUTE, cls.thoiGianLayMau, cls.thoiGianCoKetQua))', 'phut')
+        .addSelect('COUNT(*)', 'soMau')
+        .where('dv.loai IN (:...cacLoai)', { cacLoai })
+        .andWhere('cls.trangThai = :status', { status: 'co_ket_qua' })
+        .andWhere('cls.thoiGianCoKetQua >= DATE_SUB(NOW(), INTERVAL 90 DAY)')
+        .andWhere('TIMESTAMPDIFF(MINUTE, cls.thoiGianLayMau, cls.thoiGianCoKetQua) BETWEEN 3 AND 60')
+        .groupBy('cls.dichVuXetNghiemId')
+        .addGroupBy('dv.loai')
+        .getRawMany();
+      // Dịch vụ có từ 3 lần đo → dùng số của chính nó; ít hơn → trung bình của loại phòng; chưa có gì → mặc định
+      const phutTheoDichVu = new Map<number, number>();
+      const tongTheoLoai = new Map<string, { phut: number; soMau: number }>();
+      for (const r of thoiGian) {
+        const soMau = Number(r.soMau);
+        if (soMau >= 3) phutTheoDichVu.set(Number(r.dichVuId), Number(r.phut));
+        const tong = tongTheoLoai.get(r.loai) || { phut: 0, soMau: 0 };
+        tongTheoLoai.set(r.loai, { phut: tong.phut + Number(r.phut) * soMau, soMau: tong.soMau + soMau });
       }
+      const phutCua = (dichVuId: number, loai: string): number | null => {
+        const theoLoai = tongTheoLoai.get(loai);
+        return phutTheoDichVu.get(dichVuId) ?? (theoLoai ? theoLoai.phut / theoLoai.soMau : null);
+      };
+
+      // Chỉ định của bệnh nhân khác đang chờ hôm nay ở các phòng này
+      const dangCho: Array<{ benhAnKhamId: number; dichVuId: number; loai: string; lucChiDinh: Date }> = await this.clsRepo
+        .createQueryBuilder('cls')
+        .innerJoin('cls.dichVu', 'dv')
+        .select('cls.benhAnKhamId', 'benhAnKhamId')
+        .addSelect('cls.dichVuXetNghiemId', 'dichVuId')
+        .addSelect('dv.loai', 'loai')
+        .addSelect('cls.thoiGianChiDinh', 'lucChiDinh')
+        .where('dv.loai IN (:...cacLoai)', { cacLoai })
+        .andWhere('cls.trangThai IN (:...statuses)', { statuses: DANG_CHO })
+        .andWhere('cls.thoiGianChiDinh >= :homNay', { homNay: ngayVn(0) })
+        .andWhere('cls.benhAnKhamId != :benhAnKhamId', { benhAnKhamId })
+        .getRawMany();
+
+      phongs = cacLoai.map((loai) => {
+        const cuaToi = conLai.filter((c) => loaiCua(c) === loai);
+        // Xếp hàng theo thời điểm chỉ định: chỉ những người được chỉ định trước mới đứng trước
+        const lucCuaToi = Math.min(...cuaToi.map((c) => new Date(c.thoiGianChiDinh).getTime()));
+        const phiaTruoc = dangCho.filter((r) => r.loai === loai && new Date(r.lucChiDinh).getTime() < lucCuaToi);
+        const phutPhiaTruoc = phiaTruoc.map((r) => phutCua(Number(r.dichVuId), loai));
+        const phutCuaToi = cuaToi.map((c) => phutCua(c.dichVuXetNghiemId, loai));
+        const tong = (ds: Array<number | null>) => ds.reduce<number>((s, p) => s + (p ?? PHUT_MAC_DINH), 0);
+        return {
+          loai,
+          soNguoiCho: new Set(phiaTruoc.map((r) => r.benhAnKhamId)).size,
+          phutCho: tong(phutPhiaTruoc),
+          phutThucHien: tong(phutCuaToi),
+          dichVu: cuaToi.map((c) => c.dichVu?.tenDichVu || 'Cận lâm sàng'),
+          duDuLieu: [...phutPhiaTruoc, ...phutCuaToi].every((p) => p !== null),
+        };
+      });
     }
 
-    const requestedItems = chiDinhList.map(c => ({
-      id: c.id,
-      tenDichVu: c.dichVu?.tenDichVu || 'Cận lâm sàng',
-      loai: c.dichVu?.loai || 'xet_nghiem',
-    }));
-
-    const ketQua = toiUuLoTrinhCls(requestedItems, queueStates);
+    const ketQua = toiUuLoTrinhCls(phongs);
     const { routing_plan: routingPlan, tiet_kiem_phut: tietKiem } = ketQua;
 
     let thongDiep = '';
@@ -1180,6 +1218,7 @@ ${dichVu.join('\n') || khongKhop}
 
     const forecast = (ml.forecast || []).map((d: any) => ({ ...d, ...nhanSuTheoLuuLuong(d.du_bao) }));
     const observedDays = ml.data_quality?.observed_days ?? 0;
+    if (source === 'python_holtwinters') await this.luuDuBao(forecast, ml.model);
 
     return {
       data: {
@@ -1198,6 +1237,8 @@ ${dichVu.join('\n') || khongKhop}
           soLuong: Number(h.so_luong ?? h.soLuong ?? 0),
         })),
         heatmapNguon: ml.heatmap_nguon,
+        theoChuyenKhoa: ml.theo_chuyen_khoa || [],
+        saiSoThucTe: await this.saiSoDuBaoThucTe(),
         lichSu60Ngay: ml.lich_su_60_ngay || [],
         tongQuan: {
           trungBinh7Ngay: forecast.length > 0
@@ -1216,6 +1257,114 @@ ${dichVu.join('\n') || khongKhop}
       message: forecast.length > 0
         ? `Dự báo hoàn thành (${ml.model})`
         : lyDoKhongDuBao || 'Chưa đủ dữ liệu để dự báo: cần tối thiểu 21 ngày và có lượt tiếp nhận trong 7 ngày gần nhất.',
+    };
+  }
+
+  /** Lưu dự báo của hôm nay (mỗi ngày lập chỉ ghi một lần) để sau này đối chiếu với số thực tế. */
+  private async luuDuBao(forecast: any[], model: string) {
+    if (forecast.length === 0) return;
+    const ngayLap = ngayVn(0);
+    await this.tiepNhanRepo
+      .query(
+        `INSERT IGNORE INTO du_bao_luu_luong (ngay_lap, ngay_du_bao, du_bao, ci_thap, ci_cao, model) VALUES ${forecast.map(() => '(?, ?, ?, ?, ?, ?)').join(', ')}`,
+        forecast.flatMap((d) => [ngayLap, d.ngay, d.du_bao, d.ci_thap, d.ci_cao, model]),
+      )
+      .catch((err) => this.logger.warn(`Không lưu được dự báo (đã chạy migration du_bao_luu_luong chưa?): ${err.message}`));
+  }
+
+  /**
+   * Sai số THỰC TẾ của dự báo trước-1-ngày trong 30 ngày qua: so dự báo đã lưu với lượt tiếp nhận thật.
+   * Khác với MAPE backtest (mô phỏng trên dữ liệu cũ), đây là kết quả mô hình đã thực sự đưa ra. null khi chưa có dữ liệu.
+   */
+  private async saiSoDuBaoThucTe() {
+    try {
+      const rows: Array<{ ngay: string; duBao: number; thucTe: string }> = await this.tiepNhanRepo.query(
+        `SELECT DATE_FORMAT(d.ngay_du_bao, '%Y-%m-%d') AS ngay, d.du_bao AS duBao, COUNT(l.id) AS thucTe
+         FROM du_bao_luu_luong d
+         LEFT JOIN luot_tiep_nhan l ON l.thoi_gian_den >= d.ngay_du_bao
+           AND l.thoi_gian_den < DATE_ADD(d.ngay_du_bao, INTERVAL 1 DAY) AND l.trang_thai != 'da_huy'
+         WHERE d.ngay_du_bao = DATE_ADD(d.ngay_lap, INTERVAL 1 DAY) AND d.ngay_du_bao >= ? AND d.ngay_du_bao < ?
+         GROUP BY d.ngay_du_bao, d.du_bao
+         ORDER BY d.ngay_du_bao`,
+        [ngayVn(-30), ngayVn(0)],
+      );
+      const chiTiet = rows.map((r) => ({ ngay: r.ngay, duBao: Number(r.duBao), thucTe: Number(r.thucTe) }));
+      const coLuot = chiTiet.filter((r) => r.thucTe > 0);
+      if (coLuot.length === 0) return null;
+      const mape = coLuot.reduce((s, r) => s + Math.abs(r.duBao - r.thucTe) / r.thucTe, 0) / coLuot.length;
+      return { soNgay: coLuot.length, mape: Math.round(mape * 1000) / 10, chiTiet };
+    } catch {
+      return null;
+    }
+  }
+
+  // ─── NHÃN CHUYÊN KHOA DO LỄ TÂN XÁC NHẬN ─────────────────────────
+  /** Lễ tân xác nhận hoặc sửa chuyên khoa AI gợi ý ở trang Phân luồng nhanh. */
+  async ghiNhanPhanLoai(dto: { trieuChung: string; maKhoaAi?: string; maKhoaDung: string; nguon?: string; nguoiDungId?: number }) {
+    const trieuChung = (dto.trieuChung || '').trim();
+    const khoa = KHOA_THEO_MA[dto.maKhoaDung];
+    if (!trieuChung || !khoa) return { success: false, message: 'Thiếu triệu chứng hoặc chuyên khoa không hợp lệ' };
+    const maKhoaAi = KHOA_THEO_MA[dto.maKhoaAi] ? dto.maKhoaAi : null;
+    try {
+      await this.cacheRepo.query(
+        'INSERT INTO ai_phan_loai_nhan (cau_hoi, ma_khoa_ai, ma_khoa_dung, nguon_ai, nguoi_dung_id) VALUES (?, ?, ?, ?, ?)',
+        [trieuChung, maKhoaAi, dto.maKhoaDung, (dto.nguon || '').slice(0, 30) || null, dto.nguoiDungId || null],
+      );
+    } catch (err) {
+      this.logger.warn(`Không lưu được nhãn phân loại (đã chạy migration ai_phan_loai_nhan chưa?): ${err.message}`);
+      return { success: false, message: 'Chưa lưu được đánh giá, vui lòng báo quản trị viên' };
+    }
+    // AI gợi ý sai → thay bản lưu cache bằng chuyên khoa đã sửa, lần hỏi giống hệt sau sẽ trả đúng
+    if (maKhoaAi !== dto.maKhoaDung) {
+      const capCuu = dto.maKhoaDung === 'CAP_CUU';
+      this.ghiCache(taoKhoaCache(trieuChung), trieuChung, {
+        loai_cau_hoi: 'trieu_chung',
+        chuyen_khoa: khoa,
+        khoa,
+        ma_khoa: dto.maKhoaDung,
+        khan_cap: capCuu,
+        muc_do_uu_tien: capCuu ? 'khan_cap' : 'trung_binh',
+        cau_tra_loi: `Triệu chứng phù hợp khám chuyên khoa **${khoa}** (đã được lễ tân xác nhận).`,
+        luu_y_dung_thuoc: null,
+        can_hoi_them: false,
+        cau_hoi_tiep_theo: null,
+        hien_thi_dat_lich: true,
+        do_tin_cay: 1,
+      });
+    }
+    return { success: true };
+  }
+
+  /** Độ chính xác gợi ý chuyên khoa của AI theo từng khoa (theo nhãn lễ tân) + chỉ số của mô hình tự huấn luyện. */
+  async thongKePhanLoai(days = 90) {
+    const rows: Array<{ maKhoa: string; soMau: string; soDung: string }> = await this.cacheRepo
+      .query(
+        `SELECT ma_khoa_dung AS maKhoa, COUNT(*) AS soMau, SUM(ma_khoa_ai <=> ma_khoa_dung) AS soDung
+         FROM ai_phan_loai_nhan WHERE ngay_tao >= DATE_SUB(NOW(), INTERVAL ? DAY) GROUP BY ma_khoa_dung`,
+        [days],
+      )
+      .catch(() => []);
+    const theoKhoa = rows
+      .map((r) => ({
+        maKhoa: r.maKhoa,
+        tenKhoa: KHOA_THEO_MA[r.maKhoa] || r.maKhoa,
+        soMau: Number(r.soMau),
+        soDung: Number(r.soDung),
+        tyLeDung: Math.round((Number(r.soDung) / Number(r.soMau)) * 100),
+      }))
+      .sort((a, b) => b.soMau - a.soMau);
+    const tongMau = theoKhoa.reduce((s, k) => s + k.soMau, 0);
+    const tongDung = theoKhoa.reduce((s, k) => s + k.soDung, 0);
+    const moHinh = await firstValueFrom(
+      this.httpService.get(`${this.PYTHON_ML_URL}/triage-classify/info`, { timeout: 3000, headers: this.mlHeaders }),
+    ).then((res) => res.data).catch(() => null);
+    return {
+      soNgay: days,
+      tongMau,
+      tyLeDung: tongMau ? Math.round((tongDung / tongMau) * 100) : null,
+      theoKhoa,
+      // Mô hình tự huấn luyện: số mẫu, độ chính xác cross-validation chung và theo từng khoa
+      moHinh: moHinh?.so_mau ? { ...moHinh, cv_theo_khoa: (moHinh.cv_theo_khoa || []).map((k: any) => ({ ...k, tenKhoa: KHOA_THEO_MA[k.ma_khoa] || 'Không phải triệu chứng' })) } : null,
     };
   }
 

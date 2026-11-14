@@ -39,6 +39,17 @@ export default function ForecastDashboard() {
   const pattern = forecastResult.pattern || {};
   const tongQuan = forecastResult.tongQuan || {};
   const mape = forecastResult.mape;
+  const theoChuyenKhoa = forecastResult.theoChuyenKhoa || [];
+  const saiSoThucTe = forecastResult.saiSoThucTe;
+  // Ngày đã được nhân hệ số ngày lễ / mùa vụ học từ lịch sử (cần hơn 1 năm dữ liệu mới có)
+  const ngayDieuChinh = forecast7Days.filter((d) => d.he_so_ngay_le != null || (d.he_so_mua_vu != null && d.he_so_mua_vu !== 1));
+
+  const { data: phanLoaiRes } = useQuery({
+    queryKey: ['ai-phan-loai-stats'],
+    queryFn: () => apiGet('/ai/phan-loai-stats'),
+    staleTime: 10 * 60 * 1000,
+  });
+  const phanLoai = phanLoaiRes?.data?.theoKhoa ? phanLoaiRes.data : phanLoaiRes || {};
   // Chưa có dự báo: đang tải, hoặc server báo chưa đủ dữ liệu
   const emptyText = isLoading ? 'Đang tải dữ liệu dự báo...' : (data?.message || 'Chưa có dữ liệu dự báo');
 
@@ -471,6 +482,110 @@ export default function ForecastDashboard() {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* ─── 5b. DỰ BÁO THEO CHUYÊN KHOA (XẾP LỊCH BÁC SĨ) ─────────── */}
+      {theoChuyenKhoa.length > 0 && (
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs space-y-3">
+          <div>
+            <h3 className="text-base font-bold text-slate-900">Dự Báo Theo Chuyên Khoa</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Số lượt dự kiến mỗi ngày của từng chuyên khoa (mô hình riêng cho mỗi khoa) — dùng để xếp lịch bác sĩ.
+              Tổng các khoa có thể lệch nhẹ so với dự báo chung.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-slate-500 border-b border-slate-200">
+                  <th className="py-2 pr-3 font-bold">Chuyên khoa</th>
+                  {theoChuyenKhoa[0].forecast.map((d) => (
+                    <th key={d.ngay} className="py-2 px-2 font-bold text-center whitespace-nowrap">{d.thu} {d.ngay.slice(8)}/{d.ngay.slice(5, 7)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {theoChuyenKhoa.map((k) => (
+                  <tr key={k.chuyen_khoa}>
+                    <td className="py-2 pr-3 font-semibold text-slate-800">{k.chuyen_khoa}</td>
+                    {k.forecast.map((d) => (
+                      <td key={d.ngay} className="py-2 px-2 text-center" title={`Khoảng tin cậy 95%: ${d.ci_thap} - ${d.ci_cao}`}>
+                        <span className="font-bold text-slate-900">{d.du_bao}</span>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ─── 5c. CHẤT LƯỢNG MÔ HÌNH: SAI SỐ THỰC TẾ & ĐỘ CHÍNH XÁC PHÂN LUỒNG ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs space-y-2">
+          <h3 className="text-base font-bold text-slate-900">Sai Số Thực Tế Của Dự Báo</h3>
+          {saiSoThucTe ? (
+            <>
+              <p className="text-sm text-slate-700">
+                <span className="text-2xl font-black text-slate-900">{saiSoThucTe.mape}%</span>{' '}
+                sai số trung bình của dự báo trước 1 ngày, đối chiếu với lượt tiếp nhận thật trong {saiSoThucTe.soNgay} ngày gần đây.
+              </p>
+              <div className="flex flex-wrap gap-1.5 text-[11px]">
+                {saiSoThucTe.chiTiet.slice(-10).map((r) => (
+                  <span key={r.ngay} className="px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                    {r.ngay.slice(8)}/{r.ngay.slice(5, 7)}: dự báo {r.duBao}, thực tế {r.thucTe}
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Chưa có số liệu. Hệ thống lưu lại dự báo mỗi ngày trang này được mở, rồi đối chiếu với số lượt thật của ngày hôm sau.
+            </p>
+          )}
+          <p className="text-xs text-slate-500 pt-1 border-t border-slate-100">
+            {ngayDieuChinh.length > 0
+              ? `Đã điều chỉnh theo lịch sử: ${ngayDieuChinh.map((d) => `${d.thu} ${d.ngay.slice(8)}/${d.ngay.slice(5, 7)} ×${((d.he_so_ngay_le ?? 1) * (d.he_so_mua_vu ?? 1)).toFixed(2)}${d.ten_ngay_le ? ` (${d.ten_ngay_le})` : ' (mùa vụ)'}`).join(', ')}`
+              : 'Hiệu ứng ngày lễ và mùa vụ (cùng kỳ năm trước) tự áp dụng khi có hơn 1 năm dữ liệu; tuần này chưa có điều chỉnh nào.'}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs space-y-2">
+          <h3 className="text-base font-bold text-slate-900">Độ Chính Xác AI Phân Luồng Chuyên Khoa</h3>
+          {phanLoai.tongMau > 0 ? (
+            <>
+              <p className="text-sm text-slate-700">
+                <span className="text-2xl font-black text-slate-900">{phanLoai.tyLeDung}%</span>{' '}
+                gợi ý đúng trên {phanLoai.tongMau} lần lễ tân xác nhận ({phanLoai.soNgay} ngày gần đây).
+              </p>
+              <div className="flex flex-wrap gap-1.5 text-[11px]">
+                {phanLoai.theoKhoa.map((k) => (
+                  <span key={k.maKhoa} className={`px-2 py-0.5 rounded ${k.tyLeDung >= 80 ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
+                    {k.tenKhoa}: {k.tyLeDung}% ({k.soDung}/{k.soMau})
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Chưa có xác nhận nào từ lễ tân. Ở trang Phân luồng nhanh, lễ tân bấm “Đúng” hoặc chọn chuyên khoa đúng sau mỗi gợi ý.
+            </p>
+          )}
+          {phanLoai.moHinh && (
+            <div className="pt-1 border-t border-slate-100 space-y-1.5">
+              <p className="text-xs text-slate-500">
+                Mô hình tự huấn luyện: {phanLoai.moHinh.so_mau} mẫu ({phanLoai.moHinh.so_mau_le_tan ?? 0} từ lễ tân),
+                kiểm định chéo {Math.round(phanLoai.moHinh.cv_accuracy_seed * 100)}% — theo khoa:
+              </p>
+              <div className="flex flex-wrap gap-1.5 text-[11px]">
+                {phanLoai.moHinh.cv_theo_khoa.map((k) => (
+                  <span key={k.ma_khoa} className="px-2 py-0.5 rounded bg-slate-100 text-slate-700">{k.tenKhoa}: {k.ty_le_dung}%</span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

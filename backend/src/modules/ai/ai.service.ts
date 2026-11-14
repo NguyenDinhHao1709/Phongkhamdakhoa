@@ -116,6 +116,14 @@ export class AiService {
     return this.forwardGet('chat-stats', { days });
   }
 
+  phanLoaiNhan(dto: { trieuChung: string; maKhoaAi?: string; maKhoaDung: string; nguon?: string }, nguoiDungId: number) {
+    return this.forwardPost('phan-loai-nhan', { ...dto, nguoiDungId });
+  }
+
+  phanLoaiStats(days: number) {
+    return this.forwardGet('phan-loai-stats', { days });
+  }
+
   triageChat(sessionId: string, message: string, history?: Array<{ role: string; text?: string; content?: string }>) {
     return this.forwardPost('triage-chat', { sessionId, message, history });
   }

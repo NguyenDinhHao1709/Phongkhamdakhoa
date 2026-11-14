@@ -10,7 +10,7 @@ Cách chạy:
 import os
 import threading
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
@@ -63,19 +63,22 @@ def health():
 
 # ─── Nhận diện khuôn mặt ──────────────────────────────────────────────
 class FaceVerifyRequest(BaseModel):
-    frame_base64: str       # Khung hình camera lúc chấm công
-    ref_image_base64: str   # Ảnh mẫu nhân viên
+    # Mẫu nhân viên: embedding đã lưu, hoặc ảnh (khi đó kết quả trả kèm ref_embedding để backend lưu)
+    ref_embedding: Optional[List[float]] = None
+    ref_image_base64: Optional[str] = None
+    # Chuỗi khung hình camera cho thử thách quay đầu
+    frames_b64: List[str] = Field(min_length=5, max_length=12)
 
 
 @app.post("/verify-face")
 def verify_face_endpoint(req: FaceVerifyRequest):
-    """Kiểm tra khung hình có khuôn mặt hợp lệ rồi so khớp embedding ArcFace với ảnh mẫu."""
-    return verify_face(req.frame_base64, req.ref_image_base64)
+    """Thử thách quay đầu (chống ảnh tĩnh) rồi so khớp embedding ArcFace với mẫu nhân viên."""
+    return verify_face(req.frames_b64, req.ref_image_base64, req.ref_embedding)
 
 
 class CheckDuplicateFaceRequest(BaseModel):
     target_image_base64: str
-    candidates: List[Dict[str, Any]] = []  # [{id, ho_ten, chuc_vu, anh_base64}]
+    candidates: List[Dict[str, Any]] = []  # [{id, ho_ten, chuc_vu, embedding | anh_base64}]
 
 
 @app.post("/check-duplicate-face")
@@ -121,6 +124,31 @@ _model_cache: Dict[tuple, Dict[str, Any]] = {}
 _model_cache_lock = threading.Lock()
 
 
+# Lịch sử dài để học hiệu ứng ngày lễ và mùa vụ (cần hơn 1 năm mới có tác dụng)
+SO_NGAY_LICH_SU_DAI = 800
+SO_KHOA_TOI_DA = 8
+
+
+def _du_bao_theo_khoa(horizon: int, history_days: int) -> List[Dict[str, Any]]:
+    """Dự báo riêng từng chuyên khoa đủ dữ liệu (tối đa SO_KHOA_TOI_DA khoa đông nhất) để xếp lịch bác sĩ."""
+    ket_qua = []
+    for khoa, df in loader.load_daily_counts_by_khoa(days=history_days).items():
+        forecaster = HoltWintersForecaster(df)
+        if not forecaster.can_forecast():
+            continue
+        try:
+            du_bao = forecaster.forecast(horizon=horizon)
+        except Exception as e:
+            print(f"[forecast] Bỏ qua khoa {khoa}: {type(e).__name__}: {e}")
+            continue
+        ket_qua.append({
+            "chuyen_khoa": khoa,
+            "tong_lich_su": int(df["so_luong"].sum()),
+            "forecast": [{k: d[k] for k in ("ngay", "thu", "du_bao", "ci_thap", "ci_cao")} for d in du_bao],
+        })
+    return sorted(ket_qua, key=lambda k: -k["tong_lich_su"])[:SO_KHOA_TOI_DA]
+
+
 def _run_model(horizon: int, history_days: int) -> Dict[str, Any]:
     key = (today_vn(), horizon, history_days)
     with _model_cache_lock:
@@ -128,16 +156,16 @@ def _run_model(horizon: int, history_days: int) -> Dict[str, Any]:
             return _model_cache[key]
 
         df = loader.load_daily_counts(days=history_days)
-        forecaster = HoltWintersForecaster(df)
+        forecaster = HoltWintersForecaster(df, loader.load_daily_counts(days=SO_NGAY_LICH_SU_DAI))
         data_quality = {
             "observed_days": int(len(df)),
             "history_days_requested": history_days,
             "minimum_days_required": forecaster.MIN_HISTORY_DAYS,
         }
         ly_do = None
-        if not forecaster.can_forecast():
+        if len(df) < forecaster.MIN_HISTORY_DAYS:
             ly_do = f"Cần tối thiểu {forecaster.MIN_HISTORY_DAYS} ngày dữ liệu tiếp nhận để dự báo (hiện có {len(df)})."
-        elif df["so_luong"].tail(7).sum() == 0:
+        elif not forecaster.can_forecast():
             ly_do = "Không có lượt tiếp nhận nào trong 7 ngày gần nhất — dữ liệu chưa đủ mới để dự báo."
         if ly_do:
             # Không cache: dữ liệu có thể vừa được nhập bổ sung
@@ -164,6 +192,7 @@ def _run_model(horizon: int, history_days: int) -> Dict[str, Any]:
             "mape_naive": backtest.get("mape_naive"),
             "do_chinh_xac_pct": round(max(0.0, 100 - mape), 1) if mape is not None else None,
             "forecast": forecaster.forecast(horizon=horizon),
+            "theo_chuyen_khoa": _du_bao_theo_khoa(horizon, history_days),
             "pattern": {
                 "weekly": analyzer.analyze_weekly_pattern(),
                 "trend": analyzer.analyze_trend(),

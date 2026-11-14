@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { AsyncLocalStorage } from 'async_hooks';
 import { Observable, tap } from 'rxjs';
 import { DataSource } from 'typeorm';
+import { getClientIp } from '../middleware/load-protection.middleware';
 import { LoaiNhatKy, NhatKyHeThong } from '../../modules/quan-ly/entities/nhat-ky-he-thong.entity';
 import {
   AUDIT_AUTH_ACTIONS, AUDIT_EXPORT_ROUTE, AUDIT_PATIENT_ALLOWED, AUDIT_SKIP, auditActionCode,
@@ -58,7 +59,7 @@ export class AuditLogInterceptor implements NestInterceptor {
     const loiMsg = Array.isArray(rawMsg) ? rawMsg.join('; ') : String(rawMsg);
     const status = ok ? 200 : Number(result?.status || result?.getStatus?.() || 500);
     const base = {
-      diaChiIp: String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim().slice(0, 50) || null,
+      diaChiIp: getClientIp(req).slice(0, 50),
       userAgent: String(req.headers['user-agent'] || '').slice(0, 255) || null,
     };
 

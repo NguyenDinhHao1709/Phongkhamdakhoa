@@ -2,17 +2,26 @@
  * Định tuyến hàng đợi cận lâm sàng (Min-Wait-First).
  *
  * Mô hình: bệnh nhân đã có số trong hàng đợi của mọi phòng từ lúc chỉ định, nên hàng phía trước
- * ở từng phòng vẫn rút dần trong lúc bệnh nhân làm ở phòng khác. Phòng i "sẵn sàng" sau w_i phút
- * (số người chờ × thời gian phục vụ trung bình). Đi theo thứ tự w_i tăng dần cho thời điểm
- * hoàn thành sớm nhất (bài toán lập lịch 1 máy có thời điểm sẵn sàng → Earliest-Release-Date).
+ * ở từng phòng vẫn rút dần trong lúc bệnh nhân làm ở phòng khác. Phòng i "sẵn sàng" sau phutCho_i phút
+ * (tổng thời gian phục vụ của các chỉ định đang chờ phía trước). Đi theo thứ tự phutCho tăng dần cho
+ * thời điểm hoàn thành sớm nhất (bài toán lập lịch 1 máy có thời điểm sẵn sàng → Earliest-Release-Date).
  */
-export interface QueueState {
-  count: number;
-  /** Trung bình đo được từ dữ liệu; null khi chưa có dữ liệu → dùng PHUT_MAC_DINH */
-  avg_service_minutes: number | null;
-}
 
-const PHUT_MAC_DINH = 15;
+/** Thời gian cho một chỉ định khi chưa có dữ liệu đo của dịch vụ lẫn loại phòng */
+export const PHUT_MAC_DINH = 15;
+
+export interface PhongCls {
+  loai: string;
+  /** Số bệnh nhân khác đang chờ phía trước */
+  soNguoiCho: number;
+  /** Phút cho đến khi hết hàng phía trước = tổng thời gian phục vụ từng chỉ định đang chờ */
+  phutCho: number;
+  /** Phút làm các chỉ định của chính bệnh nhân tại phòng này */
+  phutThucHien: number;
+  dichVu: string[];
+  /** false khi có chỉ định phải dùng PHUT_MAC_DINH */
+  duDuLieu: boolean;
+}
 
 const TEN_PHONG: Record<string, string> = {
   cdha: 'Phòng Chẩn đoán Hình ảnh (Siêu âm / X-Quang)',
@@ -22,41 +31,20 @@ const TEN_PHONG: Record<string, string> = {
   khac: 'Phòng Kỹ thuật viên',
 };
 
-interface Phong {
-  loai: string;
-  soNguoiCho: number;
-  sanSangSau: number; // phút cho đến khi hết hàng phía trước
-  thucHien: number; // phút làm các chỉ định của chính bệnh nhân
-  dichVu: string[];
-}
-
 /** Đi lần lượt các phòng theo thứ tự cho trước → thời gian chờ thực tại từng phòng và tổng thời gian. */
-function moPhong(thuTu: Phong[]) {
+function moPhong(thuTu: PhongCls[]) {
   let t = 0;
   const cho = thuTu.map((p) => {
-    const choTaiDay = Math.max(0, p.sanSangSau - t);
-    t += choTaiDay + p.thucHien;
+    const choTaiDay = Math.max(0, p.phutCho - t);
+    t += choTaiDay + p.phutThucHien;
     return choTaiDay;
   });
   return { cho, tong: t };
 }
 
-export function toiUuLoTrinhCls(
-  items: Array<{ tenDichVu: string; loai: string }>,
-  queueStates: Record<string, QueueState>,
-) {
-  // Gom chỉ định theo phòng, giữ thứ tự chỉ định ban đầu (dùng làm mốc so sánh)
-  const theoLoai = new Map<string, string[]>();
-  for (const item of items) {
-    theoLoai.set(item.loai, [...(theoLoai.get(item.loai) || []), item.tenDichVu]);
-  }
-  const thuTuChiDinh: Phong[] = [...theoLoai].map(([loai, dichVu]) => {
-    const soNguoiCho = queueStates[loai]?.count || 0;
-    const phut = queueStates[loai]?.avg_service_minutes || PHUT_MAC_DINH;
-    return { loai, soNguoiCho, sanSangSau: soNguoiCho * phut, thucHien: dichVu.length * phut, dichVu };
-  });
-
-  const toiUu = [...thuTuChiDinh].sort((a, b) => a.sanSangSau - b.sanSangSau || a.soNguoiCho - b.soNguoiCho);
+/** `thuTuChiDinh`: các phòng theo thứ tự bác sĩ chỉ định (dùng làm mốc so sánh số phút tiết kiệm). */
+export function toiUuLoTrinhCls(thuTuChiDinh: PhongCls[]) {
+  const toiUu = [...thuTuChiDinh].sort((a, b) => a.phutCho - b.phutCho || a.soNguoiCho - b.soNguoiCho);
   const ketQua = moPhong(toiUu);
   const tongTheoChiDinh = moPhong(thuTuChiDinh).tong;
 
@@ -85,7 +73,7 @@ export function toiUuLoTrinhCls(
       ten_phong: TEN_PHONG[p.loai] || 'Phòng Cận Lâm Sàng',
       so_nguoi_cho: n,
       thoi_gian_cho_phut: cho,
-      thoi_gian_thuc_hien_phut: Math.round(p.thucHien),
+      thoi_gian_thuc_hien_phut: Math.round(p.phutThucHien),
       dich_vu: p.dichVu,
       tinh_trang,
       badge_color: n <= 2 ? 'emerald' : n <= 4 ? 'amber' : 'red',
@@ -93,7 +81,7 @@ export function toiUuLoTrinhCls(
     };
   });
 
-  const thieuDuLieu = toiUu.filter((p) => !queueStates[p.loai]?.avg_service_minutes).map((p) => p.loai);
+  const thieuDuLieu = toiUu.filter((p) => !p.duDuLieu).map((p) => p.loai);
   return {
     routing_plan,
     // So với việc đi đúng thứ tự bác sĩ chỉ định

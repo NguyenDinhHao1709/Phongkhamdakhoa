@@ -7,6 +7,16 @@ import { ChamCongService } from './cham-cong.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Public } from '../../common/decorators/public.decorator';
+import { getClientIp } from '../../common/middleware/load-protection.middleware';
+
+/** Chấm công bắt buộc gửi chuỗi khung hình cho thử thách quay đầu (chống giả mạo bằng ảnh) */
+function layChuoiKhungHinh(body: { framesB64?: string[] }): string[] {
+  const frames = body?.framesB64;
+  if (!Array.isArray(frames) || frames.length < 5 || frames.length > 12 || frames.some((f) => typeof f !== 'string')) {
+    throw new BadRequestException('Phiên bản trang chấm công đã cũ. Vui lòng tải lại trang (Ctrl + F5) rồi thử lại.');
+  }
+  return frames;
+}
 
 @Controller('cham-cong')
 @UseGuards(JwtAuthGuard)
@@ -24,32 +34,28 @@ export class ChamCongController {
   @Post('check-in')
   async checkIn(
     @Request() req,
-    @Body() body: { frameBase64: string },
+    @Body() body: { framesB64: string[] },
   ) {
-    if (!body.frameBase64) throw new BadRequestException('Thiếu dữ liệu khuôn mặt');
+    const framesB64 = layChuoiKhungHinh(body);
 
     const userId = req.user.id;
-    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
-      || req.socket.remoteAddress
-      || req.ip;
+    const clientIp = getClientIp(req);
 
-    return this.chamCongService.checkIn(userId, clientIp, body.frameBase64);
+    return this.chamCongService.checkIn(userId, clientIp, framesB64);
   }
 
   // ─── 2. Check-out ───────────────────────────────────────────────────────────
   @Post('check-out')
   async checkOut(
     @Request() req,
-    @Body() body: { frameBase64: string },
+    @Body() body: { framesB64: string[] },
   ) {
-    if (!body.frameBase64) throw new BadRequestException('Thiếu dữ liệu khuôn mặt');
+    const framesB64 = layChuoiKhungHinh(body);
 
     const userId = req.user.id;
-    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
-      || req.socket.remoteAddress
-      || req.ip;
+    const clientIp = getClientIp(req);
 
-    return this.chamCongService.checkOut(userId, clientIp, body.frameBase64);
+    return this.chamCongService.checkOut(userId, clientIp, framesB64);
   }
 
   // ─── 3. Trạng thái hôm nay ──────────────────────────────────────────────────
@@ -73,9 +79,7 @@ export class ChamCongController {
   // ─── 5. Lấy IP hiện tại của client ──────────────────────────────────────────
   @Get('ip-hien-tai')
   getIpHienTai(@Request() req) {
-    const rawIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
-      || req.socket.remoteAddress
-      || req.ip || '127.0.0.1';
+    const rawIp = getClientIp(req);
     const lanIp = this.chamCongService.getLanIp();
     const isLocalhost = rawIp === '::1' || rawIp === '127.0.0.1' || rawIp === '::ffff:127.0.0.1';
     const displayIp = isLocalhost && lanIp ? lanIp : (rawIp.startsWith('::ffff:') ? rawIp.slice(7) : (rawIp === '::1' ? '127.0.0.1' : rawIp));

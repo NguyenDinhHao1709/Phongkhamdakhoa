@@ -56,3 +56,6 @@ __pycache__/
 scripts/e2e_screenshots/
 *.sql
 *.sql
+
+# Migration theo ngày phải được lưu trong git (bản dump dữ liệu thì không)
+!database/20*.sql

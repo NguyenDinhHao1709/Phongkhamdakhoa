@@ -55,6 +55,18 @@ export class AiController {
     return this.aiService.ghiSuKienDatLich(dto.sessionId, dto.loai, dto.nguoiDungId);
   }
 
+  @Post('phan-loai-nhan')
+  @ApiOperation({ summary: 'Lễ tân xác nhận/sửa chuyên khoa AI gợi ý (nhãn huấn luyện)' })
+  phanLoaiNhan(@Body() dto: { trieuChung: string; maKhoaAi?: string; maKhoaDung: string; nguon?: string; nguoiDungId?: number }) {
+    return this.aiService.ghiNhanPhanLoai(dto);
+  }
+
+  @Get('phan-loai-stats')
+  @ApiOperation({ summary: 'Độ chính xác gợi ý chuyên khoa theo từng khoa' })
+  phanLoaiStats(@Query('days') days?: string) {
+    return this.aiService.thongKePhanLoai(Number(days) || 90);
+  }
+
   @Get('chat-stats')
   @ApiOperation({ summary: 'Thống kê vận hành chat AI N ngày gần nhất' })
   chatStats(@Query('days') days?: string) {

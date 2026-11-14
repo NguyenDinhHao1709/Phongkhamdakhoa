@@ -18,6 +18,12 @@ const QUICK_SYMPTOMS = [
   'Tiêu chảy nhiều lần trong ngày',
 ];
 
+// Mã chuyên khoa dùng chung với bộ phân loại (ai-service KHOA_THEO_MA)
+const DANH_SACH_KHOA = [
+  ['NOI', 'Nội tổng quát'], ['NHI', 'Nhi khoa'], ['HH_TMH', 'Hô hấp / Tai Mũi Họng'], ['TIM', 'Tim mạch'],
+  ['TH', 'Tiêu hóa'], ['TK', 'Thần kinh'], ['CXK', 'Cơ xương khớp'], ['DA', 'Da liễu'], ['MAT', 'Mắt'], ['CAP_CUU', 'Cấp cứu'],
+];
+
 export default function AiTriageReceptionPage() {
   const [sessionId] = useState(() => uuidv4());
   const [activeMode, setActiveMode] = useState('quick'); // 'quick' | 'chat'
@@ -25,12 +31,31 @@ export default function AiTriageReceptionPage() {
   const [quickResult, setQuickResult] = useState(null);
   const [quickLoading, setQuickLoading] = useState(false);
   const [lastChecked, setLastChecked] = useState(null);
+  // Lễ tân xác nhận/sửa chuyên khoa: { cauHoi, daGui: tên khoa đã ghi nhận, loi }
+  const [nhan, setNhan] = useState({ cauHoi: '', daGui: '', loi: '' });
+
+  const guiNhan = async (maKhoaDung) => {
+    try {
+      const res = await apiPost('/ai/phan-loai-nhan', {
+        trieuChung: nhan.cauHoi,
+        maKhoaAi: quickResult?.ma_khoa,
+        maKhoaDung,
+        nguon: quickResult?.source,
+      });
+      const kq = res?.data?.success !== undefined ? res.data : res;
+      if (!kq?.success) throw new Error(kq?.message);
+      setNhan((n) => ({ ...n, daGui: DANH_SACH_KHOA.find(([ma]) => ma === maKhoaDung)?.[1] || maKhoaDung, loi: '' }));
+    } catch (err) {
+      setNhan((n) => ({ ...n, loi: err?.response?.data?.message || err?.message || 'Chưa lưu được đánh giá' }));
+    }
+  };
 
   const handleQuickAnalyze = async (symptom) => {
     const text = symptom || quickSymptom;
     if (!text.trim() || quickLoading) return;
     setQuickLoading(true);
     setQuickResult(null);
+    setNhan({ cauHoi: text.trim(), daGui: '', loi: '' });
     try {
       const res = await apiPost('/ai/phan-luong-nhanh', { trieuChung: text });
       const raw = res?.data || res;
@@ -202,6 +227,39 @@ export default function AiTriageReceptionPage() {
                 <div className="bg-white/80 rounded-lg p-3 text-sm text-gray-700">
                   <p className="font-semibold text-gray-600 text-xs mb-1">💡 Lời khuyên sơ bộ:</p>
                   <p className="leading-relaxed">{quickResult.loi_khuyen_so_bo}</p>
+                </div>
+
+                <div className="bg-white/80 rounded-lg p-3 text-sm text-gray-700">
+                  <p className="font-semibold text-gray-600 text-xs mb-2">
+                    ✅ Chuyên khoa AI gợi ý có đúng không? Xác nhận của bạn giúp AI phân luồng chính xác hơn.
+                  </p>
+                  {nhan.daGui ? (
+                    <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1">
+                      <CheckCircle className="h-3.5 w-3.5" /> Đã ghi nhận chuyên khoa đúng: {nhan.daGui}
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {DANH_SACH_KHOA.some(([ma]) => ma === quickResult.ma_khoa) && (
+                        <button
+                          onClick={() => guiNhan(quickResult.ma_khoa)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700"
+                        >
+                          Đúng
+                        </button>
+                      )}
+                      <select
+                        value=""
+                        onChange={(e) => e.target.value && guiNhan(e.target.value)}
+                        className="px-2 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white"
+                      >
+                        <option value="">Sai — chọn chuyên khoa đúng…</option>
+                        {DANH_SACH_KHOA.filter(([ma]) => ma !== quickResult.ma_khoa).map(([ma, ten]) => (
+                          <option key={ma} value={ma}>{ten}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {nhan.loi && <p className="text-xs text-red-600 mt-1">{nhan.loi}</p>}
                 </div>
 
                 {lastChecked && (

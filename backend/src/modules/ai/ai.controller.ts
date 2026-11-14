@@ -45,6 +45,13 @@ class ChatEventDto {
   @IsString() @MaxLength(100) sessionId: string;
 }
 
+class PhanLoaiNhanDto {
+  @IsString() @MaxLength(MAX_MESSAGE_LENGTH) trieuChung: string;
+  @IsOptional() @IsString() @MaxLength(20) maKhoaAi?: string;
+  @IsString() @MaxLength(20) maKhoaDung: string;
+  @IsOptional() @IsString() @MaxLength(30) nguon?: string;
+}
+
 class PhanLuongNhanhDto {
   @ApiProperty({ example: 'Tức ngực, khó thở, hồi hộp' })
   @IsString() @MaxLength(MAX_MESSAGE_LENGTH) trieuChung: string;
@@ -146,6 +153,20 @@ export class AiController {
   @ApiOperation({ summary: 'Chat AI Triage multi-turn (Gemini NLP — hỗ trợ cả tiếng Việt)' })
   triageChat(@Body() dto: TriageChatDto) {
     return this.aiService.triageChat(guestSessionKey(dto.sessionId), dto.message, dto.history);
+  }
+
+  @ApiBearerAuth()
+  @Post('phan-loai-nhan')
+  @ApiOperation({ summary: 'Lễ tân xác nhận/sửa chuyên khoa AI gợi ý — dùng làm nhãn huấn luyện bộ phân loại' })
+  phanLoaiNhan(@Body() dto: PhanLoaiNhanDto, @CurrentUser() user: any) {
+    return this.aiService.phanLoaiNhan(dto, user.id);
+  }
+
+  @ApiBearerAuth()
+  @Get('phan-loai-stats')
+  @ApiOperation({ summary: 'Độ chính xác gợi ý chuyên khoa của AI theo từng khoa (theo nhãn lễ tân)' })
+  phanLoaiStats(@Query('days') days?: string) {
+    return this.aiService.phanLoaiStats(Number(days) || 90);
   }
 
   // ─── 2. PHÂN LUỒNG NHANH (Single-turn — dùng cho tiếp tân check-in) ──

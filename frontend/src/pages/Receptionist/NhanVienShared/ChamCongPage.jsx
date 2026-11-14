@@ -4,8 +4,10 @@ import { Camera, CheckCircle2, XCircle, LogIn, LogOut, Clock, AlertTriangle, Wif
 import { apiGet, apiPost } from '../../../services/api';
 import useAuthStore from '../../../store/authStore';
 
-// Thời gian đếm ngược để người dùng căn chỉnh khuôn mặt trước khi chụp
-const CAPTURE_DURATION_SEC = 3;
+// Thử thách quay đầu (chống giả mạo bằng ảnh): giây đầu nhìn thẳng, sau đó quay đầu sang một bên.
+// Server cần thấy cả khung nhìn thẳng lẫn khung đã quay trong chuỗi khung hình này.
+const CAPTURE_DURATION_SEC = 4;
+const FRAMES_NEEDED = 8;
 
 // Tính thời lượng làm việc chính xác (số giờ, số phút; nếu dưới 1 giờ thì hiện đúng số phút làm)
 function tinhThoiLuongLamViec(gioVao, gioRa) {
@@ -171,7 +173,7 @@ export default function ChamCongPage() {
 
   // ─── Mutation check-in / check-out ──────────────────────────────────────────
   const chamCongMutation = useMutation({
-    mutationFn: ({ endpoint, frameBase64 }) => apiPost(endpoint, { frameBase64 }),
+    mutationFn: ({ endpoint, framesB64 }) => apiPost(endpoint, { framesB64 }),
     onSuccess: (res) => {
       setResult(res?.data?.data || res?.data || res);
       setStep('done');
@@ -241,19 +243,23 @@ export default function ChamCongPage() {
       setCountdown(cd);
     }, 1000);
 
+    // Chụp đều trong suốt lượt quét; khung nào cũng đủ nét để so khớp khuôn mặt
+    const framesB64 = [];
+    const chup = () => {
+      const frame = captureFrame(640, 480, 0.8);
+      if (frame) framesB64.push(frame);
+    };
+    chup();
+    const captureInterval = setInterval(chup, (CAPTURE_DURATION_SEC * 1000) / (FRAMES_NEEDED - 1));
+
     setTimeout(async () => {
       clearInterval(cdInterval);
+      clearInterval(captureInterval);
       setCountdown(0);
       setStep('processing');
 
-      // Frame chất lượng cao để đối sánh khuôn mặt
-      const finalFrame = captureFrame(640, 480, 0.85);
-
       const endpoint = loai === 'checkin' ? '/cham-cong/check-in' : '/cham-cong/check-out';
-      chamCongMutation.mutate({
-        endpoint,
-        frameBase64: finalFrame,
-      });
+      chamCongMutation.mutate({ endpoint, framesB64: framesB64.slice(0, FRAMES_NEEDED) });
     }, CAPTURE_DURATION_SEC * 1000);
   }, [startCamera, captureFrame, chamCongMutation]);
 
@@ -451,10 +457,10 @@ export default function ChamCongPage() {
                 <ShieldCheck className="h-5 w-5 flex-shrink-0 text-blue-600" />
                 <div>
                   <p className="text-sm font-semibold">
-                    Đang nhận diện khuôn mặt
+                    {countdown >= CAPTURE_DURATION_SEC ? 'Bước 1: Nhìn thẳng vào camera' : 'Bước 2: Từ từ quay đầu sang một bên (khoảng 30°)'}
                   </p>
                   <p className="text-xs text-blue-600 mt-0.5">
-                    Vui lòng nhìn thẳng vào camera và giữ yên khuôn mặt trong khung hình
+                    Giữ khuôn mặt trong khung hình. Bước quay đầu giúp hệ thống phân biệt người thật với ảnh chụp.
                   </p>
                 </div>
               </div>

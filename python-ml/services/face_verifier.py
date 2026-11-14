@@ -1,8 +1,11 @@
 """
 services/face_verifier.py — Nhận diện khuôn mặt chấm công
 InsightFace (buffalo_sc) → embedding ArcFace → cosine similarity với ảnh mẫu.
-Trước khi so khớp có kiểm tra chất lượng khung hình (đủ nét, có mặt, mặt đủ lớn).
-LƯU Ý: đây KHÔNG phải chống giả mạo (anti-spoofing) — ảnh/video phát lại vẫn có thể qua.
+
+Chống giả mạo bằng thử thách quay đầu, đo THỊ SAI của mũi: hai mắt và hai khóe miệng gần như đồng phẳng,
+còn mũi nhô ra trước. Khi đầu thật quay, mũi dịch chuyển so với mặt phẳng mắt–miệng; với ảnh in / ảnh trên
+điện thoại (mặt phẳng), mọi điểm đi theo cùng một phép chiếu nên mũi không lệch dù nghiêng ảnh thế nào.
+Giới hạn: chặn được ảnh tĩnh, KHÔNG chặn được video quay sẵn cảnh người đó quay đầu.
 """
 import base64
 import hashlib
@@ -16,12 +19,26 @@ from PIL import Image
 
 from insightface.app import FaceAnalysis
 
+# Đổi model thì embedding đã lưu trong bảng nhan_vien_khuon_mat hết dùng được → TRUNCATE bảng đó
+MODEL_NAME = 'buffalo_sc'
 # Ảnh lớn hơn được thu nhỏ trước khi nhận diện (ảnh điện thoại 12MP xử lý rất chậm)
 MAX_SIDE = 800
 # Mặt khi chấm công/ảnh thẻ luôn lớn → khung dò 320 đủ chính xác, nhanh hơn ~3-4 lần so với 640
 DET_SIZE = (320, 320)
-# Ngưỡng chấp nhận trên thang phần trăm hiển thị (xem similarity_percent): 70% ⇔ cosine 0.445
+# Ngưỡng chấp nhận trên thang phần trăm hiển thị (xem similarity_percent): 70% ⇔ cosine 0.445.
+# Đo lại bằng scripts/calibrate_face_threshold.py trước khi đổi.
 NGUONG_KHOP_PCT = 70.0
+
+# ─── Thử thách quay đầu ─────────────────────────────────────────────────────
+SO_FRAME_TOI_THIEU = 5      # số khung hình phải thấy rõ mặt
+# Thị sai mũi tối thiểu (đơn vị: khoảng cách hai mắt), xem thi_sai_mui(). Thực nghiệm (README): ảnh phẳng nghiêng
+# tới ±40° không vượt 0.22; mặt thật quay ~26° đo được 0.24, ~32° đo được 0.62 → người dùng cần quay khoảng 30°.
+NGUONG_QUAY_DAU = 0.22
+# Khung "nhìn thẳng" phải có độ lệch mũi (do_lech_mui) trong khoảng này; ảnh chấm công thật đo được ≤ 0.12
+NGUONG_NHIN_THANG = 0.15
+# Mọi khung hình phải cùng một người với khung nhìn thẳng (chống tráo ảnh giữa chừng). Ngưỡng lỏng
+# vì mặt nghiêng làm giảm độ khớp; hai người khác nhau thường < 0.2.
+NGUONG_CUNG_NGUOI = 0.20
 
 # ─── Khởi tạo InsightFace ───────────────────────────────────────────────────
 
@@ -34,7 +51,7 @@ def get_face_app():
     global _face_app
     with _face_app_lock:
         if _face_app is None:
-            app = FaceAnalysis(name='buffalo_sc', providers=['CPUExecutionProvider'])
+            app = FaceAnalysis(name=MODEL_NAME, providers=['CPUExecutionProvider'])
             app.prepare(ctx_id=0, det_size=DET_SIZE)
             app.get(np.zeros((DET_SIZE[1], DET_SIZE[0], 3), dtype=np.uint8))  # chạy thử 1 lần để khởi tạo ONNX
             _face_app = app
@@ -85,71 +102,133 @@ def get_cached_face(b64: str):
     return face
 
 
-def similarity_percent(a, b) -> tuple[float, float]:
+def cosine(a, b) -> float:
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
+
+
+def similarity_percent(cos_sim: float) -> float:
+    """Thang hiển thị tuyến tính: cosine 0.20 → 0%, 0.445 → 70% (ngưỡng), 0.55 → 100%."""
+    return round(max(0.0, min(100.0, (cos_sim - 0.20) / (0.55 - 0.20) * 100.0)), 2)
+
+
+def mat_hop_le(face) -> bool:
+    """Phát hiện chắc chắn và mặt đủ lớn (≥ 60px) để so khớp."""
+    if face is None or face.det_score < 0.5:
+        return False
+    return face.bbox[2] - face.bbox[0] >= 60 and face.bbox[3] - face.bbox[1] >= 60
+
+
+def do_lech_mui(face) -> float:
     """
-    Trả về (cosine, điểm phần trăm hiển thị) giữa 2 embedding ArcFace.
-    Thang hiển thị tuyến tính: cosine 0.20 → 0%, 0.445 → 70% (ngưỡng), 0.55 → 100%.
+    Vị trí mũi so với trung điểm hai mắt, chiếu lên trục nối hai mắt, chia cho khoảng cách hai mắt.
+    ≈ 0 khi nhìn thẳng; đổi dấu theo hướng quay đầu. Chiếu lên trục mắt nên không bị ảnh hưởng khi nghiêng đầu.
     """
-    cos_sim = float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-9))
-    pct = (cos_sim - 0.20) / (0.55 - 0.20) * 100.0
-    return cos_sim, round(max(0.0, min(100.0, pct)), 2)
+    mat_trai, mat_phai, mui = face.kps[0], face.kps[1], face.kps[2]
+    truc = mat_phai - mat_trai
+    kc_mat = float(np.linalg.norm(truc)) + 1e-9
+    return float(np.dot(mui - (mat_trai + mat_phai) / 2, truc / kc_mat) / kc_mat)
 
 
-def check_frame_quality(frame_img: np.ndarray) -> dict:
+def thi_sai_mui(face, moc) -> float:
     """
-    Kiểm tra khung hình camera dùng được để so khớp:
-    đủ nét (Laplacian variance), phát hiện được khuôn mặt, mặt đủ lớn.
+    Thị sai của mũi giữa `face` và khung mốc `moc`: dựng phép chiếu phẳng (homography) đưa 2 mắt + 2 khóe miệng
+    của `face` về đúng vị trí ở `moc`, áp lên mũi rồi đo khoảng lệch so với mũi ở `moc` (chia khoảng cách hai mắt).
+    Vật phẳng → ≈ 0 với mọi góc nghiêng; đầu thật quay góc θ → xấp xỉ 0.45·sin θ.
     """
-    gray = cv2.cvtColor(frame_img, cv2.COLOR_BGR2GRAY)
-    if cv2.Laplacian(gray, cv2.CV_64F).var() < 10.0:
-        return {'ok': False, 'reason': 'Hình ảnh quá mờ hoặc camera bị che khuất'}
-
-    face_info = get_face_info(frame_img)
-    if face_info is None or face_info.det_score < 0.5:
-        return {'ok': False, 'reason': 'Không phát hiện khuôn mặt hợp lệ trước camera'}
-
-    bbox = face_info.bbox
-    if bbox[2] - bbox[0] < 60 or bbox[3] - bbox[1] < 60:
-        return {'ok': False, 'reason': 'Vui lòng lại gần camera hơn để nhận diện'}
-
-    return {'ok': True, 'face': face_info}  # face dùng lại để so khớp, không chạy model lần 2
+    mat_phang = [0, 1, 3, 4]
+    H = cv2.getPerspectiveTransform(face.kps[mat_phang].astype(np.float32), moc.kps[mat_phang].astype(np.float32))
+    mui = cv2.perspectiveTransform(face.kps[2].reshape(1, 1, 2).astype(np.float32), H)[0, 0]
+    return float(np.linalg.norm(mui - moc.kps[2]) / (np.linalg.norm(moc.kps[1] - moc.kps[0]) + 1e-9))
 
 
-def verify_face(frame_b64: str, ref_image_base64: str) -> dict:
+def danh_gia_quay_dau(faces: list) -> dict:
     """
-    Xác thực khuôn mặt:
-    1. Kiểm tra khung hình camera có khuôn mặt hợp lệ
-    2. Đối sánh với ảnh mẫu nhân viên theo ngưỡng NGUONG_KHOP_PCT
-    Trường `liveness` = khung hình có khuôn mặt hợp lệ (giữ tên cũ cho backend).
+    Đánh giá thử thách quay đầu trên danh sách (vị trí khung hình, face). Đạt khi:
+    1. Thấy rõ mặt ở ít nhất SO_FRAME_TOI_THIEU khung hình
+    2. Có khung nhìn thẳng (làm mốc đo và để so khớp với ảnh mẫu)
+    3. Ít nhất 2 khung có thị sai mũi so với khung nhìn thẳng ≥ NGUONG_QUAY_DAU (đầu thật quay, không phải ảnh phẳng)
+    4. Mọi khung hình là cùng một người
+    """
+    if len(faces) < SO_FRAME_TOI_THIEU:
+        return {'ok': False, 'reason': 'Không thấy rõ khuôn mặt trong lúc quét. Vui lòng lại gần camera, đủ ánh sáng và thử lại.'}
+
+    index, thang = min(faces, key=lambda f: abs(do_lech_mui(f[1])))
+    if abs(do_lech_mui(thang)) > NGUONG_NHIN_THANG:
+        return {'ok': False, 'reason': 'Vui lòng nhìn thẳng vào camera lúc bắt đầu, sau đó mới quay đầu sang một bên.'}
+
+    # Lấy giá trị lớn nhì: một khung hình nhiễu đơn lẻ không đủ để qua
+    bien_do = sorted(thi_sai_mui(face, thang) for _, face in faces)[-2]
+    if bien_do < NGUONG_QUAY_DAU:
+        return {
+            'ok': False,
+            'bien_do_quay_dau': round(bien_do, 3),
+            'reason': 'Chưa nhận thấy chuyển động quay đầu. Vui lòng nhìn thẳng rồi quay đầu sang một bên (khoảng 30°) trong lúc quét.',
+        }
+
+    if any(cosine(thang.embedding, face.embedding) < NGUONG_CUNG_NGUOI for _, face in faces):
+        return {'ok': False, 'reason': 'Khuôn mặt thay đổi trong lúc quét. Vui lòng chỉ để một người trước camera và thử lại.'}
+
+    return {'ok': True, 'face': thang, 'frame_index': index, 'bien_do_quay_dau': round(bien_do, 3)}
+
+
+def check_head_turn(frames_b64: list[str]) -> dict:
+    """Giải mã chuỗi khung hình, giữ các khung thấy rõ mặt rồi đánh giá thử thách quay đầu."""
+    faces = []
+    for i, b64 in enumerate(frames_b64):
+        try:
+            face = get_face_info(decode_base64_image(b64))
+        except Exception:
+            continue
+        if mat_hop_le(face):
+            faces.append((i, face))
+    return danh_gia_quay_dau(faces)
+
+
+def verify_face(
+    frames_b64: list[str],
+    ref_image_base64: str | None = None,
+    ref_embedding: list[float] | None = None,
+) -> dict:
+    """
+    Xác thực khuôn mặt chấm công: thử thách quay đầu trên `frames_b64` rồi so khớp khung nhìn thẳng với mẫu.
+    Mẫu: `ref_embedding` (đã lưu trong CSDL) hoặc `ref_image_base64` (khi đó trả kèm `ref_embedding` để lưu lại).
+    `liveness` = thử thách quay đầu đạt.
     """
     def fail(reason: str) -> dict:
         return {'verified': False, 'liveness': False, 'similarity': 0.0, 'reason': reason}
 
-    # ── 1. Ảnh mẫu (có cache embedding) ──
-    try:
-        ref_face = get_cached_face(ref_image_base64)
-    except Exception as e:
-        return fail(f'Không thể đọc ảnh mẫu nhân viên: {e}')
-    if ref_face is None:
-        return fail('Ảnh mẫu trong hệ thống không phát hiện được khuôn mặt')
+    # ── 1. Mẫu khuôn mặt nhân viên ──
+    ket_qua = {}
+    if ref_embedding:
+        mau = np.asarray(ref_embedding, dtype=np.float32)
+    elif ref_image_base64:
+        try:
+            ref_face = get_cached_face(ref_image_base64)
+        except Exception as e:
+            return fail(f'Không thể đọc ảnh mẫu nhân viên: {e}')
+        if ref_face is None:
+            return fail('Ảnh mẫu trong hệ thống không phát hiện được khuôn mặt')
+        mau = ref_face.embedding
+        ket_qua['ref_embedding'] = [round(float(x), 6) for x in mau]
+    else:
+        return fail('Không nhận được mẫu khuôn mặt nhân viên từ backend')
 
-    # ── 2. Đọc frame camera và kiểm tra chất lượng ──
-    try:
-        frame_img = decode_base64_image(frame_b64)
-    except Exception as e:
-        return fail(f'Lỗi giải mã ảnh camera: {e}')
-
-    quality = check_frame_quality(frame_img)
-    if not quality['ok']:
-        return fail(quality['reason'])
+    # ── 2. Thử thách quay đầu ──
+    camera = check_head_turn(frames_b64)
+    ket_qua['bien_do_quay_dau'] = camera.get('bien_do_quay_dau')  # số đo thử thách quay đầu (để hiệu chỉnh)
+    if not camera['ok']:
+        return {**fail(camera['reason']), **ket_qua}
 
     # ── 3. So khớp khuôn mặt ──
-    cos_sim, score_pct = similarity_percent(ref_face.embedding, quality['face'].embedding)
+    cos_sim = cosine(mau, camera['face'].embedding)
+    score_pct = similarity_percent(cos_sim)
     verified = score_pct >= NGUONG_KHOP_PCT
 
     return {
+        **ket_qua,
         'verified': verified,
         'liveness': True,
+        'frame_index': camera['frame_index'],  # khung hình đã dùng để so khớp
         'similarity': score_pct / 100.0,  # dạng thập phân cho backend (vd 0.75)
         'similarity_percent': score_pct,
         'raw_cosine': round(cos_sim, 4),
@@ -161,7 +240,8 @@ def check_duplicate_face(target_image_base64: str, candidate_list: list[dict]) -
     """
     Kiểm tra tính hợp lệ và chống trùng lặp khuôn mặt:
     1. Ảnh tải lên phải phát hiện được khuôn mặt người rõ nét.
-    2. So khớp embedding với từng nhân viên khác trong candidate_list ({id, ho_ten, chuc_vu, anh_base64}).
+    2. So khớp với từng nhân viên khác trong candidate_list:
+       {id, ho_ten, chuc_vu, embedding (đã lưu) hoặc anh_base64}.
     """
     try:
         # Có cache: ảnh này sau thành ảnh mẫu, lần đối soát/chấm công sau không phải chạy lại model
@@ -181,16 +261,20 @@ def check_duplicate_face(target_image_base64: str, candidate_list: list[dict]) -
         }
 
     for cand in candidate_list:
-        if not cand.get('anh_base64'):
-            continue
-        try:
-            cand_face = get_cached_face(cand['anh_base64'])
-        except Exception:
-            continue
-        if cand_face is None:
+        if cand.get('embedding'):
+            cand_embedding = np.asarray(cand['embedding'], dtype=np.float32)
+        elif cand.get('anh_base64'):
+            try:
+                cand_face = get_cached_face(cand['anh_base64'])
+            except Exception:
+                continue
+            if cand_face is None:
+                continue
+            cand_embedding = cand_face.embedding
+        else:
             continue
 
-        _, score_pct = similarity_percent(target_face.embedding, cand_face.embedding)
+        score_pct = similarity_percent(cosine(target_face.embedding, cand_embedding))
         if score_pct >= NGUONG_KHOP_PCT:
             return {
                 'valid_face': True,

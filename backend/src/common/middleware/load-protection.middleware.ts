@@ -68,7 +68,7 @@ export function getLoadMetrics() {
   };
 }
 
-function getClientIp(req: Request): string {
+export function getClientIp(req: Request): string {
   // Render đứng sau Cloudflare: cf-connecting-ip luôn là IP thật (Cloudflare từ chối request tự gửi header này),
   // còn giá trị đầu của x-forwarded-for do khách tự đặt được — đã đo trên bản production 13/11/2026
   const cfIp = req.headers['cf-connecting-ip'];

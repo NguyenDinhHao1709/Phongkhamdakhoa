@@ -4,7 +4,8 @@ TF-IDF n-gram ký tự (đã bỏ dấu, chịu được gõ không dấu/sai ch
 
 Dữ liệu huấn luyện:
   1. data/triage_seed.csv — mẫu chuẩn soạn tay (nhãn đáng tin, dùng để đánh giá cross-validation)
-  2. Bảng ai_cau_tra_loi_cache — câu hỏi thật đã được Gemini gán chuyên khoa (nhãn máy, chỉ dùng để học thêm)
+  2. Bảng ai_phan_loai_nhan — chuyên khoa do lễ tân xác nhận/sửa (nhãn của người, ưu tiên hơn nhãn máy)
+  3. Bảng ai_cau_tra_loi_cache — câu hỏi thật đã được Gemini gán chuyên khoa (nhãn máy, chỉ dùng để học thêm)
 Lớp KHAC = câu không phải mô tả triệu chứng (hỏi giá, giờ mở cửa, chào hỏi...) → nơi gọi chuyển cho Gemini.
 Huấn luyện chạy ở luồng nền (lúc khởi động + mỗi RETRAIN_SECONDS), không chặn request của người dùng.
 """
@@ -16,7 +17,7 @@ import unicodedata
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_val_predict
 from sklearn.pipeline import make_pipeline
 
 SEED_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "triage_seed.csv")
@@ -46,31 +47,49 @@ class TriageClassifier:
         with open(SEED_PATH, encoding="utf-8") as f:
             return [(r["text"], r["ma_khoa"]) for r in csv.DictReader(f)]
 
-    def _load_cache(self):
+    def _load_table(self, sql: str, ten: str):
+        """Đọc các cặp (câu hỏi, mã khoa) từ CSDL; bảng chưa tạo/DB lỗi → bỏ qua nguồn này."""
         try:
             conn = self.loader.get_connection()
             try:
                 cur = conn.cursor()
-                cur.execute("SELECT cau_hoi_goc, ma_khoa FROM ai_cau_tra_loi_cache WHERE ma_khoa IS NOT NULL")
+                cur.execute(sql)
                 return [(t, m) for t, m in cur.fetchall() if t and m in MA_KHOA]
             finally:
                 conn.close()
         except Exception as e:
-            print(f"[triage] Bỏ qua dữ liệu ai_cau_tra_loi_cache: {e}")
+            print(f"[triage] Bỏ qua dữ liệu {ten}: {e}")
             return []
 
     def train(self):
         seed = self._load_seed()
-        rows = seed + self._load_cache()
+        le_tan = self._load_table("SELECT cau_hoi, ma_khoa_dung FROM ai_phan_loai_nhan ORDER BY id", "ai_phan_loai_nhan")
+        gemini = self._load_table(
+            "SELECT cau_hoi_goc, ma_khoa FROM ai_cau_tra_loi_cache WHERE ma_khoa IS NOT NULL", "ai_cau_tra_loi_cache")
+        # Cùng một câu hỏi: nhãn lễ tân (lần sửa mới nhất) thay nhãn Gemini
+        nhan = {bo_dau(t).strip(): (t, m) for t, m in gemini}
+        nhan.update({bo_dau(t).strip(): (t, m) for t, m in le_tan})
+        rows = seed + list(nhan.values())
+
         # Độ chính xác đo bằng 5-fold cross-validation, chỉ trên mẫu soạn tay (nhãn đáng tin)
-        cv = cross_val_score(tao_pipeline(), [t for t, _ in seed], [m for _, m in seed], cv=5)
+        x_seed, y_seed = [t for t, _ in seed], [m for _, m in seed]
+        du_doan = cross_val_predict(tao_pipeline(), x_seed, y_seed, cv=5)
+        dung = [bool(a == b) for a, b in zip(du_doan, y_seed)]
+        theo_khoa = []
+        for khoa in sorted(set(y_seed)):
+            cua_khoa = [d for d, y in zip(dung, y_seed) if y == khoa]
+            theo_khoa.append({"ma_khoa": khoa, "so_mau": len(cua_khoa), "ty_le_dung": round(sum(cua_khoa) / len(cua_khoa) * 100)})
+
         model = tao_pipeline().fit([t for t, _ in rows], [m for _, m in rows])
         self.model = model
         self.info = {
             "so_mau": len(rows),
             "so_mau_seed": len(seed),
+            "so_mau_le_tan": len(le_tan),
+            "so_mau_gemini": len(gemini),
             "so_khoa": len(model.classes_),
-            "cv_accuracy_seed": round(float(cv.mean()), 3),
+            "cv_accuracy_seed": round(sum(dung) / len(dung), 3),
+            "cv_theo_khoa": theo_khoa,
         }
         print(f"[triage] Đã huấn luyện: {self.info}")
         return self.info

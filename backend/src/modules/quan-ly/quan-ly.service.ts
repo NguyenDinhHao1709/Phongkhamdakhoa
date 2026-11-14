@@ -34,6 +34,7 @@ import { firstValueFrom } from 'rxjs';
 import * as path from 'path';
 import * as fs from 'fs';
 import axios from 'axios';
+import { Aes256Transformer } from '../../common/transformers/aes-256.transformer';
 
 function toDateOnly(value: string | Date): string {
   if (typeof value === 'string') return value.slice(0, 10);
@@ -3849,10 +3850,25 @@ export class QuanLyService implements OnModuleInit {
     try {
       // 1. Lấy danh sách nhân viên khác đã có avatar
       const allEmployees = await this.nhanVienRepo.find();
+      // Embedding đã lưu lúc chấm công (bảng chưa tạo → coi như chưa có, so bằng ảnh như cũ)
+      const daLuu: Array<{ nhan_vien_id: number; anh: string; embedding: any }> = await this.nhanVienRepo
+        .query('SELECT nhan_vien_id, anh, embedding FROM nhan_vien_khuon_mat')
+        .catch(() => []);
+      const embeddingTheoNv = new Map(daLuu.map((r) => [r.nhan_vien_id, r]));
       const candidates = (await Promise.all(allEmployees
         .filter(nv => !nhanVienId || nv.id !== nhanVienId)
         .filter(nv => nv.anhDaiDien && typeof nv.anhDaiDien === 'string' && nv.anhDaiDien.trim() !== '')
         .map(async nv => {
+          const luu = embeddingTheoNv.get(nv.id);
+          if (luu?.anh === nv.anhDaiDien) {
+            try {
+              // Embedding lưu dạng mã hóa AES-256 (xem cham-cong.service)
+              const embedding: number[] = JSON.parse(new Aes256Transformer().from(luu.embedding));
+              return { id: nv.id, ho_ten: nv.hoTen, chuc_vu: nv.chucVu, embedding, anh_base64: undefined as string | undefined };
+            } catch {
+              // không giải mã được → so bằng ảnh như bên dưới
+            }
+          }
           const cleanRel = nv.anhDaiDien.replace(/^\/+/, '');
           const avatarPath = path.join(process.cwd(), cleanRel);
           let anhBase64: string | undefined;
@@ -3870,10 +3886,10 @@ export class QuanLyService implements OnModuleInit {
             id: nv.id,
             ho_ten: nv.hoTen,
             chuc_vu: nv.chucVu,
+            embedding: undefined as number[] | undefined,
             anh_base64: anhBase64,
           };
-        })
-        .filter(Boolean))).filter(candidate => candidate.anh_base64);
+        }))).filter(candidate => candidate.embedding || candidate.anh_base64);
 
       // 2. Gọi Python ML kiểm tra tính hợp lệ & chống trùng
       let checkResult: any = null;
