@@ -548,7 +548,8 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
       .leftJoinAndSelect('cc.caLamViec', 'ca')
       .orderBy('cc.ngay_cham', 'DESC')
       .addOrderBy('nv.ho_ten', 'ASC')
-      .limit(500);
+      // 500 dòng cũ bị cắt mất khi xem 30 ngày / cả tháng (vài chục nhân viên × 30 ngày) → thống kê thiếu
+      .limit(5000);
 
     if (ngay) {
       qb.andWhere('cc.ngay_cham = :ngay', { ngay });
@@ -571,6 +572,10 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
     trangThai?: string;
     ghiChu?: string;
     nguoiThucHien?: string;
+    nguoiDungId?: number;
+    tenDangNhap?: string;
+    vaiTro?: string;
+    diaChiIp?: string;
   }) {
     const nv = await this.nhanVienRepo.findOneBy({ id: data.nhanVienId });
     if (!nv) {
@@ -600,16 +605,20 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
 
     const nguoiTh = data.nguoiThucHien || 'Giám đốc';
     const noteLyDo = data.ghiChu ? ` - Lý do: ${data.ghiChu}` : '';
+    // Lưu dấu "chấm thủ công" + lý do vào chính bản ghi (trước đây lý do chỉ nằm trong nhật ký, bảng chấm
+    // công không biết dòng nào nhập tay). Trang quản lý bóc tiền tố này khi mở lại để sửa.
+    record.ghiChu = `[Chấm công thủ công bởi ${nguoiTh}]${noteLyDo}`;
     const saved = await this.chamCongRepo.save(record);
 
     try {
       const log = this.nhatKyRepo.create({
-        tenNguoiDung: 'giamdoc',
-        vaiTro: 'ban_giam_doc',
+        nguoiDungId: data.nguoiDungId ?? null,
+        tenNguoiDung: data.tenDangNhap || nguoiTh,
+        vaiTro: data.vaiTro || 'ban_giam_doc',
         hanhDong: 'CHAM_CONG_THU_CONG',
         loaiNhatKy: LoaiNhatKy.INFO,
         moTa: `${nguoiTh} thực hiện chấm công thủ công cho nhân viên "${nv.hoTen}" ngày ${data.ngayCham} (${data.gioVao ? `Vào: ${data.gioVao}` : ''}${data.gioRa ? `, Ra: ${data.gioRa}` : ''})${noteLyDo}`,
-        diaChiIp: '127.0.0.1',
+        diaChiIp: (data.diaChiIp || 'không rõ').slice(0, 50),
         userAgent: 'Trình duyệt hệ thống',
       });
       await this.nhatKyRepo.save(log);

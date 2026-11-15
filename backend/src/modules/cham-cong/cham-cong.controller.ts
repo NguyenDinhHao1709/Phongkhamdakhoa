@@ -153,6 +153,11 @@ export class ChamCongController {
     return this.chamCongService.chamCongThuCong({
       ...body,
       nguoiThucHien,
+      // Ghi nhật ký đúng người / vai trò / IP thực hiện (trước đây luôn "giamdoc", 127.0.0.1)
+      nguoiDungId: req.user?.id,
+      tenDangNhap: req.user?.tenDangNhap,
+      vaiTro: req.user?.vai_tro,
+      diaChiIp: getClientIp(req),
     });
   }
 }

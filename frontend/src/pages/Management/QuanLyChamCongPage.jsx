@@ -10,9 +10,9 @@ import {
 import { apiGet, apiPost } from '../../services/api';
 
 // Tính thời lượng làm việc chính xác (số giờ, số phút; nếu dưới 1 giờ thì hiện đúng số phút làm)
-function tinhThoiLuongLamViec(gioVao, gioRa) {
+function tinhThoiLuongLamViec(gioVao, gioRa, ngayCham) {
   if (!gioVao) return '—';
-  if (!gioRa) return 'Đang làm việc';
+  if (!gioRa) return laHomNay(ngayCham) ? 'Đang làm việc' : 'Chưa chấm ra';
 
   const [h1, m1] = gioVao.split(':').map(Number);
   const [h2, m2] = gioRa.split(':').map(Number);
@@ -26,6 +26,22 @@ function tinhThoiLuongLamViec(gioVao, gioRa) {
     return `${hours} giờ ${mins} phút`;
   }
   return `${mins} phút`;
+}
+
+// Ngày chấm (yyyy-mm-dd) có phải hôm nay theo giờ máy người dùng
+function laHomNay(ngayCham) {
+  if (!ngayCham) return false;
+  const d = new Date();
+  const homNay = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return String(ngayCham).slice(0, 10) === homNay;
+}
+
+// Bảng cham_cong không có cột phương thức → suy ra từ dữ liệu thật: dòng nhập tay mang tiền tố ghi chú
+// "[Chấm công thủ công", dòng quét mặt có ảnh check-in / điểm khớp. Trước đây mọi dòng đều ghi "Khuôn mặt AI".
+function phuongThucCham(item) {
+  if (item.ghiChu?.startsWith('[Chấm công thủ công')) return 'Chấm thủ công';
+  if (item.anhCheckin || item.doKhop != null) return 'Khuôn mặt';
+  return '—';
 }
 
 export default function QuanLyChamCongPage() {
@@ -179,7 +195,8 @@ export default function QuanLyChamCongPage() {
       dungGio: list.filter(x => x.trangThai === 'dung_gio').length,
       diMuon: list.filter(x => x.trangThai === 'di_muon').length,
       veSom: list.filter(x => x.trangThai === 've_som').length,
-      dangLam: list.filter(x => x.gioVao && !x.gioRa).length,
+      dangLam: list.filter(x => x.gioVao && !x.gioRa && laHomNay(x.ngayCham)).length,
+      chuaChamRa: list.filter(x => x.gioVao && !x.gioRa && !laHomNay(x.ngayCham)).length,
     };
   }, [chamCongData]);
 
@@ -204,11 +221,6 @@ export default function QuanLyChamCongPage() {
       nghi_phep: 'Nghỉ phép',
     };
 
-    const PHUONG_THUC_MAP = {
-      khuon_mat: 'Khuôn mặt AI',
-      thu_cong: 'Chấm thủ công',
-    };
-
     const rows = filteredList.map((item, idx) => {
       const nv = item.nhanVien || {};
       const ngayStr = item.ngayCham ? String(item.ngayCham).slice(0, 10) : '';
@@ -220,10 +232,10 @@ export default function QuanLyChamCongPage() {
         'Chức Vụ / Chuyên Khoa': nv.chucVu || nv.chuyenKhoa || '',
         'Ngày Chấm Công': ngayStr,
         'Giờ Vào (Check-in)': item.gioVao ? item.gioVao.slice(0, 5) : '—',
-        'Giờ Ra (Check-out)': item.gioRa ? item.gioRa.slice(0, 5) : (item.gioVao ? 'Đang làm việc' : '—'),
-        'Thời Lượng Làm Việc': tinhThoiLuongLamViec(item.gioVao, item.gioRa),
+        'Giờ Ra (Check-out)': item.gioRa ? item.gioRa.slice(0, 5) : (item.gioVao ? (laHomNay(item.ngayCham) ? 'Đang làm việc' : 'Chưa chấm ra') : '—'),
+        'Thời Lượng Làm Việc': tinhThoiLuongLamViec(item.gioVao, item.gioRa, item.ngayCham),
         'Trạng Thái': TRANG_THAI_MAP[item.trangThai] || item.trangThai || '—',
-        'Phương Thức': PHUONG_THUC_MAP[item.phuongThuc] || item.phuongThuc || 'Khuôn mặt AI',
+        'Phương Thức': phuongThucCham(item),
         'Ghi Chú': item.ghiChu || '',
       };
     });
@@ -322,6 +334,9 @@ export default function QuanLyChamCongPage() {
           <div>
             <p className="text-xs text-gray-500 font-medium">Đang làm việc</p>
             <p className="text-xl font-bold text-indigo-600">{stats.dangLam}</p>
+            {stats.chuaChamRa > 0 && (
+              <p className="text-[11px] text-rose-600 font-medium">{stats.chuaChamRa} lượt ngày trước chưa chấm ra</p>
+            )}
           </div>
         </div>
       </div>
@@ -501,7 +516,7 @@ export default function QuanLyChamCongPage() {
                           ? 'bg-blue-50 text-blue-700 animate-pulse border border-blue-200'
                           : 'bg-gray-100 text-gray-800 border border-gray-200'
                       }`}>
-                        {tinhThoiLuongLamViec(item.gioVao, item.gioRa)}
+                        {tinhThoiLuongLamViec(item.gioVao, item.gioRa, item.ngayCham)}
                       </span>
                     </td>
 
@@ -619,7 +634,7 @@ export default function QuanLyChamCongPage() {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between text-xs">
                 <span className="text-blue-700 font-medium">Thời lượng làm việc tính toán:</span>
                 <span className="font-bold text-blue-900 bg-white px-2.5 py-1 rounded shadow-sm border border-blue-200">
-                  {tinhThoiLuongLamViec(form.gioVao, form.gioRa)}
+                  {tinhThoiLuongLamViec(form.gioVao, form.gioRa, form.ngayCham)}
                 </span>
               </div>
 
