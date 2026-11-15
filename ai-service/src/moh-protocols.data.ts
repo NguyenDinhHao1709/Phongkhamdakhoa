@@ -1,4 +1,5 @@
 // Kho phác đồ Chẩn đoán & Điều trị Bộ Y tế dùng cho Clinical RAG (khớp từ khóa triệu chứng)
+import { MOH_PROTOCOLS_EXTRA } from './moh-protocols-extra.data';
 
 export interface MohProtocolItem {
   id: string;
@@ -1032,4 +1033,5 @@ export const MOH_CLINICAL_PROTOCOLS_KB: MohProtocolItem[] = [
     dauHieuNguyHiem: ['Sốt, đau bụng dưới nhiều, ra máu bất thường (viêm tiểu khung / bệnh lý khác).'],
     lichTaiKhamKhuyenNghi: 'Tái khám sau khi kết thúc đợt điều trị.',
   },
+  ...MOH_PROTOCOLS_EXTRA,
 ];

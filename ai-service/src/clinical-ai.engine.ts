@@ -224,11 +224,14 @@ export function matchClinicalProtocols(input: {
       score += 0.35;
       matchedKeywords.push(`Huyết áp cao (${hatt}/${hattr} mmHg)`);
     }
-    if ((proto.id === 'BYT_J20' || proto.id === 'BYT_A97' || proto.id === 'BYT_J00') && nhietDo >= 38.0) {
+    if (
+      ['BYT_J20', 'BYT_A97', 'BYT_J00', 'BYT_J18', 'BYT_J11', 'BYT_U07', 'BYT_K35', 'BYT_K80'].includes(proto.id) &&
+      nhietDo >= 38.0
+    ) {
       score += 0.2;
       matchedKeywords.push(`Sốt (${nhietDo}°C)`);
     }
-    if (proto.id === 'BYT_J20' && spo2 > 0 && spo2 < 96) {
+    if (['BYT_J20', 'BYT_J18', 'BYT_J44', 'BYT_U07'].includes(proto.id) && spo2 > 0 && spo2 < 96) {
       score += 0.25;
       matchedKeywords.push(`Giảm SpO2 (${spo2}%)`);
     }
