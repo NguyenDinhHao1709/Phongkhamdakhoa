@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { X, Printer, CheckCircle2, ShieldCheck, FileText } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDateTime, formatDate } from '../../utils/formatDate';
+import useHospitalStore from '../../store/hospitalStore';
 
 // Chuyển số thành chữ tiếng Việt đơn giản cho phiếu chi
 function docSoThanhChu(so) {
@@ -65,6 +66,8 @@ function docSoThanhChu(so) {
 }
 
 export default function InPhieuChiModal({ voucher, onClose }) {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const printRef = useRef(null);
 
   if (!voucher) return null;
@@ -150,8 +153,8 @@ export default function InPhieuChiModal({ voucher, onClose }) {
             {/* Header Thông tin phòng khám & Mẫu quy định */}
             <div className="flex justify-between items-start border-b border-gray-300 pb-4">
               <div>
-                <h2 className="text-sm font-black text-emerald-800 uppercase">PHÒNG KHÁM ĐA KHOA</h2>
-                <p className="text-[11px] text-gray-600">Địa chỉ: 123 Đường Sức Khỏe, Quận 1, TP. Hồ Chí Minh</p>
+                <h2 className="text-sm font-black text-emerald-800 uppercase">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</h2>
+                <p className="text-[11px] text-gray-600">Địa chỉ: {ttPk.diaChi}</p>
                 <p className="text-[11px] text-gray-600">Bộ phận: Kế toán thanh toán & Thủ quỹ phòng khám</p>
               </div>
               <div className="text-right">

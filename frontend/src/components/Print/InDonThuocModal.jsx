@@ -3,8 +3,11 @@ import { Printer, X, Pill } from 'lucide-react';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { formatDate } from '../../utils/formatDate';
 import { formatCurrency } from '../../utils/formatCurrency';
+import useHospitalStore from '../../store/hospitalStore';
 
 export default function InDonThuocModal({ isOpen, onClose, donThuoc, benhNhan, bacSi, chanDoan }) {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const printRef = useRef(null);
 
   useEffect(() => {
@@ -90,9 +93,9 @@ export default function InDonThuocModal({ isOpen, onClose, donThuoc, benhNhan, b
             <div className="grid grid-cols-2 gap-4 pb-4 border-b border-gray-400">
               <div className="text-left">
                 <p className="font-bold text-xs uppercase text-gray-800">SỞ Y TẾ TP. HỒ CHÍ MINH</p>
-                <p className="font-bold text-sm uppercase text-emerald-800">PHÒNG KHÁM ĐA KHOA QUỐC TẾ</p>
-                <p className="text-xs text-gray-600">Đ/c: 123 Nguyễn Văn Cừ, Quận 5, TP.HCM</p>
-                <p className="text-xs text-gray-600">ĐT: 1900 6868</p>
+                <p className="font-bold text-sm uppercase text-emerald-800">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</p>
+                <p className="text-xs text-gray-600">Đ/c: {ttPk.diaChi}</p>
+                <p className="text-xs text-gray-600">ĐT: {ttPk.tongDai}</p>
               </div>
               <div className="text-right text-xs">
                 <p>Mã Đơn thuốc: <strong>{donThuoc?.maDonThuoc || 'DT20260001'}</strong></p>

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiGet } from '../../services/api';
 import { BACKEND_URL } from '../../utils/backendUrl';
+import useHospitalStore from '../../store/hospitalStore';
 
 /**
  * Phát tiếng chuông Ding-Dong y tế hai âm sắc bằng Web Audio API
@@ -43,6 +44,8 @@ function playHospitalChime() {
 }
 
 export default function ManHinhGoiSoPage() {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const [data, setData] = useState({
     currentCall: null,
     recentCalls: [],
@@ -274,7 +277,7 @@ export default function ManHinhGoiSoPage() {
               </span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white mt-0.5">
-              PHÒNG KHÁM ĐA KHOA QUỐC TẾ
+              {ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}
             </h1>
           </div>
         </div>

@@ -2,8 +2,11 @@ import { useRef } from 'react';
 import { X, Printer, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDateTime } from '../../utils/formatDate';
+import useHospitalStore from '../../store/hospitalStore';
 
 export default function InHoaDonModal({ hoaDon, onClose }) {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const printRef = useRef(null);
 
   if (!hoaDon) return null;
@@ -88,9 +91,9 @@ export default function InHoaDonModal({ hoaDon, onClose }) {
           {/* Header Phòng Khám */}
           <div className="flex justify-between items-start border-b border-gray-300 pb-4">
             <div>
-              <h2 className="text-lg font-black text-primary-800 uppercase tracking-tight">Phòng Khám Đa Khoa</h2>
-              <p className="text-[11px] text-gray-600">Địa chỉ: 123 Đường Sức Khỏe, Quận 1, TP. Hồ Chí Minh</p>
-              <p className="text-[11px] text-gray-600">Hotline: 1900 6868 • Email: hotro@phongkham.vn</p>
+              <h2 className="text-lg font-black text-primary-800 uppercase tracking-tight">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</h2>
+              <p className="text-[11px] text-gray-600">Địa chỉ: {ttPk.diaChi}</p>
+              <p className="text-[11px] text-gray-600">Hotline: {ttPk.tongDai} • Email: {ttPk.email}</p>
             </div>
             <div className="text-right">
               <p className="font-mono text-xs font-bold text-gray-900">Mã HĐ: {hoaDon.maHoaDon}</p>

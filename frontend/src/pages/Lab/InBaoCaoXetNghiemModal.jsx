@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { X, Printer, FlaskConical, CheckCircle2, Star } from 'lucide-react';
 import { formatDate, formatDateTime } from '../../utils/formatDate';
+import useHospitalStore from '../../store/hospitalStore';
 
 const TRANG_THAI_CONFIG = {
   cho_lay_mau: 'Chờ lấy mẫu',
@@ -11,6 +12,8 @@ const TRANG_THAI_CONFIG = {
 };
 
 export default function InBaoCaoXetNghiemModal({ stats, filterInfo = {}, onClose }) {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const printRef = useRef(null);
 
   const handlePrint = () => {
@@ -111,8 +114,8 @@ export default function InBaoCaoXetNghiemModal({ stats, filterInfo = {}, onClose
             {/* Header thông tin phòng khám */}
             <div className="flex justify-between items-start border-b border-gray-300 pb-4">
               <div>
-                <h2 className="text-sm font-black text-blue-900 uppercase tracking-wide">PHÒNG KHÁM ĐA KHOA</h2>
-                <p className="text-[11px] text-gray-600">Địa chỉ: 123 Đường Sức Khỏe, Quận 1, TP. Hồ Chí Minh</p>
+                <h2 className="text-sm font-black text-blue-900 uppercase tracking-wide">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</h2>
+                <p className="text-[11px] text-gray-600">Địa chỉ: {ttPk.diaChi}</p>
                 <p className="text-[11px] text-gray-600 font-medium">Khoa: Xét Nghiệm & Chẩn Đoán Hình Ảnh (CLS)</p>
               </div>
               <div className="text-right">

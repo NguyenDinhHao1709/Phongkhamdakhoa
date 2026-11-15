@@ -1560,7 +1560,7 @@ export class QuanLyService implements OnModuleInit {
       doanhThu: Number(r.doanhThu || 0),
     }));
 
-    // Cảnh báo tồn kho & hạn sử dụng (chỉ lấy thuốc tồn <= 100 hoặc hạn dùng <= 90 ngày)
+    // Cảnh báo tồn kho & hạn sử dụng (chỉ lấy thuốc tồn <= 100 hoặc hạn dùng <= 60 ngày, cùng ngưỡng với trang Nhà thuốc)
     const tonKhoRaw = await this.donThuocRepo.query(`
       SELECT 
         t.id,
@@ -1573,7 +1573,7 @@ export class QuanLyService implements OnModuleInit {
       FROM thuoc t
       LEFT JOIN lo_thuoc lt ON lt.thuoc_id = t.id
       WHERE t.ton_kho_tong <= 100 
-         OR (lt.ngay_het_han IS NOT NULL AND lt.ngay_het_han <= DATE_ADD(NOW(), INTERVAL 90 DAY))
+         OR (lt.so_luong_ton > 0 AND lt.ngay_het_han IS NOT NULL AND lt.ngay_het_han <= DATE_ADD(CURDATE(), INTERVAL 60 DAY))
       GROUP BY t.id, t.ma_thuoc, t.ten_thuoc, t.ton_kho_tong, t.don_vi_tinh
       ORDER BY t.ton_kho_tong ASC
       LIMIT 15
@@ -1603,7 +1603,7 @@ export class QuanLyService implements OnModuleInit {
       } else if (diffDays <= 30) {
         mucDo = 'danger';
         tinhTrang = `Cận date (${diffDays} ngày)`;
-      } else if (diffDays <= 90) {
+      } else if (diffDays <= 60) {
         mucDo = 'warning';
         tinhTrang = `Cận hạn dùng (${diffDays} ngày)`;
       }
@@ -1628,7 +1628,8 @@ export class QuanLyService implements OnModuleInit {
       SELECT 
         COUNT(id) AS tongSoMatHang,
         COALESCE(SUM(ton_kho_tong * gia_ban), 0) AS tongGiaTriKho,
-        (SELECT COUNT(DISTINCT thuoc_id) FROM lo_thuoc WHERE so_luong_ton > 0 AND ngay_het_han <= DATE_ADD(NOW(), INTERVAL 90 DAY)) AS thuocCanDateFEFO,
+        -- Đếm theo LÔ còn tồn có hạn <= 60 ngày (kể cả đã hết hạn), giống trang Nhà thuốc (sapHetHanCount)
+        (SELECT COUNT(*) FROM lo_thuoc WHERE so_luong_ton > 0 AND ngay_het_han <= DATE_ADD(CURDATE(), INTERVAL 60 DAY)) AS thuocCanDateFEFO,
         (SELECT COUNT(DISTINCT CONCAT(t.id, '-', COALESCE(lt.id, '0'))) FROM thuoc t LEFT JOIN lo_thuoc lt ON lt.thuoc_id = t.id AND lt.so_luong_ton > 0 WHERE t.ton_kho_tong <= 100 OR lt.so_luong_ton <= 20) AS thuocSapHetHang
       FROM thuoc
     `).catch(() => [{ tongSoMatHang: 0, tongGiaTriKho: 0, thuocCanDateFEFO: 0, thuocSapHetHang: 0 }]);

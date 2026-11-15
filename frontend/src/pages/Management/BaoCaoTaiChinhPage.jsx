@@ -249,10 +249,10 @@ export default function BaoCaoTaiChinhPage() {
   });
   const paginatedDonThuoc = filteredDonThuoc.slice((pageDonThuoc - 1) * 20, pageDonThuoc * 20);
 
-  // Lọc và phân trang Cận Date FEFO (thuốc có soNgayHetHan <= 90)
+  // Lọc và phân trang Cận Date FEFO (thuốc có soNgayHetHan <= 60, cùng ngưỡng với trang Nhà thuốc)
   const filteredCanDate = danhSachTonKhoChiTiet.filter(item => {
     const matchSearch = !searchDuoc.trim() || item.tenThuoc?.toLowerCase().includes(searchDuoc.toLowerCase()) || item.maThuoc?.toLowerCase().includes(searchDuoc.toLowerCase());
-    return matchSearch && item.soNgayHetHan <= 90;
+    return matchSearch && item.soNgayHetHan <= 60;
   });
   const paginatedCanDate = filteredCanDate.slice((pageCanDate - 1) * 20, pageCanDate * 20);
 
@@ -264,7 +264,7 @@ export default function BaoCaoTaiChinhPage() {
   const paginatedSapHet = filteredSapHet.slice((pageSapHet - 1) * 20, pageSapHet * 20);
 
   // Tổng số cảnh báo đồng bộ chuẩn xác giữa Thẻ KPI và Bảng danh sách chi tiết
-  const totalCanDateCount = danhSachTonKhoChiTiet.filter(item => item.soNgayHetHan <= 90).length;
+  const totalCanDateCount = danhSachTonKhoChiTiet.filter(item => item.soNgayHetHan <= 60).length;
   const totalSapHetCount = danhSachTonKhoChiTiet.filter(item => item.tonKhoTong <= 100 || item.tonLo <= 20).length;
 
   // Chọn khoảng thời gian nhanh
@@ -1315,7 +1315,7 @@ export default function BaoCaoTaiChinhPage() {
                 </div>
               </div>
               <p className="text-2xl font-black text-amber-600 mt-2">
-                {totalCanDateCount || duoc?.thuocCanDateFEFO || 0} mặt hàng
+                {duoc?.thuocCanDateFEFO ?? totalCanDateCount} lô
               </p>
               <div className="flex items-center justify-between mt-1">
                 <p className="text-xs text-amber-800">Ưu tiên xuất trước FEFO</p>
@@ -1454,7 +1454,7 @@ export default function BaoCaoTaiChinhPage() {
                           <td className="py-3 px-4 text-gray-600 italic">{t.tenHoatChat}</td>
                           <td className="py-3 px-4 font-mono text-gray-700">{t.maLo}</td>
                           <td className="py-3 px-4">
-                            <span className={t.soNgayHetHan <= 90 ? 'text-amber-700 font-bold' : 'text-gray-600'}>
+                            <span className={t.soNgayHetHan <= 60 ? 'text-amber-700 font-bold' : 'text-gray-600'}>
                               {t.ngayHetHan ? new Date(t.ngayHetHan).toLocaleDateString('vi-VN') : '-'}
                             </span>
                           </td>
@@ -1565,7 +1565,7 @@ export default function BaoCaoTaiChinhPage() {
           {duocSubView === 'can_date' && (
             <MedCard
               title="⚠️ Danh Sách Lô Thuốc Cận Date Ưu Tiên Xuất Theo Nguyên Tắc FEFO"
-              subtitle={`Hiển thị ${filteredCanDate.length} lô thuốc có hạn sử dụng dưới 90 ngày (20 lô/trang)`}
+              subtitle={`Hiển thị ${filteredCanDate.length} lô thuốc có hạn sử dụng ≤ 60 ngày (20 lô/trang)`}
               action={
                 <div className="flex items-center gap-2">
                   <div className="relative">
@@ -1604,7 +1604,7 @@ export default function BaoCaoTaiChinhPage() {
                     {paginatedCanDate.length === 0 ? (
                       <tr>
                         <td colSpan="7" className="text-center py-8 text-emerald-600 font-semibold">
-                          Tất cả các lô thuốc đều có hạn dùng an toàn trên 90 ngày
+                          Tất cả các lô thuốc đều có hạn dùng an toàn trên 60 ngày
                         </td>
                       </tr>
                     ) : (

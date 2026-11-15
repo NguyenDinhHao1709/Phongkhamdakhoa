@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { apiGet, apiPatch, apiPost, apiDel } from '../../services/api';
 import useAuthStore from '../../store/authStore';
+import useHospitalStore from '../../store/hospitalStore';
 
 const emptyItem = { thuocId: '', nhaCungCapId: '', soLuongDat: 1, donGiaBao: 0 };
 
@@ -52,6 +53,8 @@ const formatDate = (dateString) => {
 };
 
 export default function MuaHangThuocPage() {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const [list, setList] = useState([]);
   const [medicines, setMedicines] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -2841,9 +2844,9 @@ export default function MuaHangThuocPage() {
                 {/* Header Phòng khám */}
                 <div className="flex items-start justify-between border-b-2 border-gray-900 pb-4">
                   <div>
-                    <h3 className="text-sm font-bold uppercase tracking-wider text-gray-900">PHÒNG KHÁM ĐA KHOA QUỐC TẾ</h3>
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-gray-900">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</h3>
                     <p className="text-xs text-gray-600">Kho Dược phẩm & Trang thiết bị y tế</p>
-                    <p className="text-[11px] text-gray-500">Địa chỉ: 123 Đường Y Dược, Quận 1, TP. Hồ Chí Minh · Hotline: 1900.xxxx</p>
+                    <p className="text-[11px] text-gray-500">Địa chỉ: {ttPk.diaChi} · Hotline: {ttPk.tongDai}</p>
                   </div>
                 <div className="text-right">
                   <p className="font-mono text-xs font-bold">MÃ: {docModal.data.maYeuCau}</p>

@@ -3,8 +3,11 @@ import { X, Printer, Pill, User, Stethoscope, Calendar, Clock, AlertCircle } fro
 import { apiGet } from '../../services/api';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate, formatDateTime } from '../../utils/formatDate';
+import useHospitalStore from '../../store/hospitalStore';
 
 export default function InDonThuocModal({ donThuoc, donThuocId, onClose }) {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const printRef = useRef(null);
   const [data, setData] = useState(donThuoc || null);
   const [loading, setLoading] = useState(false);
@@ -151,13 +154,13 @@ export default function InDonThuocModal({ donThuoc, donThuocId, onClose }) {
             <div className="flex justify-between items-start border-b border-gray-300 pb-3">
               <div>
                 <h4 className="font-bold text-sm uppercase text-gray-900">
-                  PHÒNG KHÁM ĐA KHOA QUỐC TẾ
+                  {ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}
                 </h4>
                 <p className="text-gray-600 text-[11px] mt-0.5">
                   Khoa Khám Bệnh · Nhà Thuốc Đạt Chuẩn GPP
                 </p>
                 <p className="text-gray-500 text-[11px]">
-                  Địa chỉ: 123 Đường Y Dược, Quận 1, TP. Hồ Chí Minh · Hotline: 1900.xxxx
+                  Địa chỉ: {ttPk.diaChi} · Hotline: {ttPk.tongDai}
                 </p>
               </div>
               <div className="text-right">

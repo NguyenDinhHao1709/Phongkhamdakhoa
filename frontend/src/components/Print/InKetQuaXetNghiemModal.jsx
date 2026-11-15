@@ -4,6 +4,7 @@ import { MedButton } from '../../design-system/components/Button/MedButton';
 import { formatDate, formatDateTime } from '../../utils/formatDate';
 import { parseResultConfig, getFallbackServiceConfig, evaluateLabValue } from '../../utils/labConfig';
 import { toBackendUrl } from '../../utils/backendUrl';
+import useHospitalStore from '../../store/hospitalStore';
 
 const parseAttachments = (value) => {
   if (!value) return [];
@@ -24,6 +25,8 @@ export default function InKetQuaXetNghiemModal({
   benhNhan,
   bacSi,
 }) {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const printRef = useRef(null);
 
   if (!isOpen) return null;
@@ -176,11 +179,11 @@ export default function InKetQuaXetNghiemModal({
               <div className="text-left">
                 <p className="font-bold text-xs uppercase text-gray-800">SỞ Y TẾ TP. HỒ CHÍ MINH</p>
                 <p className="font-bold text-sm uppercase text-purple-800">
-                  PHÒNG KHÁM ĐA KHOA QUỐC TẾ
+                  {ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}
                 </p>
-                <p className="text-xs text-gray-600">Đ/c: 123 Nguyễn Văn Cừ, Quận 5, TP.HCM</p>
+                <p className="text-xs text-gray-600">Đ/c: {ttPk.diaChi}</p>
                 <p className="text-xs text-gray-600">Khoa: Xét nghiệm & Thăm dò chức năng / CĐHA</p>
-                <p className="text-xs text-gray-600">Hotline: 1900 6868</p>
+                <p className="text-xs text-gray-600">Hotline: {ttPk.tongDai}</p>
               </div>
               <div className="text-center">
                 <p className="font-bold text-xs uppercase">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>

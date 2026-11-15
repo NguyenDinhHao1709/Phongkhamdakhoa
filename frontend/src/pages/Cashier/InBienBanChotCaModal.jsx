@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { X, Printer, ShieldCheck, CheckCircle2, AlertTriangle, FileText } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDateTime, formatDate } from '../../utils/formatDate';
+import useHospitalStore from '../../store/hospitalStore';
 
 const DENOMINATIONS = [
   { key: '500k', value: 500000, label: '500.000 đ' },
@@ -16,6 +17,8 @@ const DENOMINATIONS = [
 ];
 
 export default function InBienBanChotCaModal({ record, onClose }) {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const printRef = useRef(null);
 
   if (!record) return null;
@@ -80,8 +83,8 @@ export default function InBienBanChotCaModal({ record, onClose }) {
             <div className="flex justify-between items-start border-b-2 border-gray-900 pb-3">
               <div>
                 <p className="text-xs uppercase font-bold text-gray-700">SỞ Y TẾ TP. HỒ CHÍ MINH</p>
-                <h2 className="text-sm font-black text-emerald-800 uppercase">PHÒNG KHÁM ĐA KHOA QUỐC TẾ</h2>
-                <p className="text-[11px] text-gray-600">Địa chỉ: 123 Đường Sức Khỏe, Quận 1, TP. Hồ Chí Minh</p>
+                <h2 className="text-sm font-black text-emerald-800 uppercase">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</h2>
+                <p className="text-[11px] text-gray-600">Địa chỉ: {ttPk.diaChi}</p>
                 <p className="text-[11px] text-gray-600">Bộ phận: Kế toán thu ngân & Quản trị tài chính ERP</p>
               </div>
               <div className="text-right">

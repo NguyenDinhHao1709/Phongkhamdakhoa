@@ -9,6 +9,7 @@ import AppointmentTicketModal from '../../components/Appointment/AppointmentTick
 import DanhGiaCaKhamModal from '../../components/Appointment/DanhGiaCaKhamModal';
 import PaymentCountdownModal from '../../components/Appointment/PaymentCountdownModal';
 import RescheduleAppointmentModal from '../../components/Appointment/RescheduleAppointmentModal';
+import useHospitalStore from '../../store/hospitalStore';
 
 const DANH_SACH_NGAN_HANG = [
   'Vietcombank (VCB)',
@@ -38,6 +39,8 @@ const cleanGhiChu = (note) => {
 };
 
 export default function LichHenBenhNhanPage() {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const { startCall, isOpen: isCallOpen, maximizeCall } = useTelehealthStore();
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -439,7 +442,7 @@ export default function LichHenBenhNhanPage() {
                           </MedButton>
                         ) : (
                           <div className="w-full md:w-auto text-[11px] sm:text-xs text-blue-700 bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200 text-center font-medium">
-                            📍 Khám tại CS1: 123 Nguyễn Văn Cừ, Q.5
+                            📍 Khám tại: {ttPk.diaChi}
                           </div>
                         )
                       )}

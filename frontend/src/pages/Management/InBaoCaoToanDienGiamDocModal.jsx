@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate, formatDateTime } from '../../utils/formatDate';
+import useHospitalStore from '../../store/hospitalStore';
 
 const PHUONG_THUC_LABEL = {
   tien_mat: 'Tiền mặt',
@@ -22,6 +23,8 @@ export default function InBaoCaoToanDienGiamDocModal({
   report = {},
   timeRangeStr = 'Tháng này',
 }) {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const [reportSection, setReportSection] = useState('toan_bo'); // 'toan_bo' | 'kpi_tong_quan' | 'tai_chinh' | 'lam_sang' | 'duoc'
   const printRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -210,9 +213,9 @@ export default function InBaoCaoToanDienGiamDocModal({
             <div className="flex justify-between items-start border-b border-gray-800 pb-4">
               <div className="text-left space-y-0.5">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">SỞ Y TẾ TP. HỒ CHÍ MINH</p>
-                <p className="text-sm font-black uppercase text-blue-900">PHÒNG KHÁM ĐA KHOA THÔNG MINH</p>
-                <p className="text-[10px] text-gray-500">Số 123 Đường Y Dược, Phường 10, TP. Hồ Chí Minh</p>
-                <p className="text-[10px] text-gray-500">Hotline: (028) 3822 9999 • Email: bando@phongkham.vn</p>
+                <p className="text-sm font-black uppercase text-blue-900">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</p>
+                <p className="text-[10px] text-gray-500">{ttPk.diaChi}</p>
+                <p className="text-[10px] text-gray-500">Hotline: {ttPk.tongDai} • Email: {ttPk.email}</p>
               </div>
 
               <div className="text-right space-y-0.5">
@@ -283,7 +286,7 @@ export default function InBaoCaoToanDienGiamDocModal({
                     <p className="text-[10px] text-gray-500 mt-0.5">Dưới ngưỡng an toàn</p>
                   </div>
                   <div className="p-3 rounded-lg border border-gray-200 bg-gray-50/50">
-                    <p className="text-[10px] text-gray-500 font-semibold uppercase">Cận Hạn FEFO (90 ngày)</p>
+                    <p className="text-[10px] text-gray-500 font-semibold uppercase">Cận Hạn FEFO (≤ 60 ngày)</p>
                     <p className="text-sm font-black text-rose-600 mt-1">{thuocCanDateFEFO} lô</p>
                     <p className="text-[10px] text-gray-500 mt-0.5">Ưu tiên xuất dùng trước</p>
                   </div>
@@ -477,7 +480,7 @@ export default function InBaoCaoToanDienGiamDocModal({
                     • Có <strong>{thuocSapHetHang}</strong> mặt hàng có lượng tồn dưới ngưỡng tối thiểu (cần duyệt kế hoạch mua bổ sung).
                   </p>
                   <p>
-                    • Có <strong>{thuocCanDateFEFO}</strong> lô thuốc cận hạn sử dụng trong 90 ngày (ưu tiên cấp phát theo đúng nguyên tắc FEFO).
+                    • Có <strong>{thuocCanDateFEFO}</strong> lô thuốc cận hạn (≤ 60 ngày) hoặc đã hết hạn (ưu tiên cấp phát theo đúng nguyên tắc FEFO).
                   </p>
                 </div>
 

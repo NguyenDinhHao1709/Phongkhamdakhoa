@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { X, Printer, CheckCircle2, ShieldCheck, FileSpreadsheet } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate, formatDateTime } from '../../utils/formatDate';
+import useHospitalStore from '../../store/hospitalStore';
 
 export default function InSoCongNoModal({
   apList = [],
@@ -11,6 +12,8 @@ export default function InSoCongNoModal({
   mainSection = 'mua_thuoc',
   onClose,
 }) {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const printRef = useRef(null);
 
   const handlePrint = () => {
@@ -92,8 +95,8 @@ export default function InSoCongNoModal({
             {/* Header thông tin phòng khám */}
             <div className="flex justify-between items-start border-b border-gray-300 pb-4">
               <div>
-                <h2 className="text-sm font-black text-emerald-800 uppercase tracking-wide">PHÒNG KHÁM ĐA KHOA</h2>
-                <p className="text-[11px] text-gray-600">Địa chỉ: 123 Đường Sức Khỏe, Quận 1, TP. Hồ Chí Minh</p>
+                <h2 className="text-sm font-black text-emerald-800 uppercase tracking-wide">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</h2>
+                <p className="text-[11px] text-gray-600">Địa chỉ: {ttPk.diaChi}</p>
                 <p className="text-[11px] text-gray-600">Bộ phận: Kế toán thanh toán & Mua hàng dược phẩm</p>
               </div>
               <div className="text-right">

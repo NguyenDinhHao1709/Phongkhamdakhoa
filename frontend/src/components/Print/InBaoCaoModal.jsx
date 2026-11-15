@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { formatDate } from '../../utils/formatDate';
+import useHospitalStore from '../../store/hospitalStore';
 
 export default function InBaoCaoModal({
   isOpen,
@@ -14,6 +15,8 @@ export default function InBaoCaoModal({
   timeRangeLabel = 'Tháng này',
   hinhThucLabel = 'Tất cả hình thức',
 }) {
+  // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
+  const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
   const [reportType, setReportType] = useState('tong_quan'); // 'tong_quan' | 'ca_kham' | 'benh_ly' | 'toan_bo'
   const [includeSignature, setIncludeSignature] = useState(true);
   const printRef = useRef(null);
@@ -216,9 +219,9 @@ export default function InBaoCaoModal({
             <div className="grid grid-cols-2 gap-4 pb-4 border-b border-gray-400">
               <div className="text-left">
                 <p className="font-bold text-xs uppercase text-gray-800">SỞ Y TẾ TP. HỒ CHÍ MINH</p>
-                <p className="font-bold text-sm uppercase text-blue-900">PHÒNG KHÁM ĐA KHOA QUỐC TẾ</p>
-                <p className="text-xs text-gray-600">Đ/c: 123 Nguyễn Văn Cừ, Quận 5, TP.HCM</p>
-                <p className="text-xs text-gray-600">Hotline: 1900 6868 - Cấp cứu: (028) 3838 9999</p>
+                <p className="font-bold text-sm uppercase text-blue-900">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</p>
+                <p className="text-xs text-gray-600">Đ/c: {ttPk.diaChi}</p>
+                <p className="text-xs text-gray-600">Hotline: {ttPk.tongDai} - Cấp cứu: {ttPk.hotlineCapCuu}</p>
               </div>
               <div className="text-center">
                 <p className="font-bold text-xs uppercase">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
