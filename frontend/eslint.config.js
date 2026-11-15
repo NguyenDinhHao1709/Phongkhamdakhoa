@@ -1,3 +1,4 @@
+import globals from 'globals';
 import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
@@ -16,21 +17,9 @@ export default [
           jsx: true,
         },
       },
+      // Toàn bộ biến toàn cục chuẩn của trình duyệt (alert, URLSearchParams, Blob, RTCPeerConnection...)
       globals: {
-        browser: 'readonly',
-        console: 'readonly',
-        fetch: 'readonly',
-        FormData: 'readonly',
-        localStorage: 'readonly',
-        sessionStorage: 'readonly',
-        setInterval: 'readonly',
-        clearInterval: 'readonly',
-        setTimeout: 'readonly',
-        clearTimeout: 'readonly',
-        URL: 'readonly',
-        window: 'readonly',
-        document: 'readonly',
-        navigator: 'readonly',
+        ...globals.browser,
       },
     },
     plugins: {
@@ -46,11 +35,23 @@ export default [
     rules: {
       ...react.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
+      // Bắt biến / hàm dùng mà chưa khai báo hoặc chưa import (vd. filteredList, apiGet) ngay lúc lint,
+      // thay vì để lỗi ReferenceError xảy ra khi người dùng bấm nút.
+      'no-undef': 'error',
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',
       'react/no-unescaped-entities': 'off',
       'react-hooks/exhaustive-deps': 'off',
       'react-refresh/only-export-components': 'warn',
+    },
+  },
+  {
+    // File cấu hình chạy bằng Node (Vite, ESLint...), không chạy trên trình duyệt
+    files: ['*.config.{js,cjs,mjs}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
     },
   },
 ];

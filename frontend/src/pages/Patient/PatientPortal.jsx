@@ -7,6 +7,7 @@ import {
 import useAuthStore from '../../store/authStore';
 import useHospitalStore from '../../store/hospitalStore';
 import useThemeStore from '../../store/themeStore';
+import { apiGet } from '../../services/api';
 import DatLichKhamPage from './DatLichKhamPage';
 import LichHenBenhNhanPage from './LichHenBenhNhanPage';
 import HoSoYTeBenhNhanPage from './HoSoYTeBenhNhanPage';
