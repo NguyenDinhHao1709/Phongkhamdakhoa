@@ -7,6 +7,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+# Tải sẵn model buffalo_sc vào image: khởi động lạnh trên Render không phải tải lại từ GitHub
+RUN python -c "from insightface.app import FaceAnalysis; FaceAnalysis(name='buffalo_sc', providers=['CPUExecutionProvider'])"
 COPY main.py ./
 COPY services ./services
 COPY models ./models

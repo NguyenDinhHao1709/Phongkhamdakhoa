@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from services.forecaster import DataLoader, HoltWintersForecaster, PatternAnalyzer, today_vn
-from services.face_verifier import verify_face, check_duplicate_face, warmup_models
+from services.face_verifier import verify_face, check_duplicate_face, warmup_models, models_ready
 from services.triage_classifier import TriageClassifier
 
 load_dotenv()
@@ -58,7 +58,8 @@ def warmup():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+    # face_models_ready: model khuôn mặt nạp xong (nạp ở luồng nền sau khi khởi động) → backend chờ cờ này trước khi chấm công
+    return {"status": "ok", "face_models_ready": models_ready(), "timestamp": datetime.now().isoformat()}
 
 
 # ─── Nhận diện khuôn mặt ──────────────────────────────────────────────

@@ -3,11 +3,28 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Camera, CheckCircle2, XCircle, LogIn, LogOut, Clock, AlertTriangle, Wifi, ShieldCheck, Calendar, AlertCircle, Filter } from 'lucide-react';
 import { apiGet, apiPost } from '../../../services/api';
 import useAuthStore from '../../../store/authStore';
+import { isWakingError } from '../../../utils/serviceWakeUp';
 
 // Thử thách nháy mắt (chống giả mạo bằng ảnh): nhìn thẳng và nháy mắt trong lúc quét.
 // Một lần nháy mắt chỉ ~0.1–0.2s nên phải chụp dày (8 khung/giây) để server bắt được khung đang nhắm mắt.
 const CAPTURE_DURATION_SEC = 3;
 const FRAMES_NEEDED = 24;
+
+// Chờ dịch vụ nhận diện khuôn mặt sẵn sàng (Render cho ngủ khi không dùng, thức dậy mất tới ~1 phút).
+// Chờ TRƯỚC khi quét để request chấm công trả kết quả ngay, không treo lâu rồi đứt kết nối.
+async function choDichVuSanSang() {
+  const batDau = Date.now();
+  while (Date.now() - batDau < 150000) {
+    try {
+      const res = await apiGet('/cham-cong/warmup', undefined, { timeout: 60000 });
+      const d = res?.data ?? res;
+      if (d?.ready !== false) return true;
+    } catch {
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+  }
+  return false;
+}
 
 // Tính thời lượng làm việc chính xác (số giờ, số phút; nếu dưới 1 giờ thì hiện đúng số phút làm)
 function tinhThoiLuongLamViec(gioVao, gioRa) {
@@ -181,12 +198,44 @@ export default function ChamCongPage() {
       queryClient.invalidateQueries(['cham-cong-lich-su']);
       stopCamera();
     },
-    onError: (err) => {
+    onError: (err, { loai }) => {
+      stopCamera();
+      // Mất kết nối / lỗi máy chủ: backend có thể vẫn đang xử lý và ghi công thành công → kiểm tra lại trước khi báo lỗi
+      if (isWakingError(err)) {
+        xacNhanSauMatKetNoi(loai);
+        return;
+      }
       setErrorMsg(typeof err === 'string' ? err : layThongBaoLoi(err));
       setStep('error');
-      stopCamera();
     },
   });
+
+  // Hỏi lại trạng thái hôm nay mỗi 5 giây trong tối đa 2 phút xem lượt chấm công vừa gửi đã được ghi nhận chưa
+  const xacNhanSauMatKetNoi = async (loai) => {
+    setStep('processing');
+    for (let lan = 0; lan < 24; lan++) {
+      const { data: tt } = await refetchTrangThai();
+      if (loai === 'checkin' ? tt?.gioVao : tt?.gioRa) {
+        setResult({
+          gioVao: tt.gioVao,
+          gioRa: loai === 'checkout' ? tt.gioRa : undefined,
+          trangThai: tt.trangThai,
+          thongBao: 'Kết nối bị gián đoạn nhưng hệ thống đã ghi nhận chấm công của bạn.',
+        });
+        setStep('done');
+        queryClient.invalidateQueries(['cham-cong-lich-su']);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+    setErrorMsg('Mất kết nối tới máy chủ. Vui lòng tải lại trang để kiểm tra trạng thái chấm công trước khi thử lại.');
+    setStep('error');
+  };
+
+  // Đánh thức sẵn ngay khi mở trang, thường đã sẵn sàng lúc người dùng bấm chấm công
+  useEffect(() => {
+    apiGet('/cham-cong/warmup', undefined, { timeout: 60000 }).catch(() => {});
+  }, []);
 
   // ─── Camera ─────────────────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
@@ -230,9 +279,15 @@ export default function ChamCongPage() {
   // ─── Bắt đầu quy trình chấm công ─────────────────────────────────────────────
   const batDauChamCong = useCallback(async (loai) => {
     setMode(loai);
-    setStep('capturing');
     setResult(null);
     setErrorMsg('');
+    setStep('waking');
+    if (!(await choDichVuSanSang())) {
+      setErrorMsg('Dịch vụ nhận diện khuôn mặt chưa sẵn sàng. Vui lòng thử lại sau ít phút.');
+      setStep('error');
+      return;
+    }
+    setStep('capturing');
     await startCamera();
 
     let cd = CAPTURE_DURATION_SEC;
@@ -259,7 +314,7 @@ export default function ChamCongPage() {
       setStep('processing');
 
       const endpoint = loai === 'checkin' ? '/cham-cong/check-in' : '/cham-cong/check-out';
-      chamCongMutation.mutate({ endpoint, framesB64: framesB64.slice(0, FRAMES_NEEDED) });
+      chamCongMutation.mutate({ endpoint, loai, framesB64: framesB64.slice(0, FRAMES_NEEDED) });
     }, CAPTURE_DURATION_SEC * 1000);
   }, [startCamera, captureFrame, chamCongMutation]);
 
@@ -421,6 +476,15 @@ export default function ChamCongPage() {
             {!daCheckIn && coLich && !(trangThai && trangThai.coAnhMau === false) && <span className="text-xs font-normal">Cần check-in trước</span>}
             {!coLich && <span className="text-xs font-normal">Không có lịch làm</span>}
           </button>
+        </div>
+      )}
+
+      {/* Chờ dịch vụ nhận diện thức dậy */}
+      {step === 'waking' && (
+        <div className="bg-white rounded-xl border p-6 flex flex-col items-center gap-3 text-center">
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <p className="font-medium text-gray-800">Đang khởi động dịch vụ nhận diện khuôn mặt...</p>
+          <p className="text-xs text-gray-500">Lần đầu trong ngày có thể mất tới 1 phút. Camera sẽ tự mở khi sẵn sàng.</p>
         </div>
       )}
 

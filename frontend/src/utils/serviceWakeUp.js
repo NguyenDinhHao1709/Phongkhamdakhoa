@@ -14,7 +14,7 @@ export function wakeUpServices() {
 }
 
 // Service đang thức dậy / deploy: không có phản hồi, trang lỗi HTML của Render, hoặc lỗi 5xx của backend
-function isWakingError(err) {
+export function isWakingError(err) {
   if (!err || typeof err === 'string') return true;
   if (err.isAxiosError) return !err.response || err.response.status >= 500;
   return err.error?.code === 'SERVER_ERROR';

@@ -115,6 +115,10 @@ def warmup_models():
     get_landmark_model()
 
 
+def models_ready() -> bool:
+    return _face_app is not None and _landmark_model is not None
+
+
 def decode_base64_image(b64_str: str) -> np.ndarray:
     """Giải mã base64 -> OpenCV BGR image."""
     data = b64_str

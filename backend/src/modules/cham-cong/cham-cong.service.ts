@@ -237,9 +237,31 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ─── Đánh thức Python ML khi người dùng mở trang chấm công (Render free tier cold start ~50s) ─
-  warmupPythonMl() {
-    firstValueFrom(this.httpService.get(`${PYTHON_ML_URL}/health`, { timeout: 90000 })).catch(() => undefined);
-    return { ok: true };
+  /**
+   * Đánh thức Python ML và chờ tối đa ~45 giây tới khi model khuôn mặt nạp xong. Trang chấm công gọi trước khi quét
+   * để request chấm công không phải treo cả phút chờ service khởi động (kết nối dài dễ bị đứt giữa chừng, trình duyệt
+   * báo Network Error dù backend vẫn ghi công thành công). Các lời gọi đồng thời dùng chung một lượt kiểm tra.
+   */
+  async warmupPythonMl(): Promise<{ ok: true; ready: boolean }> {
+    this.dangDanhThuc ??= this.choPythonMlSanSang().finally(() => { this.dangDanhThuc = null; });
+    return { ok: true, ready: await this.dangDanhThuc };
+  }
+
+  private dangDanhThuc: Promise<boolean> | null = null;
+
+  private async choPythonMlSanSang(): Promise<boolean> {
+    const hetHan = Date.now() + 45000;
+    while (Date.now() < hetHan) {
+      try {
+        const res = await firstValueFrom(this.httpService.get(`${PYTHON_ML_URL}/health`, { timeout: Math.max(hetHan - Date.now(), 1000) }));
+        // Bản python-ml cũ không có cờ face_models_ready → coi như sẵn sàng
+        if (res.data?.face_models_ready !== false) return true;
+      } catch {
+        // Đang ngủ / đang deploy: thử lại
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    return false;
   }
 
   // ─── Gọi Python ML xác thực khuôn mặt ───────────────────────────────────────
