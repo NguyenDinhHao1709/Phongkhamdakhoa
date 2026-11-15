@@ -143,11 +143,11 @@ export default function ThongKeThuNganPage() {
     if (list.length === 0) return;
     const headers = ['Loại chứng từ', 'Số chứng từ', 'Đối tượng giao dịch', 'Diễn giải nội dung', 'Số tiền (VNĐ)', 'Phương thức', 'Ngày lập'];
     const rows = list.map((h) => [
-      h.loai === 'phieu_thu' ? 'Phiếu thu (+)' : 'Phiếu chi (-)',
+      h.loai === 'phieu_thu' ? 'Phiếu thu (+)' : h.loai === 'phieu_huy' ? 'Hoàn tiền (đã trừ trong phiếu thu)' : 'Phiếu chi (-)',
       h.soChungTu,
       `"${h.doiTuong || ''}"`,
       `"${h.dienGiai || ''}"`,
-      h.loai === 'phieu_thu' ? h.soTien : -h.soTien,
+      h.loai === 'phieu_chi' ? -h.soTien : h.soTien,
       PHUONG_THUC_LABELS[h.phuongThuc] || h.phuongThuc,
       h.ngayLap ? new Date(h.ngayLap).toLocaleString('vi-VN') : '',
     ]);
@@ -163,7 +163,8 @@ export default function ThongKeThuNganPage() {
   };
 
   const handlePrintChungTu = async (item) => {
-    if (item.loai === 'phieu_thu') {
+    // Dòng hoàn tiền gắn với một hóa đơn → mở biên lai của hóa đơn đó
+    if (item.loai === 'phieu_thu' || item.loai === 'phieu_huy') {
       try {
         const invoiceId = item.hoaDonId || item.id;
         const res = await apiGet(`/thanh-toan/${invoiceId}`);
@@ -315,7 +316,7 @@ export default function ThongKeThuNganPage() {
                 <Building2 className="h-3.5 w-3.5" />
                 <span>Toàn phòng khám (Tổng viện)</span>
                 <span className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${phamVi === 'toan_vien' ? 'bg-emerald-700 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                  {stats?.soHoaDonToanVien ? `${stats.soHoaDonToanVien} HĐ` : '37 HĐ'}
+                  {`${stats?.soHoaDonToanVien ?? 0} HĐ`}
                 </span>
               </button>
               <button
@@ -330,7 +331,7 @@ export default function ThongKeThuNganPage() {
                 <Wallet className="h-3.5 w-3.5" />
                 <span>Ca trực của tôi (Két cá nhân)</span>
                 <span className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${phamVi === 'ca_nhan' ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                  {stats?.soHoaDonCaNhan ? `${stats.soHoaDonCaNhan} HĐ` : '4 HĐ'}
+                  {`${stats?.soHoaDonCaNhan ?? 0} HĐ`}
                 </span>
               </button>
             </div>
@@ -627,6 +628,7 @@ export default function ThongKeThuNganPage() {
                 { id: 'tat_ca', label: 'Tất cả', count: chungTu.length },
                 { id: 'phieu_thu', label: 'Phiếu thu (+)', count: chungTu.filter((x) => x.loai === 'phieu_thu').length },
                 { id: 'phieu_chi', label: 'Phiếu chi (-)', count: chungTu.filter((x) => x.loai === 'phieu_chi').length },
+                { id: 'phieu_huy', label: 'Hoàn tiền', count: chungTu.filter((x) => x.loai === 'phieu_huy').length },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -706,15 +708,19 @@ export default function ThongKeThuNganPage() {
               ) : (
                 filteredChungTu.map((item, idx) => {
                   const isThu = item.loai === 'phieu_thu';
+                  // Hoàn tiền chỉ để đối chiếu: số tiền đã được trừ sẵn trong phiếu thu / tổng thu, không phải khoản chi thêm
+                  const isHoan = item.loai === 'phieu_huy';
                   return (
                     <tr key={`${item.loai}-${item.soChungTu}-${idx}`} className="hover:bg-gray-50/70 transition-colors">
                       <td className="py-3 pl-4">
                         <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold border ${
                           isThu
                             ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : isHoan
+                            ? 'bg-amber-50 text-amber-800 border-amber-200'
                             : 'bg-rose-50 text-rose-800 border-rose-200'
                         }`}>
-                          {isThu ? '+ Thu' : '- Chi'}
+                          {isThu ? '+ Thu' : isHoan ? '↺ Hoàn' : '- Chi'}
                         </span>
                       </td>
 
@@ -736,8 +742,11 @@ export default function ThongKeThuNganPage() {
                         </span>
                       </td>
 
-                      <td className={`py-3 text-right font-extrabold text-sm ${isThu ? 'text-emerald-700' : 'text-rose-700'}`}>
-                        {isThu ? '+' : '-'}{formatCurrency(item.soTien)}
+                      <td
+                        className={`py-3 text-right font-extrabold text-sm ${isThu ? 'text-emerald-700' : isHoan ? 'text-amber-700' : 'text-rose-700'}`}
+                        title={isHoan ? 'Đã trừ trong tổng thu, không cộng thêm vào phiếu chi' : undefined}
+                      >
+                        {isThu ? '+' : isHoan ? '' : '-'}{formatCurrency(item.soTien)}
                       </td>
 
                       <td className="py-3 text-gray-500 text-[11px]">

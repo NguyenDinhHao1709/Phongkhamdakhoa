@@ -1030,6 +1030,32 @@ export class ThanhToanService {
 
     const allInvoices = await qb.getMany();
 
+    // Điều kiện ngày thanh toán của kỳ đang chọn, dùng lại cho các truy vấn đếm phụ
+    const apDungKy = (q: any, cot: string) => {
+      if (query.tuNgay) q.andWhere(`${cot} >= :kyTu`, { kyTu: `${query.tuNgay} 00:00:00` });
+      if (query.denNgay) q.andWhere(`${cot} <= :kyDen`, { kyDen: `${query.denNgay} 23:59:59` });
+      if (!query.tuNgay && !query.denNgay && rangeStart && rangeEnd) {
+        q.andWhere(`${cot} >= :kyStart AND ${cot} <= :kyEnd`, { kyStart: rangeStart, kyEnd: rangeEnd });
+      }
+      return q;
+    };
+    const demHoaDonDaThu = (thuNganId?: number) => {
+      const q = this.hoaDonRepo.createQueryBuilder('hdc').where('hdc.trangThai = :st', { st: 'da_thanh_toan' });
+      if (thuNganId) q.andWhere('hdc.thuNganId = :tnId', { tnId: thuNganId });
+      return apDungKy(q, 'hdc.ngayThanhToan').getCount();
+    };
+    const soHoaDonToanVien = await demHoaDonDaThu();
+    const soHoaDonCaNhan = nvThuNgan ? await demHoaDonDaThu(nvThuNgan.id) : 0;
+
+    // Phân loại phiếu tạm ứng giống trang Quản lý hóa đơn: hóa đơn quyết toán cũng có dòng 'tam_ung'
+    // (khấu trừ, số âm) nên KHÔNG được coi là phiếu tạm ứng.
+    const laTamUngQuay = (h: HoaDon) => Boolean(h.maHoaDon?.startsWith(MA_TAM_UNG_QUAY));
+    const laTamUngDatLich = (h: HoaDon) => Boolean(
+      h.maHoaDon?.startsWith('HDT') ||
+      h.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]') ||
+      (!h.luotTiepNhanId && !laTamUngQuay(h) && h.chiTiet?.some((c) => c.loaiPhi === 'tam_ung')),
+    );
+
     const daThanhToan = allInvoices.filter(h => h.trangThai === 'da_thanh_toan');
     const tongThucThu = daThanhToan.reduce((s, h) => s + thuRong(h), 0);
     const tongTienGiam = daThanhToan.reduce((s, h) => s + Number(h.soTienGiam || 0), 0);
@@ -1056,8 +1082,11 @@ export class ThanhToanService {
 
     const rawHourly = await rawHourlyQb.groupBy('HOUR(hd.ngayThanhToan)').getRawMany();
 
-    const chartTheoGio = Array.from({ length: 10 }, (_, i) => {
-      const gio = i + 8; // 8:00 - 17:00
+    const gioCoTien = rawHourly.map(h => Number(h.gio));
+    const gioDau = Math.min(7, ...gioCoTien);
+    const gioCuoi = Math.max(18, ...gioCoTien);
+    const chartTheoGio = Array.from({ length: gioCuoi - gioDau + 1 }, (_, i) => {
+      const gio = gioDau + i;
       const found = rawHourly.find(h => Number(h.gio) === gio);
       return {
         gio: `${gio}:00`,
@@ -1069,6 +1098,11 @@ export class ThanhToanService {
     const chiQuery = this.yeuCauNhapKhoRepo.createQueryBuilder('yc')
       .where('yc.trang_thai_chi_tra = :daChi', { daChi: 'da_chi' })
       .orderBy('yc.ngay_chi_tra', 'DESC');
+
+    // Phạm vi két cá nhân: chỉ khoản chi do chính thu ngân này chi (giống phiếu chi OPEX bên dưới)
+    if (phamVi === 'ca_nhan' && nvThuNgan) {
+      chiQuery.andWhere('yc.nguoiChiTraId = :myChiTraId', { myChiTraId: nvThuNgan.id });
+    }
 
     if (query.tuNgay || query.denNgay) {
       if (query.tuNgay) {
@@ -1085,6 +1119,13 @@ export class ThanhToanService {
     }
     const phieuChiThuoc = await chiQuery.getMany();
     const tongChiThuoc = phieuChiThuoc.reduce((sum, item) => sum + Number(item.soTienChiTra || 0), 0);
+
+    // nguoi_chi_tra_id là id nhân viên → tra tên để hiển thị thay cho mã số
+    const idsNguoiChi = [...new Set(phieuChiThuoc.map(p => p.nguoiChiTraId).filter(Boolean))];
+    const tenNguoiChi = new Map<number, string>();
+    if (idsNguoiChi.length) {
+      (await this.nhanVienRepo.find({ where: { id: In(idsNguoiChi) } })).forEach(nv => tenNguoiChi.set(nv.id, nv.hoTen));
+    }
 
     // 3. Áp dụng điều kiện thời gian cho Phiếu Chi Hoạt Động (OPEX)
     const opexQuery = this.phieuChiHoatDongRepo.createQueryBuilder('pc')
@@ -1111,32 +1152,36 @@ export class ThanhToanService {
     const tongPhieuChi = tongChiThuoc + tongChiOpex;
 
     const phieuThu = daThanhToan.map((h) => {
-      const isTamUng = Boolean(
-        h.maHoaDon?.startsWith('HDT') ||
-        h.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]') ||
-        (h.chiTiet && h.chiTiet.some((c) => c.loaiPhi === 'tam_ung'))
-      );
+      const tamUngDatLich = laTamUngDatLich(h);
+      const tamUngQuay = laTamUngQuay(h);
       const matchMaLh = h.ghiChu?.match(/\[MÃ_LỊCH_HẸN:\s*([^\]]+)\]/i);
       const maLh = matchMaLh
         ? matchMaLh[1].trim()
         : h.maHoaDon?.startsWith('HDT')
         ? `LH${h.maHoaDon.slice(3)}`
         : null;
+      const tienHoan = Number(h.tienHoanTra || 0);
+
+      let dienGiai = tamUngDatLich
+        ? `Thu tạm ứng giữ chỗ lịch hẹn${maLh ? ` (${maLh})` : ''}`
+        : tamUngQuay
+        ? 'Thu tạm ứng tại quầy'
+        : h.ghiChu?.includes('khấu trừ')
+        ? `Thu viện phí khám chữa bệnh (${h.ghiChu})`
+        : 'Thu viện phí khám chữa bệnh';
+      if (tienHoan > 0) dienGiai += ` — đã hoàn ${tienHoan.toLocaleString('vi-VN')}đ`;
 
       return {
         loai: 'phieu_thu',
-        loaiChiTiet: isTamUng ? 'tam_ung_dat_lich' : 'thu_vien_phi',
+        loaiChiTiet: tamUngDatLich ? 'tam_ung_dat_lich' : tamUngQuay ? 'tam_ung_tai_quay' : 'thu_vien_phi',
         soChungTu: h.maHoaDon,
         doiTuong: h.benhNhan?.hoTen || 'Bệnh nhân',
-        dienGiai: isTamUng
-          ? `Thu tạm ứng 1/5 phí khám giữ chỗ lịch hẹn${maLh ? ` (${maLh})` : ''}`
-          : h.ghiChu?.includes('khấu trừ')
-          ? `Thu viện phí khám chữa bệnh (${h.ghiChu})`
-          : 'Thu viện phí khám chữa bệnh',
-        soTien: Number(h.thucThu),
+        dienGiai,
+        // Số thực giữ lại (thu − hoàn), để bảng đối soát quỹ cộng lại khớp với thẻ Tổng thu
+        soTien: thuRong(h),
         phuongThuc: h.phuongThucThanhToan || 'tien_mat',
         ngayLap: h.ngayThanhToan,
-        nguoiLap: h.thuNgan?.hoTen || (isTamUng ? 'Cổng VNPay/MoMo (Tự động)' : null),
+        nguoiLap: h.thuNgan?.hoTen || (tamUngDatLich ? 'Cổng thanh toán online (tự động)' : null),
         hoaDonId: h.id,
       };
     });
@@ -1150,7 +1195,7 @@ export class ThanhToanService {
       soTien: Number(item.soTienChiTra || 0),
       phuongThuc: item.phuongThucChi || 'chuyen_khoan',
       ngayLap: item.ngayChiTra,
-      nguoiLap: item.nguoiChiTraId,
+      nguoiLap: tenNguoiChi.get(item.nguoiChiTraId) || null,
       yeuCauId: item.id,
     }));
 
@@ -1167,11 +1212,10 @@ export class ThanhToanService {
       phieuChiId: item.id,
     }));
 
-    const danhSachHoaDonHuy = allInvoices.filter(h => h.trangThai === 'huy').map(h => {
-      const isTamUng = Boolean(
-        h.maHoaDon?.startsWith('HDT') ||
-        h.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]')
-      );
+    // Hóa đơn bị hủy khi CHƯA thu (tạm ứng của lượt vắng mặt / chuyển cấp cứu...) không có ngày thanh toán
+    // và không phát sinh tiền hoàn → không đưa vào danh sách hoàn tiền.
+    const danhSachHoaDonHuy = allInvoices.filter(h => h.trangThai === 'huy' && h.ngayThanhToan).map(h => {
+      const isTamUng = laTamUngDatLich(h) || laTamUngQuay(h);
       return {
         loai: 'phieu_huy',
         loaiChiTiet: isTamUng ? 'hoan_coc_dat_lich' : 'hoan_vien_phi',
@@ -1187,6 +1231,20 @@ export class ThanhToanService {
         hoaDonId: h.id,
       };
     });
+    // Hoàn một phần: hóa đơn vẫn "đã thanh toán", phần hoàn ghi ở tien_hoan_tra
+    const danhSachHoanMotPhan = daThanhToan.filter(h => Number(h.tienHoanTra || 0) > 0).map(h => ({
+      loai: 'phieu_huy',
+      loaiChiTiet: 'hoan_mot_phan',
+      soChungTu: h.maHoaDon,
+      doiTuong: h.benhNhan?.hoTen || 'Bệnh nhân',
+      dienGiai: `Hoàn một phần viện phí (${h.ghiChu || 'đã hoàn'})`,
+      soTien: Number(h.tienHoanTra),
+      phuongThuc: h.phuongThucThanhToan || 'tien_mat',
+      ngayLap: h.ngayThanhToan,
+      nguoiLap: h.thuNgan?.hoTen || null,
+      hoaDonId: h.id,
+    }));
+    const danhSachHoanTien = [...danhSachHoaDonHuy, ...danhSachHoanMotPhan];
 
     const danhSachPhieuChi = [...danhSachPhieuChiThuoc, ...danhSachPhieuChiOpex];
 
@@ -1194,14 +1252,14 @@ export class ThanhToanService {
       phamVi,
       isCaNhan: phamVi === 'ca_nhan',
       tenThuNgan: nvThuNgan?.hoTen || null,
-      soHoaDonCaNhan: nvThuNgan ? await this.hoaDonRepo.count({ where: { thuNganId: nvThuNgan.id, trangThai: 'da_thanh_toan' } }) : 0,
-      soHoaDonToanVien: await this.hoaDonRepo.count({ where: { trangThai: 'da_thanh_toan' } }),
+      soHoaDonCaNhan,
+      soHoaDonToanVien,
       tongThucThu,
       tongTienGiam,
       soHoaDonDaThu: daThanhToan.length,
       soHoaDonChoThu: choThanhToanCount,
       soHoaDonDaHuy: danhSachHoaDonHuy.length,
-      tongTienHoanHuy: danhSachHoaDonHuy.reduce((s, h) => s + h.soTien, 0),
+      tongTienHoanHuy: danhSachHoanTien.reduce((s, h) => s + h.soTien, 0),
       byPhuongThuc,
       chartTheoGio,
       giaoDichGanNhat: daThanhToan.slice(0, 10).map(h => ({
@@ -1209,7 +1267,7 @@ export class ThanhToanService {
         maHoaDon: h.maHoaDon,
         benhNhanTen: h.benhNhan?.hoTen,
         benhNhanSdt: h.benhNhan?.soDienThoai,
-        thucThu: Number(h.thucThu),
+        thucThu: thuRong(h),
         phuongThuc: h.phuongThucThanhToan,
         ngayThanhToan: h.ngayThanhToan,
         thuNganTen: h.thuNgan?.hoTen,
@@ -1225,7 +1283,7 @@ export class ThanhToanService {
       soDuDongTien: tongThucThu - tongPhieuChi,
       soDuQuyRong: tongThucThu - tongPhieuChi,
       soPhieuChoChi: await this.yeuCauNhapKhoRepo.count({ where: { trangThaiChiTra: 'cho_chi' } }),
-      danhSachChungTu: [...phieuThu, ...danhSachPhieuChi, ...danhSachHoaDonHuy]
+      danhSachChungTu: [...phieuThu, ...danhSachPhieuChi, ...danhSachHoanTien]
         .sort((a, b) => new Date(b.ngayLap || 0).getTime() - new Date(a.ngayLap || 0).getTime()),
     };
   }
