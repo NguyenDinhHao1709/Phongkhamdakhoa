@@ -27,6 +27,12 @@ import { apiGet, apiPatch } from '../../services/api';
 import { formatCurrency } from '../../utils/formatCurrency';
 import AddEditThuocModal from './AddEditThuocModal';
 
+// Định mức tồn tối thiểu riêng của từng thuốc (cột ton_kho_toi_thieu); thiếu thì dùng 20 như trước
+const dinhMuc = (t) => {
+  const n = Number(t?.tonKhoToiThieu);
+  return Number.isFinite(n) && n >= 0 ? n : 20;
+};
+
 export default function KhoThuocPage() {
   const navigate = useNavigate();
   const [list, setList] = useState([]);
@@ -95,9 +101,9 @@ export default function KhoThuocPage() {
       const isStopped = item.trangThai === 'ngung_kinh_doanh';
 
       if (filterStockStatus === 'san_sang') {
-        if (isStopped || stock <= 20) return false;
+        if (isStopped || stock <= dinhMuc(item)) return false;
       } else if (filterStockStatus === 'sap_het') {
-        if (isStopped || stock <= 0 || stock > 20) return false;
+        if (isStopped || stock <= 0 || stock > dinhMuc(item)) return false;
       } else if (filterStockStatus === 'can_date') {
         if (isStopped || (!item.coLoCanDate && !item.coLoHetHan)) return false;
       } else if (filterStockStatus === 'het_hang') {
@@ -154,7 +160,7 @@ export default function KhoThuocPage() {
         if (i.coLoCanDate || i.coLoHetHan) {
           nearExpiry++;
         }
-        if (s <= 20) {
+        if (s <= dinhMuc(i)) {
           low++;
         } else {
           ready++;
@@ -182,7 +188,7 @@ export default function KhoThuocPage() {
       let statusStr = 'Sẵn sàng cấp';
       if (t.trangThai === 'ngung_kinh_doanh') statusStr = 'Ngừng kinh doanh';
       else if (stock <= 0) statusStr = 'Hết hàng';
-      else if (stock <= 20) statusStr = 'Sắp hết hàng (Tồn thấp)';
+      else if (stock <= dinhMuc(t)) statusStr = `Sắp hết hàng (≤ định mức ${dinhMuc(t)})`;
       else if (t.coLoHetHan) statusStr = 'Có lô hết hạn';
       else if (t.coLoCanDate) statusStr = 'Có lô cận date (≤60 ngày)';
 
@@ -613,8 +619,8 @@ export default function KhoThuocPage() {
                   const stock = Number(t.tonKhoTong) || 0;
                   const isStopped = t.trangThai === 'ngung_kinh_doanh';
                   const isOutOfStock = !isStopped && stock <= 0;
-                  const isLow = !isStopped && stock > 0 && stock <= 20;
-                  const isReady = !isStopped && stock > 20;
+                  const isLow = !isStopped && stock > 0 && stock <= dinhMuc(t);
+                  const isReady = !isStopped && stock > dinhMuc(t);
 
                   return (
                     <tr key={t.id} className="hover:bg-blue-50/30 transition-colors group">
@@ -733,11 +739,10 @@ export default function KhoThuocPage() {
                             {t.donViTinh || 'Viên'}
                           </span>
                         </div>
-                        {t.tongSoLo > 1 && (
-                          <p className="text-[10px] text-gray-400 mt-0.5">
-                            ({t.tongSoLo} lô hàng)
-                          </p>
-                        )}
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          Định mức: {dinhMuc(t).toLocaleString()}
+                          {t.tongSoLo > 1 && ` · ${t.tongSoLo} lô hàng`}
+                        </p>
                       </td>
 
                       {/* 8. Trạng thái */}

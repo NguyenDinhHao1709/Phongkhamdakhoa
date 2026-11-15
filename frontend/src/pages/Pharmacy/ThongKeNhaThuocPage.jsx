@@ -53,6 +53,12 @@ import InBaoCaoDuocPhamModal from './InBaoCaoDuocPhamModal';
 import GuiBaoCaoModal from '../../components/Report/GuiBaoCaoModal';
 import LichSuBaoCaoModal from '../../components/Report/LichSuBaoCaoModal';
 
+// Định mức tồn tối thiểu riêng của từng thuốc (cột ton_kho_toi_thieu); thiếu thì dùng 20 như trước
+const dinhMuc = (t) => {
+  const n = Number(t?.tonKhoToiThieu);
+  return Number.isFinite(n) && n >= 0 ? n : 20;
+};
+
 export default function ThongKeNhaThuocPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -203,11 +209,11 @@ export default function ThongKeNhaThuocPage() {
         statusFilter === 'all'
           ? true
           : statusFilter === 'canh_bao'
-          ? t.tonKhoTong > 0 && t.tonKhoTong <= 20
+          ? t.tonKhoTong > 0 && t.tonKhoTong <= dinhMuc(t)
           : statusFilter === 'het_hang'
           ? t.tonKhoTong <= 0
           : statusFilter === 'con_hang'
-          ? t.tonKhoTong > 20
+          ? t.tonKhoTong > dinhMuc(t)
           : statusFilter === 'can_date'
           ? Boolean(t.coLoCanDate)
           : true;
@@ -488,8 +494,8 @@ export default function ThongKeNhaThuocPage() {
                 className="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-primary-500/20 cursor-pointer"
               >
                 <option value="all">Tất cả trạng thái kho</option>
-                <option value="con_hang">🟢 Còn hàng sẵn sàng (&gt; 20)</option>
-                <option value="canh_bao">🟡 Cảnh báo tồn ít (≤ 20)</option>
+                <option value="con_hang">🟢 Còn hàng sẵn sàng (&gt; định mức)</option>
+                <option value="canh_bao">🟡 Cảnh báo tồn ít (≤ định mức)</option>
                 <option value="het_hang">🔴 Hết hàng (Tồn = 0)</option>
                 <option value="can_date">⏰ Lô cận hạn sử dụng (≤ 60 ngày)</option>
               </select>
@@ -1407,14 +1413,14 @@ export default function ThongKeNhaThuocPage() {
                     <th className="py-3 px-4">Mã Lô & HSD</th>
                     <th className="py-3 px-4 text-right">Đơn Giá Bán</th>
                     <th className="py-3 px-4 text-center">Tồn Kho</th>
-                    <th className="py-3 px-4 text-right">Thành Tiền Tồn</th>
+                    <th className="py-3 px-4 text-right" title="Theo giá nhập, chỉ lô còn hạn">Giá Trị Tồn (giá nhập)</th>
                     <th className="py-3 px-4 text-center">Trạng Thái</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-gray-700">
                   {filteredList.map((t) => {
                     const isOutOfStock = t.tonKhoTong <= 0;
-                    const isLow = t.tonKhoTong > 0 && t.tonKhoTong <= 20;
+                    const isLow = t.tonKhoTong > 0 && t.tonKhoTong <= dinhMuc(t);
 
                     return (
                       <tr key={t.id} className="hover:bg-blue-50/30 transition-colors">
@@ -1458,9 +1464,10 @@ export default function ThongKeNhaThuocPage() {
                           >
                             {t.tonKhoTong}
                           </span>
+                          <span className="block text-[10px] text-gray-400">Định mức {dinhMuc(t)}</span>
                         </td>
                         <td className="py-3 px-4 text-right font-bold text-primary-700">
-                          {formatCurrency(t.giaBan * t.tonKhoTong)}
+                          {formatCurrency(t.thanhTien ?? t.giaBan * t.tonKhoTong)}
                         </td>
                         <td className="py-3 px-4 text-center">
                           {isOutOfStock ? (

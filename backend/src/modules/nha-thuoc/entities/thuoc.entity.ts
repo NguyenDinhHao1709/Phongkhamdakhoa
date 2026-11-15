@@ -35,6 +35,10 @@ export class Thuoc {
   @Column({ name: 'ton_kho_tong', default: 0 })
   tonKhoTong: number;
 
+  /** Định mức tồn tối thiểu: tồn <= mức này thì cảnh báo sắp hết hàng (mặc định 20) */
+  @Column({ name: 'ton_kho_toi_thieu', type: 'int', default: 20 })
+  tonKhoToiThieu: number;
+
   @Column({ name: 'mo_ta', type: 'text', nullable: true })
   moTa: string;
 

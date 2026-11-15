@@ -15,6 +15,15 @@ import { YeuCauNhapKho } from './entities/yeu-cau-nhap-kho.entity';
 import { YeuCauNhapKhoChiTiet } from './entities/yeu-cau-nhap-kho-chi-tiet.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 
+
+/** Định mức tồn tối thiểu hợp lệ (số nguyên >= 0); thiếu hoặc sai thì dùng mặc định 20 */
+const DINH_MUC_MAC_DINH = 20;
+const chuanHoaDinhMuc = (v: any, macDinh = DINH_MUC_MAC_DINH) => {
+  if (v === undefined || v === null || v === '') return macDinh;
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n >= 0 ? n : macDinh;
+};
+
 @Injectable()
 export class NhaThuocService {
   /** Mã đơn thuốc theo ngày từ bộ đếm trong DB (không trùng khi chạy nhiều instance) */
@@ -966,6 +975,7 @@ export class NhaThuocService {
           duongDung: item.duongDung,
           giaBan: Number(item.giaBan),
           tonKhoTong: Number(item.tonKhoTong),
+          tonKhoToiThieu: chuanHoaDinhMuc(item.tonKhoToiThieu),
           tonKhoKhaDung,
           moTa: item.moTa,
           trangThai: item.trangThai,
@@ -1009,6 +1019,7 @@ export class NhaThuocService {
       duongDung: data.duongDung || 'Uống',
       giaBan: Number(data.giaBan || 0),
       tonKhoTong: 0,
+      tonKhoToiThieu: chuanHoaDinhMuc(data.tonKhoToiThieu),
       moTa: data.moTa || null,
       trangThai: 'het_hang',
     });
@@ -1038,8 +1049,10 @@ export class NhaThuocService {
       duongDung: data.duongDung || null,
       giaBan: Number(data.giaBan || 0),
       tonKhoTong,
+      tonKhoToiThieu: chuanHoaDinhMuc(data.tonKhoToiThieu, chuanHoaDinhMuc(thuoc.tonKhoToiThieu)),
       moTa: data.moTa || null,
-      trangThai: tonKhoTong > 0 ? 'con_hang' : 'het_hang',
+      // Sửa thông tin không được tự mở bán lại thuốc đã ngừng kinh doanh
+      trangThai: thuoc.trangThai === 'ngung_kinh_doanh' ? 'ngung_kinh_doanh' : tonKhoTong > 0 ? 'con_hang' : 'het_hang',
     });
 
     return { message: 'Cập nhật thông tin thuốc thành công' };
@@ -1701,6 +1714,7 @@ export class NhaThuocService {
 
       const ngungKinhDoanh = t.trangThai === 'ngung_kinh_doanh';
       const ton = Number(t.tonKhoTong);
+      const dinhMuc = chuanHoaDinhMuc(t.tonKhoToiThieu);
       return {
         id: t.id,
         maThuoc: t.maThuoc,
@@ -1710,19 +1724,20 @@ export class NhaThuocService {
         duongDung: t.duongDung,
         giaBan,
         tonKhoTong: ton,
+        tonKhoToiThieu: dinhMuc,
         thanhTien: giaTriThuoc,
         maLo: activeLo?.maLo || null,
         ngayHetHan: activeLo ? ngayCuaLo(activeLo) : null,
         coLoCanDate,
         ngungKinhDoanh,
-        trangThai: ngungKinhDoanh ? 'ngung_kinh_doanh' : ton > 20 ? 'con_hang' : ton > 0 ? 'canh_bao' : 'het_hang',
+        trangThai: ngungKinhDoanh ? 'ngung_kinh_doanh' : ton > dinhMuc ? 'con_hang' : ton > 0 ? 'canh_bao' : 'het_hang',
       };
     });
 
     // Thuốc ngừng kinh doanh không cần nhập lại → không tính vào cảnh báo hết / sắp hết hàng
     const dangKinhDoanh = listThuoc.filter((t) => !t.ngungKinhDoanh);
     const tongSoThuoc = listThuoc.length;
-    const sapHetHang = dangKinhDoanh.filter((t) => t.tonKhoTong > 0 && t.tonKhoTong <= 20).length;
+    const sapHetHang = dangKinhDoanh.filter((t) => t.tonKhoTong > 0 && t.tonKhoTong <= t.tonKhoToiThieu).length;
 
     // Đơn xuất trong ngày: theo NGÀY CẤP PHÁT (trước đây theo ngày kê đơn)
     const donXuatTrongNgay = await this.donThuocRepo
@@ -1792,7 +1807,7 @@ export class NhaThuocService {
           ngayHetHan: t.ngayHetHan || '---',
           hanhDong: 'Lập phiếu nhập gấp',
         });
-      } else if (t.tonKhoTong <= 20) {
+      } else if (t.tonKhoTong <= t.tonKhoToiThieu) {
         canhBaoRuiRo.push({
           id: `cb_${t.id}`,
           thuocId: t.id,
@@ -1800,9 +1815,9 @@ export class NhaThuocService {
           maThuoc: t.maThuoc,
           donViTinh: t.donViTinh,
           maLo: t.maLo,
-          loaiRuiRo: 'Tồn kho nguy cấp (dưới 20 đơn vị)',
+          loaiRuiRo: `Tồn kho nguy cấp (≤ định mức ${t.tonKhoToiThieu})`,
           mucDo: 'canh_bao',
-          moTa: `Tồn kho chỉ còn ${t.tonKhoTong} ${t.donViTinh}. Đề xuất lập dự trù nhập kho.`,
+          moTa: `Tồn kho chỉ còn ${t.tonKhoTong} ${t.donViTinh}, dưới định mức tối thiểu ${t.tonKhoToiThieu}. Đề xuất lập dự trù nhập kho.`,
           tonKho: t.tonKhoTong,
           soLuong: t.tonKhoTong,
           hanDung: t.ngayHetHan || '---',

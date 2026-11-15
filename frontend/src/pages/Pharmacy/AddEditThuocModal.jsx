@@ -24,7 +24,7 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
     defaultValues: {
       maThuoc: '', tenThuoc: '', tenHoatChat: '', donViTinh: 'Viên',
-      hamLuong: '', duongDung: 'Uống', giaBan: 0, moTa: '',
+      hamLuong: '', duongDung: 'Uống', giaBan: 0, tonKhoToiThieu: 20, moTa: '',
     },
   });
 
@@ -37,10 +37,11 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
       hamLuong: thuoc.hamLuong || '',
       duongDung: thuoc.duongDung || 'Uống',
       giaBan: thuoc.giaBan || 0,
+      tonKhoToiThieu: thuoc.tonKhoToiThieu ?? 20,
       moTa: thuoc.moTa || '',
     } : {
       maThuoc: '', tenThuoc: '', tenHoatChat: '', donViTinh: 'Viên',
-      hamLuong: '', duongDung: 'Uống', giaBan: 0, moTa: '',
+      hamLuong: '', duongDung: 'Uống', giaBan: 0, tonKhoToiThieu: 20, moTa: '',
     });
   }, [thuoc, reset]);
 
@@ -159,16 +160,40 @@ export default function AddEditThuocModal({ thuoc, onClose, onSuccess }) {
               </label>
             </div>
 
-            <label className="block font-medium text-gray-700 text-xs">
-              Đơn giá bán (VNĐ) *
-              <input
-                type="number"
-                min="0"
-                step="500"
-                {...register('giaBan', { valueAsNumber: true })}
-                className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm font-semibold focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
-              />
-            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <label className="block font-medium text-gray-700 text-xs">
+                Đơn giá bán (VNĐ) *
+                <input
+                  type="number"
+                  min="0"
+                  step="500"
+                  {...register('giaBan', { valueAsNumber: true })}
+                  className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm font-semibold focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+                />
+              </label>
+              <label className="block font-medium text-gray-700 text-xs">
+                Định mức tồn tối thiểu *
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  {...register('tonKhoToiThieu', {
+                    valueAsNumber: true,
+                    required: 'Nhập định mức tồn tối thiểu',
+                    min: { value: 0, message: 'Định mức không được âm' },
+                    validate: (v) => Number.isInteger(v) || 'Định mức phải là số nguyên',
+                  })}
+                  className={`mt-1 w-full rounded-lg border p-2 text-sm font-semibold focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none ${
+                    errors.tonKhoToiThieu ? 'border-danger-main bg-red-50/30' : 'border-gray-300'
+                  }`}
+                />
+                {errors.tonKhoToiThieu ? (
+                  <p className="mt-1 text-xs text-danger-main">{errors.tonKhoToiThieu.message}</p>
+                ) : (
+                  <p className="mt-1 text-[11px] font-normal text-gray-500">Tồn ≤ mức này sẽ được cảnh báo sắp hết hàng</p>
+                )}
+              </label>
+            </div>
 
             <label className="block font-medium text-gray-700 text-xs">
               Mô tả / Ghi chú
