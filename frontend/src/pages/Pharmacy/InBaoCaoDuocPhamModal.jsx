@@ -159,7 +159,7 @@ export default function InBaoCaoDuocPhamModal({ stats, listThuoc = [], filterInf
                   </div>
                 </div>
                 <div className="border border-emerald-200 p-2.5 rounded bg-emerald-50/40">
-                  <div className="text-emerald-700 text-[11px] font-medium">Tổng Giá Trị Tồn Kho</div>
+                  <div className="text-emerald-700 text-[11px] font-medium">Tổng Giá Trị Tồn Kho (giá nhập, lô còn hạn)</div>
                   <div className="font-bold text-sm text-emerald-700 mt-0.5">
                     {formatCurrency(tongGiaTriKho)}
                   </div>

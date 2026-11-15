@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { soTiepTheo, voiKhoaDb } from '../../common/utils/db-sequence.util';
+import { khoangNgayVN, ngayVN, congNgay } from '../../common/utils/khoang-ngay-vn.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
 import { Thuoc } from './entities/thuoc.entity';
@@ -1639,19 +1640,67 @@ export class NhaThuocService {
     trangThai?: string;
     duongDung?: string;
   }) {
+    // Khoảng ngày theo giờ VN. Trước đây "7 ngày qua" lấy 15 ngày và "Quý này" là 3 tháng gần nhất.
+    const homNay = ngayVN();
+    const MA_KHOANG: Record<string, string> = { today: 'hom_nay', '7days': '7_ngay', month: 'thang_nay', quarter: 'quy_nay' };
+    const { fromDate, toDate: toDateKy } = khoangNgayVN(
+      { range: MA_KHOANG[filter.khoangThoiGian || ''] || '7_ngay', tuNgay: filter.tuNgay, denNgay: filter.denNgay },
+      '7_ngay',
+    );
+    // Biểu đồ chỉ vẽ tới hôm nay (tháng / quý này không vẽ các ngày tương lai trống)
+    const toDate = !filter.denNgay && toDateKy > homNay ? homNay : toDateKy;
+
+    // Đơn coi là "đã xuất kho": đã cấp phát (đơn mua ngoài / chờ duyệt / hủy không xuất thuốc)
+    const TRANG_THAI_DA_XUAT = ['da_cap_phat', 'da_hoan_thanh'];
+    const ngayCuaLo = (lo: LoThuoc) => (lo.ngayHetHan ? String(lo.ngayHetHan).slice(0, 10) : null);
+    const soNgayConLai = (han: string) =>
+      Math.round((Date.parse(`${han}T00:00:00Z`) - Date.parse(`${homNay}T00:00:00Z`)) / 86_400_000);
+    const loHetHan = (lo: LoThuoc) => {
+      const han = ngayCuaLo(lo);
+      return !!han && han < homNay;
+    };
+
     const listThuocRaw = await this.thuocRepo.find({
       relations: ['loThuocList'],
       order: { tenThuoc: 'ASC' },
     });
 
-    // 1. Danh sách thuốc tồn kho tổng
+    // 1. Danh sách thuốc tồn kho
+    let tongGiaTriKho = 0; // theo giá nhập, chỉ lô còn hạn
+    let tongGiaTriKhoGiaBan = 0; // theo giá bán, chỉ lô còn hạn
+    let giaTriHetHan = 0; // hàng trong lô đã hết hạn (chờ tiêu hủy), theo giá nhập
     const listThuoc = listThuocRaw.map((t) => {
-      const activeLo = t.loThuocList && t.loThuocList.length > 0 ? t.loThuocList[0] : null;
-      const coLoCanDate = (t.loThuocList || []).some((lo) => {
-        if (!lo.soLuongTon || Number(lo.soLuongTon) <= 0 || !lo.ngayHetHan) return false;
-        const diffDays = Math.ceil((new Date(lo.ngayHetHan).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-        return diffDays <= 60;
+      const giaBan = Number(t.giaBan || 0);
+      const loConTon = (t.loThuocList || []).filter((lo) => Number(lo.soLuongTon) > 0);
+      // FEFO: lô còn hạn có hạn dùng gần nhất; không còn lô nào còn hạn thì lấy lô hết hạn sớm nhất
+      const theoHan = [...loConTon].sort((a, b) => (ngayCuaLo(a) || '9999').localeCompare(ngayCuaLo(b) || '9999'));
+      const activeLo = theoHan.find((lo) => !loHetHan(lo)) || theoHan[0] || null;
+      const coLoCanDate = loConTon.some((lo) => {
+        const han = ngayCuaLo(lo);
+        return !!han && soNgayConLai(han) <= 60;
       });
+
+      let giaTriThuoc = 0;
+      if (loConTon.length > 0) {
+        loConTon.forEach((lo) => {
+          const sl = Number(lo.soLuongTon);
+          const giaVon = lo.giaNhap != null ? Number(lo.giaNhap) : giaBan;
+          if (loHetHan(lo)) {
+            giaTriHetHan += sl * giaVon;
+          } else {
+            giaTriThuoc += sl * giaVon;
+            tongGiaTriKhoGiaBan += sl * giaBan;
+          }
+        });
+      } else if (Number(t.tonKhoTong) > 0) {
+        // Dữ liệu cũ chưa tách lô: chỉ có tổng tồn → tạm tính theo giá bán
+        giaTriThuoc = Number(t.tonKhoTong) * giaBan;
+        tongGiaTriKhoGiaBan += giaTriThuoc;
+      }
+      tongGiaTriKho += giaTriThuoc;
+
+      const ngungKinhDoanh = t.trangThai === 'ngung_kinh_doanh';
+      const ton = Number(t.tonKhoTong);
       return {
         id: t.id,
         maThuoc: t.maThuoc,
@@ -1659,48 +1708,47 @@ export class NhaThuocService {
         tenHoatChat: t.tenHoatChat,
         donViTinh: t.donViTinh,
         duongDung: t.duongDung,
-        giaBan: Number(t.giaBan),
-        tonKhoTong: Number(t.tonKhoTong),
-        thanhTien: Number(t.tonKhoTong) * Number(t.giaBan),
+        giaBan,
+        tonKhoTong: ton,
+        thanhTien: giaTriThuoc,
         maLo: activeLo?.maLo || null,
-        ngayHetHan: activeLo?.ngayHetHan ? String(activeLo.ngayHetHan) : null,
+        ngayHetHan: activeLo ? ngayCuaLo(activeLo) : null,
         coLoCanDate,
-        trangThai: Number(t.tonKhoTong) > 20 ? 'con_hang' : Number(t.tonKhoTong) > 0 ? 'canh_bao' : 'het_hang',
+        ngungKinhDoanh,
+        trangThai: ngungKinhDoanh ? 'ngung_kinh_doanh' : ton > 20 ? 'con_hang' : ton > 0 ? 'canh_bao' : 'het_hang',
       };
     });
 
+    // Thuốc ngừng kinh doanh không cần nhập lại → không tính vào cảnh báo hết / sắp hết hàng
+    const dangKinhDoanh = listThuoc.filter((t) => !t.ngungKinhDoanh);
     const tongSoThuoc = listThuoc.length;
-    const sapHetHang = listThuoc.filter((t) => t.tonKhoTong > 0 && t.tonKhoTong <= 20).length;
-    const hetHangCount = listThuoc.filter((t) => t.tonKhoTong <= 0).length;
-    const tongGiaTriKho = listThuoc.reduce((acc, cur) => acc + cur.thanhTien, 0);
+    const sapHetHang = dangKinhDoanh.filter((t) => t.tonKhoTong > 0 && t.tonKhoTong <= 20).length;
 
-    // Tính số đơn xuất trong ngày
+    // Đơn xuất trong ngày: theo NGÀY CẤP PHÁT (trước đây theo ngày kê đơn)
     const donXuatTrongNgay = await this.donThuocRepo
       .createQueryBuilder('dt')
-      .where('dt.trangThai = :st', { st: 'da_cap_phat' })
-      .andWhere('DATE(dt.ngayKe) = CURRENT_DATE()')
+      .where('dt.trangThai IN (:...st)', { st: TRANG_THAI_DA_XUAT })
+      .andWhere('DATE(dt.ngayCapPhat) = :homNay', { homNay })
       .getCount();
 
-    // 2. Truy vấn danh sách các lô cận hạn sử dụng (<= 60 ngày) hoặc đã hết hạn
+    // 2. Lô cận hạn (<= 60 ngày) hoặc đã hết hạn, còn tồn
     const loCanDateList = await this.loThuocRepo
       .createQueryBuilder('lo')
       .leftJoinAndSelect('lo.thuoc', 't')
       .where('lo.soLuongTon > 0')
-      .andWhere('lo.ngayHetHan <= DATE_ADD(CURRENT_DATE(), INTERVAL 60 DAY)')
+      .andWhere('lo.ngayHetHan <= DATE_ADD(:homNay, INTERVAL 60 DAY)', { homNay })
       .orderBy('lo.ngayHetHan', 'ASC')
       .getMany();
 
     const sapHetHanCount = loCanDateList.length;
 
-    // 3. Cảnh báo rủi ro (Bao gồm Cận hạn sử dụng FEFO + Hết hàng + Dưới định mức)
+    // 3. Cảnh báo rủi ro (Cận hạn FEFO + Hết hàng + Dưới định mức)
     const canhBaoRuiRo: any[] = [];
 
-    // 3.1. Đưa các lô thuốc cận date vào bảng cảnh báo FEFO
     loCanDateList.forEach((lo) => {
-      const diffTime = new Date(lo.ngayHetHan).getTime() - Date.now();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      const isExpired = diffDays <= 0;
-      const ngayHetHanStr = new Date(lo.ngayHetHan).toISOString().slice(0, 10);
+      const ngayHetHanStr = ngayCuaLo(lo) as string;
+      const diffDays = soNgayConLai(ngayHetHanStr);
+      const isExpired = diffDays < 0;
       canhBaoRuiRo.push({
         id: `lo_${lo.id}`,
         thuocId: lo.thuocId,
@@ -1710,6 +1758,8 @@ export class NhaThuocService {
         maLo: lo.maLo || 'Lô mặc định',
         loaiRuiRo: isExpired
           ? 'Đã hết hạn sử dụng'
+          : diffDays === 0
+          ? 'Hết hạn trong hôm nay'
           : `Cận hạn sử dụng (Còn ${diffDays} ngày)`,
         mucDo: isExpired || diffDays <= 15 ? 'nguy_cap' : 'canh_bao',
         moTa: `Lô ${lo.maLo} còn tồn ${lo.soLuongTon} ${lo.thuoc?.donViTinh || 'đơn vị'} (trên tổng số ${lo.thuoc?.tonKhoTong || lo.soLuongTon} của thuốc). Hạn dùng ${ngayHetHanStr}. ${isExpired ? 'Cần cách ly và tiêu hủy theo chuẩn GPP.' : 'Ưu tiên xuất trước theo nguyên tắc FEFO.'}`,
@@ -1724,8 +1774,7 @@ export class NhaThuocService {
       });
     });
 
-    // 3.2. Đưa các loại thuốc cạn kho hoặc dưới định mức an toàn vào cảnh báo
-    listThuoc.forEach((t) => {
+    dangKinhDoanh.forEach((t) => {
       if (t.tonKhoTong <= 0) {
         canhBaoRuiRo.push({
           id: `het_${t.id}`,
@@ -1763,15 +1812,18 @@ export class NhaThuocService {
       }
     });
 
-    // Top 10 thuốc kê nhiều nhất
+    // 4. Top 10 thuốc đã xuất trong kỳ (chỉ đơn đã cấp phát, theo ngày cấp phát)
     const topChiTiet = await this.donThuocChiTietRepo
       .createQueryBuilder('ct')
-      .leftJoinAndSelect('ct.thuoc', 'th')
+      .innerJoin('ct.donThuoc', 'dtTop')
+      .leftJoin('ct.thuoc', 'th')
       .select('th.tenThuoc', 'tenThuoc')
       .addSelect('th.maThuoc', 'maThuoc')
       .addSelect('th.donViTinh', 'donViTinh')
       .addSelect('th.tonKhoTong', 'tonKhoTong')
       .addSelect('SUM(ct.soLuong)', 'tongSoLuong')
+      .where('dtTop.trangThai IN (:...st)', { st: TRANG_THAI_DA_XUAT })
+      .andWhere('DATE(dtTop.ngayCapPhat) BETWEEN :fromDate AND :toDate', { fromDate, toDate })
       .groupBy('th.id')
       .orderBy('tongSoLuong', 'DESC')
       .limit(10)
@@ -1787,116 +1839,54 @@ export class NhaThuocService {
       soLuongXuat: Number(item.tongSoLuong || 0),
     }));
 
-    // 4. Tính toán Lưu lượng Xuất / Nhập kho theo từng ngày
-    // Xác định khoảng ngày lọc
-    let startDate: Date;
-    const endDate = filter.denNgay ? new Date(filter.denNgay) : new Date();
-    endDate.setHours(23, 59, 59, 999);
-
-    if (filter.tuNgay) {
-      startDate = new Date(filter.tuNgay);
-      startDate.setHours(0, 0, 0, 0);
-    } else if (filter.khoangThoiGian === 'today') {
-      startDate = new Date();
-      startDate.setHours(0, 0, 0, 0);
-    } else if (filter.khoangThoiGian === 'month') {
-      startDate = new Date();
-      startDate.setDate(1);
-      startDate.setHours(0, 0, 0, 0);
-    } else if (filter.khoangThoiGian === 'quarter') {
-      startDate = new Date();
-      startDate.setMonth(startDate.getMonth() - 3);
-      startDate.setHours(0, 0, 0, 0);
-    } else {
-      // Mặc định 7-14 ngày gần nhất
-      startDate = new Date();
-      startDate.setDate(startDate.getDate() - 14);
-      startDate.setHours(0, 0, 0, 0);
-    }
-
-    // Truy vấn tổng đơn xuất theo ngày từ don_thuoc
+    // 5. Lưu lượng xuất / nhập kho theo ngày
     const xuatRows = await this.donThuocRepo
       .createQueryBuilder('dt')
-      .select('DATE(dt.ngayKe)', 'ngay')
+      .select('DATE(dt.ngayCapPhat)', 'ngay')
       .addSelect('COUNT(*)', 'soDonXuat')
-      .where('dt.ngayKe >= :startDate AND dt.ngayKe <= :endDate', {
-        startDate,
-        endDate,
-      })
-      .groupBy('DATE(dt.ngayKe)')
-      .orderBy('DATE(dt.ngayKe)', 'ASC')
+      .where('dt.trangThai IN (:...st)', { st: TRANG_THAI_DA_XUAT })
+      .andWhere('DATE(dt.ngayCapPhat) BETWEEN :fromDate AND :toDate', { fromDate, toDate })
+      .groupBy('DATE(dt.ngayCapPhat)')
       .getRawMany();
 
-    // Truy vấn tổng lô nhập kho theo ngày từ lo_thuoc
     const nhapRows = await this.loThuocRepo
       .createQueryBuilder('lo')
       .select('DATE(lo.taoLuc)', 'ngay')
       .addSelect('COUNT(*)', 'soNhapKho')
-      .where('lo.taoLuc >= :startDate AND lo.taoLuc <= :endDate', {
-        startDate,
-        endDate,
-      })
+      .where('DATE(lo.taoLuc) BETWEEN :fromDate AND :toDate', { fromDate, toDate })
       .groupBy('DATE(lo.taoLuc)')
-      .orderBy('DATE(lo.taoLuc)', 'ASC')
       .getRawMany();
 
-    // Tạo map hợp nhất các ngày
+    // Khóa ngày dạng yyyy-mm-dd theo giờ VN. Trước đây mốc khởi tạo dùng toISOString() từ nửa đêm giờ VN
+    // (= ngày hôm trước theo UTC) nên cả biểu đồ lệch 1 ngày và hôm nay bị lặp 2 cột.
+    const khoaNgay = (v: any) => (v instanceof Date ? ngayVN(v) : String(v).slice(0, 10));
+    const nhanNgay = (ymd: string) => `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}`;
     const mapGiaoDich = new Map<string, { ngay: string; soDonXuat: number; soNhapKho: number }>();
-
-    // Khởi tạo các mốc ngày trong khoảng thời gian để biểu đồ liền mạch
-    const curDate = new Date(startDate);
-    while (curDate <= endDate) {
-      const dStr = curDate.toISOString().slice(0, 10);
-      const displayStr = `${curDate.getDate().toString().padStart(2, '0')}/${(curDate.getMonth() + 1).toString().padStart(2, '0')}`;
-      mapGiaoDich.set(dStr, {
-        ngay: displayStr,
-        soDonXuat: 0,
-        soNhapKho: 0,
-      });
-      curDate.setDate(curDate.getDate() + 1);
+    for (let d = fromDate, i = 0; d <= toDate && i < 400; d = congNgay(d, 1), i++) {
+      mapGiaoDich.set(d, { ngay: nhanNgay(d), soDonXuat: 0, soNhapKho: 0 });
     }
+    const layNgay = (k: string) => {
+      if (!mapGiaoDich.has(k)) mapGiaoDich.set(k, { ngay: nhanNgay(k), soDonXuat: 0, soNhapKho: 0 });
+      return mapGiaoDich.get(k)!;
+    };
+    xuatRows.forEach((r) => { layNgay(khoaNgay(r.ngay)).soDonXuat = Number(r.soDonXuat); });
+    nhapRows.forEach((r) => { layNgay(khoaNgay(r.ngay)).soNhapKho = Number(r.soNhapKho); });
 
-    xuatRows.forEach((r) => {
-      const dStr = new Date(r.ngay).toISOString().slice(0, 10);
-      if (mapGiaoDich.has(dStr)) {
-        mapGiaoDich.get(dStr)!.soDonXuat = Number(r.soDonXuat);
-      } else {
-        const dObj = new Date(r.ngay);
-        mapGiaoDich.set(dStr, {
-          ngay: `${dObj.getDate().toString().padStart(2, '0')}/${(dObj.getMonth() + 1).toString().padStart(2, '0')}`,
-          soDonXuat: Number(r.soDonXuat),
-          soNhapKho: 0,
-        });
-      }
-    });
-
-    nhapRows.forEach((r) => {
-      const dStr = new Date(r.ngay).toISOString().slice(0, 10);
-      if (mapGiaoDich.has(dStr)) {
-        mapGiaoDich.get(dStr)!.soNhapKho = Number(r.soNhapKho);
-      } else {
-        const dObj = new Date(r.ngay);
-        mapGiaoDich.set(dStr, {
-          ngay: `${dObj.getDate().toString().padStart(2, '0')}/${(dObj.getMonth() + 1).toString().padStart(2, '0')}`,
-          soDonXuat: 0,
-          soNhapKho: Number(r.soNhapKho),
-        });
-      }
-    });
-
-    // Chuyển sang mảng sắp xếp theo ngày
     const luuLuongGiaoDich = Array.from(mapGiaoDich.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([_, val]) => val);
+      .map(([, val]) => val);
 
     return {
       message: 'Lấy thống kê nhà thuốc thành công',
       data: {
+        kyBaoCao: { tuNgay: fromDate, denNgay: toDate },
         tongSoThuoc,
         sapHetHang,
         sapHetHanCount,
         donXuatTrongNgay,
         tongGiaTriKho,
+        tongGiaTriKhoGiaBan,
+        giaTriHetHan,
         top10Thuoc,
         luuLuongGiaoDich,
         canhBaoRuiRo,

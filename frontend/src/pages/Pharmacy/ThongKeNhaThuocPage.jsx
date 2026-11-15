@@ -271,9 +271,9 @@ export default function ThongKeNhaThuocPage() {
       'Đơn Vị Tính',
       'Mã Lô',
       'Hạn Sử Dụng',
-      'Đơn Giá (VNĐ)',
+      'Giá Bán (VNĐ)',
       'Tồn Kho Tổng',
-      'Thành Tiền (VNĐ)',
+      'Giá Trị Tồn Theo Giá Nhập, Lô Còn Hạn (VNĐ)',
       'Trạng Thái',
     ];
     const rows = filteredList.map((t) => [
@@ -284,8 +284,10 @@ export default function ThongKeNhaThuocPage() {
       t.ngayHetHan ? String(t.ngayHetHan).slice(0, 10).split('-').reverse().join('/') : '---',
       t.giaBan,
       t.tonKhoTong,
-      t.giaBan * t.tonKhoTong,
-      t.trangThai === 'canh_bao'
+      t.thanhTien,
+      t.trangThai === 'ngung_kinh_doanh'
+        ? 'Ngừng kinh doanh'
+        : t.trangThai === 'canh_bao'
         ? 'Cảnh báo tồn ít'
         : t.trangThai === 'het_hang'
         ? 'Hết hàng'
@@ -607,7 +609,13 @@ export default function ThongKeNhaThuocPage() {
             {formatCurrency(stats.tongGiaTriKho)}
           </p>
           <p className="text-[11px] text-emerald-700 mt-0.5 font-medium flex items-center gap-1">
-            <TrendingUp className="h-3 w-3" /> {stats.tongSoThuoc} danh mục thuốc
+            <TrendingUp className="h-3 w-3" /> Theo giá nhập · {stats.tongSoThuoc} danh mục thuốc
+          </p>
+          <p className="text-[10px] text-gray-500 mt-0.5">
+            Theo giá bán: {formatCurrency(stats.tongGiaTriKhoGiaBan || 0)}
+            {stats.giaTriHetHan > 0 && (
+              <span className="text-rose-600"> · Hàng hết hạn chờ hủy: {formatCurrency(stats.giaTriHetHan)}</span>
+            )}
           </p>
         </div>
       </div>
@@ -688,7 +696,7 @@ export default function ThongKeNhaThuocPage() {
                   Top Thuốc Xuất Kho Nhiều Nhất
                 </h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Số lượng viên/tuýp đã xuất giúp dược sĩ chủ động cắt liều và sắp xếp kệ
+                  Số lượng đã cấp phát trong kỳ (không gồm đơn chưa cấp hoặc bệnh nhân mua ngoài)
                 </p>
               </div>
 
