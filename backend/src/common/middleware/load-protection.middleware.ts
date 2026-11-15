@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { DataSource } from 'typeorm';
+import { khoaDbDangGiu } from '../utils/db-sequence.util';
 
 interface RateBucket {
   count: number;
@@ -78,6 +79,19 @@ export function setHealthDataSource(ds: DataSource) {
   healthDataSource = ds;
 }
 
+/** Tình trạng pool mysql2: kết nối đang mở / rảnh / request đang xếp hàng chờ kết nối (chờ không có timeout) */
+function thongKePool() {
+  const pool = (healthDataSource?.driver as any)?.pool;
+  if (!pool) return null;
+  return {
+    gioiHan: pool.config?.connectionLimit,
+    dangMo: pool._allConnections?.length,
+    ranh: pool._freeConnections?.length,
+    dangCho: pool._connectionQueue?.length,
+    khoaDangGiu: khoaDbDangGiu(),
+  };
+}
+
 async function kiemTraDb(): Promise<boolean> {
   if (!healthDataSource) return true;
   let timer: NodeJS.Timeout | undefined;
@@ -130,14 +144,17 @@ export function loadProtectionMiddleware(req: Request, res: Response, next: Next
 
   // 1. Health check có thử DB: DB treo → 503 để Render tự restart (pool kẹt kết nối chết từng làm mọi API treo)
   if (url === '/api/health' || url.startsWith('/api/health?')) {
-    return kiemTraDb().then((dbOk) =>
+    return kiemTraDb().then((dbOk) => {
+      const pool = thongKePool();
+      if (!dbOk) console.warn('[Health] DB không phản hồi trong 5s, pool:', JSON.stringify(pool));
       res.status(dbOk ? 200 : 503).json({
         success: dbOk,
         status: dbOk ? 'healthy' : 'db_unreachable',
         load: getLoadMetrics(),
+        pool,
         timestamp: new Date().toISOString(),
-      }),
-    );
+      });
+    });
   }
 
   // Bỏ qua file tĩnh

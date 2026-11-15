@@ -133,6 +133,6 @@ export class AppModule implements OnModuleInit {
       } catch {}
     }
 
-    this.logger.log('⚡ High-Concurrency DB Pool (120 connections) & Composite Indexes verified');
+    this.logger.log(`DB pool tối đa ${(this.dataSource.driver as any).pool?.config?.connectionLimit} kết nối, đã kiểm tra composite indexes`);
   }
 }

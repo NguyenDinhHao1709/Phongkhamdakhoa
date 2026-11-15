@@ -1,5 +1,5 @@
 import { ServiceUnavailableException } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, QueryRunner } from 'typeorm';
 
 /**
  * Số tiếp theo của bộ đếm `ten` trong bảng bo_dem_ma, khóa dòng bằng FOR UPDATE nên an toàn khi
@@ -45,7 +45,24 @@ export async function maHoSoTiepTheo(manager: EntityManager): Promise<string> {
 export async function voiKhoaDb<T>(dataSource: DataSource, ten: string, fn: () => Promise<T>, choToiDaGiay = 15): Promise<T> {
   const key = ten.slice(0, 64);
   const qr = dataSource.createQueryRunner();
-  await qr.connect();
+  const theo = { key, tu: Date.now() };
+  khoaDangGiu.add(theo);
+  try {
+    await qr.connect();
+    return await chayTrongKhoa(qr, key, fn, choToiDaGiay);
+  } finally {
+    khoaDangGiu.delete(theo);
+  }
+}
+
+/** Khóa voiKhoaDb đang chạy (mỗi khóa chiếm 1 kết nối pool suốt thời gian fn chạy) — /api/health báo ra để chẩn đoán pool cạn */
+const khoaDangGiu = new Set<{ key: string; tu: number }>();
+export function khoaDbDangGiu() {
+  const now = Date.now();
+  return [...khoaDangGiu].map((k) => ({ key: k.key, giay: Math.round((now - k.tu) / 1000) }));
+}
+
+async function chayTrongKhoa<T>(qr: QueryRunner, key: string, fn: () => Promise<T>, choToiDaGiay: number): Promise<T> {
   try {
     const [r] = await qr.query('SELECT GET_LOCK(?, ?) AS ok', [key, choToiDaGiay]);
     if (Number(r?.ok) !== 1) {
