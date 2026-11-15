@@ -76,15 +76,31 @@ export default function ThongKeKhachHangPage() {
   // Modal chi tiết lượt tiếp đón
   const [selectedItem, setSelectedItem] = useState(null);
 
+  // Tham số kỳ báo cáo. Chỉ nhập 1 ô ngày cũng phải gửi lên (trước đây phải đủ cả 2 ô,
+  // nên nhãn ghi "Từ ngày …" nhưng số liệu vẫn theo bộ lọc nhanh).
+  const buildDateParams = () => {
+    let p = `khoangThoiGian=${timeRange}`;
+    if (fromDate) p += `&tuNgay=${fromDate}`;
+    if (toDate) p += `&denNgay=${toDate}`;
+    return p;
+  };
+
+  // Bộ lọc của bảng danh sách (dùng chung cho tải trang và xuất Excel)
+  const buildListFilterParams = () => {
+    let p = '';
+    if (selectedPhong !== 'TAT_CA') p += `&phongKhamId=${selectedPhong}`;
+    if (selectedTrangThai !== 'TAT_CA') p += `&trangThai=${selectedTrangThai}`;
+    if (selectedLoai !== 'TAT_CA') p += `&loaiTiepNhan=${selectedLoai}`;
+    if (search.trim()) p += `&search=${encodeURIComponent(search.trim())}`;
+    return p;
+  };
+
   // Tải dữ liệu từ backend
   const fetchData = async () => {
     setLoading(true);
     try {
       // 1. Params thời gian
-      let dateParams = `khoangThoiGian=${timeRange}`;
-      if (fromDate && toDate) {
-        dateParams += `&tuNgay=${fromDate}&denNgay=${toDate}`;
-      }
+      const dateParams = buildDateParams();
 
       // 2. Tải thống kê KPI, biểu đồ & đánh giá
       const statsRes = await apiGet(`/tiep-nhan/bao-cao/thong-ke?${dateParams}`);
@@ -93,11 +109,7 @@ export default function ThongKeKhachHangPage() {
       }
 
       // 3. Tải danh sách lượt tiếp nhận theo trang thực tế
-      let listParams = `?${dateParams}&page=${page}&limit=${limit}`;
-      if (selectedPhong !== 'TAT_CA') listParams += `&phongKhamId=${selectedPhong}`;
-      if (selectedTrangThai !== 'TAT_CA') listParams += `&trangThai=${selectedTrangThai}`;
-      if (selectedLoai !== 'TAT_CA') listParams += `&loaiTiepNhan=${selectedLoai}`;
-      if (search.trim()) listParams += `&search=${encodeURIComponent(search.trim())}`;
+      const listParams = `?${dateParams}&page=${page}&limit=${limit}${buildListFilterParams()}`;
 
       const listRes = await apiGet(`/tiep-nhan/bao-cao/danh-sach${listParams}`);
       const items = Array.isArray(listRes?.data) ? listRes.data : listRes?.data?.data || [];
@@ -149,7 +161,18 @@ export default function ThongKeKhachHangPage() {
   const totalPages = Math.ceil(totalCount / limit) || 1;
 
   // Xuất file Excel báo cáo tiếp đón (.xlsx)
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    // Lấy toàn bộ lượt theo đúng bộ lọc hiện tại (bảng trên màn hình chỉ có 1 trang 15 dòng)
+    let exportList = listData;
+    try {
+      const res = await apiGet(`/tiep-nhan/bao-cao/danh-sach?${buildDateParams()}&page=1&limit=5000${buildListFilterParams()}`);
+      const all = Array.isArray(res?.data) ? res.data : res?.data?.data;
+      if (Array.isArray(all)) exportList = all;
+    } catch (err) {
+      console.error('Không tải được toàn bộ danh sách để xuất Excel:', err);
+      window.alert('Không tải được toàn bộ danh sách; file Excel chỉ gồm trang đang hiển thị.');
+    }
+
     const wb = XLSX.utils.book_new();
 
     // 1. Sheet Tổng quan tiếp đón
@@ -177,7 +200,6 @@ export default function ThongKeKhachHangPage() {
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Tong_Quan_Tiep_Don');
 
     // 2. Sheet Danh sách chi tiết lượt tiếp nhận
-    const exportList = filteredList.length > 0 ? filteredList : listData;
     const detailRows = exportList.map((item, idx) => ({
       'STT': idx + 1,
       'Số Thứ Tự (STT)': item.maSoThuTu || '',
@@ -259,6 +281,14 @@ export default function ThongKeKhachHangPage() {
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
             <XCircle className="w-3.5 h-3.5 text-red-500" />
             Đã hủy
+          </span>
+        );
+      case 'dang_cls':
+      case 'da_co_kq_cls':
+      case 'cho_thanh_toan':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+            {{ dang_cls: 'Đang làm CLS', da_co_kq_cls: 'Đã có KQ CLS', cho_thanh_toan: 'Chờ thanh toán' }[status]}
           </span>
         );
       default:
@@ -480,12 +510,11 @@ export default function ThongKeKhachHangPage() {
                 className="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
               >
                 <option value="TAT_CA">Tất cả phòng khám</option>
-                <option value="1">Phòng 101 - Khám Nội Tổng Quát</option>
-                <option value="2">Phòng 102 - Khám Tim Mạch & HA</option>
-                <option value="3">Phòng 103 - Khám Nhi Khoa & TMH</option>
-                <option value="4">Phòng 201 - Lấy Mẫu Xét Nghiệm</option>
-                <option value="5">Phòng 202 - Siêu Âm Màu</option>
-                <option value="6">Phòng 203 - Chụp X-Quang KTS</option>
+                {(stats?.danhSachPhong || []).map((p) => (
+                  <option key={p.id} value={String(p.id)}>
+                    {p.tenPhong}{p.chuyenKhoa ? ` - ${p.chuyenKhoa}` : ''}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -502,6 +531,9 @@ export default function ThongKeKhachHangPage() {
                 <option value="TAT_CA">Tất cả trạng thái</option>
                 <option value="cho_kham">🟡 Chờ khám</option>
                 <option value="dang_kham">🔵 Đang khám</option>
+                <option value="dang_cls">🧪 Đang làm CLS</option>
+                <option value="da_co_kq_cls">📋 Đã có KQ CLS</option>
+                <option value="cho_thanh_toan">💳 Chờ thanh toán</option>
                 <option value="hoan_thanh">🟢 Đã hoàn thành</option>
                 <option value="da_huy">🔴 Đã hủy</option>
               </select>
@@ -518,8 +550,9 @@ export default function ThongKeKhachHangPage() {
                 className="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
               >
                 <option value="TAT_CA">Mọi hình thức tiếp đón</option>
-                <option value="dat_lich">📅 Đặt lịch online</option>
-                <option value="vang_lai">🚶 Khám vãng lai tại quầy</option>
+                <option value="dat_lich">📅 Bệnh nhân tự đặt online</option>
+                <option value="hen_nhan_vien">🗓️ Hẹn qua nhân viên</option>
+                <option value="vang_lai">🚶 Vãng lai (không có lịch hẹn)</option>
               </select>
             </div>
           </div>
@@ -1182,7 +1215,7 @@ export default function ThongKeKhachHangPage() {
                               HA:{' '}
                               <span className="text-blue-700 font-bold">
                                 {item.sinhHieu.huyetApTamThu || '—'}/
-                                {item.sinhHieu.huyetApTamTruong || '80'}
+                                {item.sinhHieu.huyetApTamTruong || '—'}
                               </span>{' '}
                               mmHg
                             </div>
@@ -1205,7 +1238,7 @@ export default function ThongKeKhachHangPage() {
                         {item.lichHenId ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
                             <CalendarCheck className="w-3 h-3" />
-                            Online
+                            {item.loaiTiepNhan === 'dat_lich' ? 'Tự đặt online' : 'Hẹn qua NV'}
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-700 border border-gray-200">
@@ -1318,7 +1351,11 @@ export default function ThongKeKhachHangPage() {
               <div>
                 <p className="text-gray-500">Hình thức đăng ký</p>
                 <p className="font-semibold text-gray-900 mt-0.5">
-                  {selectedItem.lichHenId ? 'Đặt lịch hẹn trực tuyến' : 'Khám vãng lai tại quầy'}
+                  {!selectedItem.lichHenId
+                    ? 'Vãng lai tại quầy (không có lịch hẹn)'
+                    : selectedItem.loaiTiepNhan === 'dat_lich'
+                    ? 'Bệnh nhân tự đặt lịch online'
+                    : 'Lịch hẹn do nhân viên đặt'}
                 </p>
               </div>
             </div>
@@ -1333,7 +1370,7 @@ export default function ThongKeKhachHangPage() {
                   <div className="bg-white p-2.5 rounded-lg border border-blue-100 text-center">
                     <p className="text-[11px] text-gray-500">Huyết Áp</p>
                     <p className="text-sm font-bold text-blue-700 font-mono mt-0.5">
-                      {selectedItem.sinhHieu.huyetApTamThu || '—'}/{selectedItem.sinhHieu.huyetApTamTruong || '80'}
+                      {selectedItem.sinhHieu.huyetApTamThu || '—'}/{selectedItem.sinhHieu.huyetApTamTruong || '—'}
                     </p>
                     <span className="text-[10px] text-gray-400">mmHg</span>
                   </div>

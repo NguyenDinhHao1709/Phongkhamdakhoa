@@ -1466,6 +1466,11 @@ export class TiepNhanService implements OnModuleInit {
       .orderBy('soLuot', 'DESC');
 
     const phongKhamRaw = await qbPhong.getRawMany();
+    // Danh sách phòng thật cho bộ lọc (trước đây frontend gán cứng 6 phòng id 1–6)
+    const danhSachPhong = (await this.luotRepo.query(
+      'SELECT id, ten_phong AS tenPhong, chuyen_khoa AS chuyenKhoa FROM phong_kham ORDER BY ten_phong',
+    )).map((r: any) => ({ id: Number(r.id), tenPhong: r.tenPhong, chuyenKhoa: r.chuyenKhoa }));
+
     const theoPhongKham = phongKhamRaw.map((p) => ({
       tenPhong: p.tenPhong,
       chuyenKhoa: p.chuyenKhoa,
@@ -1586,6 +1591,7 @@ export class TiepNhanService implements OnModuleInit {
         thoiGianChoTrungBinhPhut,
         soLuotDoThoiGianCho,
         theoPhongKham,
+        danhSachPhong,
         khungGio: khungGioConfig,
         nhomTuoi: {
           treEm: treEmCount,
@@ -1616,7 +1622,8 @@ export class TiepNhanService implements OnModuleInit {
     denNgay?: string;
   }) {
     const page = Math.max(1, Number(query.page) || 1);
-    const limit = Math.max(1, Number(query.limit) || 15);
+    // Xuất Excel lấy cả kỳ trong 1 lần gọi → cho phép limit lớn nhưng chặn trần để tránh quá tải
+    const limit = Math.min(5000, Math.max(1, Number(query.limit) || 15));
     const skip = (page - 1) * limit;
 
     const qb = this.luotRepo.createQueryBuilder('ltn')
@@ -1660,11 +1667,14 @@ export class TiepNhanService implements OnModuleInit {
       qb.andWhere('ltn.trangThai = :st', { st: query.trangThai });
     }
 
-    // Lọc loại tiếp nhận (đặt trước qua App/Web vs vãng lai / trực tiếp tại quầy)
+    // Lọc hình thức tiếp đón — cùng 3 nhóm với thẻ KPI: bệnh nhân tự đặt online / hẹn qua nhân viên / vãng lai.
+    // (Trước đây lịch nhân viên đặt hộ bị gộp vào vãng lai, lịch có nguon_dat NULL thì rơi khỏi cả hai nhóm.)
     if (query.loaiTiepNhan === 'dat_lich') {
       qb.andWhere('lh.nguonDat = :nguon', { nguon: 'benh_nhan_tu_dat' });
+    } else if (query.loaiTiepNhan === 'hen_nhan_vien') {
+      qb.andWhere('ltn.lichHenId IS NOT NULL AND (lh.nguonDat IS NULL OR lh.nguonDat != :nguon)', { nguon: 'benh_nhan_tu_dat' });
     } else if (query.loaiTiepNhan === 'vang_lai') {
-      qb.andWhere('(ltn.lichHenId IS NULL OR lh.nguonDat != :nguon)', { nguon: 'benh_nhan_tu_dat' });
+      qb.andWhere('ltn.lichHenId IS NULL');
     }
 
     qb.orderBy('ltn.thoiGianDen', 'DESC')
@@ -1688,7 +1698,7 @@ export class TiepNhanService implements OnModuleInit {
     const mappedItems = items.map((i) => ({
       ...i,
       phongKham: roomMap[i.phongKhamId] || null,
-      loaiTiepNhan: (i.lichHen && i.lichHen.nguonDat === 'benh_nhan_tu_dat') ? 'dat_lich' : 'vang_lai',
+      loaiTiepNhan: !i.lichHenId ? 'vang_lai' : i.lichHen?.nguonDat === 'benh_nhan_tu_dat' ? 'dat_lich' : 'hen_nhan_vien',
     }));
 
     return {
