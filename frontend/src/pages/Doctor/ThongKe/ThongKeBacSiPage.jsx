@@ -86,7 +86,8 @@ export default function ThongKeBacSiPage() {
     },
     tongBenhNhanDaKham: 0,
     dangChoKham: 0,
-    thoiGianKhamTrungBinh: '12.5 phút/ca',
+    thoiGianKhamTrungBinh: null,
+    soCaDoThoiGian: 0,
     tongChiDinhCLS: 0,
     tongDonThuocKe: 0,
     tyLeHoanThanh: '100%',
@@ -205,7 +206,7 @@ export default function ThongKeBacSiPage() {
       ['CHỈ SỐ TỔNG QUAN', 'GIÁ TRỊ'],
       ['Tổng bệnh nhân đã khám', stats.tongBenhNhanDaKham || 0],
       ['Số ca đang chờ khám', stats.dangChoKham || 0],
-      ['Thời gian khám trung bình', stats.thoiGianKhamTrungBinh || '0 phút'],
+      ['Thời gian khám trung bình', stats.thoiGianKhamTrungBinh || 'Chưa đủ dữ liệu'],
       ['Tổng đơn thuốc đã kê', stats.tongDonThuocKe || 0],
       ['Tổng chỉ định cận lâm sàng', stats.tongChiDinhCLS || 0],
       ['Tỷ lệ hoàn thành ca khám', stats.tyLeHoanThanh || '100%'],
@@ -424,9 +425,12 @@ export default function ThongKeBacSiPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Thời Gian Khám TB</p>
-              <h3 className="text-2xl font-extrabold text-indigo-900 mt-1">{stats.thoiGianKhamTrungBinh}</h3>
+              <h3 className="text-2xl font-extrabold text-indigo-900 mt-1">{stats.thoiGianKhamTrungBinh || '—'}</h3>
               <p className="text-[11px] text-indigo-600 mt-1 font-medium flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3 text-emerald-500" /> Tốc độ chuẩn y khoa
+                <Clock className="h-3 w-3" />
+                {stats.soCaDoThoiGian > 0
+                  ? `Đo trên ${stats.soCaDoThoiGian} ca có giờ kết thúc khám`
+                  : 'Chưa đủ dữ liệu giờ kết thúc khám'}
               </p>
             </div>
             <div className="p-3.5 bg-indigo-100 rounded-2xl text-indigo-600 shadow-2xs">

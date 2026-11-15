@@ -162,7 +162,7 @@ export default function DashboardGiamDocPage() {
       ['Tổng số lượt khám bệnh', kpis.tongLuotKham || 0],
       ['Tổng số chỉ định cận lâm sàng', kpis.tongChiDinhCls || 0],
       ['Tổng doanh thu viện phí (VNĐ)', kpis.tongDoanhThu || 0],
-      ['Thời gian khám trung bình', `${kpis.thoiGianKhamTb || 12} phút/ca`],
+      ['Thời gian khám trung bình', kpis.thoiGianKhamTb ? `${kpis.thoiGianKhamTb} phút/ca` : 'Chưa đủ dữ liệu'],
       ['Tỷ lệ hủy lịch (No-show)', `${kpis.tyLeNoShow || 0}%`],
       ['Công suất hoạt động phòng khám', `${kpis.congSuatPhongKham || 85}%`],
       ['Điểm đánh giá hài lòng toàn viện (CSAT)', `${csat.diemCSATToanVien || 5.0} / 5.0 ⭐`],

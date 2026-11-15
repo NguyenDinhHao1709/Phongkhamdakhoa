@@ -2368,11 +2368,13 @@ export class LichHenService implements OnModuleInit {
       // Lưu phiếu khám bệnh án (benh_an_kham)
       await this.repo.manager.query(
         `INSERT INTO benh_an_kham 
-         (ho_so_benh_an_id, luot_tiep_nhan_id, bac_si_id, ngay_kham, chan_doan_so_bo, chan_doan_xac_dinh, trieu_chung, phuong_phap_dieu_tri, hinh_thuc_kham, trang_thai, ghi_chu)
-         VALUES (?, NULL, ?, NOW(), ?, ?, ?, ?, 'truc_tuyen', 'da_hoan_thanh', ?)`,
+         (ho_so_benh_an_id, luot_tiep_nhan_id, bac_si_id, ngay_kham, chan_doan_so_bo, chan_doan_xac_dinh, trieu_chung, phuong_phap_dieu_tri, hinh_thuc_kham, trang_thai, thoi_gian_ket_thuc, ghi_chu)
+         VALUES (?, NULL, ?, COALESCE(?, NOW()), ?, ?, ?, ?, 'truc_tuyen', 'da_hoan_thanh', NOW(), ?)`,
         [
           hoSoBenhAnId,
           lh.bacSiId || 1,
+          // Bắt đầu ca = lúc bác sĩ vào phòng tư vấn, để thống kê đo được thời gian khám thật
+          lh.bacSiVaoLuc || null,
           body.chanDoan || 'Tư vấn khám từ xa',
           body.chanDoan || 'Tư vấn khám từ xa',
           lh.lyDoKham || 'Tư vấn trực tuyến Telehealth',

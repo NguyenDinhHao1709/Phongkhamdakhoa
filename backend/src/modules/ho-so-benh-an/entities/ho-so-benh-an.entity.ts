@@ -137,6 +137,10 @@ export class BenhAnKham {
   })
   trangThai: TrangThaiBenhAnKham;
 
+  /** Lúc bác sĩ bấm kết thúc khám; NULL với ca cũ hoặc ca bị đóng tự động khi thanh toán */
+  @Column({ name: 'thoi_gian_ket_thuc', type: 'datetime', nullable: true })
+  thoiGianKetThuc: Date | null;
+
   @Column({
     name: 'ghi_chu',
     type: 'text',

@@ -408,36 +408,17 @@ export class HoSoBenhAnService {
     const totalReviews = dgResult?.totalReviews ? Number(dgResult.totalReviews) : 0;
     const diemHaiLongCSAT = totalReviews > 0 ? `${avgScore} / 5.0 ⭐` : '5.0 / 5.0 ⭐';
 
-    // Tính thời gian khám trung bình thực tế từ các ca đã hoàn thành
-    let thoiGianKhamTrungBinh = '0 phút/ca';
-    if (countCompleted > 0) {
-      let totalMins = 0;
-      let validCa = 0;
-
-      danhSachCaKham.forEach(ca => {
-        if (ca.trangThai === 'Hoàn thành') {
-          const lh = appointments.find(l => l.maLichHen === ca.maCa || ca.maCa?.includes(l.maLichHen));
-          if (lh && lh.capNhatLuc && lh.taoLuc) {
-            const diffMs = new Date(lh.capNhatLuc).getTime() - new Date(lh.taoLuc).getTime();
-            const mins = Math.round(diffMs / 60000);
-            if (mins >= 3 && mins <= 60) {
-              totalMins += mins;
-              validCa++;
-            } else {
-              totalMins += 12; // Định mức chuẩn y khoa theo quy định Bộ Y tế cho 1 phiên khám ngoại trú
-              validCa++;
-            }
-          } else {
-            totalMins += 12;
-            validCa++;
-          }
-        }
-      });
-
-      if (validCa > 0) {
-        thoiGianKhamTrungBinh = `${(totalMins / validCa).toFixed(1)} phút/ca`;
-      }
-    }
+    // Thời gian khám TB = từ lúc mở phiếu khám (ngay_kham) đến lúc bác sĩ bấm kết thúc (thoi_gian_ket_thuc).
+    // Chỉ tính ca có đủ 2 mốc; ca cũ / ca bị đóng tự động khi thanh toán không có mốc kết thúc nên bỏ qua.
+    // Loại ca > 4 giờ: phiếu bị bỏ ngỏ rồi mới đóng, không phản ánh thời gian khám.
+    const thoiLuongCa = allRecords
+      .filter(r => r.trangThai === TrangThaiBenhAnKham.DA_HOAN_THANH && r.ngayKham && r.thoiGianKetThuc)
+      .map(r => (new Date(r.thoiGianKetThuc as Date).getTime() - new Date(r.ngayKham).getTime()) / 60000)
+      .filter(m => m > 0 && m <= 240);
+    const soCaDoThoiGian = thoiLuongCa.length;
+    const thoiGianKhamTrungBinh = soCaDoThoiGian > 0
+      ? `${(thoiLuongCa.reduce((a, b) => a + b, 0) / soCaDoThoiGian).toFixed(1)} phút/ca`
+      : null;
 
     return {
       message: 'OK',
@@ -446,6 +427,7 @@ export class HoSoBenhAnService {
         tongBenhNhanDaKham: countCompleted > 0 ? countCompleted : danhSachCaKham.length,
         dangChoKham,
         thoiGianKhamTrungBinh,
+        soCaDoThoiGian,
         tongChiDinhCLS,
         tongDonThuocKe,
         tyLeHoanThanh,
