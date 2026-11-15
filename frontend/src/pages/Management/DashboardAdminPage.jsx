@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Server, Shield, Users, Database, CheckCircle2,
+  Server, Shield, Users, Database, CheckCircle2, AlertTriangle,
   Cpu, Clock, RefreshCw, Activity, UserPlus,
   ArrowRight, ShieldCheck, Zap, Stethoscope,
   Pill, CreditCard, FlaskConical, UserCheck, Briefcase,
@@ -82,6 +82,17 @@ export default function DashboardAdminPage() {
     }
   };
 
+  // Trạng thái dịch vụ do backend kiểm tra thật (trước đây mọi dịch vụ đều ghi cứng "Online")
+  const TRANG_THAI_DV = {
+    online: { text: 'Online', dot: 'bg-emerald-500', chu: 'text-emerald-700' },
+    offline: { text: 'Không phản hồi', dot: 'bg-rose-500', chu: 'text-rose-700' },
+    cau_hinh: { text: 'Đã cấu hình', dot: 'bg-sky-500', chu: 'text-sky-700' },
+    chua_cau_hinh: { text: 'Chưa cấu hình', dot: 'bg-amber-500', chu: 'text-amber-700' },
+  };
+  const soDvOnline = services.filter((sv) => sv.status === 'online').length;
+  const soDvDaKiemTra = services.filter((sv) => sv.status === 'online' || sv.status === 'offline').length;
+  const coDvLoi = services.some((sv) => sv.status === 'offline' || sv.status === 'chua_cau_hinh');
+
   // Phân tách vai trò nhân sự vs bệnh nhân
   const staffRoles = rolesDistribution.filter(r => r.maVaiTro !== 'benh_nhan');
   const patientRole = rolesDistribution.find(r => r.maVaiTro === 'benh_nhan');
@@ -96,7 +107,7 @@ export default function DashboardAdminPage() {
               IT INFRASTRUCTURE & MONITORING
             </span>
             <span className="text-xs text-gray-500 flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-gray-400" /> Cập nhật thời gian thực
+              <Clock className="w-3.5 h-3.5 text-gray-400" /> Số liệu lúc tải trang (bấm Làm mới để kiểm tra lại)
             </span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mt-1">
@@ -149,7 +160,7 @@ export default function DashboardAdminPage() {
               Nhân sự: <b className="text-blue-700 font-semibold">{accounts?.staffTotal || 0}</b> · BN: <b className="text-purple-700 font-semibold">{accounts?.patientTotal || 0}</b>
             </span>
             <span className={`font-semibold ${accounts?.locked > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-              {accounts?.locked > 0 ? `Khóa: ${accounts.locked}` : '100% Khả dụng'}
+              {accounts?.locked > 0 ? `Khóa: ${accounts.locked}` : 'Không có tài khoản bị khóa'}
             </span>
           </div>
         </div>
@@ -161,10 +172,11 @@ export default function DashboardAdminPage() {
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Cơ Sở Dữ Liệu MySQL</p>
               <div className="flex items-center gap-1.5 mt-1">
                 <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${database?.online === false ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
                 </span>
-                <span className="text-lg font-bold text-emerald-700">Đang kết nối</span>
+                <span className={`text-lg font-bold ${database?.online === false ? 'text-rose-700' : 'text-emerald-700'}`}>
+                  {database?.online === false ? 'Lỗi kết nối' : 'Đang kết nối'}
+                </span>
               </div>
             </div>
             <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
@@ -173,7 +185,7 @@ export default function DashboardAdminPage() {
           </div>
           <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
             <span className="text-gray-500">
-              {database?.totalTables || 0} bảng · {database?.totalRows ? Number(database.totalRows).toLocaleString('vi-VN') : 0} dòng
+              {database?.totalTables || 0} bảng · ~{database?.totalRows ? Number(database.totalRows).toLocaleString('vi-VN') : 0} dòng (ước tính)
             </span>
             <span className="font-mono font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/60">
               {database?.totalSizeMB || '0.00'} MB
@@ -218,9 +230,15 @@ export default function DashboardAdminPage() {
             </div>
           </div>
           <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
-            <span className="text-emerald-700 font-semibold flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> An toàn
-            </span>
+            {auditStats?.todayError > 0 ? (
+              <span className="text-rose-700 font-semibold flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5" /> Có lỗi hôm nay
+              </span>
+            ) : (
+              <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Không có lỗi
+              </span>
+            )}
             <span className="text-gray-500">
               Lỗi: <b className={auditStats?.todayError > 0 ? 'text-rose-600' : 'text-gray-600'}>{auditStats?.todayError || 0}</b>
             </span>
@@ -240,8 +258,8 @@ export default function DashboardAdminPage() {
               </h3>
               <p className="text-[11px] text-gray-500">Trạng thái kết nối các cổng nghiệp vụ & tích hợp</p>
             </div>
-            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              6/6 Hoạt động
+            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${coDvLoi ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+              {soDvOnline}/{soDvDaKiemTra} dịch vụ phản hồi
             </span>
           </div>
 
@@ -268,8 +286,10 @@ export default function DashboardAdminPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0 pt-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span className="text-[11px] font-semibold text-emerald-700">Online</span>
+                    <span className={`w-2 h-2 rounded-full ${(TRANG_THAI_DV[s.status] || TRANG_THAI_DV.offline).dot}`}></span>
+                    <span className={`text-[11px] font-semibold ${(TRANG_THAI_DV[s.status] || TRANG_THAI_DV.offline).chu}`}>
+                      {(TRANG_THAI_DV[s.status] || { text: s.status }).text}
+                    </span>
                   </div>
                 </div>
               );
@@ -285,7 +305,7 @@ export default function DashboardAdminPage() {
                 <ShieldCheck className="w-4 h-4 text-indigo-600" />
                 Phân Bổ Tài Khoản Theo Vai Trò (IAM)
               </h3>
-              <p className="text-[11px] text-gray-500">Tổng số người dùng được phân quyền theo 8 vai trò hệ thống</p>
+              <p className="text-[11px] text-gray-500">Tổng số người dùng được phân quyền theo {rolesDistribution.length} vai trò đang có tài khoản</p>
             </div>
             <button
               onClick={() => navigate('/quan-tri/phan-quyen')}

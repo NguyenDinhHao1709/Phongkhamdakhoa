@@ -153,6 +153,8 @@ export class AiController {
       service: 'PhongKham Standalone AI & Clinical RAG Microservice',
       port: Number(process.env.PORT || 5002),
       version: '2.0.0',
+      // Cho trang Tổng quan hệ thống biết Gemini có được cấu hình không (không lộ khóa)
+      geminiDaCauHinh: Boolean(process.env.GEMINI_API_KEY),
       timestamp: new Date().toISOString(),
     };
   }

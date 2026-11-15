@@ -2694,7 +2694,8 @@ export class QuanLyService implements OnModuleInit {
     }
 
     // 4. Kiểm toán an ninh & Nhật ký hệ thống
-    const today = new Date().toISOString().slice(0, 10);
+    // Ngày VN (toISOString là UTC: trước 7h sáng ra ngày hôm qua)
+    const today = ngayVN();
     const todayLogsCount = await this.nhatKyRepo.createQueryBuilder('nk')
       .where('DATE(nk.thoiGian) = :today', { today })
       .getCount();
@@ -2720,55 +2721,92 @@ export class QuanLyService implements OnModuleInit {
     const mem = process.memoryUsage();
     const uptimeHours = (process.uptime() / 3600).toFixed(1);
 
-    // 6. Danh mục giám sát dịch vụ cốt lõi (Service Health Monitor)
+    // 6. Giám sát dịch vụ — KIỂM TRA THẬT thay cho danh sách ghi cứng "online" trước đây.
+    // status: 'online' | 'offline' (đã thử kết nối) | 'cau_hinh' (có cấu hình, không gọi thử) | 'chua_cau_hinh'
+    const coEnv = (...keys: string[]) => keys.every((k) => !!process.env[k]?.trim());
+
+    // a. CSDL: chạy truy vấn thật, đo độ trễ
+    let dbTen: string | null = null;
+    let dbPhienBan: string | null = null;
+    let dbTreMs: number | null = null;
+    let dbLoi: string | null = null;
+    try {
+      const t0 = Date.now();
+      const [r] = await this.nguoiDungRepo.query('SELECT DATABASE() AS db, VERSION() AS ver');
+      dbTreMs = Date.now() - t0;
+      dbTen = r?.db ?? null;
+      dbPhienBan = r?.ver ?? null;
+    } catch (e: any) {
+      dbLoi = e?.message || 'Không truy vấn được';
+    }
+
+    // b. AI service: gọi /health thật (timeout ngắn; Render free đang ngủ sẽ báo offline)
+    const aiBase = (process.env.AI_SERVICE_URL || (process.env.NODE_ENV === 'production' ? 'https://phongkham-ai.onrender.com' : 'http://localhost:5002'))
+      .trim().replace(/\/+$/, '').replace(/\/api\/ai$/i, '').replace(/\/api$/i, '');
+    let ai: { ok: boolean; treMs: number | null; gemini: boolean | null; loi: string | null } = { ok: false, treMs: null, gemini: null, loi: null };
+    try {
+      const t0 = Date.now();
+      const { data } = await firstValueFrom(this.httpService.get(`${aiBase}/api/ai/health`, { timeout: 4000 }));
+      ai = { ok: data?.status === 'ok', treMs: Date.now() - t0, gemini: data?.geminiDaCauHinh ?? null, loi: null };
+    } catch (e: any) {
+      ai.loi = e?.code === 'ECONNABORTED' ? 'Quá 4 giây không phản hồi (có thể đang ngủ)' : (e?.message || 'Không kết nối được');
+    }
+
+    const port = process.env.PORT || '—';
+    const coPayos = coEnv('PAYOS_CLIENT_ID', 'PAYOS_API_KEY', 'PAYOS_CHECKSUM_KEY');
+    const coBrevo = coEnv('BREVO_API_KEY');
+    const coSmtp = coEnv('MAIL_HOST', 'MAIL_USER', 'MAIL_PASS');
+
     const services = [
       {
         id: 'api',
         name: 'NestJS REST API Core',
         type: 'Ứng dụng chính',
-        status: 'online',
-        badge: 'Port 5000 · HTTP/JSON',
-        details: `Node.js ${process.version} · Platform ${process.platform}`,
+        status: 'online', // đang trả lời chính yêu cầu này
+        badge: `Cổng ${port}`,
+        details: `Node.js ${process.version} · ${process.platform} · chạy ${uptimeHours} giờ`,
       },
       {
         id: 'database',
         name: 'Cơ Sở Dữ Liệu MySQL',
         type: 'Lưu trữ CSDL',
-        status: 'online',
-        badge: 'Port 3306 · InnoDB UTF8MB4',
-        details: `${dbInfo.totalTables} bảng · ${dbInfo.totalSizeMB} MB dung lượng`,
+        status: dbLoi ? 'offline' : 'online',
+        badge: dbLoi ? 'Lỗi truy vấn' : `${dbTen || '—'} · ${dbTreMs} ms`,
+        details: dbLoi || `MySQL ${dbPhienBan || ''} · ${dbInfo.totalTables} bảng · ${dbInfo.totalSizeMB} MB`,
       },
       {
         id: 'websocket',
         name: 'WebSocket Realtime Gateway',
         type: 'Thời gian thực',
-        status: 'online',
-        badge: 'Socket.io Server (5000)',
-        details: 'Phát sóng hàng đợi, màn hình TV, Kiosk & Chatbot',
+        status: 'online', // Socket.io chạy chung tiến trình với API
+        badge: `Socket.io · cổng ${port}`,
+        details: 'Chạy cùng tiến trình API: hàng đợi, màn hình TV, Kiosk',
       },
       {
         id: 'ai',
-        name: 'Google Gemini 2.5 Flash Gateway',
+        name: 'AI Service (Gemini + Python ML)',
         type: 'Trí tuệ nhân tạo',
-        status: 'online',
-        badge: 'gemini-2.5-flash',
-        details: 'Phân luồng khám bệnh (AI Triage) & Trợ lý bệnh nhân',
+        status: ai.ok ? 'online' : 'offline',
+        badge: ai.ok ? `Phản hồi ${ai.treMs} ms` : 'Không phản hồi',
+        details: ai.ok
+          ? (ai.gemini === false ? 'Đang chạy nhưng CHƯA cấu hình GEMINI_API_KEY' : 'Phân luồng khám (AI Triage), trợ lý bệnh nhân, dự báo')
+          : ai.loi,
       },
       {
         id: 'payment',
         name: 'Cổng Thanh Toán Trực Tuyến PayOS',
         type: 'Thanh toán & Cọc',
-        status: 'online',
-        badge: 'PayOS API Connected',
-        details: 'Tạo link thanh toán QR & đồng bộ trạng thái cọc khám',
+        status: coPayos ? 'cau_hinh' : 'chua_cau_hinh',
+        badge: coPayos ? 'Đã cấu hình khóa' : 'Thiếu khóa PayOS',
+        details: 'Chỉ kiểm tra cấu hình, không gọi thử cổng thanh toán',
       },
       {
         id: 'email',
-        name: 'Dịch Vụ Gửi Thư Điện Tử (SMTP)',
+        name: 'Dịch Vụ Gửi Thư Điện Tử',
         type: 'Thông báo & OTP',
-        status: 'online',
-        badge: 'Gmail SMTP Port 587',
-        details: 'Gửi mã OTP xác thực, xác nhận lịch hẹn & hóa đơn',
+        status: coBrevo || coSmtp ? 'cau_hinh' : 'chua_cau_hinh',
+        badge: coBrevo ? 'Brevo API' : coSmtp ? `SMTP ${process.env.MAIL_HOST}:${process.env.MAIL_PORT || ''}` : 'Chưa cấu hình',
+        details: 'Chỉ kiểm tra cấu hình, không gửi thư thử',
       },
     ];
 
@@ -2781,11 +2819,12 @@ export class QuanLyService implements OnModuleInit {
         locked: lockedUsers,
       },
       database: {
-        dbName: 'phong_kham',
+        dbName: dbTen || '—',
         totalTables: dbInfo.totalTables,
-        totalRows: dbInfo.totalRows,
+        totalRows: dbInfo.totalRows, // information_schema.table_rows: ước tính của InnoDB, không phải số đếm chính xác
         totalSizeMB: dbInfo.totalSizeMB,
-        status: 'MySQL 3306 (utf8mb4 - Hoạt động)',
+        status: dbLoi ? `Lỗi: ${dbLoi}` : `Hoạt động · phản hồi ${dbTreMs} ms`,
+        online: !dbLoi,
       },
       services,
       auditStats: {
@@ -2815,9 +2854,9 @@ export class QuanLyService implements OnModuleInit {
         uptime: `${uptimeHours} giờ`,
         memoryRss: `${Math.round(mem.rss / 1024 / 1024)} MB`,
         memoryHeap: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`,
-        dbStatus: 'Hoạt động (MySQL 3306)',
-        aiServiceStatus: 'Hoạt động (gemini-2.5-flash)',
-        socketStatus: 'Hoạt động (Socket.io Port 5000)',
+        dbStatus: dbLoi ? 'Lỗi kết nối' : `Hoạt động (${dbTreMs} ms)`,
+        aiServiceStatus: ai.ok ? `Hoạt động (${ai.treMs} ms)` : 'Không phản hồi',
+        socketStatus: `Chạy cùng API (cổng ${port})`,
       },
       recentUsers: recentUsers.map(u => ({
         id: u.id,
@@ -3529,7 +3568,6 @@ export class QuanLyService implements OnModuleInit {
     denNgay?: string;
     loaiNguoiDung?: string; // NHAN_VIEN (mặc định) | BENH_NHAN | TAT_CA
   }) {
-    await this.seedInitialLogs();
 
     const page = Math.max(1, Number(query.page) || 1);
     const limit = Math.max(1, Number(query.limit) || 20);
@@ -3673,9 +3711,8 @@ export class QuanLyService implements OnModuleInit {
   }
 
   async getThongKeNhatKy() {
-    await this.seedInitialLogs();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 0 giờ hôm nay theo giờ VN (setHours dùng giờ máy chủ UTC → "hôm nay" bắt đầu lúc 7h sáng)
+    const today = new Date(`${ngayVN()}T00:00:00+07:00`);
 
     const totalLogs = await this.nhatKyRepo.count({
       where: { vaiTro: Not(In(['benh_nhan', 'khach', 'guest'])) }
@@ -3709,183 +3746,8 @@ export class QuanLyService implements OnModuleInit {
     };
   }
 
-  async seedInitialLogs() {
-    const count = await this.nhatKyRepo.count();
-    if (count > 0) return;
-
-    const now = new Date();
-    const subMinutes = (m: number) => new Date(now.getTime() - m * 60 * 1000);
-    const subHours = (h: number) => new Date(now.getTime() - h * 60 * 60 * 1000);
-    const subDays = (d: number) => new Date(now.getTime() - d * 24 * 60 * 60 * 1000);
-
-    const initialSeeds = [
-      {
-        tenNguoiDung: 'admin',
-        vaiTro: 'quan_tri_vien',
-        hanhDong: 'KIEM_TRA_HE_THONG_TOAN_DIEN',
-        loaiNhatKy: LoaiNhatKy.SECURITY,
-        moTa: 'Quản trị viên đã thực hiện quét kiểm tra an ninh và toàn vẹn cơ sở dữ liệu y tế định kỳ',
-        diaChiIp: '127.0.0.1',
-        userAgent: 'Chrome 128.0 (Windows NT 10.0; Win64; x64)',
-        thoiGian: subMinutes(15),
-      },
-      {
-        tenNguoiDung: 'admin',
-        vaiTro: 'quan_tri_vien',
-        hanhDong: 'DANG_NHAP_THANH_CONG',
-        loaiNhatKy: LoaiNhatKy.SECURITY,
-        moTa: 'Quản trị viên đăng nhập vào bảng điều khiển IT thành công từ IP 127.0.0.1',
-        diaChiIp: '127.0.0.1',
-        userAgent: 'Chrome 128.0 (Windows NT 10.0; Win64; x64)',
-        thoiGian: subMinutes(45),
-      },
-      {
-        tenNguoiDung: 'giamdoc',
-        vaiTro: 'ban_giam_doc',
-        hanhDong: 'PHE_DUYET_DON',
-        loaiNhatKy: LoaiNhatKy.INFO,
-        moTa: 'Giám đốc đã phê duyệt đơn đề xuất mua sắm trang thiết bị y tế (bộ nội soi HD)',
-        diaChiIp: '192.168.1.10',
-        userAgent: 'Chrome 128.0 (macOS)',
-        thoiGian: subHours(1),
-      },
-      {
-        tenNguoiDung: 'bacsi',
-        vaiTro: 'bac_si',
-        hanhDong: 'HOAN_TAT_KHAM',
-        loaiNhatKy: LoaiNhatKy.INFO,
-        moTa: 'Bác sĩ Nguyễn Văn A hoàn tất lượt khám bệnh và chẩn đoán cho bệnh nhân BN000002',
-        diaChiIp: '192.168.1.15',
-        userAgent: 'Chrome 128.0 (Windows NT 10.0)',
-        thoiGian: subHours(2),
-      },
-      {
-        tenNguoiDung: 'bacsi',
-        vaiTro: 'bac_si',
-        hanhDong: 'KE_DON_THUOC',
-        loaiNhatKy: LoaiNhatKy.INFO,
-        moTa: 'Bác sĩ Nguyễn Văn A kê đơn thuốc điện tử (4 loại thuốc) cho bệnh nhân BN000002',
-        diaChiIp: '192.168.1.15',
-        userAgent: 'Chrome 128.0 (Windows NT 10.0)',
-        thoiGian: subHours(2),
-      },
-      {
-        tenNguoiDung: 'admin',
-        vaiTro: 'quan_tri_vien',
-        hanhDong: 'SAO_LUU_CSDL',
-        loaiNhatKy: LoaiNhatKy.INFO,
-        moTa: 'Xuất tệp sao lưu dữ liệu toàn hệ thống phong_kham_backup.sql (36 bảng, 2.35MB)',
-        diaChiIp: '127.0.0.1',
-        userAgent: 'Chrome 128.0 (Windows NT 10.0)',
-        thoiGian: subHours(3),
-      },
-      {
-        tenNguoiDung: 'unknown',
-        vaiTro: 'khach',
-        hanhDong: 'DANG_NHAP_THAT_BAI',
-        loaiNhatKy: LoaiNhatKy.SECURITY,
-        moTa: 'Cảnh báo bảo mật: Đăng nhập thất bại sai mật khẩu liên tiếp 3 lần tài khoản root từ IP 113.161.45.12',
-        diaChiIp: '113.161.45.12',
-        userAgent: 'Python-requests/2.31.0',
-        thoiGian: subHours(6),
-      },
-      {
-        tenNguoiDung: 'giamdoc',
-        vaiTro: 'ban_giam_doc',
-        hanhDong: 'PHAN_CA_LAM_VIEC',
-        loaiNhatKy: LoaiNhatKy.INFO,
-        moTa: 'Ban Giám Đốc đã hoàn tất phân công lịch làm việc tuần thứ 37 cho nhân viên y tế',
-        diaChiIp: '192.168.1.10',
-        userAgent: 'Chrome 128.0 (macOS)',
-        thoiGian: subHours(4),
-      },
-      {
-        tenNguoiDung: 'tieptan',
-        vaiTro: 'tiep_tan',
-        hanhDong: 'TIEP_NHAN_BENH_NHAN',
-        loaiNhatKy: LoaiNhatKy.INFO,
-        moTa: 'Tiếp nhận bệnh nhân mới BN000008 (Trần Văn Bình) vào phòng khám Nội 1',
-        diaChiIp: '192.168.1.20',
-        userAgent: 'Edge 128.0 (Windows NT 10.0)',
-        thoiGian: subHours(5),
-      },
-      {
-        tenNguoiDung: 'thungan',
-        vaiTro: 'thu_ngan',
-        hanhDong: 'THANH_TOAN_VIEN_PHI',
-        loaiNhatKy: LoaiNhatKy.INFO,
-        moTa: 'Thu ngân xác nhận xuất hóa đơn thanh toán viện phí khám nội tổng quát cho BN000008',
-        diaChiIp: '192.168.1.25',
-        userAgent: 'Chrome 128.0 (Windows NT 10.0)',
-        thoiGian: subHours(5),
-      },
-      {
-        tenNguoiDung: 'nv1',
-        vaiTro: 'nhan_vien_nha_thuoc',
-        hanhDong: 'CAP_PHAT_THUOC',
-        loaiNhatKy: LoaiNhatKy.INFO,
-        moTa: 'Dược sĩ hoàn tất cấp phát thuốc và in hướng dẫn sử dụng đơn thuốc #DT000015',
-        diaChiIp: '192.168.1.30',
-        userAgent: 'Chrome 128.0 (Windows NT 10.0)',
-        thoiGian: subHours(6),
-      },
-      {
-        tenNguoiDung: 'xetnghiem',
-        vaiTro: 'ky_thuat_vien',
-        hanhDong: 'CAP_NHAT_KET_QUA_XN',
-        loaiNhatKy: LoaiNhatKy.INFO,
-        moTa: 'Kỹ thuật viên B cập nhật kết quả xét nghiệm sinh hóa máu tổng quát cho BN000002',
-        diaChiIp: '192.168.1.35',
-        userAgent: 'Chrome 128.0 (Windows NT 10.0)',
-        thoiGian: subHours(7),
-      },
-      {
-        tenNguoiDung: 'admin',
-        vaiTro: 'quan_tri_vien',
-        hanhDong: 'CAP_NHAT_PHAN_QUYEN',
-        loaiNhatKy: LoaiNhatKy.WARNING,
-        moTa: 'Quản trị viên cập nhật quyền hạn vai trò Kỹ thuật viên (thêm quyền duyệt kết quả)',
-        diaChiIp: '127.0.0.1',
-        userAgent: 'Chrome 128.0 (Windows NT 10.0)',
-        thoiGian: subDays(1),
-      },
-      {
-        tenNguoiDung: 'he_thong',
-        vaiTro: 'he_thong',
-        hanhDong: 'DONG_BO_AI_GATEWAY',
-        loaiNhatKy: LoaiNhatKy.INFO,
-        moTa: 'Khởi tạo kết nối Gemini AI Triage Gateway thành công (model: gemini-3.5-flash-lite)',
-        diaChiIp: '127.0.0.1',
-        userAgent: 'NestJS-Microservice/10.0',
-        thoiGian: subDays(1),
-      },
-      {
-        tenNguoiDung: 'admin',
-        vaiTro: 'quan_tri_vien',
-        hanhDong: 'DAT_LAI_MAT_KHAU',
-        loaiNhatKy: LoaiNhatKy.SECURITY,
-        moTa: 'Quản trị viên thực hiện đặt lại mật khẩu cho tài khoản tieptan',
-        diaChiIp: '127.0.0.1',
-        userAgent: 'Chrome 128.0 (Windows NT 10.0)',
-        thoiGian: subDays(2),
-      },
-      {
-        tenNguoiDung: 'he_thong',
-        vaiTro: 'he_thong',
-        hanhDong: 'LOI_KET_NOI_SMS',
-        loaiNhatKy: LoaiNhatKy.ERROR,
-        moTa: 'Cổng gửi tin nhắn SMS OTP phản hồi mã lỗi 503 (Gateway Timeout), đã chuyển hướng qua Email OTP',
-        diaChiIp: '127.0.0.1',
-        userAgent: 'Nodemailer/NestJS',
-        thoiGian: subDays(2),
-      },
-    ];
-
-    for (const item of initialSeeds) {
-      const entity = this.nhatKyRepo.create(item);
-      await this.nhatKyRepo.save(entity);
-    }
-  }
+  // (Đã bỏ seedInitialLogs: hàm này tự chèn các dòng nhật ký an ninh giả — đăng nhập, quét an ninh… chưa từng
+  //  xảy ra — khi bảng nhật ký rỗng. Nhật ký kiểm toán chỉ được chứa sự kiện thật.)
 
   // ==========================================
   // XÁC THỰC & CHỐNG TRÙNG LẶP AVATAR NHÂN VIÊN
