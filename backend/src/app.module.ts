@@ -46,6 +46,9 @@ import { BaiVietModule } from './modules/bai-viet/bai-viet.module';
         autoLoadEntities: true,
         logging: config.get('DB_LOGGING') === 'true' ? true : ['error'],
         timezone: '+07:00',
+        // Truy vấn quá 30s (kết nối chết lặng qua proxy Clever) → báo lỗi; vn-session-timezone.util hủy kết nối đó khỏi pool
+        enableQueryTimeout: true,
+        maxQueryExecutionTime: 30000,
         charset: 'utf8mb4',
         extra: {
           // MySQL Clever gói free giới hạn số kết nối và cắt kết nối rảnh: pool nhỏ, tự đóng kết nối rảnh sau 60s
