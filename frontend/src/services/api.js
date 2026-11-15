@@ -50,7 +50,17 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Backend Render gói free ngủ sau 15 phút, cần ~60s để thức: tự gửi lại GET (an toàn khi lặp) thay vì báo lỗi ngay
+    const status = error.response?.status;
+    const backendNgu = status ? [502, 503, 504].includes(status) : ['ECONNABORTED', 'ERR_NETWORK', 'ETIMEDOUT'].includes(error.code);
+    if (backendNgu && originalRequest?.method === 'get' && (originalRequest._coldRetry || 0) < 3) {
+      originalRequest._coldRetry = (originalRequest._coldRetry || 0) + 1;
+      originalRequest.timeout = Math.max(originalRequest.timeout || 0, 30000);
+      await new Promise((r) => setTimeout(r, 2000));
+      return api(originalRequest);
+    }
+
+    if (status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });

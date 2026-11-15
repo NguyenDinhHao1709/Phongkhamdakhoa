@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { DataSource } from 'typeorm';
 
 interface RateBucket {
   count: number;
@@ -72,6 +73,23 @@ export function getLoadMetrics() {
   };
 }
 
+let healthDataSource: DataSource | null = null;
+export function setHealthDataSource(ds: DataSource) {
+  healthDataSource = ds;
+}
+
+async function kiemTraDb(): Promise<boolean> {
+  if (!healthDataSource) return true;
+  let timer: NodeJS.Timeout | undefined;
+  const hetGio = new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), 5000); });
+  const truyVan = healthDataSource.query('SELECT 1').then(() => true, () => false);
+  try {
+    return await Promise.race([truyVan, hetGio]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function getClientIp(req: Request): string {
   // Render đứng sau Cloudflare: cf-connecting-ip luôn là IP thật (Cloudflare từ chối request tự gửi header này),
   // còn giá trị đầu của x-forwarded-for do khách tự đặt được — đã đo trên bản production 13/11/2026
@@ -110,14 +128,16 @@ function checkRateLimit(
 export function loadProtectionMiddleware(req: Request, res: Response, next: NextFunction) {
   const url = req.originalUrl || req.url || '';
 
-  // 1. Endpoint kiểm tra sức khỏe & thông số chịu tải tức thì (Zero-DB overhead)
+  // 1. Health check có thử DB: DB treo → 503 để Render tự restart (pool kẹt kết nối chết từng làm mọi API treo)
   if (url === '/api/health' || url.startsWith('/api/health?')) {
-    return res.status(200).json({
-      success: true,
-      status: 'healthy',
-      load: getLoadMetrics(),
-      timestamp: new Date().toISOString(),
-    });
+    return kiemTraDb().then((dbOk) =>
+      res.status(dbOk ? 200 : 503).json({
+        success: dbOk,
+        status: dbOk ? 'healthy' : 'db_unreachable',
+        load: getLoadMetrics(),
+        timestamp: new Date().toISOString(),
+      }),
+    );
   }
 
   // Bỏ qua file tĩnh

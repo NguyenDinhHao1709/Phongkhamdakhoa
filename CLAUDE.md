@@ -1,5 +1,46 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Khởi động phiên làm việc
+
+Hook `SessionStart` trong [.claude/settings.json](.claude/settings.json) tự đánh thức 4 service Render (backend, ai, python-ml, office) ở chế độ nền khi mở phiên — không cần làm tay.
+
+## Project
+
+Outpatient clinic management system (graduation thesis). Workflow follows QĐ 1313/QĐ-BYT; BHYT rules follow Luật BHYT + NĐ 146/2018. Business rules (queue priority, prepay-before-exam, BHYT, refunds) are in [docs/QUY_TRINH_KHAM_BENH.md](docs/QUY_TRINH_KHAM_BENH.md) — read it before touching `tiep-nhan`, `thanh-toan` or `lich-hen`. Domain names (modules, tables, columns, variables) are Vietnamese without diacritics (`benh_nhan`, `tiep_nhan`, `maBenhNhanTiepTheo`); keep that convention.
+
+## Commands
+
+| Part | Dev | Build / check |
+|---|---|---|
+| `backend/` (NestJS 10, :5000, Swagger `/api/docs`) | `npm run start:dev` | `npm run build`, `npm run lint` |
+| `frontend/` (React 18 + Vite, :3000) | `npm run dev` | `npm run build`, `npm run lint` |
+| `ai-service/` (:5002), `office-service/` (:5003) | `npm run build && npm run start:dev` (plain `tsc`, no watch) | `npm run build`; ai-service: `npm run test:chat` |
+| `python-ml/` (FastAPI, :5001) | `python -m uvicorn main:app --reload --port 5001` | `python -m pytest tests -q` (single: `pytest tests/test_ml.py::<name>`) |
+| `mobile-patient/` (Expo) | `npm start` | — |
+
+- There is no JS unit-test suite. Verify Node changes with `npm run build` (that is what CI runs, [.github/workflows/ci.yml](.github/workflows/ci.yml)); API test cases are in `scripts/*.postman_collection.json`.
+- python-ml cannot run in the local Windows venv (Application Control blocks scikit-learn/statsmodels DLLs) — run/test it in Docker.
+
+## Architecture
+
+- **backend** is the only service the frontend/mobile talk to: REST under `/api` + Socket.IO. It proxies to `ai-service` (Gemini chatbot/RAG/triage), `office-service` (staff chat) and `python-ml` (visit forecast, specialty classifier, face verification). Render services cold-start, so calls to them go through `common/utils/cold-start-retry.util.ts` / `python-ml-url.util.ts`.
+- **Response envelope:** `ResponseTransformInterceptor` wraps every response, so the frontend reads `response.data.data`. Errors go through `HttpExceptionFilter`. `AuditLogInterceptor` (global) writes the audit log.
+- **Auth:** JWT access + refresh tokens with a per-user token version (revocation). Guards are applied per controller: `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(...)`; `@Public()` opts out. Patient endpoints must check ownership (`common/utils/benh-nhan-so-huu.util.ts`) to avoid IDOR.
+- **Sensitive columns** are encrypted with `Aes256Transformer` (`APP_ENCRYPTION_KEY`); ai-service has its own copy of the transformer — keep them in sync.
+- **Multi-instance safety:** generated codes (BN…, queue numbers, receipts) come from the `bo_dem_ma` counter table locked with `FOR UPDATE` (`common/utils/db-sequence.util.ts`, `ma-generator.util.ts`). Never generate codes with `MAX()+1` or random numbers.
+- **Timezone:** everything runs in Asia/Ho_Chi_Minh; the DB session timezone is set in `vn-session-timezone.util.ts`.
+- **Real-time queue:** `modules/tiep-nhan/queue.gateway.ts` pushes queue changes to reception, doctor, kiosk and TV screens.
+- **Frontend:** routes per role in `src/App.jsx` (lazy pages under `src/pages/<Role>`); axios instance in `src/services/api.js` handles token refresh; state in Zustand (`src/store`) + TanStack Query.
+
+## Database & deployment
+
+- TypeORM runs with `synchronize: false`. Schema changes = a new dated file `database/YYYYMMDD_<name>.sql` (`*.sql` is git-ignored → `git add -f`). Write plain `ALTER TABLE` statements: the Clever Cloud user cannot read `information_schema`.
+- Production: backend + ai/office/python-ml on Render (auto-deploy on push to `main`), frontend on cPanel (upload `frontend/dist`, keep `.htaccess`), MySQL on Clever Cloud. Migrations are run by hand in phpMyAdmin **before** pushing code that uses new columns.
+
+## Working guidelines
+
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.

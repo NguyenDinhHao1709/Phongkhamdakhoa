@@ -48,7 +48,10 @@ import { BaiVietModule } from './modules/bai-viet/bai-viet.module';
         timezone: '+07:00',
         charset: 'utf8mb4',
         extra: {
-          connectionLimit: Number(config.get('DB_POOL_LIMIT', 120)),
+          // MySQL Clever gói free giới hạn số kết nối và cắt kết nối rảnh: pool nhỏ, tự đóng kết nối rảnh sau 60s
+          connectionLimit: Number(config.get('DB_POOL_LIMIT', 10)),
+          maxIdle: 2,
+          idleTimeout: 60000,
           queueLimit: 2000,
           waitForConnections: true,
           connectTimeout: 15000,
