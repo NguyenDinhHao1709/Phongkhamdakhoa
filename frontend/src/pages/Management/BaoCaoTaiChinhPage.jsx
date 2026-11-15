@@ -168,6 +168,10 @@ export default function BaoCaoTaiChinhPage() {
   const danhSachDonThuocXuat = duoc?.danhSachDonThuocXuat || [];
   const canhBaoTonKho = duoc?.canhBaoTonKho || [];
 
+  // Danh sách chi tiết chỉ lấy tối đa N dòng mới nhất; chạm giới hạn thì ghi rõ để không tưởng là đủ cả kỳ
+  const biCat = report?.danhSachBiCat || {};
+  const ghiChuCat = (key) => (biCat[key] ? ` — chỉ hiện ${(report?.gioiHanDanhSach || 0).toLocaleString('vi-VN')} dòng mới nhất, thu hẹp khoảng ngày để xem đủ` : '');
+
   // Lọc và phân trang cho Hóa Đơn Thu
   const filteredHoaDon = danhSachHoaDon.filter(item => {
     if (!searchTerm.trim()) return true;
@@ -778,7 +782,7 @@ export default function BaoCaoTaiChinhPage() {
           {taiChinhSubView === 'chi' && (
             <MedCard
               title="💸 Bảng Kê Chi Tiết Chi Hoạt Động & Chi Trả Nhà Cung Cấp"
-              subtitle={`Hiển thị ${filteredChiPhi.length} khoản chi đã hoàn tất (20 khoản chi/trang)`}
+              subtitle={`Hiển thị ${filteredChiPhi.length} khoản chi đã hoàn tất (20 khoản chi/trang)${ghiChuCat('chiPhi')}`}
               action={
                 <div className="flex items-center gap-2">
                   <div className="relative">
@@ -1053,7 +1057,7 @@ export default function BaoCaoTaiChinhPage() {
           {lamSangSubView === 'tiep_nhan' && (
             <MedCard
               title="📋 Bảng Kê Chi Tiết Lượt Tiếp Nhận Bệnh Nhân"
-              subtitle={`Hiển thị ${filteredTiepNhan.length} lượt tiếp đón trong kỳ (20 lượt/trang)`}
+              subtitle={`Hiển thị ${filteredTiepNhan.length} lượt tiếp đón trong kỳ (20 lượt/trang)${ghiChuCat('tiepNhan')}`}
               action={
                 <div className="flex items-center gap-2">
                   <div className="relative">
@@ -1140,7 +1144,7 @@ export default function BaoCaoTaiChinhPage() {
           {lamSangSubView === 'cls' && (
             <MedCard
               title="🧪 Bảng Kê Chi Tiết Ca Chỉ Định Cận Lâm Sàng & Kết Quả"
-              subtitle={`Hiển thị ${filteredChiDinhCls.length} ca chỉ định CLS trong kỳ (20 ca/trang)`}
+              subtitle={`Hiển thị ${filteredChiDinhCls.length} ca chỉ định CLS trong kỳ (20 ca/trang)${ghiChuCat('chiDinhCls')}`}
               action={
                 <div className="flex items-center gap-2">
                   <div className="relative">
@@ -1486,7 +1490,7 @@ export default function BaoCaoTaiChinhPage() {
           {duocSubView === 'don_thuoc' && (
             <MedCard
               title="📋 Bảng Kê Chi Tiết Đơn Thuốc Đã Xuất Bán"
-              subtitle={`Hiển thị ${filteredDonThuoc.length} đơn thuốc kê đơn trong kỳ (20 đơn/trang)`}
+              subtitle={`Hiển thị ${filteredDonThuoc.length} đơn thuốc kê đơn trong kỳ (20 đơn/trang)${ghiChuCat('donThuoc')}`}
               action={
                 <div className="flex items-center gap-2">
                   <div className="relative">

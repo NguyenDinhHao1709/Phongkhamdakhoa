@@ -1171,6 +1171,11 @@ export class QuanLyService implements OnModuleInit {
   // UC BÁO CÁO TOÀN DIỆN BAN GIÁM ĐỐC (LÂM SÀNG, CLS, DƯỢC, TÀI CHÍNH)
   // ============================================================
   async getBaoCaoToanDien(filter: { tuNgay?: string; denNgay?: string; phuongThuc?: string }) {
+    // Danh sách chi tiết lấy tối đa GIOI_HAN dòng mới nhất (trước đây 150–200 dòng, cắt mà không báo).
+    // Chạm giới hạn thì báo cờ danhSachBiCat để giao diện ghi rõ.
+    const GIOI_HAN = 2000;
+    const danhSachBiCat: Record<string, boolean> = {};
+
     // 1. Tài chính cơ sở
     const taiChinh = await this.getBaoCaoTaiChinh(filter);
 
@@ -1219,8 +1224,9 @@ export class QuanLyService implements OnModuleInit {
       chiNccListSql += ` AND y.ngay_chi_tra BETWEEN ? AND ? `;
       chiNccListParams.push(tuNgayStr, denNgayStr);
     }
-    chiNccListSql += ` ORDER BY y.ngay_chi_tra DESC LIMIT 150 `;
+    chiNccListSql += ` ORDER BY y.ngay_chi_tra DESC LIMIT ${GIOI_HAN} `;
     const chiNccListRaw = await this.hoaDonRepo.query(chiNccListSql, chiNccListParams).catch(() => []);
+    danhSachBiCat.chiNcc = chiNccListRaw.length >= GIOI_HAN;
 
     // b. Chi phí hoạt động vận hành (từ phieu_chi_hoat_dong)
     let opexSql = `
@@ -1262,8 +1268,9 @@ export class QuanLyService implements OnModuleInit {
       opexListSql += ` AND p.ngay_chi BETWEEN ? AND ? `;
       opexListParams.push(tuNgayStr, denNgayStr);
     }
-    opexListSql += ` ORDER BY p.ngay_chi DESC LIMIT 150 `;
+    opexListSql += ` ORDER BY p.ngay_chi DESC LIMIT ${GIOI_HAN} `;
     const opexListRaw = await this.hoaDonRepo.query(opexListSql, opexListParams).catch(() => []);
+    danhSachBiCat.chiPhi = danhSachBiCat.chiNcc || opexListRaw.length >= GIOI_HAN;
 
     // Hợp nhất danh sách chi và sắp xếp theo ngày chi giảm dần
     const danhSachChiPhi = [...chiNccListRaw, ...opexListRaw].sort((a, b) => {
@@ -1406,8 +1413,9 @@ export class QuanLyService implements OnModuleInit {
       tnListSql += ` WHERE ltn.thoi_gian_den BETWEEN ? AND ? `;
       tnListParams.push(tuNgayStr, denNgayStr);
     }
-    tnListSql += ` ORDER BY ltn.thoi_gian_den DESC LIMIT 200 `;
+    tnListSql += ` ORDER BY ltn.thoi_gian_den DESC LIMIT ${GIOI_HAN} `;
     const danhSachTiepNhan = await this.tiepNhanRepo.query(tnListSql, tnListParams).catch(() => []);
+    danhSachBiCat.tiepNhan = danhSachTiepNhan.length >= GIOI_HAN;
 
     // 3. Thống kê Cận Lâm Sàng (CLS)
     // Phiếu CLS đã hủy không được thực hiện → bỏ khỏi tổng chỉ định và mẫu số tỷ lệ (giống Dashboard)
@@ -1504,8 +1512,9 @@ export class QuanLyService implements OnModuleInit {
       clsListSql += ` WHERE cls.thoi_gian_chi_dinh BETWEEN ? AND ? `;
       clsListParams.push(tuNgayStr, denNgayStr);
     }
-    clsListSql += ` ORDER BY cls.thoi_gian_chi_dinh DESC LIMIT 200 `;
+    clsListSql += ` ORDER BY cls.thoi_gian_chi_dinh DESC LIMIT ${GIOI_HAN} `;
     const clsListRaw = await this.clsRepo.query(clsListSql, clsListParams).catch(() => []);
+    danhSachBiCat.chiDinhCls = clsListRaw.length >= GIOI_HAN;
     const danhSachChiDinhCls = clsListRaw.map((r: any) => ({
       ...r,
       donGia: Number(r.donGia || 0),
@@ -1692,8 +1701,9 @@ export class QuanLyService implements OnModuleInit {
       dtListSql += ` WHERE dt.ngay_ke BETWEEN ? AND ? `;
       dtListParams.push(tuNgayStr, denNgayStr);
     }
-    dtListSql += ` ORDER BY dt.ngay_ke DESC LIMIT 200 `;
+    dtListSql += ` ORDER BY dt.ngay_ke DESC LIMIT ${GIOI_HAN} `;
     const dtListRaw = await this.donThuocRepo.query(dtListSql, dtListParams).catch(() => []);
+    danhSachBiCat.donThuoc = dtListRaw.length >= GIOI_HAN;
     const danhSachDonThuocXuat = dtListRaw.map((r: any) => ({
       ...r,
       tongTien: Number(r.tongTien || 0),
@@ -1733,6 +1743,8 @@ export class QuanLyService implements OnModuleInit {
       },
       cls: clsStats,
       duoc: duocStats,
+      gioiHanDanhSach: GIOI_HAN,
+      danhSachBiCat,
     };
   }
 
