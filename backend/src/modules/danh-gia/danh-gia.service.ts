@@ -1,4 +1,5 @@
 import { voiKhoaDb } from '../../common/utils/db-sequence.util';
+import { khoangNgayVN } from '../../common/utils/khoang-ngay-vn.util';
 import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
@@ -228,44 +229,7 @@ export class DanhGiaService {
   }
 
   private parseDateRange(query: { range?: string; tuNgay?: string; denNgay?: string }) {
-    const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
-    let fromDate = todayStr;
-    let toDate = todayStr;
-
-    const range = query.range || 'thang_nay';
-    if (range === 'hom_nay') {
-      fromDate = todayStr;
-      toDate = todayStr;
-    } else if (range === 'tuan_nay' || range === '7days') {
-      const day = now.getDay();
-      const diffToMonday = (day === 0 ? -6 : 1) - day;
-      const monday = new Date(now);
-      monday.setDate(now.getDate() + diffToMonday);
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
-      fromDate = monday.toISOString().slice(0, 10);
-      toDate = sunday.toISOString().slice(0, 10);
-    } else if (range === 'thang_nay' || range === 'month') {
-      const y = now.getFullYear();
-      const m = now.getMonth();
-      const lastDay = new Date(y, m + 1, 0);
-      fromDate = `${y}-${String(m + 1).padStart(2, '0')}-01`;
-      toDate = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
-    } else if (range === 'quy_nay') {
-      const y = now.getFullYear();
-      const m = now.getMonth();
-      const quarter = Math.floor(m / 3);
-      const firstMonth = quarter * 3;
-      const lastMonth = firstMonth + 2;
-      const lastDay = new Date(y, lastMonth + 1, 0);
-      fromDate = `${y}-${String(firstMonth + 1).padStart(2, '0')}-01`;
-      toDate = `${y}-${String(lastMonth + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
-    } else if (query.tuNgay && query.denNgay) {
-      fromDate = query.tuNgay;
-      toDate = query.denNgay;
-    }
-    return { fromDate, toDate };
+    return khoangNgayVN(query);
   }
 
   /**
@@ -386,12 +350,13 @@ export class DanhGiaService {
       return {
         message: 'OK',
         data: {
+          // Chưa có đánh giá trong kỳ → null (frontend hiện "—"), không trả 5.0 / 100% giả
           tongDanhGia: 0,
-          diemCSATToanVien: 5.0,
-          diemBacSiTB: 5.0,
-          diemClsTB: 5.0,
-          diemTiepDonTB: 5.0,
-          tyLeHaiLong: '100%',
+          diemCSATToanVien: null,
+          diemBacSiTB: null,
+          diemClsTB: null,
+          diemTiepDonTB: null,
+          tyLeHaiLong: null,
           bxhBacSi: [],
           canhBaoDanhGiaThap: [],
           danhSachMoiNhat: [],
@@ -407,7 +372,7 @@ export class DanhGiaService {
 
     const diemCSATToanVien = Math.round((tongCSAT / tongDanhGia) * 10) / 10;
     const diemBacSiTB = Math.round((tongBacSi / tongDanhGia) * 10) / 10;
-    const diemClsTB = listCls.length > 0 ? Math.round((tongCls / listCls.length) * 10) / 10 : 5.0;
+    const diemClsTB = listCls.length > 0 ? Math.round((tongCls / listCls.length) * 10) / 10 : null;
     const diemTiepDonTB = Math.round((tongTiepDon / tongDanhGia) * 10) / 10;
 
     const soHaiLong = list.filter(item => Number(item.diemTrungBinh) >= 4.0).length;

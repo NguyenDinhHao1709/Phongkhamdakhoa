@@ -1,3 +1,4 @@
+import { khoangNgayVN, ngayVN, NGAY_DAU_TIEN } from '../../common/utils/khoang-ngay-vn.util';
 import { Injectable, NotFoundException, BadRequestException, ConflictException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, In, Like, MoreThanOrEqual, IsNull } from 'typeorm';
@@ -774,60 +775,37 @@ export class QuanLyService implements OnModuleInit {
   // UC 17: DASHBOARD TỔNG QUAN HOẠT ĐỘNG PHÒNG KHÁM (BAN GIÁM ĐỐC)
   // ============================================================
   async getDashboardStats(filter: { range?: string; tuNgay?: string; denNgay?: string }) {
-    // 0. Xác định khoảng thời gian (startDate, endDate)
-    const now = new Date();
-    const toDateStr = (d: Date) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
+    // 0. Khoảng thời gian theo giờ Việt Nam; "toàn thời gian" thì không lọc ngày (startDate = null)
+    const range = filter.range || 'tat_ca';
     let startDate: string | null = null;
     let endDate: string | null = null;
-
-    if (filter.tuNgay && filter.denNgay) {
-      startDate = filter.tuNgay;
-      endDate = filter.denNgay;
-    } else {
-      const range = filter.range || 'tat_ca';
-      if (range === 'hom_nay') {
-        startDate = toDateStr(now);
-        endDate = toDateStr(now);
-      } else if (range === '7_ngay') {
-        const d7 = new Date();
-        d7.setDate(d7.getDate() - 6);
-        startDate = toDateStr(d7);
-        endDate = toDateStr(now);
-      } else if (range === 'thang_nay') {
-        const dMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        startDate = toDateStr(dMonth);
-        endDate = toDateStr(now);
-      } else if (range === 'quy_nay') {
-        const currentQuarter = Math.floor(now.getMonth() / 3);
-        const dQuarter = new Date(now.getFullYear(), currentQuarter * 3, 1);
-        startDate = toDateStr(dQuarter);
-        endDate = toDateStr(now);
-      } else if (range === 'nam_nay') {
-        const dYear = new Date(now.getFullYear(), 0, 1);
-        startDate = toDateStr(dYear);
-        endDate = toDateStr(now);
-      }
+    if (filter.tuNgay || filter.denNgay || range !== 'tat_ca') {
+      ({ fromDate: startDate, toDate: endDate } = khoangNgayVN({ ...filter, range }, 'tat_ca'));
+      if (startDate === NGAY_DAU_TIEN) { startDate = null; endDate = null; }
+      // Dashboard chỉ nhìn tới hôm nay: tháng/quý/năm này không vẽ các ngày tương lai trống
+      const homNay = ngayVN();
+      if (endDate && endDate > homNay && !filter.denNgay) endDate = homNay;
     }
 
     const startDateTime = startDate ? `${startDate} 00:00:00` : null;
     const endDateTime = endDate ? `${endDate} 23:59:59` : null;
 
     // 1. Lượt khám & tiếp nhận
-    const totalTiepNhan = await this.tiepNhanRepo.count();
+    // Lượt đã hủy (bệnh nhân bỏ về / tiếp nhận nhầm) không phải lượt khám
+    const LUOT_HOP_LE = "ltn.trangThai != 'da_huy'";
+    const totalTiepNhan = await this.tiepNhanRepo.createQueryBuilder('ltn')
+      .where(LUOT_HOP_LE)
+      .getCount();
     const tiepNhanHomNay = await this.tiepNhanRepo.createQueryBuilder('ltn')
       .where('DATE(ltn.thoiGianDen) = CURDATE()')
+      .andWhere(LUOT_HOP_LE)
       .getCount();
 
     let tiepNhanTrongKy = totalTiepNhan;
     if (startDateTime && endDateTime) {
       tiepNhanTrongKy = await this.tiepNhanRepo.createQueryBuilder('ltn')
         .where('ltn.thoiGianDen BETWEEN :s AND :e', { s: startDateTime, e: endDateTime })
+        .andWhere(LUOT_HOP_LE)
         .getCount();
     }
 
@@ -865,6 +843,7 @@ export class QuanLyService implements OnModuleInit {
       .select("DATE_FORMAT(ltn.thoiGianDen, '%Y-%m-%d')", 'rawDate')
       .addSelect("DATE_FORMAT(ltn.thoiGianDen, '%d/%m')", 'ngay')
       .addSelect('COUNT(*)', 'soLuotKham')
+      .where(LUOT_HOP_LE)
       .groupBy("DATE_FORMAT(ltn.thoiGianDen, '%Y-%m-%d')")
       .addGroupBy("DATE_FORMAT(ltn.thoiGianDen, '%d/%m')")
       .orderBy("rawDate", 'ASC');
@@ -879,13 +858,8 @@ export class QuanLyService implements OnModuleInit {
       .orderBy("rawDate", 'ASC');
 
     if (startDateTime && endDateTime) {
-      trendQb = trendQb.where('ltn.thoiGianDen BETWEEN :s AND :e', { s: startDateTime, e: endDateTime });
+      trendQb = trendQb.andWhere('ltn.thoiGianDen BETWEEN :s AND :e', { s: startDateTime, e: endDateTime });
       revTrendQb = revTrendQb.andWhere('hd.ngayThanhToan BETWEEN :s AND :e', { s: startDateTime, e: endDateTime });
-    } else if (filter.range === 'tat_ca') {
-      // Toàn thời gian: Lấy đầy đủ lịch sử hoạt động, không limit để tránh làm đứt đoạn dữ liệu tháng 9 và 10
-    } else {
-      trendQb = trendQb.where('ltn.thoiGianDen >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
-      revTrendQb = revTrendQb.andWhere('hd.ngayThanhToan >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
     }
 
     const trendData = await trendQb.getRawMany();
@@ -938,6 +912,7 @@ export class QuanLyService implements OnModuleInit {
       .select('ct.loaiPhi', 'loaiPhi')
       .addSelect('SUM(ct.thanhTien)', 'tongTien')
       .where('hd.trangThai = :st', { st: 'da_thanh_toan' })
+      .andWhere("ct.loaiPhi != 'tam_ung'")
       .groupBy('ct.loaiPhi');
 
     if (startDateTime && endDateTime) {
@@ -954,10 +929,10 @@ export class QuanLyService implements OnModuleInit {
       khac: 'Khác',
     };
 
-    const coCauDoanhThu = coCauRaw.map(c => ({
-      name: LOAI_PHI_LABEL[c.loaiPhi] || c.loaiPhi,
-      value: Number(c.tongTien),
-    }));
+    // Giá trị dịch vụ theo bảng giá (trước BHYT), nên tổng có thể lớn hơn thực thu ở thẻ Doanh thu
+    const coCauDoanhThu = coCauRaw
+      .map(c => ({ name: LOAI_PHI_LABEL[c.loaiPhi] || c.loaiPhi, value: Number(c.tongTien) }))
+      .filter(c => c.value > 0);
 
     // 7. Top bác sĩ khám nhiều nhất
     let topBacSiQuery = `
@@ -965,10 +940,11 @@ export class QuanLyService implements OnModuleInit {
       FROM benh_an_kham bak
       JOIN bac_si bs ON bak.bac_si_id = bs.id
       JOIN nhan_vien nv ON bs.nhan_vien_id = nv.id
+      WHERE bak.trang_thai = 'da_hoan_thanh'
     `;
     const params: any[] = [];
     if (startDateTime && endDateTime) {
-      topBacSiQuery += ` WHERE bak.ngay_kham BETWEEN ? AND ? `;
+      topBacSiQuery += ` AND bak.ngay_kham BETWEEN ? AND ? `;
       params.push(startDateTime, endDateTime);
     }
     topBacSiQuery += `
@@ -979,11 +955,12 @@ export class QuanLyService implements OnModuleInit {
     const topBacSi = await this.benhAnRepo.query(topBacSiQuery, params);
 
     // 8. Thống kê cận lâm sàng & tỷ lệ hoàn thành
-    let clsCountQb = this.clsRepo.createQueryBuilder('cls');
+    // Phiếu CLS đã hủy không được thực hiện → không tính vào số chỉ định lẫn mẫu số tỷ lệ hoàn thành
+    let clsCountQb = this.clsRepo.createQueryBuilder('cls').where("cls.trangThai != 'huy'");
     let donThuocCountQb = this.donThuocRepo.createQueryBuilder('dt');
 
     if (startDateTime && endDateTime) {
-      clsCountQb = clsCountQb.where('cls.thoiGianChiDinh BETWEEN :s AND :e', { s: startDateTime, e: endDateTime });
+      clsCountQb = clsCountQb.andWhere('cls.thoiGianChiDinh BETWEEN :s AND :e', { s: startDateTime, e: endDateTime });
       donThuocCountQb = donThuocCountQb.where('dt.ngayKe BETWEEN :s AND :e', { s: startDateTime, e: endDateTime });
     }
 
@@ -997,17 +974,18 @@ export class QuanLyService implements OnModuleInit {
       clsDoneQb = clsDoneQb.andWhere('cls.thoiGianChiDinh BETWEEN :s AND :e', { s: startDateTime, e: endDateTime });
     }
     const clsDoneCount = await clsDoneQb.getCount();
-    const tyLeHoanThanhCls = clsCountRaw > 0 ? `${Math.round((clsDoneCount / clsCountRaw) * 100)}%` : '100%';
+    const tyLeHoanThanhCls = clsCountRaw > 0 ? `${Math.round((clsDoneCount / clsCountRaw) * 100)}%` : null;
 
     // 9. Thống kê Kênh tiếp nhận bệnh nhân thực tế
     let kenhQb = this.tiepNhanRepo.createQueryBuilder('ltn')
       .leftJoin('ltn.lichHen', 'lh')
       .select(KENH_SQL.online, 'online')
       .addSelect(KENH_SQL.quaNhanVien, 'quaNhanVien')
-      .addSelect(KENH_SQL.vangLai, 'vangLai');
+      .addSelect(KENH_SQL.vangLai, 'vangLai')
+      .where(LUOT_HOP_LE);
 
     if (startDateTime && endDateTime) {
-      kenhQb = kenhQb.where('ltn.thoiGianDen BETWEEN :s AND :e', { s: startDateTime, e: endDateTime });
+      kenhQb = kenhQb.andWhere('ltn.thoiGianDen BETWEEN :s AND :e', { s: startDateTime, e: endDateTime });
     }
     const kenhTiepNhan = tinhKenhTiepNhan(await kenhQb.getRawOne()).map((k) => ({
       name: k.kenh, value: k.tyLe, soCa: k.soLuot, color: k.color,
@@ -1020,10 +998,11 @@ export class QuanLyService implements OnModuleInit {
              SUM(CASE WHEN cls.trang_thai = 'co_ket_qua' THEN 1 ELSE 0 END) AS hoanThanh
       FROM chi_dinh_can_lam_sang cls
       JOIN dich_vu_xet_nghiem dv ON cls.dich_vu_xet_nghiem_id = dv.id
+      WHERE cls.trang_thai != 'huy'
     `;
     const clsParams: any[] = [];
     if (startDateTime && endDateTime) {
-      clsDetailQuery += ` WHERE cls.thoi_gian_chi_dinh BETWEEN ? AND ? `;
+      clsDetailQuery += ` AND cls.thoi_gian_chi_dinh BETWEEN ? AND ? `;
       clsParams.push(startDateTime, endDateTime);
     }
     clsDetailQuery += `
@@ -1035,7 +1014,7 @@ export class QuanLyService implements OnModuleInit {
     const hoatDongCls = clsDetailRaw.map((item: any) => {
       const tong = Number(item.tong || 0);
       const hoanThanh = Number(item.hoanThanh || 0);
-      const tyLe = tong > 0 ? `${Math.round((hoanThanh / tong) * 100)}%` : '100%';
+      const tyLe = tong > 0 ? `${Math.round((hoanThanh / tong) * 100)}%` : '0%';
       return {
         ten: item.ten,
         tong,
@@ -1044,8 +1023,47 @@ export class QuanLyService implements OnModuleInit {
       };
     });
 
+    // 11. Thời gian khám TB toàn viện: ngay_kham → thoi_gian_ket_thuc, bỏ ca > 4 giờ (phiếu bỏ ngỏ)
+    const tgParams: any[] = [];
+    let tgQuery = `
+      SELECT AVG(TIMESTAMPDIFF(SECOND, ngay_kham, thoi_gian_ket_thuc)) / 60 AS phut, COUNT(*) AS soCa
+        FROM benh_an_kham
+       WHERE trang_thai = 'da_hoan_thanh' AND thoi_gian_ket_thuc IS NOT NULL
+         AND TIMESTAMPDIFF(SECOND, ngay_kham, thoi_gian_ket_thuc) BETWEEN 1 AND 14400
+    `;
+    if (startDateTime && endDateTime) {
+      tgQuery += ` AND ngay_kham BETWEEN ? AND ? `;
+      tgParams.push(startDateTime, endDateTime);
+    }
+    const [tgRaw] = await this.benhAnRepo.query(tgQuery, tgParams);
+    const soCaDoThoiGian = Number(tgRaw?.soCa || 0);
+    const thoiGianKhamTb = soCaDoThoiGian > 0 ? Number(Number(tgRaw.phut).toFixed(1)) : null;
+
+    // 12. No-show = vắng mặt / lịch hẹn đã tới ngày (bỏ lịch hủy, chờ duyệt hủy, chưa thanh toán); hủy lịch báo riêng
+    const lhParams: any[] = [];
+    let lhQuery = `
+      SELECT
+        SUM(CASE WHEN ngay_hen <= CURDATE() AND trang_thai NOT IN ('da_huy','cho_duyet_huy','cho_thanh_toan') THEN 1 ELSE 0 END) AS daDenNgay,
+        SUM(CASE WHEN ngay_hen <= CURDATE() AND trang_thai = 'vang_mat' THEN 1 ELSE 0 END) AS vangMat,
+        SUM(CASE WHEN trang_thai = 'da_huy' THEN 1 ELSE 0 END) AS daHuy,
+        COUNT(*) AS tong
+      FROM lich_hen
+    `;
+    if (startDate && endDate) {
+      lhQuery += ` WHERE ngay_hen BETWEEN ? AND ? `;
+      lhParams.push(startDate, endDate);
+    }
+    const [lhRaw] = await this.benhAnRepo.query(lhQuery, lhParams);
+    const phanTram = (a: number, b: number) => (b > 0 ? Number(((a / b) * 100).toFixed(1)) : null);
+    const tyLeNoShow = phanTram(Number(lhRaw?.vangMat || 0), Number(lhRaw?.daDenNgay || 0));
+    const tyLeHuyLich = phanTram(Number(lhRaw?.daHuy || 0), Number(lhRaw?.tong || 0));
+
     return {
       kpis: {
+        thoiGianKhamTb,
+        soCaDoThoiGian,
+        tyLeNoShow,
+        tyLeHuyLich,
         tongDoanhThu,
         doanhThuHomNay,
         doanhThuTrongKy,
@@ -1070,7 +1088,7 @@ export class QuanLyService implements OnModuleInit {
         soCa: Number(b.soCa),
       })),
       filter: {
-        range: filter.range || 'tat_ca',
+        range,
         startDate,
         endDate,
       },

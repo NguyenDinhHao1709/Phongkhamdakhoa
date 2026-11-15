@@ -66,11 +66,12 @@ export default function DashboardGiamDocPage() {
   const rawCsat = csatData?.data?.data || csatData?.data || csatData || {};
   const csat = {
     tongDanhGia: rawCsat.tongDanhGia || 0,
-    diemCSATToanVien: rawCsat.diemCSATToanVien || 5.0,
-    diemBacSiTB: rawCsat.diemBacSiTB || 5.0,
-    diemClsTB: rawCsat.diemClsTB || 5.0,
-    diemTiepDonTB: rawCsat.diemTiepDonTB || 5.0,
-    tyLeHaiLong: rawCsat.tyLeHaiLong || '100%',
+    // Chưa có đánh giá trong kỳ → null (hiện "—"), không hiển thị 5.0 / 100% giả
+    diemCSATToanVien: rawCsat.diemCSATToanVien ?? null,
+    diemBacSiTB: rawCsat.diemBacSiTB ?? null,
+    diemClsTB: rawCsat.diemClsTB ?? null,
+    diemTiepDonTB: rawCsat.diemTiepDonTB ?? null,
+    tyLeHaiLong: rawCsat.tyLeHaiLong ?? null,
     bxhBacSi: Array.isArray(rawCsat.bxhBacSi) ? rawCsat.bxhBacSi : [],
     canhBaoDanhGiaThap: Array.isArray(rawCsat.canhBaoDanhGiaThap) ? rawCsat.canhBaoDanhGiaThap : [],
     danhSachMoiNhat: Array.isArray(rawCsat.danhSachMoiNhat) ? rawCsat.danhSachMoiNhat : [],
@@ -159,14 +160,18 @@ export default function DashboardGiamDocPage() {
       ['Thời gian xuất:', new Date().toLocaleString('vi-VN')],
       [],
       ['CHỈ SỐ ĐIỀU HÀNH CHỦ CHỐT', 'GIÁ TRỊ'],
-      ['Tổng số lượt khám bệnh', kpis.tongLuotKham || 0],
-      ['Tổng số chỉ định cận lâm sàng', kpis.tongChiDinhCls || 0],
-      ['Tổng doanh thu viện phí (VNĐ)', kpis.tongDoanhThu || 0],
-      ['Thời gian khám trung bình', kpis.thoiGianKhamTb ? `${kpis.thoiGianKhamTb} phút/ca` : 'Chưa đủ dữ liệu'],
-      ['Tỷ lệ hủy lịch (No-show)', `${kpis.tyLeNoShow || 0}%`],
-      ['Công suất hoạt động phòng khám', `${kpis.congSuatPhongKham || 85}%`],
-      ['Điểm đánh giá hài lòng toàn viện (CSAT)', `${csat.diemCSATToanVien || 5.0} / 5.0 ⭐`],
-      ['Tỷ lệ bệnh nhân hài lòng', csat.tyLeHaiLong || '100%'],
+      ['Lượt tiếp nhận trong kỳ', kpis.tiepNhanTrongKy ?? 0],
+      ['Doanh thu thực thu trong kỳ (VNĐ)', kpis.doanhThuTrongKy ?? 0],
+      ['Doanh thu lũy kế (VNĐ)', kpis.tongDoanhThu ?? 0],
+      ['Chỉ định cận lâm sàng (không gồm phiếu hủy)', kpis.soCaCanLamSang ?? 0],
+      ['Tỷ lệ CLS đã trả kết quả', kpis.tyLeHoanThanhCls ?? 'Chưa có chỉ định'],
+      ['Đơn thuốc đã kê', kpis.soDonThuoc ?? 0],
+      ['Thời gian khám trung bình', kpis.thoiGianKhamTb != null ? `${kpis.thoiGianKhamTb} phút/ca (${kpis.soCaDoThoiGian} ca)` : 'Chưa đủ dữ liệu'],
+      ['Tỷ lệ vắng mặt (No-show)', kpis.tyLeNoShow != null ? `${kpis.tyLeNoShow}%` : 'Chưa đủ dữ liệu'],
+      ['Tỷ lệ hủy lịch', kpis.tyLeHuyLich != null ? `${kpis.tyLeHuyLich}%` : 'Chưa đủ dữ liệu'],
+      ['Điểm đánh giá hài lòng toàn viện (CSAT)', csat.diemCSATToanVien != null ? `${csat.diemCSATToanVien} / 5.0 ⭐` : 'Chưa có đánh giá'],
+      ['Tỷ lệ bệnh nhân hài lòng', csat.tyLeHaiLong ?? 'Chưa có đánh giá'],
+      ['Số lượt đánh giá', csat.tongDanhGia],
     ];
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
     wsSummary['!cols'] = [{ wch: 38 }, { wch: 25 }];
@@ -176,10 +181,10 @@ export default function DashboardGiamDocPage() {
     if (clsList.length > 0) {
       const clsRows = clsList.map((c, idx) => ({
         'STT': idx + 1,
-        'Nhóm Dịch Vụ CLS': c.nhomDichVu || c.tenNhom || '',
-        'Số Ca Chỉ Định': c.soCa || c.soLuong || 0,
-        'Số Ca Đã Có Kết Quả': c.daXong || c.hoanThanh || 0,
-        'Tỷ Lệ Hoàn Thành': c.tyLe || '100%',
+        'Dịch Vụ CLS': c.ten || '',
+        'Số Ca Chỉ Định': c.tong ?? 0,
+        'Số Ca Đã Có Kết Quả': c.hoanThanh ?? 0,
+        'Tỷ Lệ Hoàn Thành': c.tyLe || '',
       }));
       const wsCls = XLSX.utils.json_to_sheet(clsRows);
       wsCls['!cols'] = [{ wch: 6 }, { wch: 30 }, { wch: 18 }, { wch: 22 }, { wch: 18 }];
@@ -191,11 +196,11 @@ export default function DashboardGiamDocPage() {
     if (bxhList.length > 0) {
       const bxhRows = bxhList.map((b, idx) => ({
         'Hạng': idx + 1,
-        'Bác Sĩ': b.tenBacSi || b.hoTen || '',
+        'Bác Sĩ': b.tenBacSi || '',
         'Chuyên Khoa': b.chuyenKhoa || '',
-        'Điểm Đánh Giá TB': `${b.diemTrungBinh || 5.0} ⭐`,
+        'Điểm Đánh Giá TB': `${b.diemTB} ⭐`,
         'Tổng Lượt Đánh Giá': b.soLuotDanhGia || 0,
-        'Tỷ Lệ Đạt 5 Sao': b.tyLe5Sao || '100%',
+        'Tỷ Lệ Hài Lòng (≥ 4 sao)': b.tyLeHaiLong || '',
       }));
       const wsBxh = XLSX.utils.json_to_sheet(bxhRows);
       wsBxh['!cols'] = [{ wch: 8 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 18 }];
@@ -411,7 +416,7 @@ export default function DashboardGiamDocPage() {
           </p>
           <div className="flex items-center justify-between text-[11px] text-gray-500 mt-2 pt-2 border-t border-gray-100">
             <span className="text-purple-700 font-bold">Hoàn thành: {kpis.soCaHoanThanhCls ?? 0}</span>
-            <span className="font-extrabold text-emerald-600">Đạt {kpis.tyLeHoanThanhCls ?? '100%'}</span>
+            <span className="font-extrabold text-emerald-600">Đạt {kpis.tyLeHoanThanhCls ?? '—'}</span>
           </div>
         </div>
 
@@ -461,7 +466,7 @@ export default function DashboardGiamDocPage() {
         <div className="lg:col-span-2">
           <MedCard
             title={`📊 Xu Hướng Khám Chữa Bệnh & Doanh Thu (${getRangeLabel()})`}
-            subtitle="Số lượt bệnh nhân tiếp nhận và tổng doanh thu thu được theo ngày trong kỳ"
+            subtitle="Lượt tiếp nhận tại phòng khám (không gồm lượt đã hủy và tư vấn online) và doanh thu thực thu theo ngày"
             action={
               <div className="flex items-center gap-2">
                 <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 text-[11px] font-semibold border border-slate-200 dark:border-slate-700">
@@ -591,7 +596,7 @@ export default function DashboardGiamDocPage() {
         <div>
           <MedCard
             title="🍩 Cơ Cấu Nguồn Thu Viện Phí"
-            subtitle="Phân bổ tỷ trọng theo loại phí dịch vụ y tế"
+            subtitle="Tỷ trọng theo loại phí, tính trên giá dịch vụ trước BHYT (không gồm tạm ứng)"
           >
             <div className="h-72 w-full flex flex-col items-center justify-center pt-2">
               {isLoading ? (
@@ -733,8 +738,8 @@ export default function DashboardGiamDocPage() {
               </div>
             </div>
             <div className="my-2">
-              <h3 className="text-3xl font-black">{csat.diemCSATToanVien || 5.0} <span className="text-lg font-normal">/ 5.0</span></h3>
-              <p className="text-[11px] text-amber-100 font-semibold mt-0.5">Tỷ lệ hài lòng chung: {csat.tyLeHaiLong || '100%'}</p>
+              <h3 className="text-3xl font-black">{csat.diemCSATToanVien ?? '—'} <span className="text-lg font-normal">/ 5.0</span></h3>
+              <p className="text-[11px] text-amber-100 font-semibold mt-0.5">Tỷ lệ hài lòng chung: {csat.tyLeHaiLong ?? '—'}</p>
             </div>
             <div className="text-[10px] text-amber-100/90 pt-1.5 border-t border-white/20 flex justify-between">
               <span>Độ tin cậy: Cao</span>
@@ -750,7 +755,7 @@ export default function DashboardGiamDocPage() {
               </div>
             </div>
             <div className="my-2">
-              <h3 className="text-2xl font-black text-blue-700">{csat.diemBacSiTB || 5.0} <span className="text-sm font-normal text-gray-400">/ 5.0 ⭐</span></h3>
+              <h3 className="text-2xl font-black text-blue-700">{csat.diemBacSiTB ?? '—'} <span className="text-sm font-normal text-gray-400">/ 5.0 ⭐</span></h3>
               <p className="text-[11px] text-gray-500">Chuyên môn & Thái độ thăm khám</p>
             </div>
             <div className="text-[10px] text-emerald-600 font-bold pt-1.5 border-t border-gray-100">
@@ -766,7 +771,7 @@ export default function DashboardGiamDocPage() {
               </div>
             </div>
             <div className="my-2">
-              <h3 className="text-2xl font-black text-purple-700">{csat.diemClsTB || 5.0} <span className="text-sm font-normal text-gray-400">/ 5.0 ⭐</span></h3>
+              <h3 className="text-2xl font-black text-purple-700">{csat.diemClsTB ?? '—'} <span className="text-sm font-normal text-gray-400">/ 5.0 ⭐</span></h3>
               <p className="text-[11px] text-gray-500">Thao tác kỹ thuật & Trả kết quả</p>
             </div>
             <div className="text-[10px] text-purple-600 font-bold pt-1.5 border-t border-gray-100">
@@ -782,7 +787,7 @@ export default function DashboardGiamDocPage() {
               </div>
             </div>
             <div className="my-2">
-              <h3 className="text-2xl font-black text-emerald-700">{csat.diemTiepDonTB || 5.0} <span className="text-sm font-normal text-gray-400">/ 5.0 ⭐</span></h3>
+              <h3 className="text-2xl font-black text-emerald-700">{csat.diemTiepDonTB ?? '—'} <span className="text-sm font-normal text-gray-400">/ 5.0 ⭐</span></h3>
               <p className="text-[11px] text-gray-500">Chỉ dẫn, tiện nghi & phòng chờ</p>
             </div>
             <div className="text-[10px] text-emerald-600 font-bold pt-1.5 border-t border-gray-100">

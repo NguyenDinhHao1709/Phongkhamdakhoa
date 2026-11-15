@@ -7,6 +7,7 @@ import { HoSoBenhAn, BenhAnKham, TrangThaiBenhAnKham } from './entities/ho-so-be
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { maHoSoTiepTheo, voiKhoaDb } from '../../common/utils/db-sequence.util';
+import { khoangNgayVN, ngayVN } from '../../common/utils/khoang-ngay-vn.util';
 import {
   IsInt, IsPositive, IsOptional, IsString, IsEnum, IsDateString,
 } from 'class-validator';
@@ -104,42 +105,9 @@ export class HoSoBenhAnService {
       }
     }
 
-    // 1. Khoảng ngày theo giờ Việt Nam (UTC+7, không có giờ mùa hè).
-    // Không dùng toISOString() trực tiếp: từ 0h–7h sáng giờ VN nó vẫn trả về ngày hôm trước.
-    const ngayVN = (d: Date) => new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
-    const congNgay = (ymd: string, n: number) => {
-      const d = new Date(`${ymd}T00:00:00Z`);
-      d.setUTCDate(d.getUTCDate() + n);
-      return d.toISOString().slice(0, 10);
-    };
-    const ngayCuoiThang = (nam: number, thang: number) => new Date(Date.UTC(nam, thang, 0)).getUTCDate(); // thang: 1-12
-    const pad = (n: number) => String(n).padStart(2, '0');
-
-    const today = ngayVN(new Date());
-    const [y, m] = today.split('-').map(Number);
-    let fromDate = today;
-    let toDate = today;
-
-    const range = filter.range || 'thang_nay';
-    if (range === 'hom_nay') {
-      fromDate = today;
-      toDate = today;
-    } else if (range === 'tuan_nay' || range === '7days') {
-      const thu = new Date(`${today}T00:00:00Z`).getUTCDay();
-      fromDate = congNgay(today, thu === 0 ? -6 : 1 - thu); // Thứ Hai
-      toDate = congNgay(fromDate, 6); // Chủ nhật
-    } else if (range === 'thang_nay' || range === 'month') {
-      fromDate = `${y}-${pad(m)}-01`;
-      toDate = `${y}-${pad(m)}-${pad(ngayCuoiThang(y, m))}`;
-    } else if (range === 'quy_nay') {
-      const thangDau = Math.floor((m - 1) / 3) * 3 + 1;
-      fromDate = `${y}-${pad(thangDau)}-01`;
-      toDate = `${y}-${pad(thangDau + 2)}-${pad(ngayCuoiThang(y, thangDau + 2))}`;
-    } else if (filter.tuNgay || filter.denNgay) {
-      fromDate = (filter.tuNgay || filter.denNgay) as string;
-      toDate = filter.denNgay || today;
-      if (fromDate > toDate) [fromDate, toDate] = [toDate, fromDate];
-    }
+    // 1. Khoảng ngày theo giờ Việt Nam
+    const today = ngayVN();
+    const { fromDate, toDate } = khoangNgayVN(filter);
 
     const hinhThuc = filter.hinhThuc && filter.hinhThuc !== 'all' ? filter.hinhThuc : null;
     const pct = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(1)}%` : null);
@@ -407,10 +375,11 @@ export class HoSoBenhAnService {
     const tyLeNoShow = pct(soVangMat, lichDaDenNgay.length);
     const tyLeHuyLich = pct(appointments.filter(a => a.trangThai === TrangThaiLichHen.DA_HUY).length, appointments.length);
 
-    // 11. CSAT trong kỳ lọc; chưa có đánh giá thì trả null thay vì 5.0 giả
+    // 11. CSAT trong kỳ lọc (cùng cách lọc với API đánh giá: theo ngày hẹn); chưa có đánh giá thì trả null thay vì 5.0 giả
     const [dgResult] = await this.benhAnRepo.manager.query(
-      `SELECT AVG(diem_bac_si) AS avgScore, COUNT(*) AS totalReviews
-         FROM danh_gia_ca_kham WHERE bac_si_id = ? AND DATE(tao_luc) BETWEEN ? AND ?`,
+      `SELECT AVG(dg.diem_bac_si) AS avgScore, COUNT(*) AS totalReviews
+         FROM danh_gia_ca_kham dg LEFT JOIN lich_hen lh ON lh.id = dg.lich_hen_id
+        WHERE dg.bac_si_id = ? AND DATE(COALESCE(lh.ngay_hen, dg.tao_luc)) BETWEEN ? AND ?`,
       [bacSiId, fromDate, toDate],
     );
     const diemHaiLongCSAT = Number(dgResult?.totalReviews) > 0
