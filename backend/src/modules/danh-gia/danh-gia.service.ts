@@ -238,12 +238,12 @@ export class DanhGiaService {
   async thongKeDanhGiaBacSi(user: any, query: { range?: string; tuNgay?: string; denNgay?: string; hinhThuc?: string }) {
     const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: user.id } });
     if (!nv) {
-      return { message: 'OK', data: { tongDanhGia: 0, diemBacSiTB: 5.0, diemTrungBinhChung: 5.0, tyLeHaiLong: '100%', phanBoSao: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }, danhSachNhanXet: [] } };
+      return { message: 'OK', data: { tongDanhGia: 0, diemBacSiTB: null, diemTrungBinhChung: null, tyLeHaiLong: null, phanBoSao: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }, danhSachNhanXet: [] } };
     }
 
     const bs = await this.bacSiRepo.findOne({ where: { nhanVienId: nv.id } });
     if (!bs) {
-      return { message: 'OK', data: { tongDanhGia: 0, diemBacSiTB: 5.0, diemTrungBinhChung: 5.0, tyLeHaiLong: '100%', phanBoSao: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }, danhSachNhanXet: [] } };
+      return { message: 'OK', data: { tongDanhGia: 0, diemBacSiTB: null, diemTrungBinhChung: null, tyLeHaiLong: null, phanBoSao: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }, danhSachNhanXet: [] } };
     }
 
     const { fromDate, toDate } = this.parseDateRange(query);
@@ -270,9 +270,9 @@ export class DanhGiaService {
         message: 'OK',
         data: {
           tongDanhGia: 0,
-          diemBacSiTB: 5.0,
-          diemTrungBinhChung: 5.0,
-          tyLeHaiLong: '100%',
+          diemBacSiTB: null,
+          diemTrungBinhChung: null,
+          tyLeHaiLong: null,
           phanBoSao: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
           danhSachNhanXet: [],
         },
@@ -305,6 +305,8 @@ export class DanhGiaService {
       tenBenhNhan: item.anDanh ? 'Bệnh nhân ẩn danh' : (item.benhNhan?.hoTen || 'Bệnh nhân'),
       ngayHen: item.lichHen?.ngayHen,
       gioHen: item.lichHen?.gioHen,
+      // Telehealth: diem_tiep_don chỉ là bản sao điểm bác sĩ → frontend không hiển thị
+      hinhThuc: item.lichHen?.hinhThuc || 'truc_tiep',
       taoLuc: item.taoLuc,
       phanHoiGiamDoc: item.phanHoiGiamDoc,
     }));

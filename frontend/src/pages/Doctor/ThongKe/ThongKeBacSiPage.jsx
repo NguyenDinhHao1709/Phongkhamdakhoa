@@ -39,31 +39,31 @@ export default function ThongKeBacSiPage() {
   const [filterReviewStar, setFilterReviewStar] = useState('all'); // 'all' | 5 | 4 | 3 | 2 | 1
   const [searchReview, setSearchReview] = useState('');
 
+  // Ngày tùy chỉnh chỉ gửi khi đang chọn "Tùy chỉnh": backend ưu tiên tuNgay/denNgay hơn range,
+  // nên nếu còn giữ ngày cũ thì bấm "Tháng này" vẫn ra số liệu của khoảng tùy chỉnh.
+  const isCustom = timeRange === 'custom';
+  const tuNgayGui = isCustom ? fromDate : '';
+  const denNgayGui = isCustom ? toDate : '';
+  const queryString = useMemo(() => {
+    const params = new URLSearchParams();
+    if (timeRange) params.append('range', timeRange);
+    if (hinhThuc !== 'all') params.append('hinhThuc', hinhThuc);
+    if (tuNgayGui) params.append('tuNgay', tuNgayGui);
+    if (denNgayGui) params.append('denNgay', denNgayGui);
+    return params.toString();
+  }, [timeRange, hinhThuc, tuNgayGui, denNgayGui]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['thong-ke-bac-si', user?.id, timeRange, hinhThuc, fromDate, toDate],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (timeRange) params.append('range', timeRange);
-      if (hinhThuc !== 'all') params.append('hinhThuc', hinhThuc);
-      if (fromDate) params.append('tuNgay', fromDate);
-      if (toDate) params.append('denNgay', toDate);
-      return apiGet(`/ho-so-benh-an/thong-ke-bac-si?${params.toString()}`);
-    },
+    queryKey: ['thong-ke-bac-si', user?.id, queryString],
+    queryFn: () => apiGet(`/ho-so-benh-an/thong-ke-bac-si?${queryString}`),
     staleTime: 0,
     enabled: !!user?.id,
   });
 
   // Fetch dữ liệu đánh giá & CSAT thực tế từ bệnh nhân
   const { data: danhGiaData, isLoading: isLoadingReviews } = useQuery({
-    queryKey: ['thong-ke-danh-gia-bac-si', user?.id, timeRange, hinhThuc, fromDate, toDate],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (timeRange) params.append('range', timeRange);
-      if (hinhThuc !== 'all') params.append('hinhThuc', hinhThuc);
-      if (fromDate) params.append('tuNgay', fromDate);
-      if (toDate) params.append('denNgay', toDate);
-      return apiGet(`/danh-gia/bac-si?${params.toString()}`);
-    },
+    queryKey: ['thong-ke-danh-gia-bac-si', user?.id, queryString],
+    queryFn: () => apiGet(`/danh-gia/bac-si?${queryString}`),
     staleTime: 0,
     enabled: !!user?.id,
   });
@@ -79,6 +79,8 @@ export default function ThongKeBacSiPage() {
     phanBoSao: rawReviews.phanBoSao || { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
     danhSachNhanXet: Array.isArray(rawReviews.danhSachNhanXet) ? rawReviews.danhSachNhanXet : [],
   };
+  // Một nguồn CSAT duy nhất cho trang, Excel, bản in và báo cáo gửi Giám đốc
+  const csatText = coDanhGia ? `${reviews.diemBacSiTB} / 5.0 ⭐` : null;
 
   const stats = data?.data || {
     thongTinBacSi: {
@@ -119,7 +121,12 @@ export default function ThongKeBacSiPage() {
       case 'thang_nay': return `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
       case 'quy_nay': return `Quý ${Math.floor(new Date().getMonth() / 3) + 1}/${new Date().getFullYear()}`;
       case 'tat_ca': return 'Toàn thời gian';
-      case 'custom': return fromDate && toDate ? `Từ ${formatDate(fromDate)} đến ${formatDate(toDate)}` : (fromDate ? `Từ ngày ${formatDate(fromDate)}` : 'Tùy chỉnh ngày');
+      case 'custom':
+        if (fromDate && toDate) return `Từ ${formatDate(fromDate)} đến ${formatDate(toDate)}`;
+        if (fromDate) return `Từ ${formatDate(fromDate)} đến hôm nay`;
+        if (toDate) return `Ngày ${formatDate(toDate)}`;
+        // Chưa chọn ngày → backend dùng mặc định tháng này
+        return `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
       default: return `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
     }
   }, [timeRange, fromDate, toDate]);
@@ -202,14 +209,15 @@ export default function ThongKeBacSiPage() {
       ['Tỷ lệ bệnh nhân tái khám', stats.tyLeTaiKham || 'Chưa đủ dữ liệu'],
       ['Tỷ lệ vắng mặt (No-show)', stats.tyLeNoShow || 'Chưa đủ dữ liệu'],
       ['Tỷ lệ hủy lịch', stats.tyLeHuyLich || 'Chưa đủ dữ liệu'],
-      ['Điểm đánh giá hài lòng (CSAT)', reviews.tongDanhGia > 0 ? `${reviews.diemBacSiTB} / 5.0` : (stats.diemHaiLongCSAT || 'Chưa có đánh giá')],
+      ['Điểm đánh giá hài lòng (CSAT)', coDanhGia ? `${reviews.diemBacSiTB} / 5.0 (${reviews.tongDanhGia} lượt)` : 'Chưa có đánh giá'],
+      ['Tỷ lệ bệnh nhân hài lòng (≥ 4 sao)', reviews.tyLeHaiLong ?? 'Chưa có đánh giá'],
     ];
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
     wsSummary['!cols'] = [{ wch: 35 }, { wch: 25 }];
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Tong_Quan_Hieu_Suat');
 
-    // 2. Sheet Danh sách ca khám
-    const caKhamData = (filteredCaKham || []).map((c, idx) => ({
+    // 2. Sheet Danh sách ca khám: xuất toàn bộ ca trong kỳ (ô tìm kiếm chỉ để lọc trên màn hình)
+    const caKhamData = (stats.danhSachCaKham || []).map((c, idx) => ({
       'STT': idx + 1,
       'Mã Ca': c.maCa || '',
       'Mã BN': c.maBenhNhan || '',
@@ -232,7 +240,7 @@ export default function ThongKeBacSiPage() {
     XLSX.utils.book_append_sheet(wb, wsCaKham, 'Danh_Sach_Ca_Kham');
 
     // 3. Sheet Đánh giá từ bệnh nhân
-    const reviewData = (filteredNhanXet || []).map((r, idx) => ({
+    const reviewData = (reviews.danhSachNhanXet || []).map((r, idx) => ({
       'STT': idx + 1,
       'Bệnh Nhân': r.tenBenhNhan || 'Ẩn danh',
       'Điểm Đánh Giá BS': r.diemBacSi ? `${r.diemBacSi}/5 ⭐` : '',
@@ -625,12 +633,12 @@ export default function ThongKeBacSiPage() {
               <div>
                 <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">Điểm Hài Lòng (CSAT)</p>
                 <h3 className="text-3xl font-extrabold text-amber-900 mt-1">
-                  {reviews.tongDanhGia > 0 ? `${reviews.diemBacSiTB} / 5.0 ⭐` : (stats.diemHaiLongCSAT || '—')}
+                  {csatText || '—'}
                 </h3>
                 <p className="text-xs text-amber-700 mt-1 font-medium">
-                  {reviews.tongDanhGia > 0
+                  {coDanhGia
                     ? `${reviews.tongDanhGia} lượt đánh giá thực tế (Tỷ lệ hài lòng: ${reviews.tyLeHaiLong})`
-                    : (stats.diemHaiLongCSAT ? 'Đánh giá trung bình từ bệnh nhân' : 'Chưa có đánh giá trong kỳ này')}
+                    : 'Chưa có đánh giá trong kỳ này'}
                 </p>
               </div>
               <div className="p-3.5 bg-amber-100 rounded-2xl text-amber-600 shadow-2xs">
@@ -936,9 +944,14 @@ export default function ThongKeBacSiPage() {
                           <Star className="h-3 w-3 text-amber-500 fill-amber-400" />
                         </div>
                         <div className="hidden sm:flex items-center gap-1 text-[10px] text-gray-500">
-                          <span className="bg-slate-100 px-1.5 py-0.5 rounded">
-                            Tiếp đón: <strong className="text-gray-700">{nx.diemTiepDon || 5}/5</strong>
-                          </span>
+                          {/* Ca Telehealth không qua quầy tiếp đón (điểm tiếp đón chỉ là bản sao điểm bác sĩ) */}
+                          {nx.hinhThuc === 'truc_tuyen' ? (
+                            <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded">Telehealth</span>
+                          ) : nx.diemTiepDon ? (
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded">
+                              Tiếp đón: <strong className="text-gray-700">{nx.diemTiepDon}/5</strong>
+                            </span>
+                          ) : null}
                           {nx.diemCls && (
                             <span className="bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded">
                               CLS: <strong>{nx.diemCls}/5</strong>
@@ -1120,7 +1133,7 @@ export default function ThongKeBacSiPage() {
       <InBaoCaoModal
         isOpen={showPrintModal}
         onClose={() => setShowPrintModal(false)}
-        stats={stats}
+        stats={{ ...stats, diemHaiLongCSAT: csatText, soLuotDanhGia: reviews.tongDanhGia }}
         timeRangeLabel={timeRangeLabel}
         hinhThucLabel={hinhThucLabel}
       />
@@ -1141,8 +1154,9 @@ export default function ThongKeBacSiPage() {
           dangChoKham: stats?.dangChoKham || 0,
           tongDonThuocKe: stats?.tongDonThuocKe || 0,
           tongChiDinhCLS: stats?.tongChiDinhCLS || 0,
-          tyLeHoanThanh: stats?.tyLeHoanThanh || '100%',
-          diemHaiLongCSAT: stats?.diemHaiLongCSAT || '5.0/5.0',
+          // Thiếu dữ liệu thì ghi rõ, không gửi "100%" / "5.0" giả lên Ban Giám Đốc
+          tyLeHoanThanh: stats?.tyLeHoanThanh || 'Chưa đủ dữ liệu',
+          diemHaiLongCSAT: csatText ? `${csatText} (${reviews.tongDanhGia} lượt)` : 'Chưa có đánh giá',
         }}
       />
 

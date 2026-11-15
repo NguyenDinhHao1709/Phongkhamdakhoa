@@ -82,13 +82,13 @@ function buildSmartDraft(boPhan, snapshot = {}, tenBoPhan = '', kyBaoCaoCustom =
       const choKham = snapshot.dangChoKham ?? 0;
       const donKe = snapshot.tongDonThuocKe ?? 0;
       const cls = snapshot.tongChiDinhCLS ?? 0;
-      const tyLe = snapshot.tyLeHoanThanh || '100%';
-      const csat = snapshot.diemHaiLongCSAT || '5.0/5.0';
+      const tyLe = snapshot.tyLeHoanThanh || 'Chưa đủ dữ liệu';
+      const csat = snapshot.diemHaiLongCSAT || 'Chưa có đánh giá';
 
       return {
         tieuDe: `Báo cáo hiệu suất khám chữa bệnh - ${bs} (${khoa}) - ${kyStr}`,
         kyBaoCao: kyStr,
-        noiDung: `Kính gửi Ban Giám Đốc,\n\nBác sĩ xin báo cáo tình hình khám bệnh tại chuyên khoa ${khoa} (${kyStr}):\n- Tổng số ca bệnh nhân đã tiếp nhận khám: ${daKham} ca.\n- Số ca đang chờ tiếp tục xử lý: ${choKham} ca.\n- Tổng số đơn thuốc đã kê: ${donKe} đơn.\n- Tổng số chỉ định cận lâm sàng (xét nghiệm / CĐHA): ${cls} lượt.\n- Tỷ lệ hoàn thành ca khám đạt: ${tyLe}.\n- Đánh giá hài lòng của người bệnh (CSAT): ${csat}.\n- Công tác chẩn đoán và điều trị diễn ra an toàn, tuân thủ nghiêm ngặt phác đồ y khoa.`,
+        noiDung: `Kính gửi Ban Giám Đốc,\n\nBác sĩ xin báo cáo tình hình khám bệnh tại chuyên khoa ${khoa} (${kyStr}):\n- Tổng số ca đã khám hoàn thành: ${daKham} ca.\n- Bệnh nhân đang chờ khám (tại thời điểm gửi, hôm nay): ${choKham} ca.\n- Tổng số đơn thuốc đã kê: ${donKe} đơn.\n- Tổng số chỉ định cận lâm sàng (xét nghiệm / CĐHA): ${cls} lượt.\n- Tỷ lệ hoàn thành ca khám đạt: ${tyLe}.\n- Đánh giá hài lòng của người bệnh (CSAT): ${csat}.\n- Công tác chẩn đoán và điều trị diễn ra an toàn, tuân thủ nghiêm ngặt phác đồ y khoa.`,
         kienNghi: `- Đề xuất tiếp tục phối hợp chặt chẽ với bộ phận Điều dưỡng và Tiếp đón để rút ngắn thời gian chờ của người bệnh trong các khung giờ cao điểm.`
       };
     }

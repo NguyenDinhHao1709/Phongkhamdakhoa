@@ -23,13 +23,7 @@ export default function InBaoCaoModal({
   const today = new Date();
   const ngayXuat = `Ngày ${today.getDate()} tháng ${today.getMonth() + 1} năm ${today.getFullYear()}`;
 
-  const doctor = stats?.thongTinBacSi || {
-    hoTen: 'Bác sĩ chuyên khoa',
-    chuyenKhoa: 'Đa khoa',
-    maBacSi: 'BS001',
-    soDienThoai: '',
-    email: '',
-  };
+  const doctor = stats?.thongTinBacSi || { hoTen: 'Bác sĩ', chuyenKhoa: '', maBacSi: '' };
 
   const danhSachCa = stats?.danhSachCaKham || [];
   const coCauBenh = stats?.coCauBenhLy || [];
@@ -40,12 +34,27 @@ export default function InBaoCaoModal({
   const tyLeTaiKham = soPhanTram(stats?.tyLeTaiKham);
   const diemCsat = stats?.diemHaiLongCSAT ? parseFloat(stats.diemHaiLongCSAT) : null;
   const tongDaKham = stats?.tongBenhNhanDaKham || 0;
+
+  // Mục tiêu số ca tỷ lệ theo số ngày ĐÃ QUA của kỳ (chuẩn 20 ca / 30 ngày),
+  // để báo cáo "Hôm nay" hay giữa tháng không bị so với chỉ tiêu cả tháng.
+  const CA_MUC_TIEU_30_NGAY = 20;
+  const soNgayDaQua = (() => {
+    const tu = stats?.kyBaoCao?.tuNgay;
+    const den = stats?.kyBaoCao?.denNgay;
+    if (!tu || !den) return null;
+    const homNay = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+    const denThucTe = den < homNay ? den : homNay;
+    if (denThucTe < tu) return 0;
+    return Math.round((new Date(`${denThucTe}T00:00:00Z`) - new Date(`${tu}T00:00:00Z`)) / 86400000) + 1;
+  })();
+  const mucTieuCa = soNgayDaQua ? Math.max(1, Math.ceil((CA_MUC_TIEU_30_NGAY * soNgayDaQua) / 30)) : null;
+
   const kpiRows = [
     {
       ten: 'Tổng số bệnh nhân đã khám',
       giaTri: `${tongDaKham} ca`,
-      mucTieu: '≥ 20 ca/kỳ',
-      danhGia: tongDaKham >= 20 ? 'Đạt' : 'Chưa đạt',
+      mucTieu: mucTieuCa ? `≥ ${mucTieuCa} ca (${soNgayDaQua} ngày)` : 'Kỳ chưa bắt đầu',
+      danhGia: mucTieuCa == null ? '—' : tongDaKham >= mucTieuCa ? 'Đạt' : 'Chưa đạt',
     },
     {
       ten: 'Thời gian khám trung bình mỗi ca',
@@ -71,12 +80,15 @@ export default function InBaoCaoModal({
     {
       ten: 'Tỷ lệ bệnh nhân tái khám',
       giaTri: stats?.tyLeTaiKham || '—',
-      mucTieu: '≥ 60.0%',
-      danhGia: tyLeTaiKham == null ? 'Chưa đủ dữ liệu' : tyLeTaiKham >= 60 ? 'Đạt' : 'Chưa đạt',
+      // Không có chuẩn tái khám chung (phụ thuộc chuyên khoa, mặt bệnh) → chỉ theo dõi, không chấm Đạt/Chưa đạt
+      mucTieu: 'Theo dõi xu hướng',
+      danhGia: tyLeTaiKham == null ? 'Chưa đủ dữ liệu' : '—',
     },
     {
       ten: 'Điểm hài lòng bệnh nhân (CSAT)',
-      giaTri: stats?.diemHaiLongCSAT || '—',
+      giaTri: stats?.diemHaiLongCSAT
+        ? `${stats.diemHaiLongCSAT}${stats?.soLuotDanhGia ? ` (${stats.soLuotDanhGia} lượt)` : ''}`
+        : '—',
       mucTieu: '≥ 4.5 ⭐',
       danhGia: diemCsat == null ? 'Chưa có đánh giá' : diemCsat >= 4.5 ? 'Đạt' : 'Chưa đạt',
     },
@@ -133,7 +145,7 @@ export default function InBaoCaoModal({
               {
                 key: 'tong_quan',
                 title: '1. Báo cáo tổng quan',
-                desc: 'KPIs hiệu suất, Cận lâm sàng, Đơn thuốc, Tương tác AI Triage',
+                desc: 'KPIs hiệu suất, Cận lâm sàng, Đơn thuốc, Tái khám, CSAT',
                 icon: <BarChart3 className="h-4 w-4 text-blue-600" />,
               },
               {
@@ -144,8 +156,8 @@ export default function InBaoCaoModal({
               },
               {
                 key: 'benh_ly',
-                title: '3. Cơ cấu mặt bệnh & AI',
-                desc: 'Top 5 bệnh lý ICD-10, Phân bố độ tuổi, Đồng thuận AI',
+                title: '3. Cơ cấu mặt bệnh',
+                desc: 'Top 5 bệnh lý ICD-10, Phân bố độ tuổi, BN mới / tái khám',
                 icon: <Stethoscope className="h-4 w-4 text-purple-600" />,
               },
               {
@@ -224,7 +236,7 @@ export default function InBaoCaoModal({
               <p className="text-xs font-semibold uppercase text-primary-800 mt-1 tracking-wider">
                 {reportType === 'tong_quan' && '【 BẢN BÁO CÁO HIỆU SUẤT & CHỈ SỐ TỔNG QUAN 】'}
                 {reportType === 'ca_kham' && '【 SỔ THEO DÕI & DANH SÁCH CHI TIẾT CA KHÁM BỆNH 】'}
-                {reportType === 'benh_ly' && '【 BÁO CÁO CƠ CẤU MẶT BỆNH ICD-10 & PHÂN LUỒNG AI TRIAGE 】'}
+                {reportType === 'benh_ly' && '【 BÁO CÁO CƠ CẤU MẶT BỆNH ICD-10 & ĐỐI TƯỢNG BỆNH NHÂN 】'}
                 {reportType === 'toan_bo' && '【 BẢN BÁO CÁO TOÀN DIỆN & TỔNG HỢP CA LÂM SÀNG 】'}
               </p>
               <p className="text-xs italic text-gray-600 mt-1">
@@ -235,7 +247,7 @@ export default function InBaoCaoModal({
             {/* 3. THÔNG TIN HÀNH CHÍNH BÁC SĨ & KỲ BÁO CÁO */}
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3.5 mb-6 text-xs space-y-1.5">
               <div className="grid grid-cols-2 gap-2">
-                <p><strong>Bác sĩ phụ trách:</strong> {doctor.hoTen} ({doctor.maBacSi})</p>
+                <p><strong>Bác sĩ phụ trách:</strong> {doctor.hoTen}{doctor.maBacSi ? ` (${doctor.maBacSi})` : ''}</p>
                 <p><strong>Chuyên khoa:</strong> {doctor.chuyenKhoa}</p>
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -338,6 +350,13 @@ export default function InBaoCaoModal({
                           <td className="border border-gray-300 p-1.5 text-center">{stats?.coCauDoTuoi?.nguoiCaoTuoi?.count || 0}</td>
                           <td className="border border-gray-300 p-1.5 text-center">{stats?.coCauDoTuoi?.nguoiCaoTuoi?.pct || '0%'}</td>
                         </tr>
+                        {stats?.coCauDoTuoi?.khongRo?.count > 0 && (
+                          <tr>
+                            <td className="border border-gray-300 p-1.5 italic">Không rõ ngày sinh</td>
+                            <td className="border border-gray-300 p-1.5 text-center">{stats.coCauDoTuoi.khongRo.count}</td>
+                            <td className="border border-gray-300 p-1.5 text-center">{stats.coCauDoTuoi.khongRo.pct}</td>
+                          </tr>
+                        )}
                         <tr>
                           <td className="border border-gray-300 p-1.5">Bệnh nhân mới khám lần đầu</td>
                           <td className="border border-gray-300 p-1.5 text-center">{stats?.benhNhanMoiVsTaiKham?.khamMoi?.count || 0}</td>
@@ -405,9 +424,8 @@ export default function InBaoCaoModal({
                 <div className="text-center">
                   <p className="font-bold uppercase text-gray-800">BAN GIÁM ĐỐC DUYỆT</p>
                   <p className="italic text-[10px] text-gray-500">(Ký, đóng dấu và ghi rõ họ tên)</p>
-                  <div className="h-20 flex items-center justify-center">
-                    <span className="text-gray-300 text-xs italic">[Đã xác nhận điện tử]</span>
-                  </div>
+                  {/* Để trống cho Giám đốc ký tay: báo cáo in ra chưa được duyệt */}
+                  <div className="h-20" />
                   <p className="font-bold text-gray-900">Ban Giám Đốc Phòng Khám</p>
                 </div>
 

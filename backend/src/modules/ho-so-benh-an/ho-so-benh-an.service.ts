@@ -172,6 +172,8 @@ export class HoSoBenhAnService {
       if (m2 < m1 || (m2 === m1 && d2 < d1)) tuoi--;
       return tuoi >= 0 ? tuoi : null;
     };
+    // Không có giới tính thì ghi "Không rõ" (trước đây mặc định là "Nam")
+    const gioiTinhText = (gt?: string | null) => (gt === 'nu' ? 'Nữ' : gt === 'nam' ? 'Nam' : gt === 'khac' ? 'Khác' : 'Không rõ');
 
     // 4. Danh sách ca khám
     const danhSachCaKham: any[] = [];
@@ -192,7 +194,7 @@ export class HoSoBenhAnService {
         maBenhNhan: bn?.maBenhNhan || '',
         tenBenhNhan: bn?.hoTen || 'Bệnh nhân',
         tuoi: tinhTuoi(bn?.ngaySinh, ngayKham),
-        gioiTinh: bn?.gioiTinh === 'nu' ? 'Nữ' : 'Nam',
+        gioiTinh: gioiTinhText(bn?.gioiTinh),
         ngayKham,
         gioKham,
         hinhThuc: isOnline ? 'Khám trực tuyến (Telehealth)' : 'Khám trực tiếp',
@@ -226,7 +228,7 @@ export class HoSoBenhAnService {
         maBenhNhan: bn?.maBenhNhan || '',
         tenBenhNhan: bn?.hoTen || 'Bệnh nhân',
         tuoi: tinhTuoi(bn?.ngaySinh, ngayKham),
-        gioiTinh: bn?.gioiTinh === 'nu' ? 'Nữ' : 'Nam',
+        gioiTinh: gioiTinhText(bn?.gioiTinh),
         ngayKham,
         gioKham: String(lh.gioHen).substring(0, 5),
         hinhThuc: isOnline ? 'Khám trực tuyến (Telehealth)' : 'Khám trực tiếp',
@@ -375,11 +377,15 @@ export class HoSoBenhAnService {
     const tyLeNoShow = pct(soVangMat, lichDaDenNgay.length);
     const tyLeHuyLich = pct(appointments.filter(a => a.trangThai === TrangThaiLichHen.DA_HUY).length, appointments.length);
 
-    // 11. CSAT trong kỳ lọc (cùng cách lọc với API đánh giá: theo ngày hẹn); chưa có đánh giá thì trả null thay vì 5.0 giả
+    // 11. CSAT trong kỳ lọc (cùng cách lọc với API đánh giá: theo ngày hẹn + hình thức khám);
+    // chưa có đánh giá thì trả null thay vì 5.0 giả
+    const locHinhThucDg = hinhThuc === 'truc_tuyen'
+      ? ` AND lh.hinh_thuc = 'truc_tuyen'`
+      : hinhThuc === 'truc_tiep' ? ` AND (lh.hinh_thuc = 'truc_tiep' OR lh.hinh_thuc IS NULL)` : '';
     const [dgResult] = await this.benhAnRepo.manager.query(
       `SELECT AVG(dg.diem_bac_si) AS avgScore, COUNT(*) AS totalReviews
          FROM danh_gia_ca_kham dg LEFT JOIN lich_hen lh ON lh.id = dg.lich_hen_id
-        WHERE dg.bac_si_id = ? AND DATE(COALESCE(lh.ngay_hen, dg.tao_luc)) BETWEEN ? AND ?`,
+        WHERE dg.bac_si_id = ? AND DATE(COALESCE(lh.ngay_hen, dg.tao_luc)) BETWEEN ? AND ?${locHinhThucDg}`,
       [bacSiId, fromDate, toDate],
     );
     const diemHaiLongCSAT = Number(dgResult?.totalReviews) > 0
