@@ -842,6 +842,7 @@ export class TiepNhanService implements OnModuleInit {
 
     // Bệnh nhân đến quầy phải đóng tạm ứng (trừ cấp cứu); bác sĩ được báo khi thu ngân thu xong
     const phieuTu = await this.thanhToanService.taoPhieuTamUngTaiQuay(saved, withRelations?.benhNhan?.hoTen);
+    this.baoHangDoiThayDoi();
 
     return {
       data: withRelations,
@@ -871,8 +872,23 @@ export class TiepNhanService implements OnModuleInit {
   }
 
   async create(dto: TaoTiepNhanDto, tiepTanId: number) {
-    if (!dto.lichHenId) return this.taoLuot(dto, tiepTanId);
-    return this.voiKhoaLichHen(dto.lichHenId, () => this.checkInLichHenTaiQuay(dto, tiepTanId));
+    const kq = !dto.lichHenId
+      ? await this.taoLuot(dto, tiepTanId)
+      : await this.voiKhoaLichHen(dto.lichHenId, () => this.checkInLichHenTaiQuay(dto, tiepTanId));
+    this.baoHangDoiThayDoi();
+    return kq;
+  }
+
+  /**
+   * Báo các màn hình hàng đợi (tiếp tân, phòng khám, TV) tải lại qua WebSocket. Trước đây chỉ phát khi
+   * gọi loa / đổi ưu tiên / qua lượt nên các trang phải tự hỏi server mỗi 2,5 giây để thấy bệnh nhân mới.
+   */
+  private baoHangDoiThayDoi() {
+    try {
+      this.queueGateway.emitQueueUpdate();
+    } catch (err) {
+      console.warn('Lỗi emit queue update:', (err as any)?.message);
+    }
   }
 
   /** Lễ tân check-in bệnh nhân có lịch hẹn: kiểm tra lịch hẹn hợp lệ, dùng lại lượt đã có (tự tạo lúc đến giờ / kiosk) */
@@ -1009,6 +1025,7 @@ export class TiepNhanService implements OnModuleInit {
       console.warn('Lỗi gửi thông báo dieuPhoiPhong:', err?.message);
     }
 
+    this.baoHangDoiThayDoi();
     return { data: saved, message: 'Điều phối phòng thành công' };
   }
 
@@ -1094,15 +1111,12 @@ export class TiepNhanService implements OnModuleInit {
     let callEvent = null;
     if (dto.trangThai === 'dang_kham') {
       callEvent = await this.recordAndEmitCall(luotId);
-    } else if (['hoan_thanh', 'da_huy', 'dang_cls'].includes(dto.trangThai)) {
-      if (this.latestCallEvent?.id === luotId) {
+    } else {
+      if (['hoan_thanh', 'da_huy', 'dang_cls'].includes(dto.trangThai) && this.latestCallEvent?.id === luotId) {
         this.latestCallEvent = null;
       }
-      try {
-        this.queueGateway.emitQueueUpdate();
-      } catch (err) {
-        console.warn('Lỗi emit queue update:', err);
-      }
+      // Mọi đổi trạng thái khác (chờ khám, có kết quả CLS, chờ thanh toán…) cũng báo hàng đợi
+      this.baoHangDoiThayDoi();
     }
 
     const updated = await this.luotRepo.findOne({ where: { id: luotId }, relations: ['benhNhan', 'bacSi'] });

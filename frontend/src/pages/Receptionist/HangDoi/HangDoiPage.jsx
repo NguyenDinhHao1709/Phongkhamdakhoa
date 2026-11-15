@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
+import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { xuatExcel } from '../../../utils/xuatFile';
 import { DashboardLayout } from '../../../layouts/DashboardLayout';
@@ -12,42 +11,22 @@ import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
 import { GIOI_TINH, DOI_TUONG_UU_TIEN } from '../../../utils/constants';
 import NhanUuTienTre from '../../../components/Queue/NhanUuTienTre';
 import { Clock, AlertTriangle, User2, Tv, Volume2, Loader2, Download } from 'lucide-react';
-import useAuthStore from '../../../store/authStore';
-import { BACKEND_URL } from '../../../utils/backendUrl';
-
-let socket = null;
+import useHangDoiRealtime, { POLL_DU_PHONG_MS } from '../../../hooks/useHangDoiRealtime';
 
 function useHangDoi() {
+  // Socket dùng chung (queue:update / queue:call) cập nhật tức thì; polling 2,5s cũ chỉ còn là dự phòng thưa
+  useHangDoiRealtime([['tiep-nhan', 'hang-doi']]);
   return useQuery({
     queryKey: ['tiep-nhan', 'hang-doi'],
     queryFn: () => apiGet('/tiep-nhan/hang-doi'),
-    refetchInterval: 2500, // Tự động làm mới mỗi 2.5s (dưới 3s)
+    refetchInterval: POLL_DU_PHONG_MS,
   });
 }
 
 export default function HangDoiPage() {
   const { data, isLoading, refetch } = useHangDoi();
-  const { accessToken } = useAuthStore();
   const [callingId, setCallingId] = useState(null);
   const items = data?.data || [];
-
-  // Kết nối WebSocket để nhận cập nhật real-time
-  useEffect(() => {
-    if (!socket) {
-      socket = io(BACKEND_URL || window.location.origin, {
-        auth: { token: accessToken },
-        transports: ['websocket'],
-      });
-    }
-
-    socket.on('queue:update', () => refetch());
-    socket.on('queue:call', () => refetch());
-
-    return () => {
-      socket.off('queue:update');
-      socket.off('queue:call');
-    };
-  }, []);
 
   const handleGoiLoa = async (luotId) => {
     setCallingId(luotId);

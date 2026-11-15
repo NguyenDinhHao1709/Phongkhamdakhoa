@@ -21,13 +21,18 @@ import { getFallbackServiceConfig, parseResultConfig, evaluateLabValue } from '.
 import InPhieuKhamModal from '../../../components/Print/InPhieuKhamModal';
 import InDonThuocModal from '../../../components/Print/InDonThuocModal';
 import ChiTietKetQuaXetNghiemRenderer from '../../../components/Lab/ChiTietKetQuaXetNghiemRenderer';
+import useHangDoiRealtime, { POLL_DU_PHONG_MS } from '../../../hooks/useHangDoiRealtime';
 
 
 function useHangDoi() {
+  // Cập nhật tức thì qua WebSocket (queue:update); polling chỉ còn dự phòng.
+  // Trước đây hỏi server mỗi 2,5s suốt ca khám → tải lớn lên pool CSDL nhỏ trên Render.
+  // Kết quả CLS thường kèm đổi trạng thái lượt khám → làm mới luôn tab xét nghiệm.
+  useHangDoiRealtime([['tiep-nhan', 'hang-doi'], ['xn-benh-an']]);
   return useQuery({
     queryKey: ['tiep-nhan', 'hang-doi'],
     queryFn: () => apiGet('/tiep-nhan/hang-doi'),
-    refetchInterval: 2500, // Tự động cập nhật mỗi 2.5s (dưới 3s)
+    refetchInterval: POLL_DU_PHONG_MS,
   });
 }
 
@@ -1884,7 +1889,8 @@ function DynamicQueuePanel({ benhAnKhamId }) {
     queryKey: ['dynamic-queue-routing', benhAnKhamId],
     queryFn: () => apiGet(`/ai/dynamic-queue/${benhAnKhamId}`),
     enabled: !!benhAnKhamId,
-    refetchInterval: 5000,
+    // Mỗi lần gọi đi vòng backend → ai-service → CSDL; 5s là quá dày cho lộ trình thay đổi theo phút
+    refetchInterval: 30000,
   });
 
   const resData = data?.data || {};
@@ -2026,7 +2032,8 @@ function XetNghiemTab({ benhAnKhamId, onOpenModal, onApplyLabConclusion }) {
     queryKey: ['xn-benh-an', benhAnKhamId],
     queryFn: () => apiGet(`/xet-nghiem/benh-an-kham/${benhAnKhamId}`),
     enabled: !!benhAnKhamId,
-    refetchInterval: 3000,
+    // Socket hàng đợi làm mới tab này (xem useHangDoi); 15s dự phòng cho kết quả nhập không kèm đổi trạng thái
+    refetchInterval: 15000,
   });
   const items = (data?.data || []).filter((it) => it.chiDinh?.trangThai !== 'huy');
 

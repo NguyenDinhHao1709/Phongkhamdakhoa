@@ -19,7 +19,9 @@ export default function GuiDonGiamDocPage() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['danh-sach-don-tu-nhan-vien'],
     queryFn: () => apiGet('/nhan-vien/don-tu/danh-sach'),
-    refetchInterval: 2500,
+    // Trạng thái đơn đổi khi Giám đốc duyệt (vài lần/ngày): 30s + tải lại khi quay lại tab là đủ.
+    // Trước đây 2,5s cho mỗi nhân viên đang mở trang.
+    refetchInterval: 30000,
   });
 
   const donList = Array.isArray(data?.data)
