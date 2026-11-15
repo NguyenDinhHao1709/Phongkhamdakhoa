@@ -179,9 +179,12 @@ export class NhaThuocService {
 
   async taoNhaCungCap(data: any) {
     if (!data.tenNhaCungCap?.trim()) throw new BadRequestException('Tên nhà cung cấp là bắt buộc');
-    const count = await this.nhaCungCapRepo.count();
+    // Số lớn nhất của mã NCCnnnn + 1 (trước đây = tổng số NCC + 1 → trùng mã UNIQUE khi từng xóa NCC)
+    const [maxNcc] = await this.nhaCungCapRepo.query(
+      "SELECT COALESCE(MAX(CAST(SUBSTRING(ma_nha_cung_cap, 4) AS UNSIGNED)), 0) AS n FROM nha_cung_cap WHERE ma_nha_cung_cap REGEXP '^NCC[0-9]+$'",
+    );
     const ncc = this.nhaCungCapRepo.create({
-      maNhaCungCap: data.maNhaCungCap?.trim() || `NCC${String(count + 1).padStart(4, '0')}`,
+      maNhaCungCap: data.maNhaCungCap?.trim() || `NCC${String(Number(maxNcc?.n || 0) + 1).padStart(4, '0')}`,
       tenNhaCungCap: data.tenNhaCungCap.trim(),
       maSoThue: data.maSoThue || null,
       nguoiLienHe: data.nguoiLienHe || null,
@@ -270,7 +273,13 @@ export class NhaThuocService {
     if (medicineSet.size !== normalizedDetails.length) {
       throw new BadRequestException('Không được lặp cùng một thuốc trong một yêu cầu');
     }
-    const count = await this.yeuCauNhapRepo.count();
+    // Mã YCyyyymmddNNNN: ngày VN + số lớn nhất trong ngày + 1. Trước đây = tổng số yêu cầu + 1 (ngày UTC)
+    // → trùng mã khi từng xóa yêu cầu, cột ma_yeu_cau UNIQUE nên lưu bị lỗi.
+    const tienToYc = `YC${ngayVN().replace(/-/g, '')}`;
+    const [maxYc] = await this.yeuCauNhapRepo.query(
+      `SELECT COALESCE(MAX(CAST(SUBSTRING(ma_yeu_cau, ?) AS UNSIGNED)), 0) AS n FROM yeu_cau_nhap_kho WHERE ma_yeu_cau LIKE ?`,
+      [tienToYc.length + 1, `${tienToYc}%`],
+    );
     const thuocIds = [...medicineSet];
     const thuocDaCo = await this.thuocRepo.findBy({ id: In(thuocIds) });
     if (thuocDaCo.length !== thuocIds.length) {
@@ -284,7 +293,7 @@ export class NhaThuocService {
       throw new BadRequestException(`Thuốc ${stoppedMedicine.tenThuoc} đã ngừng kinh doanh, không thể lập yêu cầu mua mới`);
     }
     const yc = await this.yeuCauNhapRepo.save(this.yeuCauNhapRepo.create({
-      maYeuCau: `YC${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${String(count + 1).padStart(4, '0')}`,
+      maYeuCau: `${tienToYc}${String(Number(maxYc?.n || 0) + 1).padStart(4, '0')}`,
       nguoiLapId: Number(data.nguoiLapId || 1),
       ghiChu: data.ghiChu || null,
       tongDuToan: normalizedDetails.reduce((sum, item) => sum + item.soLuongDat * item.donGiaBao, 0),
@@ -1003,11 +1012,14 @@ export class NhaThuocService {
    * Thêm thuốc vào danh mục; lô hàng chỉ được tạo khi kiểm nhận phiếu mua.
    */
   async taoThuoc(data: any) {
-    const count = await this.thuocRepo.count();
-    let maThuoc = data.maThuoc?.trim() || `TH${String(count + 1).padStart(3, '0')}`;
-    const existing = await this.thuocRepo.findOne({ where: { maThuoc } });
-    if (existing) {
-      maThuoc = `TH_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    // Số lớn nhất của mã THnnn + 1 (trước đây = tổng số thuốc + 1; trùng thì tự đổi sang mã ngẫu nhiên
+    // TH_<giờ>_<số>, kể cả khi người dùng tự nhập mã trùng)
+    const [maxTh] = await this.thuocRepo.query(
+      "SELECT COALESCE(MAX(CAST(SUBSTRING(ma_thuoc, 3) AS UNSIGNED)), 0) AS n FROM thuoc WHERE ma_thuoc REGEXP '^TH[0-9]+$'",
+    );
+    const maThuoc = data.maThuoc?.trim() || `TH${String(Number(maxTh?.n || 0) + 1).padStart(3, '0')}`;
+    if (data.maThuoc?.trim() && await this.thuocRepo.findOne({ where: { maThuoc } })) {
+      throw new BadRequestException(`Mã thuốc ${maThuoc} đã tồn tại`);
     }
 
     const newThuoc = this.thuocRepo.create({
@@ -1442,7 +1454,8 @@ export class NhaThuocService {
       }
 
       dt.trangThai = 'da_cap_phat';
-      dt.maPhieuNhanThuoc = `PN${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${String(dt.id).padStart(5, '0')}`;
+      // Ngày VN (toISOString là UTC: phiếu cấp trước 7h sáng mang ngày hôm trước); số theo id đơn nên không trùng
+      dt.maPhieuNhanThuoc = `PN${ngayVN().replace(/-/g, '')}${String(dt.id).padStart(5, '0')}`;
       dt.ngayCapPhat = new Date();
       return donRepo.save(dt);
     });

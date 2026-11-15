@@ -3056,6 +3056,8 @@ export class QuanLyService implements OnModuleInit {
   async getThongTinBenhVien() {
     const defaultData = {
       tenBenhVien: 'PHÒNG KHÁM ĐA KHOA',
+      // Dòng đầu góc trái các bản in (trước đây ghi cứng trên từng bản in)
+      coQuanChuQuan: 'SỞ Y TẾ TP. HỒ CHÍ MINH',
       slogan: 'TRUNG TÂM Y KHOA CHẤT LƯỢNG CAO',
       moTa: 'Cơ sở khám chữa bệnh đa khoa kỹ thuật cao, đáp ứng các tiêu chuẩn y tế nghiêm ngặt của Bộ Y Tế.',
       soGiayPhep: 'Giấy phép hoạt động số 08922/BYT-GPHĐ',
@@ -3722,7 +3724,7 @@ export class QuanLyService implements OnModuleInit {
   }
 
   async getThongKeNhatKy() {
-    // 0 giờ hôm nay theo giờ VN (setHours dùng giờ máy chủ UTC → "hôm nay" bắt đầu lúc 7h sáng)
+    // 0 giờ hôm nay theo giờ VN, ghi rõ +07:00 (không phụ thuộc biến TZ của tiến trình)
     const today = new Date(`${ngayVN()}T00:00:00+07:00`);
 
     const totalLogs = await this.nhatKyRepo.count({
@@ -3929,7 +3931,7 @@ export class QuanLyService implements OnModuleInit {
     if (!nv) throw new BadRequestException('Tài khoản chưa gắn hồ sơ nhân viên nên không gửi được báo cáo');
 
     // Mã theo ngày VN + số thứ tự lớn nhất trong ngày (trước đây = tổng số báo cáo + 1 → trùng mã khi có
-    // báo cáo bị xóa hoặc hai người gửi cùng lúc; ngày lấy theo giờ máy chủ UTC)
+    // báo cáo bị xóa hoặc hai người gửi cùng lúc)
     const prefix = `BC-${ngayVN().replace(/-/g, '')}-`;
     const [maxRow] = await this.baoCaoBoPhanRepo.query(
       `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ma_bao_cao, '-', -1) AS UNSIGNED)), 0) AS maxNum
