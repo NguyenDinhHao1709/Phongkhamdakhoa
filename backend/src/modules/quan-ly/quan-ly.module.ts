@@ -25,6 +25,7 @@ import { CauHinhTienCoc } from './entities/cau-hinh-tien-coc.entity';
 import { QuanLyController } from './quan-ly.controller';
 import { QuanLyService } from './quan-ly.service';
 import { ThongBaoModule } from '../thong-bao/thong-bao.module';
+import { NhaThuocModule } from '../nha-thuoc/nha-thuoc.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { ThongBaoModule } from '../thong-bao/thong-bao.module';
       CauHinhTienCoc,
     ]),
     ThongBaoModule,
+    NhaThuocModule, // số liệu kho dược dùng chung với trang Nhà thuốc
     HttpModule,
   ],
   controllers: [QuanLyController],

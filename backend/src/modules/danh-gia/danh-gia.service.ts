@@ -370,12 +370,15 @@ export class DanhGiaService {
     const tongBacSi = list.reduce((sum, item) => sum + Number(item.diemBacSi), 0);
     const listCls = list.filter(item => item.diemCls !== null && item.diemCls !== undefined);
     const tongCls = listCls.reduce((sum, item) => sum + Number(item.diemCls), 0);
-    const tongTiepDon = list.reduce((sum, item) => sum + Number(item.diemTiepDon), 0);
+    // Ca Telehealth không qua quầy tiếp đón: diem_tiep_don của ca đó chỉ là bản sao điểm bác sĩ → bỏ ra
+    // (cùng quy tắc với báo cáo tiếp tân)
+    const listTiepDon = list.filter(item => item.lichHen?.hinhThuc !== 'truc_tuyen' && item.diemTiepDon != null);
+    const tongTiepDon = listTiepDon.reduce((sum, item) => sum + Number(item.diemTiepDon), 0);
 
     const diemCSATToanVien = Math.round((tongCSAT / tongDanhGia) * 10) / 10;
     const diemBacSiTB = Math.round((tongBacSi / tongDanhGia) * 10) / 10;
     const diemClsTB = listCls.length > 0 ? Math.round((tongCls / listCls.length) * 10) / 10 : null;
-    const diemTiepDonTB = Math.round((tongTiepDon / tongDanhGia) * 10) / 10;
+    const diemTiepDonTB = listTiepDon.length > 0 ? Math.round((tongTiepDon / listTiepDon.length) * 10) / 10 : null;
 
     const soHaiLong = list.filter(item => Number(item.diemTrungBinh) >= 4.0).length;
     const tyLeHaiLong = `${Math.round((soHaiLong / tongDanhGia) * 100)}%`;

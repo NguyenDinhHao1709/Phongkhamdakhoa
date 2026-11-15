@@ -1,4 +1,4 @@
-import { khoangNgayVN, ngayVN, NGAY_DAU_TIEN } from '../../common/utils/khoang-ngay-vn.util';
+import { khoangNgayVN, ngayVN, congNgay, NGAY_DAU_TIEN } from '../../common/utils/khoang-ngay-vn.util';
 import { Injectable, NotFoundException, BadRequestException, ConflictException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, In, Like, MoreThanOrEqual, IsNull } from 'typeorm';
@@ -45,6 +45,7 @@ function toDateOnly(value: string | Date): string {
 }
 import { v2 as cloudinary } from 'cloudinary';
 import { DEFAULT_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, NHOM_CHUC_NANG_ORDER } from '../auth/rbac-defaults';
+import { NhaThuocService } from '../nha-thuoc/nha-thuoc.service';
 
 // Kênh tiếp nhận: alias ltn = luot_tiep_nhan, lh = lich_hen (LEFT JOIN)
 const KENH_SQL = {
@@ -91,6 +92,7 @@ export class QuanLyService implements OnModuleInit {
     private readonly thongBaoService: ThongBaoService,
     private readonly httpService: HttpService,
     private readonly cache: MemoryCacheService,
+    private readonly nhaThuocService: NhaThuocService,
   ) {}
 
   // ==========================================
@@ -874,13 +876,10 @@ export class QuanLyService implements OnModuleInit {
       const diffTime = Math.abs(endD.getTime() - startD.getTime());
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       if (diffDays <= 31) {
-        for (let i = 0; i <= diffDays; i++) {
-          const curr = new Date(startD);
-          curr.setDate(curr.getDate() + i);
-          const raw = curr.toISOString().slice(0, 10);
-          const dd = String(curr.getDate()).padStart(2, '0');
-          const mm = String(curr.getMonth() + 1).padStart(2, '0');
-          dateMap.set(raw, { rawDate: raw, ngay: `${dd}/${mm}`, soLuotKham: 0, doanhThu: 0 });
+        // Cộng ngày trên chuỗi yyyy-mm-dd (congNgay) thay vì Date theo giờ máy: máy chạy giờ VN thì
+        // getDate() và toISOString() lệch nhau một ngày → bù sai ngày, lặp cột
+        for (let i = 0, raw = startDate; i <= diffDays; i++, raw = congNgay(raw, 1)) {
+          dateMap.set(raw, { rawDate: raw, ngay: `${raw.slice(8, 10)}/${raw.slice(5, 7)}`, soLuotKham: 0, doanhThu: 0 });
         }
       }
     }
@@ -936,7 +935,7 @@ export class QuanLyService implements OnModuleInit {
 
     // 7. Top bác sĩ khám nhiều nhất
     let topBacSiQuery = `
-      SELECT nv.ho_ten AS hoTen, bs.chuyen_khoa AS chuyenKhoa, COUNT(bak.id) AS soCa
+      SELECT bs.id AS bacSiId, nv.ho_ten AS hoTen, bs.chuyen_khoa AS chuyenKhoa, COUNT(bak.id) AS soCa
       FROM benh_an_kham bak
       JOIN bac_si bs ON bak.bac_si_id = bs.id
       JOIN nhan_vien nv ON bs.nhan_vien_id = nv.id
@@ -947,8 +946,9 @@ export class QuanLyService implements OnModuleInit {
       topBacSiQuery += ` AND bak.ngay_kham BETWEEN ? AND ? `;
       params.push(startDateTime, endDateTime);
     }
+    // Gộp theo id bác sĩ: hai bác sĩ trùng họ tên + chuyên khoa trước đây bị cộng chung thành một
     topBacSiQuery += `
-      GROUP BY nv.ho_ten, bs.chuyen_khoa
+      GROUP BY bs.id, nv.ho_ten, bs.chuyen_khoa
       ORDER BY soCa DESC
       LIMIT 5
     `;
@@ -1132,7 +1132,8 @@ export class QuanLyService implements OnModuleInit {
       const pt = h.phuongThucThanhToan || 'tien_mat';
       byPhuongThuc[pt] = (byPhuongThuc[pt] || 0) + tt;
 
-      const d = h.ngayThanhToan ? new Date(h.ngayThanhToan).toISOString().slice(0, 10) : 'Khác';
+      // Ngày theo giờ VN (toISOString là UTC: khoản thu trước 7h sáng bị tính sang ngày hôm trước)
+      const d = h.ngayThanhToan ? ngayVN(new Date(h.ngayThanhToan)) : 'Khác';
       byNgay[d] = (byNgay[d] || 0) + tt;
     });
 
@@ -1228,10 +1229,12 @@ export class QuanLyService implements OnModuleInit {
         COUNT(id) AS tongPhieuOpex,
         COALESCE(SUM(so_tien), 0) AS tongTienOpex
       FROM phieu_chi_hoat_dong
+      WHERE trang_thai = 'da_chi'
     `;
+    // Chỉ phiếu đã chi (trước đây cộng cả phiếu chờ duyệt / bị từ chối → tổng chi cao hơn sổ quỹ thu ngân)
     const opexParams: any[] = [];
     if (tuNgayStr && denNgayStr) {
-      opexSql += ` WHERE ngay_chi BETWEEN ? AND ? `;
+      opexSql += ` AND ngay_chi BETWEEN ? AND ? `;
       opexParams.push(tuNgayStr, denNgayStr);
     }
     const opexRaw = await this.hoaDonRepo.query(opexSql, opexParams).catch(() => [{ tongPhieuOpex: 0, tongTienOpex: 0 }]);
@@ -1253,10 +1256,11 @@ export class QuanLyService implements OnModuleInit {
         COALESCE(p.ghi_chu, '') AS ghiChu
       FROM phieu_chi_hoat_dong p
       LEFT JOIN nhan_vien nv ON p.nguoi_lap_id = nv.id
+      WHERE p.trang_thai = 'da_chi'
     `;
     const opexListParams: any[] = [];
     if (tuNgayStr && denNgayStr) {
-      opexListSql += ` WHERE p.ngay_chi BETWEEN ? AND ? `;
+      opexListSql += ` AND p.ngay_chi BETWEEN ? AND ? `;
       opexListParams.push(tuNgayStr, denNgayStr);
     }
     opexListSql += ` ORDER BY p.ngay_chi DESC LIMIT 150 `;
@@ -1271,7 +1275,8 @@ export class QuanLyService implements OnModuleInit {
 
     const tongChiHoatDong = chiMuaThuocNcc + tongTienOpex;
     const tongPhieuChi = tongDonNcc + tongPhieuOpex;
-    const thucThuRong = Math.max(0, Number(taiChinh.tongThucThu || 0) - tongChiHoatDong);
+    // Có thể âm (kỳ chi nhiều hơn thu) — trước đây bị ép về 0, che mất kỳ thâm hụt
+    const thucThuRong = Number(taiChinh.tongThucThu || 0) - tongChiHoatDong;
 
     const tienMatTaiKet = Number(taiChinh.byPhuongThuc?.tien_mat || 0);
     // Tổng thanh toán không dùng tiền mặt (Chuyển khoản, Thẻ POS, VNPay, MoMo, BHYT thanh toán)
@@ -1299,10 +1304,12 @@ export class QuanLyService implements OnModuleInit {
       .select('COUNT(*)', 'total')
       .addSelect("SUM(CASE WHEN ltn.trangThai = 'hoan_thanh' THEN 1 ELSE 0 END)", 'daKham')
       .addSelect("SUM(CASE WHEN ltn.trangThai IN ('dang_kham', 'dang_cls', 'da_co_kq_cls', 'cho_thanh_toan') THEN 1 ELSE 0 END)", 'dangKham')
-      .addSelect("SUM(CASE WHEN ltn.trangThai = 'cho_kham' THEN 1 ELSE 0 END)", 'choKham');
+      .addSelect("SUM(CASE WHEN ltn.trangThai = 'cho_kham' THEN 1 ELSE 0 END)", 'choKham')
+      // Lượt đã hủy không phải lượt khám (cùng quy tắc với Dashboard điều hành)
+      .where("ltn.trangThai != 'da_huy'");
 
     if (tuNgayStr && denNgayStr) {
-      tnStatsQb = tnStatsQb.where('ltn.thoiGianDen BETWEEN :s AND :e', { s: tuNgayStr, e: denNgayStr });
+      tnStatsQb = tnStatsQb.andWhere('ltn.thoiGianDen BETWEEN :s AND :e', { s: tuNgayStr, e: denNgayStr });
     }
     const tnStatsRaw = await tnStatsQb.getRawOne().catch(() => null);
     totalTiepNhan = Number(tnStatsRaw?.total || 0);
@@ -1312,6 +1319,7 @@ export class QuanLyService implements OnModuleInit {
 
     const tiepNhanHomNay = await this.tiepNhanRepo.createQueryBuilder('ltn')
       .where('DATE(ltn.thoiGianDen) = CURDATE()')
+      .andWhere("ltn.trangThai != 'da_huy'")
       .getCount();
 
     // Phân tích Kênh tiếp nhận bệnh nhân
@@ -1319,10 +1327,11 @@ export class QuanLyService implements OnModuleInit {
       SELECT ${KENH_SQL.online} AS online, ${KENH_SQL.quaNhanVien} AS quaNhanVien, ${KENH_SQL.vangLai} AS vangLai
       FROM luot_tiep_nhan ltn
       LEFT JOIN lich_hen lh ON ltn.lich_hen_id = lh.id
+      WHERE ltn.trang_thai != 'da_huy'
     `;
     const kenhParams: any[] = [];
     if (tuNgayStr && denNgayStr) {
-      kenhSql += ` WHERE ltn.thoi_gian_den BETWEEN ? AND ? `;
+      kenhSql += ` AND ltn.thoi_gian_den BETWEEN ? AND ? `;
       kenhParams.push(tuNgayStr, denNgayStr);
     }
     const kenhRaw = await this.tiepNhanRepo.query(kenhSql, kenhParams);
@@ -1331,14 +1340,23 @@ export class QuanLyService implements OnModuleInit {
     }));
 
     // Thống kê theo chuyên khoa
+    // Doanh thu thật của các lượt khám (hóa đơn đã thu gắn với lượt tiếp nhận của phiếu khám, gồm khám + CLS + thuốc).
+    // Trước đây là soCa × 150.000đ cố định. Ca Telehealth không có lượt tiếp nhận → thu qua phiếu đặt lịch, không cộng ở đây.
     let chuyenKhoaSql = `
-      SELECT 
+      SELECT
         bs.chuyen_khoa AS chuyenKhoa,
         nv.ho_ten AS bacSiPhuTrach,
-        COUNT(bak.id) AS soCa
+        COUNT(bak.id) AS soCa,
+        COALESCE(SUM(hdl.tien), 0) AS doanhThu
       FROM benh_an_kham bak
       JOIN bac_si bs ON bak.bac_si_id = bs.id
       JOIN nhan_vien nv ON bs.nhan_vien_id = nv.id
+      LEFT JOIN (
+        SELECT luot_tiep_nhan_id, SUM(thuc_thu - COALESCE(tien_hoan_tra, 0)) AS tien
+          FROM hoa_don
+         WHERE trang_thai = 'da_thanh_toan' AND luot_tiep_nhan_id IS NOT NULL
+         GROUP BY luot_tiep_nhan_id
+      ) hdl ON hdl.luot_tiep_nhan_id = bak.luot_tiep_nhan_id
     `;
     const ckParams: any[] = [];
     if (tuNgayStr && denNgayStr) {
@@ -1346,7 +1364,7 @@ export class QuanLyService implements OnModuleInit {
       ckParams.push(tuNgayStr, denNgayStr);
     }
     chuyenKhoaSql += `
-      GROUP BY bs.chuyen_khoa, nv.ho_ten
+      GROUP BY bs.id, bs.chuyen_khoa, nv.ho_ten
       ORDER BY soCa DESC
     `;
     const ckRaw = await this.benhAnRepo.query(chuyenKhoaSql, ckParams);
@@ -1358,7 +1376,7 @@ export class QuanLyService implements OnModuleInit {
         bacSiPhuTrach: r.bacSiPhuTrach || 'Bác sĩ',
         soCa,
         tyLe: tongSoCaKham > 0 ? `${((soCa / tongSoCaKham) * 100).toFixed(1)}%` : '0%',
-        doanhThu: soCa * 150000,
+        doanhThu: Number(r.doanhThu || 0),
       };
     });
 
@@ -1393,9 +1411,10 @@ export class QuanLyService implements OnModuleInit {
     const danhSachTiepNhan = await this.tiepNhanRepo.query(tnListSql, tnListParams).catch(() => []);
 
     // 3. Thống kê Cận Lâm Sàng (CLS)
-    let clsQb = this.clsRepo.createQueryBuilder('cls');
+    // Phiếu CLS đã hủy không được thực hiện → bỏ khỏi tổng chỉ định và mẫu số tỷ lệ (giống Dashboard)
+    let clsQb = this.clsRepo.createQueryBuilder('cls').where("cls.trangThai != 'huy'");
     if (tuNgayStr && denNgayStr) {
-      clsQb = clsQb.where('cls.thoiGianChiDinh BETWEEN :s AND :e', { s: tuNgayStr, e: denNgayStr });
+      clsQb = clsQb.andWhere('cls.thoiGianChiDinh BETWEEN :s AND :e', { s: tuNgayStr, e: denNgayStr });
     }
     const clsTong = await clsQb.getCount();
 
@@ -1430,10 +1449,11 @@ export class QuanLyService implements OnModuleInit {
         SUM(CASE WHEN cls.trang_thai = 'co_ket_qua' THEN 1 ELSE 0 END) AS soCaXong
       FROM chi_dinh_can_lam_sang cls
       JOIN dich_vu_xet_nghiem dv ON cls.dich_vu_xet_nghiem_id = dv.id
+      WHERE cls.trang_thai != 'huy'
     `;
     const clsDvParams: any[] = [];
     if (tuNgayStr && denNgayStr) {
-      clsDvSql += ` WHERE cls.thoi_gian_chi_dinh BETWEEN ? AND ? `;
+      clsDvSql += ` AND cls.thoi_gian_chi_dinh BETWEEN ? AND ? `;
       clsDvParams.push(tuNgayStr, denNgayStr);
     }
     clsDvSql += `
@@ -1450,8 +1470,9 @@ export class QuanLyService implements OnModuleInit {
         loai: row.loaiRaw === 'cdha' ? 'Chẩn đoán hình ảnh' : 'Xét nghiệm',
         soCa,
         donGia,
+        // Giá trị theo bảng giá hiện hành × số ca (ước tính, không phải số đã thu)
         doanhThu: soCa * donGia,
-        tyLeHoanThanh: soCa > 0 ? `${Math.round((soCaXong / soCa) * 100)}%` : '100%',
+        tyLeHoanThanh: soCa > 0 ? `${Math.round((soCaXong / soCa) * 100)}%` : '—',
       };
     });
 
@@ -1512,21 +1533,25 @@ export class QuanLyService implements OnModuleInit {
       dangThucHien: clsDangThucHien,
       choTiepNhan: clsCho,
       choThucHien: clsDangThucHien + clsCho,
-      tyLeHoanThanh: clsTong > 0 ? `${((clsHoanThanh / clsTong) * 100).toFixed(1)}%` : '100%',
+      tyLeHoanThanh: clsTong > 0 ? `${((clsHoanThanh / clsTong) * 100).toFixed(1)}%` : '—',
       thoiGianChoTB: phutCho == null ? '—' : `${phutCho.toFixed(1)} phút`,
       danhMucDichVu,
       danhSachChiDinhCls,
     };
 
     // 4. Kho Dược & Nhà Thuốc
-    let dtQb = this.donThuocRepo.createQueryBuilder('dt');
+    // Đơn đã xuất kho = đơn đã cấp phát, theo NGÀY CẤP PHÁT (trước đây đếm mọi đơn đã kê, kể cả
+    // đơn bệnh nhân mua ngoài / chờ duyệt / hủy) — cùng định nghĩa với trang Nhà thuốc
+    const TT_DA_XUAT = ['da_cap_phat', 'da_hoan_thanh'];
+    let dtQb = this.donThuocRepo.createQueryBuilder('dt').where('dt.trangThai IN (:...st)', { st: TT_DA_XUAT });
     if (tuNgayStr && denNgayStr) {
-      dtQb = dtQb.where('dt.ngayKe BETWEEN :s AND :e', { s: tuNgayStr, e: denNgayStr });
+      dtQb = dtQb.andWhere('dt.ngayCapPhat BETWEEN :s AND :e', { s: tuNgayStr, e: denNgayStr });
     }
     const soDonThuocDaXuat = await dtQb.getCount();
 
+    // Top thuốc đã cấp phát trong kỳ; giá trị = số lượng × giá bán hiện hành (ước tính)
     let topThuocSql = `
-      SELECT 
+      SELECT
         t.ma_thuoc AS maThuoc,
         t.ten_thuoc AS tenThuoc,
         t.ten_hoat_chat AS hoatChat,
@@ -1538,10 +1563,11 @@ export class QuanLyService implements OnModuleInit {
       JOIN thuoc t ON dtct.thuoc_id = t.id
       LEFT JOIN loai_thuoc lt ON t.loai_thuoc_id = lt.id
       JOIN don_thuoc dt ON dtct.don_thuoc_id = dt.id
+      WHERE dt.trang_thai IN ('da_cap_phat', 'da_hoan_thanh')
     `;
     const topThuocParams: any[] = [];
     if (tuNgayStr && denNgayStr) {
-      topThuocSql += ` WHERE dt.ngay_ke BETWEEN ? AND ? `;
+      topThuocSql += ` AND dt.ngay_cap_phat BETWEEN ? AND ? `;
       topThuocParams.push(tuNgayStr, denNgayStr);
     }
     topThuocSql += `
@@ -1560,83 +1586,47 @@ export class QuanLyService implements OnModuleInit {
       doanhThu: Number(r.doanhThu || 0),
     }));
 
-    // Cảnh báo tồn kho & hạn sử dụng (chỉ lấy thuốc tồn <= 100 hoặc hạn dùng <= 60 ngày, cùng ngưỡng với trang Nhà thuốc)
-    const tonKhoRaw = await this.donThuocRepo.query(`
-      SELECT 
-        t.id,
-        t.ma_thuoc AS maThuoc,
-        t.ten_thuoc AS tenThuoc,
-        t.ton_kho_tong AS tonKhoHienTai,
-        100 AS tonKhoToiThieu,
-        t.don_vi_tinh AS donVi,
-        (SELECT MIN(ngay_het_han) FROM lo_thuoc WHERE thuoc_id = t.id AND so_luong_ton > 0) AS hanDung
-      FROM thuoc t
-      LEFT JOIN lo_thuoc lt ON lt.thuoc_id = t.id
-      WHERE t.ton_kho_tong <= 100 
-         OR (lt.so_luong_ton > 0 AND lt.ngay_het_han IS NOT NULL AND lt.ngay_het_han <= DATE_ADD(CURDATE(), INTERVAL 60 DAY))
-      GROUP BY t.id, t.ma_thuoc, t.ten_thuoc, t.ton_kho_tong, t.don_vi_tinh
-      ORDER BY t.ton_kho_tong ASC
-      LIMIT 15
-    `);
+    // Doanh thu dược = tiền thuốc trên hóa đơn đã thu trong kỳ (trước đây cộng giá trị của riêng top 10 thuốc)
+    const ddParams: any[] = [];
+    let ddSql = `
+      SELECT COALESCE(SUM(ct.thanh_tien), 0) AS tien
+        FROM hoa_don_chi_tiet ct JOIN hoa_don hd ON hd.id = ct.hoa_don_id
+       WHERE hd.trang_thai = 'da_thanh_toan' AND ct.loai_phi = 'thuoc'
+    `;
+    if (tuNgayStr && denNgayStr) {
+      ddSql += ` AND hd.ngay_thanh_toan BETWEEN ? AND ? `;
+      ddParams.push(tuNgayStr, denNgayStr);
+    }
+    const [ddRow] = await this.hoaDonRepo.query(ddSql, ddParams).catch(() => [{ tien: 0 }]);
+    const tongDoanhThuDuoc = Number(ddRow?.tien || 0);
+    const giaTriTrungBinhDon = soDonThuocDaXuat > 0 ? Math.round(tongDoanhThuDuoc / soDonThuocDaXuat) : 0;
 
-    const now = new Date();
-    const canhBaoTonKho = tonKhoRaw.map((r: any) => {
-      const tonKho = Number(r.tonKhoHienTai || 0);
-      const hanDungDate = r.hanDung ? new Date(r.hanDung) : null;
-      let diffDays = 999;
-      if (hanDungDate) {
-        diffDays = Math.ceil((hanDungDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      }
-
-      let mucDo: 'danger' | 'warning' = 'warning';
-      let tinhTrang = 'Sắp hết hàng';
-
-      if (tonKho === 0) {
-        mucDo = 'danger';
-        tinhTrang = 'Hết hàng - Cần nhập gấp';
-      } else if (tonKho < 20) {
-        mucDo = 'danger';
-        tinhTrang = 'Nguy cấp - Tồn rất thấp';
-      } else if (tonKho <= 100) {
-        mucDo = 'warning';
-        tinhTrang = 'Sắp hết hàng (< 100)';
-      } else if (diffDays <= 30) {
-        mucDo = 'danger';
-        tinhTrang = `Cận date (${diffDays} ngày)`;
-      } else if (diffDays <= 60) {
-        mucDo = 'warning';
-        tinhTrang = `Cận hạn dùng (${diffDays} ngày)`;
-      }
-
+    // Tồn kho, cảnh báo & cận hạn lấy đúng từ báo cáo Nhà thuốc (tồn khả dụng = lô còn hạn, định mức riêng
+    // từng thuốc, lô cận hạn ≤ 60 ngày). Trước đây dùng định mức cố định 100, giá trị kho theo giá bán và
+    // đếm "sắp hết hàng" theo dòng lô → lệch với trang Nhà thuốc.
+    const kho = (await this.nhaThuocService.getThongKeNhaThuoc({ khoangThoiGian: 'today' })).data;
+    const thuocTheoId = new Map<number, any>(kho.listThuoc.map((t: any) => [t.id, t]));
+    const canhBaoTonKho = kho.canhBaoRuiRo.map((cb: any) => {
+      const t = thuocTheoId.get(cb.thuocId);
       return {
-        maThuoc: r.maThuoc,
-        tenThuoc: r.tenThuoc,
-        tonKhoHienTai: tonKho,
-        tonKhoToiThieu: 100,
-        donVi: r.donVi || 'Đơn vị',
-        hanDung: hanDungDate ? hanDungDate.toLocaleDateString('vi-VN') : 'Đang cập nhật',
-        mucDo,
-        tinhTrang,
+        maThuoc: cb.maThuoc,
+        tenThuoc: cb.tenThuoc,
+        maLo: cb.id?.startsWith('lo_') ? cb.maLo : null,
+        tonKhoHienTai: cb.tonKho,
+        tonKhoToiThieu: t?.tonKhoToiThieu ?? null,
+        giaBan: t?.giaBan ?? null,
+        donVi: cb.donViTinh || 'Đơn vị',
+        hanDung: cb.hanDung && cb.hanDung !== '---' ? String(cb.hanDung).split('-').reverse().join('/') : 'Đang cập nhật',
+        mucDo: cb.mucDo === 'nguy_cap' ? 'danger' : 'warning',
+        tinhTrang: cb.loaiRuiRo,
       };
     });
 
-    const tongDoanhThuDuoc = topThuocKeDon.reduce((sum: number, cur: any) => sum + cur.doanhThu, 0);
-    const giaTriTrungBinhDon = soDonThuocDaXuat > 0 ? Math.round(tongDoanhThuDuoc / soDonThuocDaXuat) : 0;
-
-    // Tính tổng giá trị tài sản kho dược và số lượng cận date FEFO
-    const khoValRaw = await this.donThuocRepo.query(`
-      SELECT 
-        COUNT(id) AS tongSoMatHang,
-        COALESCE(SUM(ton_kho_tong * gia_ban), 0) AS tongGiaTriKho,
-        -- Đếm theo LÔ còn tồn có hạn <= 60 ngày (kể cả đã hết hạn), giống trang Nhà thuốc (sapHetHanCount)
-        (SELECT COUNT(*) FROM lo_thuoc WHERE so_luong_ton > 0 AND ngay_het_han <= DATE_ADD(CURDATE(), INTERVAL 60 DAY)) AS thuocCanDateFEFO,
-        (SELECT COUNT(DISTINCT CONCAT(t.id, '-', COALESCE(lt.id, '0'))) FROM thuoc t LEFT JOIN lo_thuoc lt ON lt.thuoc_id = t.id AND lt.so_luong_ton > 0 WHERE t.ton_kho_tong <= 100 OR lt.so_luong_ton <= 20) AS thuocSapHetHang
-      FROM thuoc
-    `).catch(() => [{ tongSoMatHang: 0, tongGiaTriKho: 0, thuocCanDateFEFO: 0, thuocSapHetHang: 0 }]);
-
-    // Chi tiết toàn bộ danh mục kho dược theo Lô và Hạn dùng (FEFO)
+    // Chi tiết toàn bộ danh mục kho dược theo Lô và Hạn dùng (FEFO).
+    // Không bịa dữ liệu khi lô thiếu thông tin (trước đây: mã lô "LO-CHUNG", giá nhập = giá bán × 0,8,
+    // NCC "Công ty dược phẩm"). Giới hạn 300 dòng làm mất lô ở cuối danh sách → nâng lên 3000.
     const rawTonKhoChiTiet = await this.donThuocRepo.query(`
-      SELECT 
+      SELECT
         t.id,
         t.ma_thuoc AS maThuoc,
         t.ten_thuoc AS tenThuoc,
@@ -1645,31 +1635,36 @@ export class QuanLyService implements OnModuleInit {
         t.ton_kho_tong AS tonKhoTong,
         t.gia_ban AS giaBan,
         COALESCE(lt_loai.ten_loai, 'Thuốc') AS tenLoai,
-        COALESCE(lt.ma_lo, 'LO-CHUNG') AS maLo,
+        lt.ma_lo AS maLo,
         lt.ngay_san_xuat AS ngaySanXuat,
         lt.ngay_het_han AS ngayHetHan,
         COALESCE(lt.so_luong_ton, t.ton_kho_tong) AS tonLo,
-        COALESCE(lt.gia_nhap, t.gia_ban * 0.8) AS giaNhap,
-        COALESCE(lt.nha_cung_cap, 'Công ty dược phẩm') AS nhaCungCap
+        lt.gia_nhap AS giaNhap,
+        lt.nha_cung_cap AS nhaCungCap
       FROM thuoc t
       LEFT JOIN loai_thuoc lt_loai ON t.loai_thuoc_id = lt_loai.id
       LEFT JOIN lo_thuoc lt ON lt.thuoc_id = t.id AND lt.so_luong_ton > 0
       ORDER BY t.ten_thuoc ASC
-      LIMIT 300
+      LIMIT 3000
     `).catch(() => []);
 
+    const homNayVN = ngayVN();
     const danhSachTonKhoChiTiet = rawTonKhoChiTiet.map((r: any) => {
-      const expDate = r.ngayHetHan ? new Date(r.ngayHetHan) : null;
-      let soNgayHetHan = 999;
-      if (expDate) {
-        soNgayHetHan = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      }
+      // Số ngày còn hạn theo ngày VN (hạn dùng là cột DATE)
+      const han = r.ngayHetHan
+        ? (r.ngayHetHan instanceof Date ? ngayVN(r.ngayHetHan) : String(r.ngayHetHan).slice(0, 10))
+        : null;
+      const soNgayHetHan = han
+        ? Math.round((Date.parse(`${han}T00:00:00Z`) - Date.parse(`${homNayVN}T00:00:00Z`)) / 86_400_000)
+        : 999;
       return {
         ...r,
+        maLo: r.maLo || '—',
+        nhaCungCap: r.nhaCungCap || '—',
         tonKhoTong: Number(r.tonKhoTong || 0),
         giaBan: Number(r.giaBan || 0),
         tonLo: Number(r.tonLo || 0),
-        giaNhap: Number(r.giaNhap || 0),
+        giaNhap: r.giaNhap == null ? null : Number(r.giaNhap),
         soNgayHetHan,
       };
     });
@@ -1709,13 +1704,14 @@ export class QuanLyService implements OnModuleInit {
       tongDoanhThuDuoc,
       soDonThuocDaXuat,
       giaTriTrungBinhDon,
-      tongSoMatHang: Number(khoValRaw[0]?.tongSoMatHang || 0),
-      tongSoThuoc: Number(khoValRaw[0]?.tongSoMatHang || 0),
-      tongGiaTriKho: Number(khoValRaw[0]?.tongGiaTriKho || 0),
-      thuocCanDateFEFO: Number(khoValRaw[0]?.thuocCanDateFEFO || 0),
-      sapHetHanCount: Number(khoValRaw[0]?.thuocCanDateFEFO || 0),
-      thuocSapHetHang: Number(khoValRaw[0]?.thuocSapHetHang || 0),
-      sapHetHangCount: Number(khoValRaw[0]?.thuocSapHetHang || 0),
+      tongSoMatHang: kho.tongSoThuoc,
+      tongSoThuoc: kho.tongSoThuoc,
+      tongGiaTriKho: kho.tongGiaTriKho, // giá nhập, lô còn hạn (như trang Nhà thuốc)
+      thuocCanDateFEFO: kho.sapHetHanCount, // số LÔ cận hạn ≤ 60 ngày / đã hết hạn
+      sapHetHanCount: kho.sapHetHanCount,
+      thuocSapHetHang: kho.sapHetHang,
+      sapHetHangCount: kho.sapHetHang,
+      thuocHetHang: kho.hetHang,
       topThuocKeDon,
       canhBaoTonKho,
       danhSachTonKhoChiTiet,

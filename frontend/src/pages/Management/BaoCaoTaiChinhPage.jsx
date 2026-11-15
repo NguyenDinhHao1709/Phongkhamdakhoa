@@ -256,16 +256,17 @@ export default function BaoCaoTaiChinhPage() {
   });
   const paginatedCanDate = filteredCanDate.slice((pageCanDate - 1) * 20, pageCanDate * 20);
 
-  // Lọc và phân trang Sắp Hết Hàng (tồn <= 100 hoặc tồn theo lô <= 20)
-  const filteredSapHet = danhSachTonKhoChiTiet.filter(item => {
+  // Sắp hết / hết hàng: lấy đúng cảnh báo tồn kho của trang Nhà thuốc (tồn khả dụng ≤ định mức riêng
+  // từng thuốc). Trước đây dùng ngưỡng cố định "tồn ≤ 100 hoặc lô ≤ 20" và đếm theo dòng lô.
+  const filteredSapHet = canhBaoTonKho.filter(item => {
     const matchSearch = !searchDuoc.trim() || item.tenThuoc?.toLowerCase().includes(searchDuoc.toLowerCase()) || item.maThuoc?.toLowerCase().includes(searchDuoc.toLowerCase());
-    return matchSearch && (item.tonKhoTong <= 100 || item.tonLo <= 20);
+    return matchSearch && !item.maLo; // dòng có mã lô là cảnh báo hạn dùng, nằm ở tab Cận date
   });
   const paginatedSapHet = filteredSapHet.slice((pageSapHet - 1) * 20, pageSapHet * 20);
 
   // Tổng số cảnh báo đồng bộ chuẩn xác giữa Thẻ KPI và Bảng danh sách chi tiết
   const totalCanDateCount = danhSachTonKhoChiTiet.filter(item => item.soNgayHetHan <= 60).length;
-  const totalSapHetCount = danhSachTonKhoChiTiet.filter(item => item.tonKhoTong <= 100 || item.tonLo <= 20).length;
+  const totalSapHetCount = canhBaoTonKho.filter(item => !item.maLo).length;
 
   // Chọn khoảng thời gian nhanh
   const handleSelectQuickRange = (range) => {
@@ -361,7 +362,7 @@ export default function BaoCaoTaiChinhPage() {
         'Phân Loại': d.loai === 'cdha' ? 'Chẩn đoán hình ảnh' : 'Xét nghiệm phân tích',
         'Số Ca Chỉ Định': d.soCa || 0,
         'Đơn Giá (VNĐ)': d.donGia || 0,
-        'Doanh Thu Dịch Vụ (VNĐ)': d.doanhThu || 0,
+        'Giá Trị Theo Bảng Giá (VNĐ)': d.doanhThu || 0,
         'Tỷ Lệ Hoàn Thành': d.tyLeHoanThanh || '',
       }));
       const wsCls = XLSX.utils.json_to_sheet(clsRows);
@@ -388,7 +389,7 @@ export default function BaoCaoTaiChinhPage() {
         'Nhóm Thuốc': t.loai || '',
         'Số Lượng Kê Đơn': t.soLuongKe || 0,
         'Đơn Vị Tính': t.donVi || '',
-        'Doanh Thu Bán Thuốc (VNĐ)': t.doanhThu || 0,
+        'Giá Trị Đã Cấp Theo Giá Bán (VNĐ)': t.doanhThu || 0,
       }));
       const wsDuoc = XLSX.utils.json_to_sheet(duocRows);
       wsDuoc['!cols'] = [
@@ -620,7 +621,7 @@ export default function BaoCaoTaiChinhPage() {
                 </div>
               </div>
               <p className="text-2xl font-black text-emerald-700 mt-2">
-                {isLoading ? '...' : formatCurrency(soQuy?.thucThuRong || (taiChinh?.tongThucThu || 0))}
+                {isLoading ? '...' : formatCurrency(soQuy?.thucThuRong ?? (taiChinh?.tongThucThu || 0))}
               </p>
               <p className="text-xs text-emerald-700 mt-1">Sau khi khấu trừ các khoản chi trả NCC</p>
             </div>
@@ -910,7 +911,7 @@ export default function BaoCaoTaiChinhPage() {
               </div>
               <p className="text-2xl font-black text-purple-700 mt-2">{cls?.tongChiDinh || 0} ca</p>
               <div className="flex items-center justify-between mt-1">
-                <p className="text-xs text-gray-500">Đã có KQ: <strong className="text-emerald-700">{cls?.tyLeHoanThanh || '100%'}</strong></p>
+                <p className="text-xs text-gray-500">Đã có KQ: <strong className="text-emerald-700">{cls?.tyLeHoanThanh || '—'}</strong></p>
                 <span className="text-[10px] font-semibold text-purple-600/85 hover:text-purple-700 hover:underline">Chi tiết →</span>
               </div>
             </div>
@@ -980,7 +981,7 @@ export default function BaoCaoTaiChinhPage() {
                       <th className="py-2.5 px-3">Chuyên Khoa</th>
                       <th className="py-2.5 px-3">Bác Sĩ Phụ Trách</th>
                       <th className="py-2.5 px-3 text-center">Số Ca</th>
-                      <th className="py-2.5 px-3 text-right">Doanh Thu</th>
+                      <th className="py-2.5 px-3 text-right" title="Hóa đơn đã thu của các lượt khám (khám + CLS + thuốc)">Doanh Thu Đã Thu</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -1015,7 +1016,7 @@ export default function BaoCaoTaiChinhPage() {
                       <th className="py-2.5 px-3">Tên Dịch Vụ</th>
                       <th className="py-2.5 px-3">Loại</th>
                       <th className="py-2.5 px-3 text-center">Số Ca</th>
-                      <th className="py-2.5 px-3 text-right">Doanh Thu</th>
+                      <th className="py-2.5 px-3 text-right" title="Số ca × giá bảng giá hiện hành">Giá Trị (theo bảng giá)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -1342,7 +1343,7 @@ export default function BaoCaoTaiChinhPage() {
                 </div>
               </div>
               <p className="text-2xl font-black text-rose-600 mt-2">
-                {totalSapHetCount || duoc?.thuocSapHetHang || 0} mặt hàng
+                {totalSapHetCount} mặt hàng
               </p>
               <div className="flex items-center justify-between mt-1">
                 <p className="text-xs text-rose-700">Chạm ngưỡng an toàn</p>
@@ -1365,7 +1366,7 @@ export default function BaoCaoTaiChinhPage() {
                     <th className="py-3 px-4">Hoạt Chất</th>
                     <th className="py-3 px-4">Nhóm Dược Lý</th>
                     <th className="py-3 px-4 text-center">Số Lượng Đã Kê</th>
-                    <th className="py-3 px-4 text-right">Doanh Thu Thuốc</th>
+                    <th className="py-3 px-4 text-right" title="Số lượng đã cấp phát × giá bán hiện hành">Giá Trị Đã Cấp (giá bán)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1461,7 +1462,7 @@ export default function BaoCaoTaiChinhPage() {
                           <td className="py-3 px-4 text-center font-black text-gray-800">
                             {t.tonKhoTong} {t.donViTinh}
                           </td>
-                          <td className="py-3 px-4 text-right text-gray-600">{formatCurrency(t.giaNhap)}</td>
+                          <td className="py-3 px-4 text-right text-gray-600">{t.giaNhap == null ? '—' : formatCurrency(t.giaNhap)}</td>
                           <td className="py-3 px-4 text-right font-bold text-gray-900">{formatCurrency(t.giaBan)}</td>
                           <td className="py-3 px-4 text-right font-black text-emerald-700">
                             {formatCurrency(t.tonKhoTong * t.giaBan)}
@@ -1695,28 +1696,22 @@ export default function BaoCaoTaiChinhPage() {
                         <tr key={idx} className="hover:bg-rose-50/20 transition-colors">
                           <td className="py-3 px-4 font-mono font-bold text-rose-900">{s.maThuoc}</td>
                           <td className="py-3 px-4 font-bold text-gray-900">{s.tenThuoc}</td>
-                          <td className="py-3 px-4 font-mono text-gray-700">{s.maLo || 'LO-CHUNG'}</td>
+                          <td className="py-3 px-4 font-mono text-gray-700">—</td>
                           <td className="py-3 px-4 text-center">
-                            <span className="font-black text-rose-600 text-sm">{s.tonLo}</span>
-                            <span className="text-xs text-gray-500"> / {s.tonKhoTong} {s.donViTinh}</span>
+                            <span className="font-black text-rose-600 text-sm">{s.tonKhoHienTai}</span>
+                            <span className="text-xs text-gray-500"> {s.donVi} (tồn khả dụng)</span>
                           </td>
-                          <td className="py-3 px-4 text-center font-bold text-gray-600">100 {s.donViTinh}</td>
+                          <td className="py-3 px-4 text-center font-bold text-gray-600">
+                            {s.tonKhoToiThieu != null ? `${s.tonKhoToiThieu} ${s.donVi}` : '—'}
+                          </td>
                           <td className="py-3 px-4 text-center">
                             <span className={`px-2.5 py-1 rounded-full font-bold text-[11px] ${
-                              s.tonKhoTong === 0
-                                ? 'bg-rose-200 text-rose-900'
-                                : s.tonLo <= 20
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-rose-100 text-rose-700'
+                              s.mucDo === 'danger' ? 'bg-rose-200 text-rose-900' : 'bg-amber-100 text-amber-800'
                             }`}>
-                              {s.tonKhoTong === 0
-                                ? 'Hết hàng toàn viện'
-                                : s.tonLo <= 20
-                                ? `Lô sắp hết (${s.tonLo} ${s.donViTinh})`
-                                : `Tổng tồn thấp (${s.tonKhoTong} ${s.donViTinh})`}
+                              {s.tinhTrang}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-right font-bold text-gray-800">{formatCurrency(s.giaBan)}</td>
+                          <td className="py-3 px-4 text-right font-bold text-gray-800">{s.giaBan != null ? formatCurrency(s.giaBan) : '—'}</td>
                         </tr>
                       ))
                     )}

@@ -255,11 +255,11 @@ export default function InBaoCaoToanDienGiamDocModal({
                   <div className="p-3 rounded-lg border border-gray-200 bg-gray-50/50">
                     <p className="text-[10px] text-gray-500 font-semibold uppercase">Chi Trả NCC & OPEX</p>
                     <p className="text-sm font-black text-rose-700 mt-1">{formatCurrency(soQuy?.tongChiHoatDong || 0)}</p>
-                    <p className="text-[10px] text-gray-500 mt-0.5">{soQuy?.danhSachChiPhi?.length || 0} phiếu chi</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{soQuy?.tongPhieuChi ?? soQuy?.danhSachChiPhi?.length ?? 0} phiếu chi</p>
                   </div>
                   <div className="p-3 rounded-lg border border-gray-200 bg-gray-50/50">
                     <p className="text-[10px] text-gray-500 font-semibold uppercase">Thực Thu Ròng (Dòng Tiền)</p>
-                    <p className="text-sm font-black text-emerald-700 mt-1">{formatCurrency(soQuy?.thucThuRong || (taiChinh?.tongThucThu || 0))}</p>
+                    <p className="text-sm font-black text-emerald-700 mt-1">{formatCurrency(soQuy?.thucThuRong ?? (taiChinh?.tongThucThu || 0))}</p>
                     <p className="text-[10px] text-emerald-600 mt-0.5 font-medium">Khấu trừ chi phí</p>
                   </div>
                   <div className="p-3 rounded-lg border border-gray-200 bg-gray-50/50">
@@ -283,7 +283,7 @@ export default function InBaoCaoToanDienGiamDocModal({
                   <div className="p-3 rounded-lg border border-gray-200 bg-gray-50/50">
                     <p className="text-[10px] text-gray-500 font-semibold uppercase">Cảnh Báo Tồn Ít</p>
                     <p className="text-sm font-black text-amber-600 mt-1">{thuocSapHetHang} thuốc</p>
-                    <p className="text-[10px] text-gray-500 mt-0.5">Dưới ngưỡng an toàn</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">Dưới định mức{duoc?.thuocHetHang ? ` · ${duoc.thuocHetHang} đã hết hàng` : ""}</p>
                   </div>
                   <div className="p-3 rounded-lg border border-gray-200 bg-gray-50/50">
                     <p className="text-[10px] text-gray-500 font-semibold uppercase">Cận Hạn FEFO (≤ 60 ngày)</p>
@@ -322,21 +322,21 @@ export default function InBaoCaoToanDienGiamDocModal({
                         <td className="border border-gray-300 px-2.5 py-1.5 font-bold text-blue-950">Tổng Thu Viện Phí & Dịch Vụ Y Tế</td>
                         <td className="border border-gray-300 px-2.5 py-1.5 text-right font-bold text-blue-700">{formatCurrency(taiChinh?.tongThucThu || 0)}</td>
                         <td className="border border-gray-300 px-2.5 py-1.5 text-center">{taiChinh?.tongGiaoDich || 0}</td>
-                        <td className="border border-gray-300 px-2.5 py-1.5 text-gray-600">Đã đối soát khớp biên lai thu ngân</td>
+                        <td className="border border-gray-300 px-2.5 py-1.5 text-gray-600">Hóa đơn đã thu, đã trừ tiền hoàn</td>
                       </tr>
                       <tr>
                         <td className="border border-gray-300 px-2 py-1.5 text-center font-bold">2</td>
                         <td className="border border-gray-300 px-2.5 py-1.5 font-bold text-rose-950">Tổng Chi Hoạt Động & Mua Thuốc NCC</td>
                         <td className="border border-gray-300 px-2.5 py-1.5 text-right font-bold text-rose-700">{formatCurrency(soQuy?.tongChiHoatDong || 0)}</td>
-                        <td className="border border-gray-300 px-2.5 py-1.5 text-center">{soQuy?.danhSachChiPhi?.length || 0}</td>
+                        <td className="border border-gray-300 px-2.5 py-1.5 text-center">{soQuy?.tongPhieuChi ?? soQuy?.danhSachChiPhi?.length ?? 0}</td>
                         <td className="border border-gray-300 px-2.5 py-1.5 text-gray-600">Trong đó chi NCC: {formatCurrency(soQuy?.chiMuaThuocNcc || 0)}</td>
                       </tr>
                       <tr className="bg-emerald-50/50 font-bold">
                         <td className="border border-gray-300 px-2 py-1.5 text-center">3</td>
                         <td className="border border-gray-300 px-2.5 py-1.5 text-emerald-950">Thực Thu Ròng (Dòng Tiền Thuần Trong Kỳ)</td>
-                        <td className="border border-gray-300 px-2.5 py-1.5 text-right text-emerald-800">{formatCurrency(soQuy?.thucThuRong || (taiChinh?.tongThucThu || 0))}</td>
+                        <td className="border border-gray-300 px-2.5 py-1.5 text-right text-emerald-800">{formatCurrency(soQuy?.thucThuRong ?? (taiChinh?.tongThucThu || 0))}</td>
                         <td className="border border-gray-300 px-2.5 py-1.5 text-center">—</td>
-                        <td className="border border-gray-300 px-2.5 py-1.5 text-emerald-800">Dòng tiền thặng dư thực tế</td>
+                        <td className="border border-gray-300 px-2.5 py-1.5 text-emerald-800">= Tổng thu − Tổng chi (âm là thâm hụt)</td>
                       </tr>
                     </tbody>
                   </table>
@@ -433,7 +433,7 @@ export default function InBaoCaoToanDienGiamDocModal({
                 {chuyenKhoaStats.length > 0 && (
                   <div className="pt-1">
                     <p className="text-[10px] font-bold text-gray-600 mb-1">
-                      Lưu lượng khám theo chuyên khoa ({Math.min(chuyenKhoaStats.length, 6)} khoa hàng đầu):
+                      Lưu lượng khám theo chuyên khoa & bác sĩ ({Math.min(chuyenKhoaStats.length, 6)}/{chuyenKhoaStats.length} dòng nhiều ca nhất):
                     </p>
                     <table className="w-full border-collapse border border-gray-200 text-[10px]">
                       <thead>
@@ -442,7 +442,7 @@ export default function InBaoCaoToanDienGiamDocModal({
                           <th className="border border-gray-200 p-1 text-left">Chuyên Khoa</th>
                           <th className="border border-gray-200 p-1 text-left">Bác Sĩ Phụ Trách</th>
                           <th className="border border-gray-200 p-1 text-center w-20">Số Ca</th>
-                          <th className="border border-gray-200 p-1 text-right w-28">Doanh Thu Dịch Vụ</th>
+                          <th className="border border-gray-200 p-1 text-right w-28">Doanh Thu Đã Thu</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -477,7 +477,7 @@ export default function InBaoCaoToanDienGiamDocModal({
                     <span>⚠️</span> Cảnh báo rủi ro tồn kho cần Ban Giám Đốc lưu ý:
                   </p>
                   <p>
-                    • Có <strong>{thuocSapHetHang}</strong> mặt hàng có lượng tồn dưới ngưỡng tối thiểu (cần duyệt kế hoạch mua bổ sung).
+                    • Có <strong>{thuocSapHetHang}</strong> mặt hàng có lượng tồn dưới định mức tối thiểu{duoc?.thuocHetHang ? <>, <strong>{duoc.thuocHetHang}</strong> mặt hàng đã hết hàng</> : null} (cần duyệt kế hoạch mua bổ sung).
                   </p>
                   <p>
                     • Có <strong>{thuocCanDateFEFO}</strong> lô thuốc cận hạn (≤ 60 ngày) hoặc đã hết hạn (ưu tiên cấp phát theo đúng nguyên tắc FEFO).
@@ -498,7 +498,7 @@ export default function InBaoCaoToanDienGiamDocModal({
                           <th className="border border-gray-200 p-1 text-left">Tên Thuốc / Biệt Dược</th>
                           <th className="border border-gray-200 p-1 text-left">Hoạt Chất</th>
                           <th className="border border-gray-200 p-1 text-center w-24">Số Lượng Kê</th>
-                          <th className="border border-gray-200 p-1 text-right w-28">Doanh Thu Thuốc</th>
+                          <th className="border border-gray-200 p-1 text-right w-28">Giá Trị Đã Cấp</th>
                         </tr>
                       </thead>
                       <tbody>
