@@ -69,20 +69,22 @@ export default function ThongKeBacSiPage() {
   });
 
   const rawReviews = danhGiaData?.data?.data || danhGiaData?.data || danhGiaData || {};
+  const coDanhGia = (rawReviews.tongDanhGia || 0) > 0;
   const reviews = {
     tongDanhGia: rawReviews.tongDanhGia || 0,
-    diemBacSiTB: rawReviews.diemBacSiTB || 5.0,
-    diemTrungBinhChung: rawReviews.diemTrungBinhChung || 5.0,
-    tyLeHaiLong: rawReviews.tyLeHaiLong || '100%',
+    // Chưa có lượt đánh giá nào thì để null (hiện "—"), không hiển thị 5.0 / 100% giả
+    diemBacSiTB: coDanhGia ? rawReviews.diemBacSiTB : null,
+    diemTrungBinhChung: coDanhGia ? rawReviews.diemTrungBinhChung : null,
+    tyLeHaiLong: coDanhGia ? rawReviews.tyLeHaiLong : null,
     phanBoSao: rawReviews.phanBoSao || { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
     danhSachNhanXet: Array.isArray(rawReviews.danhSachNhanXet) ? rawReviews.danhSachNhanXet : [],
   };
 
   const stats = data?.data || {
     thongTinBacSi: {
-      hoTen: user?.hoTen || 'Bác sĩ chuyên khoa',
-      chuyenKhoa: 'Đa khoa',
-      maBacSi: 'BS001',
+      hoTen: user?.hoTen || 'Bác sĩ',
+      chuyenKhoa: '',
+      maBacSi: '',
     },
     tongBenhNhanDaKham: 0,
     dangChoKham: 0,
@@ -90,43 +92,30 @@ export default function ThongKeBacSiPage() {
     soCaDoThoiGian: 0,
     tongChiDinhCLS: 0,
     tongDonThuocKe: 0,
-    tyLeHoanThanh: '100%',
+    tyLeHoanThanh: null,
     coCauBenhLy: [],
     coCauDoTuoi: {
-      treEm: { count: 12, pct: '24.0%' },
-      truongThanh: { count: 28, pct: '56.0%' },
-      nguoiCaoTuoi: { count: 10, pct: '20.0%' },
+      treEm: { count: 0, pct: '0.0%' },
+      truongThanh: { count: 0, pct: '0.0%' },
+      nguoiCaoTuoi: { count: 0, pct: '0.0%' },
+      khongRo: { count: 0, pct: '0.0%' },
     },
     benhNhanMoiVsTaiKham: {
-      khamMoi: { count: 35, pct: '70.0%' },
-      taiKham: { count: 15, pct: '30.0%' },
+      khamMoi: { count: 0, pct: '0.0%' },
+      taiKham: { count: 0, pct: '0.0%' },
     },
     danhSachCaKham: [],
-    aiTriageMetrics: {
-      tyLeDongThuanAI: '92.4%',
-      tyLeDieuChinh: '7.6%',
-      soCaCanhBaoSom: 4,
-      moTa: '92.4% chẩn đoán của Bác sĩ trùng khớp với phân luồng chuyên khoa tự động của AI Triage.',
-    },
-    khungGioCaoDiem: [
-      { gio: '08:00 - 09:00', trucTiep: 14, trucTuyen: 4, benhNhan: 18, congSuat: 'Cao' },
-      { gio: '09:00 - 10:00', trucTiep: 20, trucTuyen: 6, benhNhan: 26, congSuat: 'Đỉnh điểm' },
-      { gio: '10:00 - 11:00', trucTiep: 17, trucTuyen: 5, benhNhan: 22, congSuat: 'Cao' },
-      { gio: '11:00 - 12:00', trucTiep: 8, trucTuyen: 2, benhNhan: 10, congSuat: 'Bình thường' },
-      { gio: '13:30 - 14:30', trucTiep: 15, trucTuyen: 5, benhNhan: 20, congSuat: 'Cao' },
-      { gio: '14:30 - 15:30', trucTiep: 18, trucTuyen: 6, benhNhan: 24, congSuat: 'Đỉnh điểm' },
-      { gio: '15:30 - 16:30', trucTiep: 12, trucTuyen: 4, benhNhan: 16, congSuat: 'Bình thường' },
-      { gio: '16:30 - 17:30', trucTiep: 6, trucTuyen: 2, benhNhan: 8, congSuat: 'Thấp' },
-    ],
-    tyLeNoShow: '2.5%',
-    tyLeTaiKham: '68.5%',
-    diemHaiLongCSAT: '4.9 / 5.0 ⭐',
+    khungGioCaoDiem: [],
+    tyLeNoShow: null,
+    tyLeHuyLich: null,
+    tyLeTaiKham: null,
+    diemHaiLongCSAT: null,
   };
 
   const timeRangeLabel = useMemo(() => {
     switch (timeRange) {
       case 'hom_nay': return `Hôm nay (${formatDate(new Date())})`;
-      case 'tuan_nay': return '7 ngày qua';
+      case 'tuan_nay': return 'Tuần này (Thứ Hai – Chủ nhật)';
       case 'thang_nay': return `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
       case 'quy_nay': return `Quý ${Math.floor(new Date().getMonth() / 3) + 1}/${new Date().getFullYear()}`;
       case 'tat_ca': return 'Toàn thời gian';
@@ -205,14 +194,15 @@ export default function ThongKeBacSiPage() {
       [],
       ['CHỈ SỐ TỔNG QUAN', 'GIÁ TRỊ'],
       ['Tổng bệnh nhân đã khám', stats.tongBenhNhanDaKham || 0],
-      ['Số ca đang chờ khám', stats.dangChoKham || 0],
+      ['Số ca đang chờ khám (hôm nay)', stats.dangChoKham || 0],
       ['Thời gian khám trung bình', stats.thoiGianKhamTrungBinh || 'Chưa đủ dữ liệu'],
       ['Tổng đơn thuốc đã kê', stats.tongDonThuocKe || 0],
       ['Tổng chỉ định cận lâm sàng', stats.tongChiDinhCLS || 0],
-      ['Tỷ lệ hoàn thành ca khám', stats.tyLeHoanThanh || '100%'],
-      ['Tỷ lệ bệnh nhân tái khám', stats.tyLeTaiKham || '0.0%'],
-      ['Tỷ lệ bệnh nhân hủy lịch (No-show)', stats.tyLeNoShow || '0.0%'],
-      ['Điểm đánh giá hài lòng (CSAT)', stats.diemHaiLongCSAT || '5.0/5.0'],
+      ['Tỷ lệ hoàn thành ca khám', stats.tyLeHoanThanh || 'Chưa đủ dữ liệu'],
+      ['Tỷ lệ bệnh nhân tái khám', stats.tyLeTaiKham || 'Chưa đủ dữ liệu'],
+      ['Tỷ lệ vắng mặt (No-show)', stats.tyLeNoShow || 'Chưa đủ dữ liệu'],
+      ['Tỷ lệ hủy lịch', stats.tyLeHuyLich || 'Chưa đủ dữ liệu'],
+      ['Điểm đánh giá hài lòng (CSAT)', reviews.tongDanhGia > 0 ? `${reviews.diemBacSiTB} / 5.0` : (stats.diemHaiLongCSAT || 'Chưa có đánh giá')],
     ];
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
     wsSummary['!cols'] = [{ wch: 35 }, { wch: 25 }];
@@ -224,7 +214,7 @@ export default function ThongKeBacSiPage() {
       'Mã Ca': c.maCa || '',
       'Mã BN': c.maBenhNhan || '',
       'Họ Tên Bệnh Nhân': c.tenBenhNhan || '',
-      'Tuổi': c.tuoi || '',
+      'Tuổi': c.tuoi ?? 'Không rõ',
       'Giới Tính': c.gioiTinh || '',
       'Ngày Khám': c.ngayKham || '',
       'Giờ Khám': c.gioKham || '',
@@ -412,7 +402,7 @@ export default function ThongKeBacSiPage() {
               <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Bệnh Nhân Đã Khám</p>
               <h3 className="text-3xl font-extrabold text-blue-900 mt-1">{stats.tongBenhNhanDaKham} <span className="text-xs font-normal text-blue-600">ca</span></h3>
               <p className="text-[11px] text-blue-600 mt-1 font-semibold flex items-center gap-1">
-                <Clock className="h-3 w-3" /> Đang chờ: <span className="font-bold text-amber-600">{stats.dangChoKham} bệnh nhân</span>
+                <Clock className="h-3 w-3" /> Đang chờ hôm nay: <span className="font-bold text-amber-600">{stats.dangChoKham} bệnh nhân</span>
               </p>
             </div>
             <div className="p-3.5 bg-blue-100 rounded-2xl text-blue-600 shadow-2xs">
@@ -457,10 +447,10 @@ export default function ThongKeBacSiPage() {
         <MedCard className="bg-gradient-to-br from-emerald-50/80 to-white border-emerald-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Đơn Thuốc & Tỷ Lệ Đạt</p>
+              <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Đơn Thuốc Đã Kê</p>
               <h3 className="text-3xl font-extrabold text-emerald-900 mt-1">{stats.tongDonThuocKe} <span className="text-xs font-normal text-emerald-600">đơn</span></h3>
               <p className="text-[11px] text-emerald-700 mt-1 font-semibold flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3 text-emerald-600" /> Hoàn thành: {stats.tyLeHoanThanh}
+                <CheckCircle2 className="h-3 w-3 text-emerald-600" /> Ca khám hoàn thành: {stats.tyLeHoanThanh || '—'}
               </p>
             </div>
             <div className="p-3.5 bg-emerald-100 rounded-2xl text-emerald-600 shadow-2xs">
@@ -620,8 +610,8 @@ export default function ThongKeBacSiPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Tỷ Lệ Tái Khám (Retention)</p>
-                <h3 className="text-3xl font-extrabold text-emerald-900 mt-1">{stats.tyLeTaiKham}</h3>
-                <p className="text-xs text-emerald-700 mt-1 font-medium">Thước đo sự tin tưởng của bệnh nhân</p>
+                <h3 className="text-3xl font-extrabold text-emerald-900 mt-1">{stats.tyLeTaiKham || '—'}</h3>
+                <p className="text-xs text-emerald-700 mt-1 font-medium">Ca khám của bệnh nhân đã từng khám tại phòng khám</p>
               </div>
               <div className="p-3.5 bg-emerald-100 rounded-2xl text-emerald-600 shadow-2xs">
                 <HeartHandshake className="h-7 w-7" />
@@ -635,12 +625,12 @@ export default function ThongKeBacSiPage() {
               <div>
                 <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">Điểm Hài Lòng (CSAT)</p>
                 <h3 className="text-3xl font-extrabold text-amber-900 mt-1">
-                  {reviews.tongDanhGia > 0 ? `${reviews.diemBacSiTB} / 5.0 ⭐` : `${stats.diemHaiLongCSAT || '5.0 / 5.0 ⭐'}`}
+                  {reviews.tongDanhGia > 0 ? `${reviews.diemBacSiTB} / 5.0 ⭐` : (stats.diemHaiLongCSAT || '—')}
                 </h3>
                 <p className="text-xs text-amber-700 mt-1 font-medium">
                   {reviews.tongDanhGia > 0
                     ? `${reviews.tongDanhGia} lượt đánh giá thực tế (Tỷ lệ hài lòng: ${reviews.tyLeHaiLong})`
-                    : 'Đánh giá trung bình từ bệnh nhân'}
+                    : (stats.diemHaiLongCSAT ? 'Đánh giá trung bình từ bệnh nhân' : 'Chưa có đánh giá trong kỳ này')}
                 </p>
               </div>
               <div className="p-3.5 bg-amber-100 rounded-2xl text-amber-600 shadow-2xs">
@@ -653,9 +643,11 @@ export default function ThongKeBacSiPage() {
           <MedCard className="bg-gradient-to-br from-rose-50/70 to-white border-rose-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-bold text-rose-800 uppercase tracking-wider">Tỷ Lệ Hủy / Vắng Mặt (No-Show)</p>
-                <h3 className="text-2xl font-extrabold text-rose-900 mt-1">{stats.tyLeNoShow}</h3>
-                <p className="text-xs text-rose-700 mt-1 font-medium">Bệnh nhân đặt lịch nhưng không đến</p>
+                <p className="text-xs font-bold text-rose-800 uppercase tracking-wider">Tỷ Lệ Vắng Mặt (No-Show)</p>
+                <h3 className="text-2xl font-extrabold text-rose-900 mt-1">{stats.tyLeNoShow || '—'}</h3>
+                <p className="text-xs text-rose-700 mt-1 font-medium">
+                  Bệnh nhân đặt lịch nhưng không đến · Hủy lịch: {stats.tyLeHuyLich || '—'}
+                </p>
               </div>
               <div className="p-3.5 bg-rose-100 rounded-2xl text-rose-600 shadow-2xs">
                 <AlertCircle className="h-7 w-7" />
@@ -699,6 +691,11 @@ export default function ThongKeBacSiPage() {
               </span>
             </div>
           </div>
+          {stats.coCauDoTuoi?.khongRo?.count > 0 && (
+            <p className="text-[11px] text-gray-500 mt-3">
+              Không rõ ngày sinh: <strong>{stats.coCauDoTuoi.khongRo.count} ca</strong> ({stats.coCauDoTuoi.khongRo.pct}) — không tính vào nhóm tuổi nào.
+            </p>
+          )}
         </MedCard>
 
         <MedCard
@@ -745,10 +742,10 @@ export default function ThongKeBacSiPage() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
-                Điểm Bác Sĩ: {reviews.diemBacSiTB || 5.0} / 5.0 ⭐
+                Điểm Bác Sĩ: {reviews.diemBacSiTB ?? '—'} / 5.0 ⭐
               </span>
               <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-                Hài lòng: {reviews.tyLeHaiLong || '100%'}
+                Hài lòng: {reviews.tyLeHaiLong ?? '—'}
               </span>
             </div>
           </div>
@@ -761,14 +758,14 @@ export default function ThongKeBacSiPage() {
             {/* Cột 1: Điểm số trung bình */}
             <div className="md:col-span-3 flex flex-col items-center justify-center text-center p-2.5 bg-white rounded-lg border border-slate-200/60 shadow-2xs">
               <span className="text-3xl font-black text-amber-600">
-                {reviews.tongDanhGia > 0 ? reviews.diemBacSiTB : '5.0'}
+                {reviews.tongDanhGia > 0 ? reviews.diemBacSiTB : '—'}
               </span>
               <div className="flex items-center gap-0.5 my-1">
                 {[1, 2, 3, 4, 5].map((s) => (
                   <Star
                     key={s}
                     className={`h-4 w-4 ${
-                      s <= Math.round(reviews.diemBacSiTB || 5)
+                      s <= Math.round(reviews.diemBacSiTB || 0)
                         ? 'text-amber-400 fill-amber-400'
                         : 'text-gray-300'
                     }`}
@@ -784,7 +781,7 @@ export default function ThongKeBacSiPage() {
             <div className="md:col-span-5 space-y-1 justify-center flex flex-col px-2">
               {[5, 4, 3, 2, 1].map((star) => {
                 const count = reviews.phanBoSao?.[star] || 0;
-                const pct = reviews.tongDanhGia > 0 ? Math.round((count / reviews.tongDanhGia) * 100) : (star === 5 ? 100 : 0);
+                const pct = reviews.tongDanhGia > 0 ? Math.round((count / reviews.tongDanhGia) * 100) : 0;
                 return (
                   <div key={star} className="flex items-center gap-2 text-xs">
                     <span className="w-9 font-semibold text-gray-700 flex items-center gap-0.5 text-[11px]">
@@ -808,11 +805,11 @@ export default function ThongKeBacSiPage() {
             <div className="md:col-span-4 flex flex-col justify-center space-y-1.5 p-2.5 bg-white rounded-lg border border-slate-200/60 text-xs">
               <div className="flex justify-between items-center text-xs">
                 <span className="text-gray-500">CSAT toàn buổi khám:</span>
-                <strong className="text-primary-700">{reviews.diemTrungBinhChung || 5.0} / 5.0 ⭐</strong>
+                <strong className="text-primary-700">{reviews.diemTrungBinhChung ?? '—'} / 5.0 ⭐</strong>
               </div>
               <div className="flex justify-between items-center text-xs">
                 <span className="text-gray-500">Tỷ lệ bệnh nhân hài lòng:</span>
-                <strong className="text-emerald-600">{reviews.tyLeHaiLong || '100%'}</strong>
+                <strong className="text-emerald-600">{reviews.tyLeHaiLong ?? '—'}</strong>
               </div>
               <p className="text-[10px] text-gray-400 italic pt-1 border-t border-gray-100">
                 Tự động đồng bộ theo bộ lọc kỳ khám của Bác sĩ.
@@ -1063,7 +1060,7 @@ export default function ThongKeBacSiPage() {
                     </td>
                     <td className="py-3 px-3 text-center">
                       <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-700">
-                        {ca.tuoi} tuổi
+                        {ca.tuoi != null ? `${ca.tuoi} tuổi` : 'Không rõ tuổi'}
                       </span>
                     </td>
                     <td className="py-3 px-3">

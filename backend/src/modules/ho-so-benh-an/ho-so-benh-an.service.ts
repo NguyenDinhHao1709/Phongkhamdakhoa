@@ -74,18 +74,16 @@ export class HoSoBenhAnService {
   ) {}
 
   /**
-   * Thống kê & Báo cáo hiệu suất Bác sĩ (Dữ liệu chuẩn xác từ MySQL + Hỗ trợ in ấn A4)
-   */
-  /**
-   * Thống kê & Báo cáo hiệu suất Bác sĩ (Dữ liệu chuẩn xác 100% từ MySQL)
+   * Thống kê & Báo cáo hiệu suất Bác sĩ. Chỉ số nào chưa đủ dữ liệu trả về null (frontend hiện "—").
    */
   async getThongKeBacSi(userId: number, filter: { range?: string; hinhThuc?: string; tuNgay?: string; denNgay?: string }) {
-    let bacSiId = 1;
+    // Người dùng không gắn với bác sĩ nào → không có dữ liệu (trước đây rơi về số liệu của bác sĩ id=1)
+    let bacSiId = -1;
     let thongTinBacSi = {
-      id: 1,
-      hoTen: 'Bác sĩ Chuyên Khoa',
-      chuyenKhoa: 'Đa Khoa',
-      maBacSi: 'BS001',
+      id: 0,
+      hoTen: 'Bác sĩ',
+      chuyenKhoa: '',
+      maBacSi: '',
       soDienThoai: '',
       email: '',
     };
@@ -106,240 +104,266 @@ export class HoSoBenhAnService {
       }
     }
 
-    // 1. Tính toán khoảng ngày chính xác theo filter
-    const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
-    let fromDate = todayStr;
-    let toDate = todayStr;
+    // 1. Khoảng ngày theo giờ Việt Nam (UTC+7, không có giờ mùa hè).
+    // Không dùng toISOString() trực tiếp: từ 0h–7h sáng giờ VN nó vẫn trả về ngày hôm trước.
+    const ngayVN = (d: Date) => new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+    const congNgay = (ymd: string, n: number) => {
+      const d = new Date(`${ymd}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + n);
+      return d.toISOString().slice(0, 10);
+    };
+    const ngayCuoiThang = (nam: number, thang: number) => new Date(Date.UTC(nam, thang, 0)).getUTCDate(); // thang: 1-12
+    const pad = (n: number) => String(n).padStart(2, '0');
+
+    const today = ngayVN(new Date());
+    const [y, m] = today.split('-').map(Number);
+    let fromDate = today;
+    let toDate = today;
 
     const range = filter.range || 'thang_nay';
     if (range === 'hom_nay') {
-      fromDate = todayStr;
-      toDate = todayStr;
+      fromDate = today;
+      toDate = today;
     } else if (range === 'tuan_nay' || range === '7days') {
-      const day = now.getDay();
-      const diffToMonday = (day === 0 ? -6 : 1) - day;
-      const monday = new Date(now);
-      monday.setDate(now.getDate() + diffToMonday);
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
-      fromDate = monday.toISOString().slice(0, 10);
-      toDate = sunday.toISOString().slice(0, 10);
+      const thu = new Date(`${today}T00:00:00Z`).getUTCDay();
+      fromDate = congNgay(today, thu === 0 ? -6 : 1 - thu); // Thứ Hai
+      toDate = congNgay(fromDate, 6); // Chủ nhật
     } else if (range === 'thang_nay' || range === 'month') {
-      const y = now.getFullYear();
-      const m = now.getMonth();
-      const lastDay = new Date(y, m + 1, 0);
-      fromDate = `${y}-${String(m + 1).padStart(2, '0')}-01`;
-      toDate = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+      fromDate = `${y}-${pad(m)}-01`;
+      toDate = `${y}-${pad(m)}-${pad(ngayCuoiThang(y, m))}`;
     } else if (range === 'quy_nay') {
-      const y = now.getFullYear();
-      const m = now.getMonth();
-      const quarter = Math.floor(m / 3);
-      const firstMonth = quarter * 3;
-      const lastMonth = firstMonth + 2;
-      const lastDay = new Date(y, lastMonth + 1, 0);
-      fromDate = `${y}-${String(firstMonth + 1).padStart(2, '0')}-01`;
-      toDate = `${y}-${String(lastMonth + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
-    } else if (filter.tuNgay && filter.denNgay) {
-      fromDate = filter.tuNgay;
-      toDate = filter.denNgay;
+      const thangDau = Math.floor((m - 1) / 3) * 3 + 1;
+      fromDate = `${y}-${pad(thangDau)}-01`;
+      toDate = `${y}-${pad(thangDau + 2)}-${pad(ngayCuoiThang(y, thangDau + 2))}`;
+    } else if (filter.tuNgay || filter.denNgay) {
+      fromDate = (filter.tuNgay || filter.denNgay) as string;
+      toDate = filter.denNgay || today;
+      if (fromDate > toDate) [fromDate, toDate] = [toDate, fromDate];
     }
 
-    // 2. Query BenhAnKham của Bác sĩ trong khoảng ngày
+    const hinhThuc = filter.hinhThuc && filter.hinhThuc !== 'all' ? filter.hinhThuc : null;
+    const pct = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(1)}%` : null);
+
+    // 2. Phiếu khám của bác sĩ trong kỳ
     const qbBak = this.benhAnRepo.createQueryBuilder('bak')
       .leftJoinAndSelect('bak.hoSoBenhAn', 'hsba')
       .leftJoinAndSelect('hsba.benhNhan', 'bn')
       .where('bak.bacSiId = :bacSiId', { bacSiId })
       .andWhere('DATE(bak.ngayKham) BETWEEN :fromDate AND :toDate', { fromDate, toDate });
-
-    if (filter.hinhThuc && filter.hinhThuc !== 'all') {
-      qbBak.andWhere('bak.hinhThucKham = :hinhThuc', { hinhThuc: filter.hinhThuc });
-    }
-
+    if (hinhThuc) qbBak.andWhere('bak.hinhThucKham = :hinhThuc', { hinhThuc });
     const allRecords = await qbBak.orderBy('bak.ngayKham', 'DESC').getMany();
 
-    // 3. Query LichHen của Bác sĩ trong khoảng ngày
+    // 3. Lịch hẹn của bác sĩ trong kỳ
     const qbLh = this.lichHenRepo.createQueryBuilder('lh')
       .leftJoinAndSelect('lh.benhNhan', 'bn')
       .where('lh.bacSiId = :bacSiId', { bacSiId })
       .andWhere('DATE(lh.ngayHen) BETWEEN :fromDate AND :toDate', { fromDate, toDate });
-
-    if (filter.hinhThuc && filter.hinhThuc !== 'all') {
-      qbLh.andWhere('lh.hinhThuc = :hinhThuc', { hinhThuc: filter.hinhThuc });
-    }
-
+    if (hinhThuc) qbLh.andWhere('lh.hinhThuc = :hinhThuc', { hinhThuc });
     const appointments = await qbLh.orderBy('lh.ngayHen', 'DESC').addOrderBy('lh.gioHen', 'DESC').getMany();
 
-    // 4. Số ca đang chờ khám thực tế (trong kỳ lọc và đúng hình thức khám)
-    let dangChoKham = 0;
-    if (filter.hinhThuc === 'truc_tiep' || !filter.hinhThuc || filter.hinhThuc === 'all') {
-      const choKhamTrucTiep = await this.tiepNhanRepo.createQueryBuilder('tn')
-        .where('tn.bacSiId = :bacSiId', { bacSiId })
-        .andWhere('tn.trangThai = :trangThai', { trangThai: TrangThaiTiepNhan.CHO_KHAM })
-        .andWhere('DATE(tn.thoiGianDen) BETWEEN :fromDate AND :toDate', { fromDate, toDate })
-        .getCount();
-      dangChoKham += choKhamTrucTiep;
+    // Lịch hẹn nào đã có phiếu khám: qua lượt tiếp nhận (khám trực tiếp) hoặc mã lịch trong ghi chú (Telehealth)
+    const luotIds = allRecords.map(r => r.luotTiepNhanId).filter((id): id is number => !!id);
+    const luotSangLichHen = new Map<number, number>();
+    if (luotIds.length) {
+      const luots = await this.tiepNhanRepo.createQueryBuilder('tn')
+        .select(['tn.id', 'tn.lichHenId'])
+        .where('tn.id IN (:...ids)', { ids: luotIds })
+        .getMany();
+      luots.forEach(t => { if (t.lichHenId) luotSangLichHen.set(t.id, t.lichHenId); });
+    }
+    const lichHenCuaPhieu = (r: BenhAnKham) => appointments.find(l =>
+      (!!r.luotTiepNhanId && l.id === luotSangLichHen.get(r.luotTiepNhanId)) ||
+      (!!l.maLichHen && !!r.ghiChu?.includes(l.maLichHen)));
+    const lichHenDaCoPhieu = new Set<number>();
+    allRecords.forEach(r => { const lh = lichHenCuaPhieu(r); if (lh) lichHenDaCoPhieu.add(lh.id); });
+
+    // Lần khám đầu tiên của từng bệnh nhân tại phòng khám → phân biệt Khám mới / Tái khám.
+    // (Cột tai_kham là NGÀY HẸN tái khám lần sau, không cho biết ca này có phải tái khám hay không.)
+    const benhNhanIds = [...new Set([
+      ...allRecords.map(r => r.hoSoBenhAn?.benhNhan?.id),
+      ...appointments.map(l => l.benhNhanId),
+    ].filter((id): id is number => !!id))];
+    const lanKhamDau = new Map<number, { minId: number; ngayDau: string }>();
+    if (benhNhanIds.length) {
+      const rows = await this.benhAnRepo.manager.query(
+        `SELECT hs.benh_nhan_id AS bnId, MIN(bak.id) AS minId, MIN(bak.ngay_kham) AS ngayDau
+           FROM benh_an_kham bak JOIN ho_so_benh_an hs ON hs.id = bak.ho_so_benh_an_id
+          WHERE hs.benh_nhan_id IN (?) GROUP BY hs.benh_nhan_id`,
+        [benhNhanIds],
+      );
+      rows.forEach((x: any) => lanKhamDau.set(Number(x.bnId), { minId: Number(x.minId), ngayDau: ngayVN(new Date(x.ngayDau)) }));
     }
 
-    if (filter.hinhThuc === 'truc_tuyen' || !filter.hinhThuc || filter.hinhThuc === 'all') {
-      const choKhamTrucTuyen = await this.lichHenRepo.createQueryBuilder('lh')
-        .where('lh.bacSiId = :bacSiId', { bacSiId })
-        .andWhere('lh.hinhThuc = :hinhThuc', { hinhThuc: 'truc_tuyen' })
-        .andWhere('lh.trangThai IN (:...trangThais)', { trangThais: [TrangThaiLichHen.CHO_XAC_NHAN, TrangThaiLichHen.DA_XAC_NHAN, TrangThaiLichHen.DANG_KHAM] })
-        .andWhere('DATE(lh.ngayHen) BETWEEN :fromDate AND :toDate', { fromDate, toDate })
-        .getCount();
-      dangChoKham += choKhamTrucTuyen;
-    }
+    const tinhTuoi = (ngaySinh: any, ngayKham: string): number | null => {
+      if (!ngaySinh) return null;
+      const ns = ngaySinh instanceof Date ? ngayVN(ngaySinh) : String(ngaySinh).slice(0, 10);
+      const [y1, m1, d1] = ns.split('-').map(Number);
+      const [y2, m2, d2] = ngayKham.split('-').map(Number);
+      if (!y1) return null;
+      let tuoi = y2 - y1;
+      if (m2 < m1 || (m2 === m1 && d2 < d1)) tuoi--;
+      return tuoi >= 0 ? tuoi : null;
+    };
 
-    // 5. Số lượng chỉ định cận lâm sàng thật từ CSDL trong kỳ lọc
-    const tongChiDinhCLS = await this.clsRepo.createQueryBuilder('cls')
-      .where('cls.bacSiChiDinhId = :bacSiId', { bacSiId })
-      .andWhere('DATE(cls.thoiGianChiDinh) BETWEEN :fromDate AND :toDate', { fromDate, toDate })
-      .getCount();
-
-    // 6. Số đơn thuốc đã kê thật từ CSDL trong kỳ lọc
-    const tongDonThuocKe = await this.donThuocRepo.createQueryBuilder('dt')
-      .where('dt.bacSiKeId = :bacSiId', { bacSiId })
-      .andWhere('DATE(dt.ngayKe) BETWEEN :fromDate AND :toDate', { fromDate, toDate })
-      .getCount();
-
-    // 7. Tổng hợp danh sách ca khám chi tiết (Encounter list)
-    const currentYear = new Date().getFullYear();
+    // 4. Danh sách ca khám
     const danhSachCaKham: any[] = [];
-
-    // Map các bản ghi bệnh án
     allRecords.forEach((r) => {
       const bn = r.hoSoBenhAn?.benhNhan;
-      let tuoi = 30;
-      if (bn?.ngaySinh) {
-        tuoi = currentYear - new Date(bn.ngaySinh).getFullYear();
-      } else if ((bn as any)?.namSinh) {
-        tuoi = currentYear - (bn as any).namSinh;
-      }
-
-      // Giờ khám: kiểm tra xem có mã lịch hẹn trong ghi chú không để lấy đúng giờ hẹn đã đặt
-      let gioKhamStr = '08:30';
-      const lhMatch = appointments.find(l => r.ghiChu?.includes(l.maLichHen));
-      if (lhMatch?.gioHen) {
-        gioKhamStr = String(lhMatch.gioHen).substring(0, 5);
-      } else if (r.ngayKham) {
-        gioKhamStr = new Date(r.ngayKham).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-      }
-
-      const isOnline = r.hinhThucKham === 'truc_tuyen' || r.ghiChu?.includes('Telehealth');
+      const ngayKham = ngayVN(new Date(r.ngayKham));
+      const lh = lichHenCuaPhieu(r);
+      const gioKham = lh?.gioHen
+        ? String(lh.gioHen).substring(0, 5)
+        : new Date(r.ngayKham).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Ho_Chi_Minh' });
+      const isOnline = r.hinhThucKham === 'truc_tuyen';
+      const chanDoan = r.chanDoanXacDinh || r.chanDoanSoBo || '';
+      const dau = bn?.id ? lanKhamDau.get(bn.id) : undefined;
 
       danhSachCaKham.push({
         id: r.id,
-        stt: danhSachCaKham.length + 1,
         maCa: r.hoSoBenhAn?.maHoSo || `BA${String(r.id).padStart(6, '0')}`,
-        maBenhNhan: bn?.maBenhNhan || `BN${String(bn?.id || 1).padStart(6, '0')}`,
+        maBenhNhan: bn?.maBenhNhan || '',
         tenBenhNhan: bn?.hoTen || 'Bệnh nhân',
-        tuoi: Math.max(1, tuoi),
+        tuoi: tinhTuoi(bn?.ngaySinh, ngayKham),
         gioiTinh: bn?.gioiTinh === 'nu' ? 'Nữ' : 'Nam',
-        ngayKham: r.ngayKham ? new Date(r.ngayKham).toISOString().slice(0, 10) : fromDate,
-        gioKham: gioKhamStr,
+        ngayKham,
+        gioKham,
         hinhThuc: isOnline ? 'Khám trực tuyến (Telehealth)' : 'Khám trực tiếp',
         hinhThucKham: isOnline ? 'truc_tuyen' : 'truc_tiep',
-        chanDoan: r.chanDoanXacDinh || r.chanDoanSoBo || 'Khám lâm sàng',
-        maIcd10: r.maIcd10 || 'Z00.0',
+        chanDoan: chanDoan || 'Chưa ghi chẩn đoán',
+        coChanDoan: !!chanDoan,
+        maIcd10: r.maIcd10 || null,
         trangThai: r.trangThai === TrangThaiBenhAnKham.DA_HOAN_THANH ? 'Hoàn thành' : 'Đang khám',
-        taiKham: r.taiKham ? 'Tái khám' : 'Khám mới',
+        taiKham: dau && dau.minId < r.id ? 'Tái khám' : 'Khám mới',
       });
     });
 
-    // Thêm các lịch hẹn trong kỳ nếu chưa có trong danhSachCaKham
+    // Lịch hẹn chưa có phiếu khám. Bỏ lịch đã hủy / vắng mặt / chưa thanh toán: đó không phải ca khám.
+    const trangThaiLichHenText: Partial<Record<TrangThaiLichHen, string>> = {
+      [TrangThaiLichHen.HOAN_THANH]: 'Hoàn thành',
+      [TrangThaiLichHen.DANG_KHAM]: 'Đang khám',
+      [TrangThaiLichHen.DA_XAC_NHAN]: 'Đã xác nhận',
+      [TrangThaiLichHen.CHO_XAC_NHAN]: 'Chờ xác nhận',
+    };
     appointments.forEach((lh) => {
-      const maCa = lh.maLichHen || `LH${String(lh.id).padStart(6, '0')}`;
-      const isAlreadyRecorded = danhSachCaKham.some(c => c.maCa === maCa || (allRecords.some(r => r.ghiChu?.includes(maCa))));
-      if (!isAlreadyRecorded && lh.trangThai !== TrangThaiLichHen.DA_HUY) {
-        const bn = lh.benhNhan;
-        let tuoi = 28;
-        if (bn?.ngaySinh) {
-          tuoi = currentYear - new Date(bn.ngaySinh).getFullYear();
-        } else if ((bn as any)?.namSinh) {
-          tuoi = currentYear - (bn as any).namSinh;
-        }
+      const ttText = trangThaiLichHenText[lh.trangThai];
+      if (!ttText || lichHenDaCoPhieu.has(lh.id)) return;
+      const bn = lh.benhNhan;
+      const ngayKham = String(lh.ngayHen).substring(0, 10);
+      const isOnline = lh.hinhThuc === 'truc_tuyen' || lh.hinhThuc === 'online';
+      const dau = lh.benhNhanId ? lanKhamDau.get(lh.benhNhanId) : undefined;
 
-        let ttText = 'Chờ xác nhận';
-        if (lh.trangThai === TrangThaiLichHen.HOAN_THANH) ttText = 'Hoàn thành';
-        else if (lh.trangThai === TrangThaiLichHen.DA_XAC_NHAN) ttText = 'Đã xác nhận';
-        else if (lh.trangThai === TrangThaiLichHen.DANG_KHAM) ttText = 'Đang khám';
-
-        const isOnline = lh.hinhThuc === 'truc_tuyen' || lh.hinhThuc === 'online';
-
-        danhSachCaKham.push({
-          id: lh.id,
-          stt: danhSachCaKham.length + 1,
-          maCa,
-          maBenhNhan: bn?.maBenhNhan || `BN${String(bn?.id || 1).padStart(6, '0')}`,
-          tenBenhNhan: bn?.hoTen || 'Bệnh nhân',
-          tuoi: Math.max(1, tuoi),
-          gioiTinh: bn?.gioiTinh === 'nu' ? 'Nữ' : 'Nam',
-          ngayKham: lh.ngayHen ? String(lh.ngayHen).substring(0, 10) : fromDate,
-          gioKham: lh.gioHen ? String(lh.gioHen).substring(0, 5) : '09:00',
-          hinhThuc: isOnline ? 'Khám trực tuyến (Telehealth)' : 'Khám trực tiếp',
-          hinhThucKham: isOnline ? 'truc_tuyen' : 'truc_tiep',
-          chanDoan: lh.lyDoKham || 'Khám chuyên khoa',
-          maIcd10: 'Z00.0',
-          trangThai: ttText,
-          taiKham: 'Khám mới',
-        });
-      }
-    });
-
-    // 8. Xác định tập ca đã khám thực tế để thống kê cơ cấu chuyên môn
-    const caDaKham = danhSachCaKham.filter(c => c.trangThai === 'Hoàn thành');
-    const tapThongKe = caDaKham.length > 0 ? caDaKham : danhSachCaKham;
-
-    // Cơ cấu bệnh lý (Top mặt bệnh thực tế của Bác sĩ trong kỳ lọc - chỉ tính ca đã chẩn đoán/đã khám)
-    const benhLyCount: Record<string, number> = {};
-    tapThongKe.forEach((c) => {
-      let benh = (c.chanDoan || '').trim();
-      if (benh.startsWith('[Chuyên khoa:')) {
-        benh = benh.replace(/^\[Chuyên khoa:\s*[^\]]+\]\s*/i, '');
-      }
-      if (benh && benh !== 'Khám lâm sàng' && benh !== 'Khám chuyên khoa') {
-        benhLyCount[benh] = (benhLyCount[benh] || 0) + 1;
-      } else if (benh) {
-        benhLyCount[benh] = (benhLyCount[benh] || 0) + 1;
-      }
-    });
-
-    const colors = ['#2563EB', '#0D9488', '#F59E0B', '#EF4444', '#8B5CF6'];
-    const totalBenhCount = Object.values(benhLyCount).reduce((a, b) => a + b, 0);
-    const coCauBenhLy = Object.entries(benhLyCount)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, count], index) => {
-        const pct = totalBenhCount > 0 ? ((count / totalBenhCount) * 100).toFixed(1) : '0.0';
-        return { name, count, value: count, percentage: `${pct}%`, color: colors[index % colors.length] };
+      danhSachCaKham.push({
+        id: lh.id,
+        maCa: lh.maLichHen || `LH${String(lh.id).padStart(6, '0')}`,
+        maBenhNhan: bn?.maBenhNhan || '',
+        tenBenhNhan: bn?.hoTen || 'Bệnh nhân',
+        tuoi: tinhTuoi(bn?.ngaySinh, ngayKham),
+        gioiTinh: bn?.gioiTinh === 'nu' ? 'Nữ' : 'Nam',
+        ngayKham,
+        gioKham: String(lh.gioHen).substring(0, 5),
+        hinhThuc: isOnline ? 'Khám trực tuyến (Telehealth)' : 'Khám trực tiếp',
+        hinhThucKham: isOnline ? 'truc_tuyen' : 'truc_tiep',
+        // Lý do khám do bệnh nhân khai, không phải chẩn đoán → không đưa vào cơ cấu bệnh lý
+        chanDoan: lh.lyDoKham ? `Lý do khám: ${lh.lyDoKham}` : 'Chưa ghi chẩn đoán',
+        coChanDoan: false,
+        maIcd10: null,
+        trangThai: ttText,
+        taiKham: dau && dau.ngayDau < ngayKham ? 'Tái khám' : 'Khám mới',
       });
-
-    // 9. Cơ cấu độ tuổi bệnh nhân thực tế (tính theo tập ca khám trong kỳ)
-    let treEm = 0;
-    let truongThanh = 0;
-    let caoTuoi = 0;
-    tapThongKe.forEach(c => {
-      if (c.tuoi < 16) treEm++;
-      else if (c.tuoi >= 60) caoTuoi++;
-      else truongThanh++;
     });
+
+    danhSachCaKham.sort((a, b) => `${b.ngayKham} ${b.gioKham}`.localeCompare(`${a.ngayKham} ${a.gioKham}`));
+    danhSachCaKham.forEach((c, i) => { c.stt = i + 1; });
+
+    // 5. Chỉ số tổng quan: chỉ tính ca đã khám xong; mẫu số tỷ lệ hoàn thành bỏ lịch hẹn chưa tới ngày
+    const caDaKham = danhSachCaKham.filter(c => c.trangThai === 'Hoàn thành');
+    const countCompleted = caDaKham.length;
+    const caDaDenNgay = danhSachCaKham.filter(c => c.ngayKham <= today);
+    const tyLeHoanThanh = pct(countCompleted, caDaDenNgay.length);
+
+    // Đang chờ khám: số liệu tức thời của HÔM NAY, không phụ thuộc kỳ lọc
+    let dangChoKham = 0;
+    if (hinhThuc !== 'truc_tuyen') {
+      dangChoKham += await this.tiepNhanRepo.createQueryBuilder('tn')
+        .where('tn.bacSiId = :bacSiId', { bacSiId })
+        .andWhere('tn.trangThai = :trangThai', { trangThai: TrangThaiTiepNhan.CHO_KHAM })
+        .andWhere('DATE(tn.thoiGianDen) = :today', { today })
+        .getCount();
+    }
+    if (hinhThuc !== 'truc_tiep') {
+      dangChoKham += await this.lichHenRepo.createQueryBuilder('lh')
+        .where('lh.bacSiId = :bacSiId', { bacSiId })
+        .andWhere('lh.hinhThuc = :ht', { ht: 'truc_tuyen' })
+        .andWhere('lh.trangThai IN (:...trangThais)', { trangThais: [TrangThaiLichHen.CHO_XAC_NHAN, TrangThaiLichHen.DA_XAC_NHAN, TrangThaiLichHen.DANG_KHAM] })
+        .andWhere('lh.ngayHen = :today', { today })
+        .getCount();
+    }
+
+    // Chỉ định CLS (bỏ phiếu đã hủy) và đơn thuốc, theo đúng hình thức khám của phiếu khám gốc
+    const qbCls = this.clsRepo.createQueryBuilder('cls')
+      .where('cls.bacSiChiDinhId = :bacSiId', { bacSiId })
+      .andWhere('cls.trangThai != :huy', { huy: TrangThaiChiDinh.HUY })
+      .andWhere('DATE(cls.thoiGianChiDinh) BETWEEN :fromDate AND :toDate', { fromDate, toDate });
+    if (hinhThuc) {
+      qbCls.innerJoin(BenhAnKham, 'bakCls', 'bakCls.id = cls.benhAnKhamId')
+        .andWhere('bakCls.hinhThucKham = :hinhThuc', { hinhThuc });
+    }
+    const tongChiDinhCLS = await qbCls.getCount();
+
+    const qbDt = this.donThuocRepo.createQueryBuilder('dt')
+      .where('dt.bacSiKeId = :bacSiId', { bacSiId })
+      .andWhere('DATE(dt.ngayKe) BETWEEN :fromDate AND :toDate', { fromDate, toDate });
+    if (hinhThuc) {
+      qbDt.innerJoin(BenhAnKham, 'bakDt', 'bakDt.id = dt.benhAnKhamId')
+        .andWhere('bakDt.hinhThucKham = :hinhThuc', { hinhThuc });
+    }
+    const tongDonThuocKe = await qbDt.getCount();
+
+    // 6. Cơ cấu bệnh lý: chỉ ca đã khám có chẩn đoán của bác sĩ, gộp theo mã ICD-10 nếu có
+    const benhLyCount = new Map<string, { name: string; count: number }>();
+    caDaKham.filter(c => c.coChanDoan).forEach((c) => {
+      const text = String(c.chanDoan).replace(/^\[Chuyên khoa:\s*[^\]]+\]\s*/i, '').trim();
+      const icd = c.maIcd10 ? String(c.maIcd10).toUpperCase() : null;
+      const key = icd ? `icd:${icd}` : `txt:${text.toLowerCase()}`;
+      const name = icd && !text.toUpperCase().startsWith(icd) ? `${c.maIcd10} - ${text}` : text;
+      const cur = benhLyCount.get(key);
+      if (cur) cur.count++;
+      else benhLyCount.set(key, { name, count: 1 });
+    });
+    const colors = ['#2563EB', '#0D9488', '#F59E0B', '#EF4444', '#8B5CF6'];
+    const totalBenhCount = [...benhLyCount.values()].reduce((a, b) => a + b.count, 0);
+    const coCauBenhLy = [...benhLyCount.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+      .map(({ name, count }, index) => ({
+        name,
+        count,
+        value: count,
+        percentage: pct(count, totalBenhCount) || '0.0%',
+        color: colors[index % colors.length],
+      }));
+
+    // 7. Cơ cấu độ tuổi (tuổi tại ngày khám; không có ngày sinh → nhóm "Không rõ")
+    const tapThongKe = caDaKham;
     const totalDemographic = tapThongKe.length;
+    const nhom = (pred: (c: any) => boolean) => {
+      const count = tapThongKe.filter(pred).length;
+      return { count, pct: pct(count, totalDemographic) || '0.0%' };
+    };
     const coCauDoTuoi = {
-      treEm: { count: treEm, pct: totalDemographic > 0 ? `${((treEm / totalDemographic) * 100).toFixed(1)}%` : '0.0%' },
-      truongThanh: { count: truongThanh, pct: totalDemographic > 0 ? `${((truongThanh / totalDemographic) * 100).toFixed(1)}%` : '0.0%' },
-      nguoiCaoTuoi: { count: caoTuoi, pct: totalDemographic > 0 ? `${((caoTuoi / totalDemographic) * 100).toFixed(1)}%` : '0.0%' },
+      treEm: nhom(c => c.tuoi !== null && c.tuoi < 16),
+      truongThanh: nhom(c => c.tuoi !== null && c.tuoi >= 16 && c.tuoi < 60),
+      nguoiCaoTuoi: nhom(c => c.tuoi !== null && c.tuoi >= 60),
+      khongRo: nhom(c => c.tuoi === null),
     };
 
-    // 10. Tỷ lệ Bệnh nhân Mới vs Tái khám thực tế
-    const countTaiKham = tapThongKe.filter(c => c.taiKham === 'Tái khám').length;
-    const countKhamMoi = totalDemographic - countTaiKham;
+    // 8. Bệnh nhân mới vs tái khám
     const benhNhanMoiVsTaiKham = {
-      khamMoi: { count: countKhamMoi, pct: totalDemographic > 0 ? `${((countKhamMoi / totalDemographic) * 100).toFixed(1)}%` : '0.0%' },
-      taiKham: { count: countTaiKham, pct: totalDemographic > 0 ? `${((countTaiKham / totalDemographic) * 100).toFixed(1)}%` : '0.0%' },
+      khamMoi: nhom(c => c.taiKham === 'Khám mới'),
+      taiKham: nhom(c => c.taiKham === 'Tái khám'),
     };
 
-    // 11. Khung giờ cao điểm (Workload by hour theo dữ liệu thật)
+    // 9. Khung giờ cao điểm
     const hourSlots: Record<string, { trucTiep: number; trucTuyen: number; benhNhan: number }> = {
       '08:00 - 09:00': { trucTiep: 0, trucTuyen: 0, benhNhan: 0 },
       '09:00 - 10:00': { trucTiep: 0, trucTuyen: 0, benhNhan: 0 },
@@ -350,7 +374,6 @@ export class HoSoBenhAnService {
       '15:30 - 16:30': { trucTiep: 0, trucTuyen: 0, benhNhan: 0 },
       '16:30 - 17:30': { trucTiep: 0, trucTuyen: 0, benhNhan: 0 },
     };
-
     const getSlotKey = (hour: number) => {
       if (hour < 9) return '08:00 - 09:00';
       if (hour < 10) return '09:00 - 10:00';
@@ -361,60 +384,46 @@ export class HoSoBenhAnService {
       if (hour < 16) return '15:30 - 16:30';
       return '16:30 - 17:30';
     };
-
-    tapThongKe.forEach(r => {
-      const hStr = r.gioKham?.split(':')[0];
-      const hour = hStr ? parseInt(hStr, 10) : 9;
-      const isOnline = r.hinhThucKham === 'truc_tuyen' || r.hinhThuc?.includes('trực tuyến') || r.hinhThuc?.includes('Telehealth');
-      const slotKey = getSlotKey(hour);
-      if (hourSlots[slotKey]) {
-        if (isOnline) {
-          hourSlots[slotKey].trucTuyen++;
-        } else {
-          hourSlots[slotKey].trucTiep++;
-        }
-        hourSlots[slotKey].benhNhan++;
-      }
+    tapThongKe.forEach(c => {
+      const hour = parseInt(String(c.gioKham).split(':')[0], 10);
+      if (Number.isNaN(hour)) return;
+      const slot = hourSlots[getSlotKey(hour)];
+      if (c.hinhThucKham === 'truc_tuyen') slot.trucTuyen++;
+      else slot.trucTiep++;
+      slot.benhNhan++;
     });
+    const khungGioCaoDiem = Object.entries(hourSlots).map(([gio, data]) => ({
+      gio,
+      ...data,
+      congSuat: data.benhNhan >= 5 ? 'Đỉnh điểm' : data.benhNhan >= 3 ? 'Cao' : data.benhNhan > 0 ? 'Bình thường' : 'Thấp',
+    }));
 
-    const khungGioCaoDiem = Object.entries(hourSlots).map(([gio, data]) => {
-      const count = data.benhNhan;
-      return {
-        gio,
-        trucTiep: data.trucTiep,
-        trucTuyen: data.trucTuyen,
-        benhNhan: count,
-        congSuat: count >= 5 ? 'Đỉnh điểm' : count >= 3 ? 'Cao' : count > 0 ? 'Bình thường' : 'Thấp',
-      };
-    });
+    // 10. No-show = vắng mặt / lịch hẹn đã tới ngày (không tính lịch đã hủy hoặc chưa thanh toán).
+    // Tỷ lệ hủy lịch báo riêng vì hủy trước không phải "không đến".
+    const khongTinhNoShow = [TrangThaiLichHen.DA_HUY, TrangThaiLichHen.CHO_DUYET_HUY, TrangThaiLichHen.CHO_THANH_TOAN];
+    const lichDaDenNgay = appointments.filter(a =>
+      String(a.ngayHen).substring(0, 10) <= today && !khongTinhNoShow.includes(a.trangThai));
+    const soVangMat = lichDaDenNgay.filter(a => a.trangThai === TrangThaiLichHen.VANG_MAT).length;
+    const tyLeNoShow = pct(soVangMat, lichDaDenNgay.length);
+    const tyLeHuyLich = pct(appointments.filter(a => a.trangThai === TrangThaiLichHen.DA_HUY).length, appointments.length);
 
-    // 12. Tỷ lệ hủy lịch (No-show) & CSAT từ bảng danh_gia_ca_kham
-    const totalAppointmentsInPeriod = appointments.length;
-    const cancelledAppointments = appointments.filter(a => a.trangThai === TrangThaiLichHen.DA_HUY).length;
-    const noShowPct = totalAppointmentsInPeriod > 0
-      ? ((cancelledAppointments / totalAppointmentsInPeriod) * 100).toFixed(1)
-      : '0.0';
-    const countCompleted = danhSachCaKham.filter(c => c.trangThai === 'Hoàn thành').length;
-    const tyLeHoanThanh = danhSachCaKham.length > 0
-      ? `${((countCompleted / danhSachCaKham.length) * 100).toFixed(1)}%`
-      : '100%';
-
-    // Đánh giá CSAT thực tế
+    // 11. CSAT trong kỳ lọc; chưa có đánh giá thì trả null thay vì 5.0 giả
     const [dgResult] = await this.benhAnRepo.manager.query(
-      `SELECT AVG(diem_bac_si) as avgScore, COUNT(*) as totalReviews FROM danh_gia_ca_kham WHERE bac_si_id = ?`,
-      [bacSiId]
+      `SELECT AVG(diem_bac_si) AS avgScore, COUNT(*) AS totalReviews
+         FROM danh_gia_ca_kham WHERE bac_si_id = ? AND DATE(tao_luc) BETWEEN ? AND ?`,
+      [bacSiId, fromDate, toDate],
     );
-    const avgScore = dgResult?.avgScore ? Number(dgResult.avgScore).toFixed(1) : '5.0';
-    const totalReviews = dgResult?.totalReviews ? Number(dgResult.totalReviews) : 0;
-    const diemHaiLongCSAT = totalReviews > 0 ? `${avgScore} / 5.0 ⭐` : '5.0 / 5.0 ⭐';
+    const diemHaiLongCSAT = Number(dgResult?.totalReviews) > 0
+      ? `${Number(dgResult.avgScore).toFixed(1)} / 5.0 ⭐`
+      : null;
 
-    // Thời gian khám TB = từ lúc mở phiếu khám (ngay_kham) đến lúc bác sĩ bấm kết thúc (thoi_gian_ket_thuc).
+    // 12. Thời gian khám TB = từ lúc mở phiếu khám (ngay_kham) đến lúc bác sĩ bấm kết thúc (thoi_gian_ket_thuc).
     // Chỉ tính ca có đủ 2 mốc; ca cũ / ca bị đóng tự động khi thanh toán không có mốc kết thúc nên bỏ qua.
     // Loại ca > 4 giờ: phiếu bị bỏ ngỏ rồi mới đóng, không phản ánh thời gian khám.
     const thoiLuongCa = allRecords
       .filter(r => r.trangThai === TrangThaiBenhAnKham.DA_HOAN_THANH && r.ngayKham && r.thoiGianKetThuc)
       .map(r => (new Date(r.thoiGianKetThuc as Date).getTime() - new Date(r.ngayKham).getTime()) / 60000)
-      .filter(m => m > 0 && m <= 240);
+      .filter(mins => mins > 0 && mins <= 240);
     const soCaDoThoiGian = thoiLuongCa.length;
     const thoiGianKhamTrungBinh = soCaDoThoiGian > 0
       ? `${(thoiLuongCa.reduce((a, b) => a + b, 0) / soCaDoThoiGian).toFixed(1)} phút/ca`
@@ -424,7 +433,8 @@ export class HoSoBenhAnService {
       message: 'OK',
       data: {
         thongTinBacSi,
-        tongBenhNhanDaKham: countCompleted > 0 ? countCompleted : danhSachCaKham.length,
+        kyBaoCao: { tuNgay: fromDate, denNgay: toDate },
+        tongBenhNhanDaKham: countCompleted,
         dangChoKham,
         thoiGianKhamTrungBinh,
         soCaDoThoiGian,
@@ -435,15 +445,10 @@ export class HoSoBenhAnService {
         coCauDoTuoi,
         benhNhanMoiVsTaiKham,
         danhSachCaKham,
-        aiTriageMetrics: {
-          tyLeDongThuanAI: '100%',
-          tyLeDieuChinh: '0.0%',
-          soCaCanhBaoSom: 0,
-          moTa: `${totalDemographic > 0 ? '100% chẩn đoán khớp với phân luồng chuyên khoa của AI Triage.' : 'Chưa ghi nhận ca phân luồng AI Triage trong kỳ này.'}`,
-        },
         khungGioCaoDiem,
-        tyLeNoShow: `${noShowPct}%`,
-        tyLeTaiKham: benhNhanMoiVsTaiKham.taiKham.pct,
+        tyLeNoShow,
+        tyLeHuyLich,
+        tyLeTaiKham: totalDemographic > 0 ? benhNhanMoiVsTaiKham.taiKham.pct : null,
         diemHaiLongCSAT,
       },
     };

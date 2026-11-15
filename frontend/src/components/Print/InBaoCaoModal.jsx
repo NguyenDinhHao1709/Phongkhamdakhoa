@@ -34,6 +34,54 @@ export default function InBaoCaoModal({
   const danhSachCa = stats?.danhSachCaKham || [];
   const coCauBenh = stats?.coCauBenhLy || [];
 
+  // Bảng KPI in ra: đánh giá được so với mục tiêu từ số liệu thật; thiếu dữ liệu thì ghi rõ, không ghi "Đạt"
+  const soPhanTram = (v) => (v ? parseFloat(String(v)) : null);
+  const soPhut = stats?.thoiGianKhamTrungBinh ? parseFloat(stats.thoiGianKhamTrungBinh) : null;
+  const tyLeTaiKham = soPhanTram(stats?.tyLeTaiKham);
+  const diemCsat = stats?.diemHaiLongCSAT ? parseFloat(stats.diemHaiLongCSAT) : null;
+  const tongDaKham = stats?.tongBenhNhanDaKham || 0;
+  const kpiRows = [
+    {
+      ten: 'Tổng số bệnh nhân đã khám',
+      giaTri: `${tongDaKham} ca`,
+      mucTieu: '≥ 20 ca/kỳ',
+      danhGia: tongDaKham >= 20 ? 'Đạt' : 'Chưa đạt',
+    },
+    {
+      ten: 'Thời gian khám trung bình mỗi ca',
+      giaTri: stats?.thoiGianKhamTrungBinh || '—',
+      mucTieu: '10 - 15 phút',
+      danhGia: soPhut == null ? 'Chưa đủ dữ liệu'
+        : soPhut < 10 ? 'Ngoài chuẩn (nhanh)'
+        : soPhut > 15 ? 'Ngoài chuẩn (lâu)'
+        : 'Trong chuẩn',
+    },
+    {
+      ten: 'Chỉ định cận lâm sàng (XN, CĐHA)',
+      giaTri: `${stats?.tongChiDinhCLS || 0} phiếu`,
+      mucTieu: 'Tùy chẩn đoán',
+      danhGia: '—',
+    },
+    {
+      ten: 'Đơn thuốc đã kê',
+      giaTri: `${stats?.tongDonThuocKe || 0} đơn`,
+      mucTieu: 'Tùy chẩn đoán',
+      danhGia: '—',
+    },
+    {
+      ten: 'Tỷ lệ bệnh nhân tái khám',
+      giaTri: stats?.tyLeTaiKham || '—',
+      mucTieu: '≥ 60.0%',
+      danhGia: tyLeTaiKham == null ? 'Chưa đủ dữ liệu' : tyLeTaiKham >= 60 ? 'Đạt' : 'Chưa đạt',
+    },
+    {
+      ten: 'Điểm hài lòng bệnh nhân (CSAT)',
+      giaTri: stats?.diemHaiLongCSAT || '—',
+      mucTieu: '≥ 4.5 ⭐',
+      danhGia: diemCsat == null ? 'Chưa có đánh giá' : diemCsat >= 4.5 ? 'Đạt' : 'Chưa đạt',
+    },
+  ];
+
   const handlePrint = () => {
     window.print();
   };
@@ -195,8 +243,8 @@ export default function InBaoCaoModal({
                 <p><strong>Hình thức khám:</strong> {hinhThucLabel}</p>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <p><strong>Tổng số bệnh nhân tiếp nhận:</strong> {stats?.tongBenhNhanDaKham || danhSachCa.length} ca</p>
-                <p><strong>Tỷ lệ hoàn thành ca khám:</strong> {stats?.tyLeHoanThanh || '98.5%'}</p>
+                <p><strong>Tổng số bệnh nhân đã khám:</strong> {stats?.tongBenhNhanDaKham || 0} ca</p>
+                <p><strong>Tỷ lệ hoàn thành ca khám:</strong> {stats?.tyLeHoanThanh || '—'}</p>
               </div>
             </div>
 
@@ -217,48 +265,18 @@ export default function InBaoCaoModal({
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td className="border border-gray-300 p-2 font-semibold">1. Tổng số bệnh nhân đã khám</td>
-                      <td className="border border-gray-300 p-2 text-center font-bold text-blue-900">{stats?.tongBenhNhanDaKham || danhSachCa.length} ca</td>
-                      <td className="border border-gray-300 p-2 text-center">≥ 20 ca/kỳ</td>
-                      <td className="border border-gray-300 p-2 text-center text-emerald-800 font-medium">Hoàn thành tốt</td>
-                    </tr>
-                    <tr>
-                      <td className="border border-gray-300 p-2 font-semibold">2. Thời gian khám trung bình mỗi ca</td>
-                      <td className="border border-gray-300 p-2 text-center font-bold">{stats?.thoiGianKhamTrungBinh || '12.5 phút/ca'}</td>
-                      <td className="border border-gray-300 p-2 text-center">10 - 15 phút</td>
-                      <td className="border border-gray-300 p-2 text-center text-emerald-800 font-medium">Chuẩn y khoa</td>
-                    </tr>
-                    <tr>
-                      <td className="border border-gray-300 p-2 font-semibold">3. Chỉ định cận lâm sàng (XN, CĐHA)</td>
-                      <td className="border border-gray-300 p-2 text-center font-bold">{stats?.tongChiDinhCLS || 0} phiếu</td>
-                      <td className="border border-gray-300 p-2 text-center">Tùy chẩn đoán</td>
-                      <td className="border border-gray-300 p-2 text-center text-gray-700">Chỉ định phù hợp phác đồ</td>
-                    </tr>
-                    <tr>
-                      <td className="border border-gray-300 p-2 font-semibold">4. Đơn thuốc phát hành</td>
-                      <td className="border border-gray-300 p-2 text-center font-bold">{stats?.tongDonThuocKe || 0} đơn</td>
-                      <td className="border border-gray-300 p-2 text-center">100% đúng liều</td>
-                      <td className="border border-gray-300 p-2 text-center text-emerald-800 font-medium">100% qua duyệt tương tác</td>
-                    </tr>
-                    <tr>
-                      <td className="border border-gray-300 p-2 font-semibold">5. Tỷ lệ Bác sĩ đồng thuận AI Triage</td>
-                      <td className="border border-gray-300 p-2 text-center font-bold text-purple-900">{stats?.aiTriageMetrics?.tyLeDongThuanAI || '92.4%'}</td>
-                      <td className="border border-gray-300 p-2 text-center">≥ 90.0%</td>
-                      <td className="border border-gray-300 p-2 text-center text-emerald-800 font-medium">Độ chính xác rất cao</td>
-                    </tr>
-                    <tr>
-                      <td className="border border-gray-300 p-2 font-semibold">6. Tỷ lệ tái khám đúng hẹn</td>
-                      <td className="border border-gray-300 p-2 text-center font-bold">{stats?.tyLeTaiKham || '68.5%'}</td>
-                      <td className="border border-gray-300 p-2 text-center">≥ 60.0%</td>
-                      <td className="border border-gray-300 p-2 text-center text-gray-700">Bệnh nhân tuân thủ tốt</td>
-                    </tr>
-                    <tr>
-                      <td className="border border-gray-300 p-2 font-semibold">7. Điểm hài lòng bệnh nhân (CSAT)</td>
-                      <td className="border border-gray-300 p-2 text-center font-bold text-amber-900">{stats?.diemHaiLongCSAT || '4.9 / 5.0 ⭐'}</td>
-                      <td className="border border-gray-300 p-2 text-center">≥ 4.5 ⭐</td>
-                      <td className="border border-gray-300 p-2 text-center text-emerald-800 font-medium">Xuất sắc</td>
-                    </tr>
+                    {kpiRows.map((row, idx) => (
+                      <tr key={row.ten}>
+                        <td className="border border-gray-300 p-2 font-semibold">{idx + 1}. {row.ten}</td>
+                        <td className="border border-gray-300 p-2 text-center font-bold">{row.giaTri}</td>
+                        <td className="border border-gray-300 p-2 text-center">{row.mucTieu}</td>
+                        <td className={`border border-gray-300 p-2 text-center font-medium ${
+                          row.danhGia === 'Đạt' || row.danhGia === 'Trong chuẩn' ? 'text-emerald-800'
+                            : row.danhGia === 'Chưa đạt' || row.danhGia?.startsWith('Ngoài chuẩn') ? 'text-rose-700'
+                            : 'text-gray-600'
+                        }`}>{row.danhGia}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -367,7 +385,7 @@ export default function InBaoCaoModal({
                           <td className="border border-gray-300 p-1.5 text-center">{idx + 1}</td>
                           <td className="border border-gray-300 p-1.5 text-center font-mono font-bold text-gray-800">{ca.maCa}</td>
                           <td className="border border-gray-300 p-1.5 font-medium">{ca.tenBenhNhan}</td>
-                          <td className="border border-gray-300 p-1.5 text-center">{ca.tuoi}</td>
+                          <td className="border border-gray-300 p-1.5 text-center">{ca.tuoi ?? "—"}</td>
                           <td className="border border-gray-300 p-1.5 text-center">{ca.gioiTinh}</td>
                           <td className="border border-gray-300 p-1.5 text-center">{ca.ngayKham} {ca.gioKham}</td>
                           <td className="border border-gray-300 p-1.5 text-center">{ca.hinhThuc.includes('Telehealth') ? 'Telehealth' : 'Trực tiếp'}</td>
