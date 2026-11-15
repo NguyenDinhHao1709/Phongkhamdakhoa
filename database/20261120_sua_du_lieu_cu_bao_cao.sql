@@ -3,19 +3,14 @@
 -- Chạy tay trên Clever Cloud. Code mới KHÔNG phụ thuộc migration này: thứ tự chạy với lúc deploy không quan trọng.
 -- An toàn khi chạy lại nhiều lần (mỗi bước chỉ chạm các dòng còn sai).
 --
+-- KHÔNG sửa giờ biên bản chốt ca: backend đặt TZ=Asia/Ho_Chi_Minh (main.ts, Dockerfile) nên giờ ca trực
+-- đã được lưu đúng giờ VN từ trước; chỉ mã CC-yyyymmdd tạo trước 7h sáng có thể mang ngày hôm trước (vô hại).
+--
 -- Nên chạy phần "XEM TRƯỚC" trước để biết sẽ sửa bao nhiêu dòng, rồi mới chạy phần "SỬA".
 -- ============================================================================
 
 
 -- ─────────────────────────────── XEM TRƯỚC ───────────────────────────────
-
--- 1. Biên bản chốt ca bị lệch +7 giờ: giờ kết thúc ca lại SAU lúc lập biên bản hơn 3 giờ (không thể xảy ra —
---    biên bản chỉ lập được khi ca đã kết thúc). Nguyên nhân: máy chủ Render chạy giờ UTC đọc giờ nhập
---    "07:00" thành 07:00 UTC rồi lưu thành 14:00 giờ VN.
-SELECT id, ma_chot_ca, thoi_gian_bat_dau, thoi_gian_ket_thuc, tao_luc,
-       thoi_gian_bat_dau - INTERVAL 7 HOUR AS bat_dau_dung, thoi_gian_ket_thuc - INTERVAL 7 HOUR AS ket_thuc_dung
-  FROM chot_ca_thu_ngan
- WHERE thoi_gian_ket_thuc > tao_luc + INTERVAL 3 HOUR;
 
 -- 2. Báo cáo bộ phận ghi sai người gửi: lấy người gửi thật từ nhật ký GUI_BAO_CAO_BO_PHAN (cùng tiêu đề,
 --    cùng bộ phận, ghi trong vòng 2 phút).
@@ -74,12 +69,6 @@ SELECT COUNT(*) AS so_dong_ua_gia FROM nhat_ky_he_thong WHERE user_agent = 'Trì
 
 -- ────────────────────────────────── SỬA ──────────────────────────────────
 START TRANSACTION;
-
--- 1. Lùi 7 giờ cho biên bản chốt ca bị lệch (số tiền trong biên bản đã tính đúng giờ VN, không cần sửa)
-UPDATE chot_ca_thu_ngan
-   SET thoi_gian_bat_dau = thoi_gian_bat_dau - INTERVAL 7 HOUR,
-       thoi_gian_ket_thuc = thoi_gian_ket_thuc - INTERVAL 7 HOUR
- WHERE thoi_gian_ket_thuc > tao_luc + INTERVAL 3 HOUR;
 
 -- 2. Người gửi báo cáo bộ phận = id nhân viên thật
 UPDATE bao_cao_bo_phan bc

@@ -940,8 +940,8 @@ export class ThanhToanService {
       qb.andWhere('hd.thuNganId = :myThuNganId', { myThuNganId: myNvId });
     }
 
-    // Khoảng ngày theo giờ Việt Nam. Trước đây dùng new Date() theo giờ máy chủ (UTC trên Render)
-    // nên từ 0h–7h sáng "Hôm nay" vẫn là ngày hôm qua. Kết nối DB chạy múi +07:00 nên chuỗi giờ VN so sánh trực tiếp được.
+    // Khoảng ngày theo giờ Việt Nam, dùng chung helper khoangNgayVN với các báo cáo khác (không phụ thuộc
+    // múi giờ của tiến trình). Kết nối DB chạy múi +07:00 nên chuỗi giờ VN so sánh trực tiếp được.
     let rangeStart: string | Date | null = null;
     let rangeEnd: string | null = null;
 
@@ -1297,9 +1297,14 @@ export class ThanhToanService {
     if (!dto.soTien || Number(dto.soTien) <= 0) throw new BadRequestException('Số tiền chi phải lớn hơn 0 đ');
 
     const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
-    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const countToday = await this.phieuChiHoatDongRepo.count();
-    const maPhieuChi = `PC-HD-${todayStr}-${String(countToday + 1).padStart(4, '0')}`;
+    // Ngày VN + số lớn nhất trong ngày + 1 (trước đây ngày UTC + TỔNG số phiếu + 1: tên biến "countToday" nhưng
+    // đếm mọi phiếu, và trùng mã — cột UNIQUE — khi từng xóa phiếu)
+    const tienToPc = `PC-HD-${ngayVN().replace(/-/g, '')}-`;
+    const [maxPc] = await this.phieuChiHoatDongRepo.query(
+      `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ma_phieu_chi, '-', -1) AS UNSIGNED)), 0) AS n FROM phieu_chi_hoat_dong WHERE ma_phieu_chi LIKE ?`,
+      [`${tienToPc}%`],
+    );
+    const maPhieuChi = `${tienToPc}${String(Number(maxPc?.n || 0) + 1).padStart(4, '0')}`;
 
     const pc = this.phieuChiHoatDongRepo.create({
       maPhieuChi,
@@ -1611,8 +1616,8 @@ export class ThanhToanService {
 
   /**
    * Giờ ca trực nhập từ form là giờ Việt Nam ("YYYY-MM-DDTHH:mm"). Chuỗi dùng để so sánh trong SQL
-   * (kết nối DB chạy múi +07:00); Date lưu xuống phải gắn rõ +07:00 — new Date('...T07:00') bị hiểu
-   * theo giờ máy chủ (UTC trên Render) nên biên bản bị lệch 7 tiếng.
+   * (kết nối DB chạy múi +07:00); Date lưu xuống gắn rõ +07:00 để không phụ thuộc biến TZ của tiến trình
+   * (main.ts đặt TZ=Asia/Ho_Chi_Minh; thiếu nó thì new Date('...T07:00') sẽ bị hiểu theo giờ máy chủ).
    */
   private khoangCaTruc(thoiGianBatDau: string, thoiGianKetThuc: string) {
     const tu = `${thoiGianBatDau}:00`;
