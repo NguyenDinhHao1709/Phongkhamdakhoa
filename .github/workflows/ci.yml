@@ -32,7 +32,8 @@ jobs:
         working-directory: office-service
         run: npm install --no-package-lock && npm run build
 
-      - name: Install and build frontend
+      # npm run build chạy "prebuild" (= npm run lint, có no-undef) trước vite build
+      - name: Install, lint and build frontend
         working-directory: frontend
         run: npm ci && npm run build
 
