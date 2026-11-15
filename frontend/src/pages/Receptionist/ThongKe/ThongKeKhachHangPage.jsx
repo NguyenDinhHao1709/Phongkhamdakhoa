@@ -159,14 +159,18 @@ export default function ThongKeKhachHangPage() {
       ['Ngày xuất báo cáo:', new Date().toLocaleString('vi-VN')],
       [],
       ['CHỈ SỐ TIẾP ĐÓN', 'GIÁ TRỊ'],
-      ['Tổng số lượt tiếp nhận', stats?.tongLuot || listData.length],
-      ['Số ca hoàn thành khám', stats?.hoanThanh || 0],
-      ['Số ca đang khám', stats?.dangKham || 0],
-      ['Số ca chờ khám', stats?.choKham || 0],
-      ['Số ca đã hủy', stats?.daHuy || 0],
-      ['Thời gian chờ trung bình', stats?.thoiGianChoTrungBinh || '12 phút'],
-      ['Đặt hẹn trước (Online)', stats?.tyLeDatHenOnline || '0%'],
-      ['Khám trực tiếp vãng lai', stats?.tyLeVangLai || '0%'],
+      ['Tổng số lượt tiếp nhận', stats?.tongLuot ?? 0],
+      ['Số ca hoàn thành khám', stats?.hoanThanhCount ?? 0],
+      ['Tỷ lệ hoàn thành (trên lượt không bị hủy)', stats?.tyLeHoanThanh != null ? `${stats.tyLeHoanThanh}%` : 'Chưa đủ dữ liệu'],
+      ['Số ca đang khám', stats?.dangKhamCount ?? 0],
+      ['Số ca chờ khám / chờ CLS', stats?.choKhamCount ?? 0],
+      ['Số ca chờ thanh toán', stats?.choThanhToanCount ?? 0],
+      ['Số ca đã hủy', stats?.daHuyCount ?? 0],
+      ['Thời gian chờ khám trung bình', stats?.thoiGianChoTrungBinhPhut != null ? `${stats.thoiGianChoTrungBinhPhut} phút (${stats.soLuotDoThoiGianCho} lượt)` : 'Chưa đủ dữ liệu'],
+      ['Bệnh nhân tự đặt lịch online', stats?.datLichCount ?? 0],
+      ['Hẹn qua nhân viên', stats?.henQuaNhanVienCount ?? 0],
+      ['Vãng lai (không có lịch hẹn)', stats?.vangLaiCount ?? 0],
+      ['Điểm hài lòng tiếp đón', danhGiaData.diemTrungBinhTiepDon != null ? `${danhGiaData.diemTrungBinhTiepDon} / 5.0 (${danhGiaData.tongSoDanhGia} lượt)` : 'Chưa có đánh giá'],
     ];
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
     wsSummary['!cols'] = [{ wch: 30 }, { wch: 25 }];
@@ -186,14 +190,17 @@ export default function ThongKeKhachHangPage() {
       'Phòng Khám': item.phongKham?.ten_phong || item.phongKham?.tenPhong || 'Chưa chỉ định',
       'Bác Sĩ Tiếp Nhận': item.bacSi?.nhanVien?.hoTen || 'Chưa chỉ định',
       'Thời Gian Đến': item.thoiGianDen ? new Date(item.thoiGianDen).toLocaleString('vi-VN') : '',
-      'Huyết Áp (mmHg)': item.sinhHieu?.huyetApTamThu ? `${item.sinhHieu.huyetApTamThu}/${item.sinhHieu.huyetApTamTruong || 80}` : '—',
+      'Huyết Áp (mmHg)': item.sinhHieu?.huyetApTamThu ? `${item.sinhHieu.huyetApTamThu}/${item.sinhHieu.huyetApTamTruong ?? '?'}` : '—',
       'Mạch (nhịp/phút)': item.sinhHieu?.nhipTim ? `${item.sinhHieu.nhipTim}` : '—',
       'Nhiệt Độ (°C)': item.sinhHieu?.nhietDoC ? `${item.sinhHieu.nhietDoC}` : '—',
       'SpO2 (%)': item.sinhHieu?.spo2 ? `${item.sinhHieu.spo2}` : '—',
       'Chiều Cao (cm)': item.sinhHieu?.chieuCaoCm || '—',
       'Cân Nặng (kg)': item.sinhHieu?.canNangKg || '—',
-      'Hình Thức': item.lichHenId ? 'Đặt hẹn online' : 'Khám trực tiếp',
-      'Trạng Thái': item.trangThai === 'cho_kham' ? 'Chờ khám' : item.trangThai === 'dang_kham' ? 'Đang khám' : item.trangThai === 'hoan_thanh' ? 'Hoàn thành' : item.trangThai,
+      'Hình Thức': !item.lichHenId ? 'Vãng lai' : item.lichHen?.nguonDat === 'benh_nhan_tu_dat' ? 'Bệnh nhân tự đặt online' : 'Hẹn qua nhân viên',
+      'Trạng Thái': {
+        cho_kham: 'Chờ khám', dang_kham: 'Đang khám', dang_cls: 'Đang làm CLS', da_co_kq_cls: 'Đã có KQ CLS',
+        cho_thanh_toan: 'Chờ thanh toán', hoan_thanh: 'Hoàn thành', da_huy: 'Đã hủy',
+      }[item.trangThai] || item.trangThai,
     }));
     const wsDetail = XLSX.utils.json_to_sheet(detailRows);
     wsDetail['!cols'] = [
@@ -269,10 +276,11 @@ export default function ThongKeKhachHangPage() {
     return Math.max(...stats.khungGio.map((k) => k.count), 1);
   }, [stats]);
 
+  // Chưa có đánh giá → null (hiện "—"), không hiển thị 5.0 giả
   const danhGiaData = stats?.danhGia || {
     tongSoDanhGia: 0,
-    diemTrungBinhTiepDon: 5.0,
-    diemTrungBinhChung: 5.0,
+    diemTrungBinhTiepDon: null,
+    diemTrungBinhChung: null,
     danhSach: [],
   };
 
@@ -561,7 +569,9 @@ export default function ThongKeKhachHangPage() {
             {stats?.datLichCount?.toLocaleString('vi-VN') || 0}{' '}
             <span className="text-xs font-normal text-indigo-600">lượt</span>
           </p>
-          <p className="text-[11px] text-indigo-600 mt-0.5 font-medium">Đã cọc & xác nhận trước</p>
+          <p className="text-[11px] text-indigo-600 mt-0.5 font-medium">
+            Bệnh nhân tự đặt · Hẹn qua nhân viên: {stats?.henQuaNhanVienCount?.toLocaleString('vi-VN') || 0}
+          </p>
         </div>
 
         {/* Card 3: Khám vãng lai */}
@@ -578,7 +588,7 @@ export default function ThongKeKhachHangPage() {
             {stats?.vangLaiCount?.toLocaleString('vi-VN') || 0}{' '}
             <span className="text-xs font-normal text-amber-600">lượt</span>
           </p>
-          <p className="text-[11px] text-amber-600 mt-0.5 font-medium">Đến trực tiếp đăng ký</p>
+          <p className="text-[11px] text-amber-600 mt-0.5 font-medium">Đến trực tiếp, không có lịch hẹn</p>
         </div>
 
         {/* Card 4: Hoàn thành khám */}
@@ -596,10 +606,10 @@ export default function ThongKeKhachHangPage() {
               {stats?.hoanThanhCount?.toLocaleString('vi-VN') || 0}
             </p>
             <span className="text-xs font-semibold text-emerald-600">
-              ({stats?.tyLeHoanThanh || 0}%)
+              ({stats?.tyLeHoanThanh != null ? `${stats.tyLeHoanThanh}%` : '—'})
             </span>
           </div>
-          <p className="text-[11px] text-emerald-600 mt-0.5 font-medium">Đã xong quy trình khám</p>
+          <p className="text-[11px] text-emerald-600 mt-0.5 font-medium">Tỷ lệ trên lượt không bị hủy</p>
         </div>
 
         {/* Card 5: Điểm đánh giá dịch vụ */}
@@ -617,7 +627,7 @@ export default function ThongKeKhachHangPage() {
           </div>
           <div className="flex items-baseline gap-1.5 mt-2">
             <p className="text-2xl font-extrabold text-amber-900">
-              {danhGiaData.diemTrungBinhTiepDon || '5.0'}
+              {danhGiaData.diemTrungBinhTiepDon ?? '—'}
             </p>
             <span className="text-xs font-semibold text-amber-600">/ 5.0 ⭐</span>
           </div>
@@ -822,6 +832,11 @@ export default function ThongKeKhachHangPage() {
                 <p className="text-[11px] text-amber-500 mt-0.5">Hỗ trợ đo HA & hướng dẫn tận tình</p>
               </div>
             </div>
+            {stats?.nhomTuoi?.khongRo > 0 && (
+              <p className="text-[11px] text-gray-500 mt-3">
+                Không rõ ngày sinh: <strong>{stats.nhomTuoi.khongRo} lượt</strong> — không tính vào nhóm tuổi nào.
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -833,7 +848,7 @@ export default function ThongKeKhachHangPage() {
           <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-4 sm:p-5 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-3.5">
               <div className="w-13 h-13 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-2xl font-black shrink-0">
-                {danhGiaData.diemTrungBinhTiepDon || '5.0'}
+                {danhGiaData.diemTrungBinhTiepDon ?? '—'}
               </div>
               <div>
                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -854,7 +869,7 @@ export default function ThongKeKhachHangPage() {
             <div className="flex items-center gap-2 self-start md:self-auto">
               <div className="bg-white/15 px-3 py-1.5 rounded-xl text-center backdrop-blur-xs">
                 <p className="text-[10px] text-white/80">BS Khám</p>
-                <p className="text-sm font-bold">{danhGiaData.diemTrungBinhChung || '5.0'}/5.0</p>
+                <p className="text-sm font-bold">{danhGiaData.diemTrungBinhChung ?? '—'}/5.0</p>
               </div>
               <div className="bg-white/15 px-3 py-1.5 rounded-xl text-center backdrop-blur-xs">
                 <p className="text-[10px] text-white/80">Tỷ lệ hài lòng</p>
@@ -1403,12 +1418,12 @@ export default function ThongKeKhachHangPage() {
           kyBaoCao: getKyBaoCaoLabel(),
           tongTiepDon: stats?.tongLuot ?? stats?.tongTiepDon ?? 0,
           khamTrucTiep: stats?.vangLaiCount ?? stats?.khamTrucTiep ?? 0,
-          khamDatLich: stats?.datLichCount ?? stats?.khamDatLich ?? 0,
+          khamDatLich: (stats?.datLichCount ?? 0) + (stats?.henQuaNhanVienCount ?? 0),
           choKham: stats?.choKhamCount ?? stats?.choKham ?? 0,
           dangKham: stats?.dangKhamCount ?? stats?.dangKham ?? 0,
           hoanThanh: stats?.hoanThanhCount ?? stats?.hoanThanh ?? 0,
           huyKham: stats?.daHuyCount ?? stats?.huyKham ?? 0,
-          diemHaiLongCSAT: `${stats?.diemTrungBinhTiepDon || danhGiaData?.tongQuan?.diemTiepDonTB || 5.0}/5.0`,
+          diemHaiLongCSAT: danhGiaData.diemTrungBinhTiepDon != null ? `${danhGiaData.diemTrungBinhTiepDon}/5.0` : 'Chưa có đánh giá',
         }}
       />
 

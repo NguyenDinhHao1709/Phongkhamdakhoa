@@ -1,3 +1,4 @@
+import { khoangNgayVN, NGAY_DAU_TIEN } from '../../common/utils/khoang-ngay-vn.util';
 import {
   Injectable, NotFoundException, BadRequestException, ConflictException,
 } from '@nestjs/common';
@@ -1412,34 +1413,14 @@ export class TiepNhanService implements OnModuleInit {
   }) {
     const qb = this.luotRepo.createQueryBuilder('ltn');
 
-    // Xác định khoảng ngày
-    let tuNgay: Date | null = null;
-    let denNgay: Date | null = null;
-
-    const now = new Date();
-    if (query.tuNgay) {
-      tuNgay = new Date(query.tuNgay);
-      tuNgay.setHours(0, 0, 0, 0);
-    }
-    if (query.denNgay) {
-      denNgay = new Date(query.denNgay);
-      denNgay.setHours(23, 59, 59, 999);
-    }
-
-    if (!tuNgay && !denNgay) {
-      if (query.khoangThoiGian === 'hom_nay') {
-        tuNgay = new Date();
-        tuNgay.setHours(0, 0, 0, 0);
-        denNgay = new Date();
-        denNgay.setHours(23, 59, 59, 999);
-      } else if (query.khoangThoiGian === '7_ngay') {
-        tuNgay = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        tuNgay.setHours(0, 0, 0, 0);
-      } else if (query.khoangThoiGian === 'thang_nay') {
-        tuNgay = new Date(now.getFullYear(), now.getMonth(), 1);
-      }
-      // 'tat_ca': không giới hạn ngày
-    }
+    // Khoảng ngày theo giờ VN (dùng chung với các trang báo cáo khác).
+    // Trước đây "7 ngày qua" thực chất lấy 8 ngày; "Toàn thời gian" thì không lọc ngày.
+    const { fromDate, toDate } = khoangNgayVN(
+      { range: query.khoangThoiGian || 'tat_ca', tuNgay: query.tuNgay, denNgay: query.denNgay },
+      'tat_ca',
+    );
+    const tuNgay = fromDate === NGAY_DAU_TIEN ? null : `${fromDate} 00:00:00`;
+    const denNgay = fromDate === NGAY_DAU_TIEN ? null : `${toDate} 23:59:59`;
 
     if (tuNgay) qb.andWhere('ltn.thoiGianDen >= :tuNgay', { tuNgay });
     if (denNgay) qb.andWhere('ltn.thoiGianDen <= :denNgay', { denNgay });
@@ -1452,7 +1433,9 @@ export class TiepNhanService implements OnModuleInit {
       .leftJoin('ltn.lichHen', 'lh')
       .andWhere('lh.nguonDat = :nguon', { nguon: 'benh_nhan_tu_dat' });
     const datLichCount = await qbDatLich.getCount();
-    const vangLaiCount = Math.max(0, tongLuot - datLichCount);
+    const coLichHenCount = await qb.clone().innerJoin('ltn.lichHen', 'lhAny').getCount();
+    const henQuaNhanVienCount = Math.max(0, coLichHenCount - datLichCount);
+    const vangLaiCount = Math.max(0, tongLuot - coLichHenCount);
 
     // 3. Theo trạng thái
     const qbChoKham = qb.clone().andWhere('ltn.trangThai IN (:...st)', { st: ['cho_kham', 'dang_cls', 'da_co_kq_cls'] });
@@ -1467,7 +1450,11 @@ export class TiepNhanService implements OnModuleInit {
     const qbDaHuy = qb.clone().andWhere('ltn.trangThai = :st', { st: 'da_huy' });
     const daHuyCount = await qbDaHuy.getCount();
 
-    const tyLeHoanThanh = tongLuot > 0 ? Number(((hoanThanhCount / tongLuot) * 100).toFixed(1)) : 0;
+    const choThanhToanCount = await qb.clone().andWhere('ltn.trangThai = :st', { st: 'cho_thanh_toan' }).getCount();
+
+    // Lượt đã hủy không đi hết quy trình nên không tính vào mẫu số
+    const luotHopLe = tongLuot - daHuyCount;
+    const tyLeHoanThanh = luotHopLe > 0 ? Number(((hoanThanhCount / luotHopLe) * 100).toFixed(1)) : null;
 
     // 4. Phân bổ theo chuyên khoa / phòng khám
     const qbPhong = qb.clone()
@@ -1507,24 +1494,37 @@ export class TiepNhanService implements OnModuleInit {
       { khung: '15:00 - 17:00', label: 'Cuối giờ chiều', count: (gioMap[15] || 0) + (gioMap[16] || 0) },
       { khung: '17:00 - 19:00', label: 'Ca tối', count: (gioMap[17] || 0) + (gioMap[18] || 0) },
     ];
+    const ngoaiGio = Object.entries(gioMap)
+      .filter(([gio]) => Number(gio) < 7 || Number(gio) >= 19)
+      .reduce((a, [, n]) => a + n, 0);
+    if (ngoaiGio > 0) khungGioConfig.push({ khung: 'Trước 7h / sau 19h', label: 'Ngoài giờ', count: ngoaiGio });
 
     // 6. Đối tượng bệnh nhân theo nhóm tuổi & giới tính
-    const qbTreEm = qb.clone()
-      .leftJoin('ltn.benhNhan', 'bn')
-      .andWhere('YEAR(CURDATE()) - YEAR(bn.ngaySinh) < 16');
-    const treEmCount = await qbTreEm.getCount();
+    const TUOI = 'TIMESTAMPDIFF(YEAR, bn.ngaySinh, ltn.thoiGianDen)';
+    const demTuoi = (dk: string) => qb.clone().leftJoin('ltn.benhNhan', 'bn').andWhere(dk).getCount();
+    const treEmCount = await demTuoi(`bn.ngaySinh IS NOT NULL AND ${TUOI} < 16`);
+    const caoTuoiCount = await demTuoi(`bn.ngaySinh IS NOT NULL AND ${TUOI} >= 60`);
+    const khongRoTuoiCount = await demTuoi('bn.ngaySinh IS NULL');
+    const nguoiLonCount = Math.max(0, tongLuot - treEmCount - caoTuoiCount - khongRoTuoiCount);
 
-    const qbNguoiCaoTuoi = qb.clone()
-      .leftJoin('ltn.benhNhan', 'bn')
-      .andWhere('YEAR(CURDATE()) - YEAR(bn.ngaySinh) >= 60');
-    const caoTuoiCount = await qbNguoiCaoTuoi.getCount();
-
-    const nguoiLonCount = Math.max(0, tongLuot - treEmCount - caoTuoiCount);
+    // 6b. Thời gian chờ khám TB: từ lúc đến quầy (thoi_gian_den) tới lúc bác sĩ mở phiếu khám (ngay_kham).
+    // Bỏ mốc âm và chờ > 4 giờ (dữ liệu nhập sai / lượt bị treo).
+    const choParams: any[] = [];
+    let choQuery = `
+      SELECT AVG(TIMESTAMPDIFF(SECOND, ltn.thoi_gian_den, bak.ngay_kham)) / 60 AS phut, COUNT(*) AS soLuot
+        FROM luot_tiep_nhan ltn JOIN benh_an_kham bak ON bak.luot_tiep_nhan_id = ltn.id
+       WHERE TIMESTAMPDIFF(SECOND, ltn.thoi_gian_den, bak.ngay_kham) BETWEEN 0 AND 14400
+    `;
+    if (tuNgay) { choQuery += ' AND ltn.thoi_gian_den >= ?'; choParams.push(tuNgay); }
+    if (denNgay) { choQuery += ' AND ltn.thoi_gian_den <= ?'; choParams.push(denNgay); }
+    const [choRaw] = await this.luotRepo.query(choQuery, choParams);
+    const soLuotDoThoiGianCho = Number(choRaw?.soLuot || 0);
+    const thoiGianChoTrungBinhPhut = soLuotDoThoiGianCho > 0 ? Math.round(Number(choRaw.phut)) : null;
 
     // 7. Thống kê đánh giá của bệnh nhân về tiếp đón & quy trình khám
     let danhGiaList: any[] = [];
-    let diemTrungBinhTiepDon = 5.0;
-    let diemTrungBinhChung = 5.0;
+    let diemTrungBinhTiepDon: number | null = null;
+    let diemTrungBinhChung: number | null = null;
     let tongSoDanhGia = 0;
 
     try {
@@ -1541,8 +1541,8 @@ export class TiepNhanService implements OnModuleInit {
       tongSoDanhGia = allDg.length;
 
       if (tongSoDanhGia > 0) {
-        const sumTiepDon = allDg.reduce((acc, cur) => acc + Number(cur.diemTiepDon || 5), 0);
-        const sumTB = allDg.reduce((acc, cur) => acc + Number(cur.diemTrungBinh || 5), 0);
+        const sumTiepDon = allDg.reduce((acc, cur) => acc + Number(cur.diemTiepDon), 0);
+        const sumTB = allDg.reduce((acc, cur) => acc + Number(cur.diemTrungBinh), 0);
         diemTrungBinhTiepDon = Number((sumTiepDon / tongSoDanhGia).toFixed(1));
         diemTrungBinhChung = Number((sumTB / tongSoDanhGia).toFixed(1));
       }
@@ -1575,18 +1575,23 @@ export class TiepNhanService implements OnModuleInit {
       data: {
         tongLuot,
         datLichCount,
+        henQuaNhanVienCount,
         vangLaiCount,
         choKhamCount,
         dangKhamCount,
+        choThanhToanCount,
         hoanThanhCount,
         daHuyCount,
         tyLeHoanThanh,
+        thoiGianChoTrungBinhPhut,
+        soLuotDoThoiGianCho,
         theoPhongKham,
         khungGio: khungGioConfig,
         nhomTuoi: {
           treEm: treEmCount,
           nguoiLon: nguoiLonCount,
           caoTuoi: caoTuoiCount,
+          khongRo: khongRoTuoiCount,
         },
         danhGia: {
           tongSoDanhGia,
@@ -1624,33 +1629,14 @@ export class TiepNhanService implements OnModuleInit {
       .leftJoin('phong_kham', 'pk', 'pk.id = ltn.phongKhamId')
       .addSelect(['pk.id', 'pk.ten_phong', 'pk.chuyen_khoa']);
 
-    // Xác định khoảng thời gian
-    const now = new Date();
-    let tuNgay: Date | null = null;
-    let denNgay: Date | null = null;
-
-    if (query.tuNgay) {
-      tuNgay = new Date(query.tuNgay);
-      tuNgay.setHours(0, 0, 0, 0);
-    }
-    if (query.denNgay) {
-      denNgay = new Date(query.denNgay);
-      denNgay.setHours(23, 59, 59, 999);
-    }
-
-    if (!tuNgay && !denNgay) {
-      if (query.khoangThoiGian === 'hom_nay') {
-        tuNgay = new Date();
-        tuNgay.setHours(0, 0, 0, 0);
-        denNgay = new Date();
-        denNgay.setHours(23, 59, 59, 999);
-      } else if (query.khoangThoiGian === '7_ngay') {
-        tuNgay = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        tuNgay.setHours(0, 0, 0, 0);
-      } else if (query.khoangThoiGian === 'thang_nay') {
-        tuNgay = new Date(now.getFullYear(), now.getMonth(), 1);
-      }
-    }
+    // Khoảng ngày theo giờ VN (dùng chung với các trang báo cáo khác).
+    // Trước đây "7 ngày qua" thực chất lấy 8 ngày; "Toàn thời gian" thì không lọc ngày.
+    const { fromDate, toDate } = khoangNgayVN(
+      { range: query.khoangThoiGian || 'tat_ca', tuNgay: query.tuNgay, denNgay: query.denNgay },
+      'tat_ca',
+    );
+    const tuNgay = fromDate === NGAY_DAU_TIEN ? null : `${fromDate} 00:00:00`;
+    const denNgay = fromDate === NGAY_DAU_TIEN ? null : `${toDate} 23:59:59`;
 
     if (tuNgay) qb.andWhere('ltn.thoiGianDen >= :tuNgay', { tuNgay });
     if (denNgay) qb.andWhere('ltn.thoiGianDen <= :denNgay', { denNgay });

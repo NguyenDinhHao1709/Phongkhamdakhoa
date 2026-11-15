@@ -1,3 +1,4 @@
+import { khoangNgayVN, ngayVN } from '../../common/utils/khoang-ngay-vn.util';
 import { voiKhoaDb } from '../../common/utils/db-sequence.util';
 import {
   Injectable, NotFoundException, BadRequestException,
@@ -628,27 +629,29 @@ export class XetNghiemService {
       }
     }
 
-    if (range === 'hom_nay') {
-      qb.andWhere('DATE(cd.thoiGianChiDinh) = CURDATE()');
-    } else if (range === '7days' || range === 'tuan_nay') {
-      qb.andWhere('cd.thoiGianChiDinh >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
-    } else if (range === 'thang_nay') {
-      qb.andWhere('MONTH(cd.thoiGianChiDinh) = MONTH(CURDATE()) AND YEAR(cd.thoiGianChiDinh) = YEAR(CURDATE())');
-    } else if (tuNgay && denNgay) {
-      qb.andWhere('DATE(cd.thoiGianChiDinh) BETWEEN :tuNgay AND :denNgay', { tuNgay, denNgay });
-    } else if (tuNgay) {
-      qb.andWhere('DATE(cd.thoiGianChiDinh) >= :tuNgay', { tuNgay });
-    } else if (denNgay) {
-      qb.andWhere('DATE(cd.thoiGianChiDinh) <= :denNgay', { denNgay });
-    }
+    // Khoảng ngày theo giờ VN. "Tuần này" trên trang này nghĩa là 7 ngày gần nhất; trước đây
+    // "Quý này" không được xử lý nên trả về toàn bộ dữ liệu.
+    const { fromDate, toDate } = khoangNgayVN({ range: range === 'tuan_nay' ? '7_ngay' : range, tuNgay, denNgay });
+    qb.andWhere('DATE(cd.thoiGianChiDinh) BETWEEN :fromDate AND :toDate', { fromDate, toDate });
 
-    const items = await qb.getMany();
+    const allItems = await qb.getMany();
+    // Phiếu đã hủy không được thực hiện → chỉ báo số lượng, không tính vào sản lượng / tỷ lệ / cơ cấu
+    const daHuy = allItems.filter(i => i.trangThai === TrangThaiChiDinh.HUY).length;
+    const items = allItems.filter(i => i.trangThai !== TrangThaiChiDinh.HUY);
     const tongChiDinh = items.length;
     const choLayMau = items.filter(i => i.trangThai === TrangThaiChiDinh.CHO_LAY_MAU || i.trangThai === TrangThaiChiDinh.DANG_LAY_MAU).length;
     const dangXuLy = items.filter(i => i.trangThai === TrangThaiChiDinh.DANG_XU_LY).length;
     const coKetQua = items.filter(i => i.trangThai === TrangThaiChiDinh.CO_KET_QUA).length;
-    const daHuy = items.filter(i => i.trangThai === TrangThaiChiDinh.HUY).length;
-    const tyLeHoanThanhVal = tongChiDinh > 0 ? Math.round((coKetQua / tongChiDinh) * 100) : 0;
+    const tyLeHoanThanhVal = tongChiDinh > 0 ? Math.round((coKetQua / tongChiDinh) * 100) : null;
+
+    // TAT: từ lúc chỉ định đến lúc có kết quả, chỉ tính phiếu đủ 2 mốc
+    const tatPhut = items
+      .filter(i => i.trangThai === TrangThaiChiDinh.CO_KET_QUA && i.thoiGianChiDinh && i.thoiGianCoKetQua)
+      .map(i => (new Date(i.thoiGianCoKetQua).getTime() - new Date(i.thoiGianChiDinh).getTime()) / 60000)
+      .filter(m => m > 0);
+    const thoiGianTrungBinhPhut = tatPhut.length > 0
+      ? Math.round(tatPhut.reduce((a, b) => a + b, 0) / tatPhut.length)
+      : null;
 
     // Top 5 dịch vụ được chỉ định nhiều nhất
     const dichVuMap = new Map<string, { ten: string; loai: string; count: number }>();
@@ -681,7 +684,7 @@ export class XetNghiemService {
     const timelineMap = new Map<string, { ngay: string; tong: number; hoanThanh: number; dangXuLy: number }>();
     items.forEach((item) => {
       if (item.thoiGianChiDinh) {
-        const dStr = String(item.thoiGianChiDinh).substring(0, 10);
+        const dStr = ngayVN(new Date(item.thoiGianChiDinh));
         const dayFormatted = dStr.split('-').reverse().slice(0, 2).join('/'); // dd/mm
 
         const curr = timelineMap.get(dayFormatted) || { ngay: dayFormatted, tong: 0, hoanThanh: 0, dangXuLy: 0 };
@@ -697,7 +700,8 @@ export class XetNghiemService {
     const timelineData = Array.from(timelineMap.values()).reverse().slice(-7);
 
     // Danh sách chỉ định mới nhất
-    const danhSachMoiNhat = items.slice(0, 15).map((c) => ({
+    // Danh sách gần nhất giữ cả phiếu đã hủy (có nhãn trạng thái) để KTV đối chiếu
+    const danhSachMoiNhat = allItems.slice(0, 15).map((c) => ({
       id: c.id,
       tenDichVu: c.dichVu?.tenDichVu || 'Dịch vụ cận lâm sàng',
       loai: c.dichVu?.loai,
@@ -717,28 +721,16 @@ export class XetNghiemService {
       .leftJoinAndSelect('dg.benhNhan', 'bn')
       .orderBy('dg.taoLuc', 'DESC');
 
-    if (range === 'hom_nay') {
-      dgQb.andWhere('DATE(dg.taoLuc) = CURDATE()');
-    } else if (range === '7days' || range === 'tuan_nay') {
-      dgQb.andWhere('dg.taoLuc >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
-    } else if (range === 'thang_nay') {
-      dgQb.andWhere('MONTH(dg.taoLuc) = MONTH(CURDATE()) AND YEAR(dg.taoLuc) = YEAR(CURDATE())');
-    } else if (tuNgay && denNgay) {
-      dgQb.andWhere('DATE(dg.taoLuc) BETWEEN :tuNgay AND :denNgay', { tuNgay, denNgay });
-    } else if (tuNgay) {
-      dgQb.andWhere('DATE(dg.taoLuc) >= :tuNgay', { tuNgay });
-    } else if (denNgay) {
-      dgQb.andWhere('DATE(dg.taoLuc) <= :denNgay', { denNgay });
-    }
+    dgQb.andWhere('DATE(dg.taoLuc) BETWEEN :fromDate AND :toDate', { fromDate, toDate })
+      .andWhere('dg.diemCls IS NOT NULL AND dg.diemCls > 0');
 
-    const allDanhGia = await dgQb.getMany();
-    // Lọc các bản ghi có điểm CLS hoặc dùng toàn bộ đánh giá ca khám
-    const danhGiaClsList = allDanhGia.filter((d) => d.diemCls != null && Number(d.diemCls) > 0);
-    const effectiveList = danhGiaClsList.length > 0 ? danhGiaClsList : allDanhGia;
+    // Chỉ lượt có chấm điểm CLS. Trước đây nếu chưa ai chấm CLS thì lấy điểm chung của cả ca khám,
+    // kể cả ca không làm cận lâm sàng nào.
+    const effectiveList = await dgQb.getMany();
 
     const tongDanhGia = effectiveList.length;
-    let diemClsTB = 5.0;
-    let tyLeHaiLong = '100%';
+    let diemClsTB: number | null = null;
+    let tyLeHaiLong: string | null = null;
     const phanBoSao = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
     const tieuChiCounts: Record<string, number> = {};
 
@@ -746,7 +738,7 @@ export class XetNghiemService {
       let sumScore = 0;
       let countHaiLong = 0;
       effectiveList.forEach((d) => {
-        const score = d.diemCls ? Number(d.diemCls) : Math.round(Number(d.diemTrungBinh) || 5);
+        const score = Number(d.diemCls);
         sumScore += score;
         if (score >= 4) countHaiLong++;
         if (score >= 1 && score <= 5) {
@@ -771,8 +763,8 @@ export class XetNghiemService {
 
     const danhSachNhanXet = effectiveList.slice(0, 15).map((d) => ({
       id: d.id,
-      diemCls: d.diemCls || Math.round(Number(d.diemTrungBinh) || 5),
-      diemTrungBinh: Number(d.diemTrungBinh) || 5,
+      diemCls: Number(d.diemCls),
+      diemTrungBinh: Number(d.diemTrungBinh),
       tieuChiHaiLong: d.tieuChiHaiLong || [],
       nhanXet: d.nhanXet,
       anDanh: d.anDanh,
@@ -793,13 +785,16 @@ export class XetNghiemService {
         coKetQua,
         daHoanThanh: coKetQua,
         daHuy,
-        tyLeHoanThanh: `${tyLeHoanThanhVal}%`,
+        tyLeHoanThanh: tyLeHoanThanhVal != null ? `${tyLeHoanThanhVal}%` : null,
         tyLeHoanThanhVal,
+        thoiGianTrungBinhPhut,
+        soCaDoTat: tatPhut.length,
+        kyBaoCao: { tuNgay: fromDate, denNgay: toDate },
         topDichVu,
-        coCauLoai: coCauLoai.length > 0 ? coCauLoai : [{ name: 'Chưa có chỉ định', value: 1, count: 0 }],
+        coCauLoai,
         timelineData,
         danhSachMoiNhat,
-        dsChiDinh: items.slice(0, 50),
+        dsChiDinh: allItems.slice(0, 50),
         // Thông tin Đánh giá Bệnh nhân
         danhGia: {
           tongDanhGia,

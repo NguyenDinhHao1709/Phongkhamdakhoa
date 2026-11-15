@@ -77,9 +77,10 @@ export default function ThongKeXetNghiemPage() {
     queryKey: ['thong-ke-xet-nghiem', user?.id, timeRange, tuNgay, denNgay, scope],
     queryFn: () => {
       const params = new URLSearchParams();
-      if (tuNgay && denNgay) {
-        params.append('tuNgay', tuNgay);
-        params.append('denNgay', denNgay);
+      if (tuNgay || denNgay) {
+        // Chỉ nhập "Từ ngày" cũng phải gửi lên, nếu không backend rơi về "tháng này" trong khi nhãn ghi "Từ ngày …"
+        if (tuNgay) params.append('tuNgay', tuNgay);
+        if (denNgay) params.append('denNgay', denNgay);
       } else if (timeRange) {
         params.append('range', timeRange);
       }
@@ -116,13 +117,14 @@ export default function ThongKeXetNghiemPage() {
       ['Ngày xuất báo cáo:', new Date().toLocaleString('vi-VN')],
       [],
       ['CHỈ SỐ HIỆU SUẤT XÉT NGHIỆM', 'GIÁ TRỊ'],
-      ['Tổng số ca chỉ định', stats?.tongChiDinh || 0],
+      ['Tổng số ca chỉ định (không gồm phiếu hủy)', stats?.tongChiDinh || 0],
+      ['Số phiếu đã hủy', stats?.daHuy || 0],
       ['Số ca đã có kết quả', stats?.daHoanThanh ?? stats?.coKetQua ?? 0],
-      ['Tỷ lệ hoàn thành kết quả', stats?.tyLeHoanThanh || '0%'],
+      ['Tỷ lệ hoàn thành kết quả', stats?.tyLeHoanThanh || 'Chưa có chỉ định'],
       ['Số ca đang xử lý / phân tích', stats?.dangXuLy || 0],
       ['Số ca chờ lấy mẫu', stats?.choLayMau || 0],
-      ['Thời gian xử lý trung bình (TAT)', `${stats?.thoiGianTrungBinhPhut || 25} phút`],
-      ['Tỷ lệ phát hiện bất thường', stats?.tyLeBatThuong || '0%'],
+      ['Thời gian trả kết quả trung bình (TAT)', stats?.thoiGianTrungBinhPhut != null ? `${stats.thoiGianTrungBinhPhut} phút (${stats.soCaDoTat} phiếu)` : 'Chưa đủ dữ liệu'],
+      ['Điểm hài lòng CLS', stats?.danhGia?.diemClsTB != null ? `${stats.danhGia.diemClsTB} / 5.0 (${stats.danhGia.tongDanhGia} lượt)` : 'Chưa có đánh giá'],
     ];
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
     wsSummary['!cols'] = [{ wch: 35 }, { wch: 25 }];
@@ -164,7 +166,7 @@ export default function ThongKeXetNghiemPage() {
     if (tuNgay && denNgay) return `Từ ${formatDate(tuNgay)} đến ${formatDate(denNgay)}`;
     if (tuNgay) return `Từ ngày ${formatDate(tuNgay)}`;
     if (timeRange === 'hom_nay') return `Hôm nay (${formatDate(new Date())})`;
-    if (timeRange === 'tuan_nay') return 'Tuần này (7 ngày qua)';
+    if (timeRange === 'tuan_nay') return '7 ngày gần nhất';
     if (timeRange === 'thang_nay') return `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
     if (timeRange === 'quy_nay') return `Quý ${Math.floor(new Date().getMonth() / 3) + 1}/${new Date().getFullYear()}`;
     if (timeRange === 'tat_ca') return 'Toàn thời gian';
@@ -288,7 +290,7 @@ export default function ThongKeXetNghiemPage() {
             <div className="inline-flex flex-wrap items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shadow-2xs">
               {[
                 { key: 'hom_nay', label: 'Hôm nay' },
-                { key: 'tuan_nay', label: 'Tuần này (7 ngày)' },
+                { key: 'tuan_nay', label: '7 ngày gần nhất' },
                 { key: 'thang_nay', label: 'Tháng này' },
                 { key: 'quy_nay', label: 'Quý này' },
                 { key: 'tat_ca', label: 'Toàn thời gian' },
@@ -386,7 +388,7 @@ export default function ThongKeXetNghiemPage() {
             {isLoading ? '...' : `${stats?.daHoanThanh ?? stats?.coKetQua ?? 0} ca`}
           </p>
           <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">
-            Tỷ lệ hoàn thành: <strong>{stats?.tyLeHoanThanh || '0%'}</strong>
+            Tỷ lệ hoàn thành: <strong>{stats?.tyLeHoanThanh || '—'}</strong>
           </p>
         </div>
 
@@ -556,7 +558,7 @@ export default function ThongKeXetNghiemPage() {
               </span>
               <div className="flex items-baseline gap-3 mt-2">
                 <span className="text-4xl sm:text-5xl font-extrabold text-gray-900 tracking-tight">
-                  {stats?.danhGia?.diemClsTB?.toFixed(1) || '5.0'}
+                  {stats?.danhGia?.diemClsTB != null ? stats.danhGia.diemClsTB.toFixed(1) : '—'}
                 </span>
                 <span className="text-sm font-semibold text-gray-400">/ 5.0</span>
               </div>
@@ -564,7 +566,7 @@ export default function ThongKeXetNghiemPage() {
               {/* 5 Stars display */}
               <div className="flex items-center gap-1 mt-2">
                 {[1, 2, 3, 4, 5].map((star) => {
-                  const rating = Number(stats?.danhGia?.diemClsTB) || 5;
+                  const rating = Number(stats?.danhGia?.diemClsTB) || 0;
                   const isFilled = star <= Math.floor(rating);
                   const isHalf = star === Math.ceil(rating) && rating % 1 !== 0;
                   return (
@@ -581,11 +583,15 @@ export default function ThongKeXetNghiemPage() {
                   );
                 })}
                 <span className="ml-2 text-xs font-bold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-md">
-                  {(stats?.danhGia?.diemClsTB || 5) >= 4.5
+                  {stats?.danhGia?.diemClsTB == null
+                    ? 'Chưa có đánh giá'
+                    : stats.danhGia.diemClsTB >= 4.5
                     ? 'Xuất sắc'
-                    : (stats?.danhGia?.diemClsTB || 5) >= 4.0
+                    : stats.danhGia.diemClsTB >= 4.0
                     ? 'Rất tốt'
-                    : 'Hài lòng'}
+                    : stats.danhGia.diemClsTB >= 3.0
+                    ? 'Trung bình'
+                    : 'Cần cải thiện'}
                 </span>
               </div>
             </div>
@@ -594,7 +600,7 @@ export default function ThongKeXetNghiemPage() {
               <div>
                 <p className="text-[11px] text-gray-500 font-medium">Tỷ lệ hài lòng</p>
                 <p className="text-lg font-bold text-emerald-600 mt-0.5">
-                  {stats?.danhGia?.tyLeHaiLong || '100%'}
+                  {stats?.danhGia?.tyLeHaiLong || '—'}
                 </p>
               </div>
               <div>
@@ -713,7 +719,7 @@ export default function ThongKeXetNghiemPage() {
                     <div className="flex items-center gap-1 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-lg">
                       <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
                       <span className="text-xs font-extrabold text-amber-800">
-                        {dg.diemCls || 5}
+                        {dg.diemCls}
                       </span>
                     </div>
                   </div>

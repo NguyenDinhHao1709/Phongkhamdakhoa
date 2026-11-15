@@ -162,7 +162,7 @@ export default function InBaoCaoXetNghiemModal({ stats, filterInfo = {}, onClose
                       {stats?.daHoanThanh ?? stats?.coKetQua ?? 0} ca
                     </td>
                     <td className="border border-gray-300 px-3 py-2 font-bold text-emerald-700">
-                      Đạt {stats?.tyLeHoanThanh || '100%'}
+                      Đạt {stats?.tyLeHoanThanh || '—'}
                     </td>
                   </tr>
                   <tr>
@@ -191,10 +191,10 @@ export default function InBaoCaoXetNghiemModal({ stats, filterInfo = {}, onClose
                       Chỉ số hài lòng người bệnh (CSAT CLS)
                     </td>
                     <td className="border border-gray-300 px-3 py-2 text-center font-bold text-amber-600">
-                      {stats?.danhGia?.diemClsTB?.toFixed(1) || '5.0'} / 5.0 ⭐
+                      {stats?.danhGia?.diemClsTB != null ? `${stats.danhGia.diemClsTB.toFixed(1)} / 5.0 ⭐` : 'Chưa có đánh giá'}
                     </td>
                     <td className="border border-gray-300 px-3 py-2 font-bold text-emerald-700">
-                      Hài lòng: {stats?.danhGia?.tyLeHaiLong || '100%'}
+                      Hài lòng: {stats?.danhGia?.tyLeHaiLong || '—'}
                     </td>
                   </tr>
                 </tbody>
