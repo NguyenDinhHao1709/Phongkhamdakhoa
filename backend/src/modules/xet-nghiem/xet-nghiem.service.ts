@@ -620,9 +620,13 @@ export class XetNghiemService {
             const cmLower = (ktv.chuyen_mon || '').toLowerCase();
             const isCdha = cmLower.includes('siêu âm') || cmLower.includes('hình ảnh') || cmLower.includes('x-quang') || cmLower.includes('cdha');
             const loaiLinhVuc = isCdha ? 'cdha' : 'xet_nghiem';
-            qb.andWhere(
-              '(cd.kyThuatVienId = :ktvId OR (cd.kyThuatVienId IS NULL AND dv.loai = :loaiLinhVuc))',
-              { ktvId: ktv.id, loaiLinhVuc },
+            // Phiếu của tôi = tôi lấy mẫu (ky_thuat_vien_id) HOẶC tôi nhập kết quả (ket_qua.nhap_boi_id).
+            // Phiếu chưa ai nhận chỉ tính là "hàng chờ" của lĩnh vực mình khi CHƯA có kết quả — trước đây
+            // phiếu chưa gán nhưng đã có kết quả bị tính cho mọi KTV cùng lĩnh vực.
+            qb.leftJoin(KetQuaXetNghiem, 'kqCaNhan', 'kqCaNhan.chiDinhId = cd.id').andWhere(
+              `(cd.kyThuatVienId = :ktvId OR kqCaNhan.nhapBoiId = :ktvId
+                OR (cd.kyThuatVienId IS NULL AND kqCaNhan.id IS NULL AND cd.trangThai != :coKq AND dv.loai = :loaiLinhVuc))`,
+              { ktvId: ktv.id, loaiLinhVuc, coKq: TrangThaiChiDinh.CO_KET_QUA },
             );
           }
         }
@@ -676,7 +680,7 @@ export class XetNghiemService {
     });
 
     const coCauLoai = [
-      { name: 'Xét nghiệm máu & Sinh hóa', value: countXN, count: countXN },
+      { name: 'Xét nghiệm', value: countXN, count: countXN },
       { name: 'Chẩn đoán hình ảnh (CĐHA)', value: countCDHA, count: countCDHA },
     ].filter((c) => c.value > 0);
 
@@ -699,9 +703,8 @@ export class XetNghiemService {
 
     const timelineData = Array.from(timelineMap.values()).reverse().slice(-7);
 
-    // Danh sách chỉ định mới nhất
     // Danh sách gần nhất giữ cả phiếu đã hủy (có nhãn trạng thái) để KTV đối chiếu
-    const danhSachMoiNhat = allItems.slice(0, 15).map((c) => ({
+    const rutGonChiDinh = (c: ChiDinhCanLamSang) => ({
       id: c.id,
       tenDichVu: c.dichVu?.tenDichVu || 'Dịch vụ cận lâm sàng',
       loai: c.dichVu?.loai,
@@ -714,7 +717,11 @@ export class XetNghiemService {
         maBenhNhan: c.benhAnKham?.hoSoBenhAn?.benhNhan?.maBenhNhan || '',
         soDienThoai: c.benhAnKham?.hoSoBenhAn?.benhNhan?.soDienThoai || '',
       },
-    }));
+    });
+    const danhSachMoiNhat = allItems.slice(0, 15).map(rutGonChiDinh);
+    // Toàn bộ phiếu trong kỳ (gồm phiếu hủy) cho Excel / mẫu in; chặn trần để payload không quá lớn
+    const GIOI_HAN_DANH_SACH = 2000;
+    const danhSachTrongKy = allItems.slice(0, GIOI_HAN_DANH_SACH).map(rutGonChiDinh);
 
     // ── THỐNG KÊ ĐÁNH GIÁ & MỨC ĐỘ HÀI LÒNG CỦA BỆNH NHÂN (CSAT CLS) ──
     const dgQb = this.cdRepo.manager.getRepository(DanhGiaCaKham).createQueryBuilder('dg')
@@ -794,9 +801,14 @@ export class XetNghiemService {
         coCauLoai,
         timelineData,
         danhSachMoiNhat,
+        danhSachTrongKy,
+        tongPhieuTrongKy: allItems.length,
+        danhSachBiCatBot: allItems.length > GIOI_HAN_DANH_SACH,
         dsChiDinh: allItems.slice(0, 50),
         // Thông tin Đánh giá Bệnh nhân
         danhGia: {
+          // Đánh giá của bệnh nhân không gắn với từng KTV → luôn là số liệu toàn khoa, kể cả phạm vi cá nhân
+          phamVi: 'toan_khoa',
           tongDanhGia,
           diemClsTB,
           tyLeHaiLong,

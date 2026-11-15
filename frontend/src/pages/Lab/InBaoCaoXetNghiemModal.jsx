@@ -33,7 +33,11 @@ export default function InBaoCaoXetNghiemModal({ stats, filterInfo = {}, onClose
     kyBaoCaoStr = `Quý ${Math.floor(new Date().getMonth() / 3) + 1}/${new Date().getFullYear()}`;
   }
 
-  const danhSach = stats?.danhSachMoiNhat || [];
+  // Toàn bộ phiếu trong kỳ (backend chặn trần 2.000); bản cũ của API chỉ có 15 phiếu gần nhất
+  const danhSach = stats?.danhSachTrongKy || stats?.danhSachMoiNhat || [];
+  const tongPhieuTrongKy = stats?.tongPhieuTrongKy ?? danhSach.length;
+  // Tỷ trọng của từng dịch vụ trên tổng chỉ định (không gồm phiếu hủy)
+  const tongChiDinhHopLe = Number(stats?.tongChiDinh || 0);
   const topDichVu = stats?.topDichVu || [];
   const coCauPhanLoai = stats?.coCauPhanLoai || [];
 
@@ -213,7 +217,7 @@ export default function InBaoCaoXetNghiemModal({ stats, filterInfo = {}, onClose
                       <th className="border border-gray-300 px-3 py-1.5 text-center w-12">STT</th>
                       <th className="border border-gray-300 px-3 py-1.5 text-left">Tên Dịch Vụ Cận Lâm Sàng</th>
                       <th className="border border-gray-300 px-3 py-1.5 text-center w-36">Số Lượt Thực Hiện</th>
-                      <th className="border border-gray-300 px-3 py-1.5 text-left">Đánh Giá Tải Công Việc</th>
+                      <th className="border border-gray-300 px-3 py-1.5 text-center w-36">Tỷ Trọng / Tổng Chỉ Định</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -224,8 +228,8 @@ export default function InBaoCaoXetNghiemModal({ stats, filterInfo = {}, onClose
                         <td className="border border-gray-300 px-3 py-1.5 text-center font-bold text-blue-700">
                           {item.count} ca
                         </td>
-                        <td className="border border-gray-300 px-3 py-1.5 text-gray-600">
-                          {idx === 0 ? 'Dịch vụ chủ lực' : 'Đạt yêu cầu vận hành'}
+                        <td className="border border-gray-300 px-3 py-1.5 text-center text-gray-700">
+                          {tongChiDinhHopLe > 0 ? `${((item.count / tongChiDinhHopLe) * 100).toFixed(1)}%` : '—'}
                         </td>
                       </tr>
                     ))}
@@ -239,7 +243,9 @@ export default function InBaoCaoXetNghiemModal({ stats, filterInfo = {}, onClose
               <h3 className="font-bold text-xs uppercase text-blue-900 mb-2 border-b border-gray-200 pb-1 flex justify-between items-center">
                 <span>III. Danh Sách Chỉ Định & Trả Kết Quả Trong Kỳ</span>
                 <span className="text-[10px] text-gray-500 font-normal lowercase">
-                  (Hiển thị {Math.min(danhSach.length, 20)}/{danhSach.length} ca)
+                  ({danhSach.length < tongPhieuTrongKy
+                    ? `hiển thị ${danhSach.length}/${tongPhieuTrongKy} phiếu`
+                    : `${tongPhieuTrongKy} phiếu, gồm cả phiếu đã hủy`})
                 </span>
               </h3>
               <table className="w-full text-xs border border-gray-300">

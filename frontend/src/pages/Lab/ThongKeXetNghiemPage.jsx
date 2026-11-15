@@ -101,7 +101,11 @@ export default function ThongKeXetNghiemPage() {
 
   // Xuất file Excel Báo cáo thống kê hiệu suất xét nghiệm & CLS (.xlsx)
   const handleExportExcel = () => {
-    const list = stats?.danhSachMoiNhat || [];
+    // Toàn bộ phiếu trong kỳ, không chỉ 15 phiếu gần nhất đang hiện trên bảng
+    const list = stats?.danhSachTrongKy || stats?.danhSachMoiNhat || [];
+    if (stats?.danhSachBiCatBot) {
+      window.alert(`Kỳ này có ${stats.tongPhieuTrongKy} phiếu; file Excel chỉ gồm ${list.length} phiếu gần nhất. Hãy thu hẹp khoảng ngày để xuất đủ.`);
+    }
     if (!stats && list.length === 0) {
       alert('Không có dữ liệu để xuất báo cáo.');
       return;
@@ -548,6 +552,12 @@ export default function ThongKeXetNghiemPage() {
           </div>
         </div>
 
+        {scope === 'ca_nhan' && (
+          <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+            Đánh giá của bệnh nhân không gắn với từng kỹ thuật viên nên đây là số liệu chung của toàn khoa, không phải của riêng bạn.
+          </p>
+        )}
+
         {/* CSAT Metrics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
           {/* Cột 1: Điểm trung bình & Tỷ lệ hài lòng (4 cols) */}
@@ -776,7 +786,7 @@ export default function ThongKeXetNghiemPage() {
             </p>
           </div>
           <span className="text-xs text-gray-500 font-medium">
-            Hiển thị {stats?.danhSachMoiNhat?.length || 0} bản ghi
+            {stats?.danhSachMoiNhat?.length || 0} phiếu gần nhất / {stats?.tongPhieuTrongKy ?? 0} phiếu trong kỳ
           </span>
         </div>
 
