@@ -90,23 +90,24 @@ export default function DuyetYeuCauPage() {
     return () => clearTimeout(timer);
   }, [searchKeyword]);
 
-  // Query tất cả danh sách đơn từ (tự động làm mới mỗi 2.5s dưới 3s)
+  // Làm mới mỗi 30s (react-query tự tải lại khi quay lại tab). Trước đây 3 truy vấn mỗi 2,5s
+  // ≈ 72 truy vấn/phút cho mỗi giám đốc đang mở trang, trong khi pool DB trên Render rất nhỏ.
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['danh-sach-don-tu'],
     queryFn: () => apiGet('/quan-ly/don-tu?trangThai=all'),
-    refetchInterval: 2500,
+    refetchInterval: 30000,
   });
 
   const { data: purchaseData } = useQuery({
     queryKey: ['giam-doc-phe-duyet-mua-thuoc'],
     queryFn: () => apiGet('/nha-thuoc/mua-hang?trangThai=all'),
-    refetchInterval: 2500,
+    refetchInterval: 30000,
   });
 
   const { data: opexData } = useQuery({
     queryKey: ['giam-doc-phe-duyet-opex'],
     queryFn: () => apiGet('/thanh-toan/phieu-chi-hoat-dong?trangThai=all'),
-    refetchInterval: 2500,
+    refetchInterval: 30000,
   });
 
   const rawList = Array.isArray(data?.data)

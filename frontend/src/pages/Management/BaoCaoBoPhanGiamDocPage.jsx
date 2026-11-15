@@ -25,12 +25,20 @@ export default function BaoCaoBoPhanGiamDocPage() {
 
   useEffect(() => {
     fetchDanhSach(true); // Lần đầu bật loading
-    // Tự động làm mới mỗi 2.5s (dưới 3s) để Giám đốc nhận báo cáo tức thì mà không cần F5
+    // Làm mới ngầm mỗi 30s và ngay khi quay lại tab. Trước đây gọi mỗi 2,5s (≈ 24 truy vấn/phút cho mỗi
+    // giám đốc đang mở trang) trong khi pool DB trên Render rất nhỏ; báo cáo mới vẫn có thông báo đẩy riêng.
     const interval = setInterval(() => {
-      fetchDanhSach(false); // Các lần sau làm mới ngầm, không nháy màn hình
-    }, 2500);
+      if (document.visibilityState === 'visible') fetchDanhSach(false);
+    }, 30000);
+    const khiQuayLai = () => {
+      if (document.visibilityState === 'visible') fetchDanhSach(false);
+    };
+    document.addEventListener('visibilitychange', khiQuayLai);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', khiQuayLai);
+    };
   }, [filterBoPhan, filterTrangThai]);
 
   const fetchDanhSach = async (showLoading = false) => {

@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { Printer, X, FileText, CheckCircle2 } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate, formatDateTime } from '../../utils/formatDate';
+import useHospitalStore from '../../store/hospitalStore';
 
 const BO_PHAN_MAP = {
   nha_thuoc: 'Bộ phận Nhà thuốc & Kho Dược',
@@ -62,6 +63,8 @@ export default function InBaoCaoBoPhanModal({
   onClose,
   baoCao = null,
 }) {
+  // Tên phòng khám lấy từ cài đặt "Thông tin bệnh viện"
+  const ttPk = useHospitalStore((st) => st.hospitalInfo) || {};
   const printRef = useRef(null);
   const scrollContainerRef = useRef(null);
 
@@ -192,7 +195,7 @@ export default function InBaoCaoBoPhanModal({
             <div className="flex justify-between items-start border-b border-gray-800 pb-4">
               <div className="text-left space-y-0.5">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">SỞ Y TẾ TP. HỒ CHÍ MINH</p>
-                <p className="text-sm font-black uppercase text-blue-900">PHÒNG KHÁM ĐA KHOA THÔNG MINH</p>
+                <p className="text-sm font-black uppercase text-blue-900">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</p>
                 <p className="text-[10px] text-gray-500">Đơn vị: <strong>{BO_PHAN_MAP[baoCao.boPhan] || baoCao.boPhan}</strong></p>
               </div>
 
@@ -281,7 +284,8 @@ export default function InBaoCaoBoPhanModal({
                 )}
               </h3>
               <div className="p-3.5 bg-emerald-50/40 border-2 border-emerald-300 rounded text-xs leading-relaxed whitespace-pre-wrap text-emerald-950 font-medium">
-                {baoCao.yKienGiamDoc || 'Ban Giám Đốc đã xem xét và ghi nhận báo cáo. Yêu cầu bộ phận tiếp tục phát huy và triển khai đúng phác đồ.'}
+                {/* Chưa chỉ đạo thì ghi rõ, không in một câu chỉ đạo do hệ thống tự đặt */}
+                {baoCao.yKienGiamDoc || '(Ban Giám Đốc chưa có ý kiến chỉ đạo cho báo cáo này)'}
               </div>
             </div>
 

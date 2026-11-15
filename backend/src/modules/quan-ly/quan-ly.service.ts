@@ -4050,18 +4050,27 @@ export class QuanLyService implements OnModuleInit {
     if (!dto.boPhan?.trim()) throw new BadRequestException('Vui lòng chỉ định bộ phận lập báo cáo');
     if (!dto.tieuDe?.trim()) throw new BadRequestException('Vui lòng nhập tiêu đề báo cáo');
 
+    // nguoi_gui_id là id NHÂN VIÊN. Trước đây thiếu hồ sơ nhân viên thì lưu id người dùng vào cùng cột
+    // → không phân biệt được, tên người gửi có thể ra nhầm người.
     const nv = await this.nhanVienRepo.findOneBy({ nguoiDungId: userId });
-    const count = await this.baoCaoBoPhanRepo.count();
-    const now = new Date();
-    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-    const maBaoCao = `BC-${dateStr}-${String(count + 1).padStart(4, '0')}`;
+    if (!nv) throw new BadRequestException('Tài khoản chưa gắn hồ sơ nhân viên nên không gửi được báo cáo');
+
+    // Mã theo ngày VN + số thứ tự lớn nhất trong ngày (trước đây = tổng số báo cáo + 1 → trùng mã khi có
+    // báo cáo bị xóa hoặc hai người gửi cùng lúc; ngày lấy theo giờ máy chủ UTC)
+    const prefix = `BC-${ngayVN().replace(/-/g, '')}-`;
+    const [maxRow] = await this.baoCaoBoPhanRepo.query(
+      `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ma_bao_cao, '-', -1) AS UNSIGNED)), 0) AS maxNum
+         FROM bao_cao_bo_phan WHERE ma_bao_cao LIKE ?`,
+      [`${prefix}%`],
+    );
+    const maBaoCao = `${prefix}${String(Number(maxRow?.maxNum || 0) + 1).padStart(4, '0')}`;
 
     const baoCao = this.baoCaoBoPhanRepo.create({
       maBaoCao,
       boPhan: dto.boPhan.trim(),
       tieuDe: dto.tieuDe.trim(),
       kyBaoCao: dto.kyBaoCao?.trim() || 'Hôm nay',
-      nguoiGuiId: nv ? nv.id : userId,
+      nguoiGuiId: nv.id,
       soLieuSnapshot: dto.soLieuSnapshot || {},
       noiDung: dto.noiDung?.trim() || '',
       kienNghi: dto.kienNghi?.trim() || '',
@@ -4105,10 +4114,12 @@ export class QuanLyService implements OnModuleInit {
 
   async layDanhSachBaoCaoBoPhan(boPhan?: string, trangThai?: string) {
     const qb = this.baoCaoBoPhanRepo.createQueryBuilder('bc')
-      .leftJoin('nhan_vien', 'nv_gui', 'nv_gui.id = bc.nguoi_gui_id OR nv_gui.nguoi_dung_id = bc.nguoi_gui_id')
-      .leftJoin('nguoi_dung', 'nd_gui', 'nd_gui.id = bc.nguoi_gui_id')
-      .leftJoin('nhan_vien', 'nv_cd', 'nv_cd.id = bc.nguoi_chi_dao_id OR nv_cd.nguoi_dung_id = bc.nguoi_chi_dao_id')
-      .leftJoin('nguoi_dung', 'nd_cd', 'nd_cd.id = bc.nguoi_chi_dao_id')
+      // JOIN theo id nhân viên. Điều kiện "id = x OR nguoi_dung_id = x" cũ có thể khớp 2 nhân viên khác nhau
+      // → một báo cáo hiện thành 2 dòng, tên người gửi/chỉ đạo sai. Bảng người dùng chỉ dùng cho dữ liệu cũ.
+      .leftJoin('nhan_vien', 'nv_gui', 'nv_gui.id = bc.nguoi_gui_id')
+      .leftJoin('nguoi_dung', 'nd_gui', 'nd_gui.id = bc.nguoi_gui_id AND nv_gui.id IS NULL')
+      .leftJoin('nhan_vien', 'nv_cd', 'nv_cd.id = bc.nguoi_chi_dao_id')
+      .leftJoin('nguoi_dung', 'nd_cd', 'nd_cd.id = bc.nguoi_chi_dao_id AND nv_cd.id IS NULL')
       .addSelect('COALESCE(nv_gui.ho_ten, nd_gui.ten_dang_nhap)', 'nguoi_gui_ho_ten')
       .addSelect('nv_gui.chuc_vu', 'nguoi_gui_chuc_vu')
       .addSelect('COALESCE(nv_cd.ho_ten, nd_cd.ten_dang_nhap)', 'nguoi_chi_dao_ho_ten')
@@ -4187,7 +4198,9 @@ export class QuanLyService implements OnModuleInit {
 
     const nvCd = await this.nhanVienRepo.findOneBy({ nguoiDungId: giamDocUserId });
     bc.yKienGiamDoc = yKien?.trim() || 'Ban Giám Đốc đã xem và ghi nhận báo cáo.';
-    bc.nguoiChiDaoId = nvCd ? nvCd.id : giamDocUserId;
+    // Cột lưu id nhân viên; tài khoản không có hồ sơ nhân viên thì để trống (hiện "Ban Giám Đốc")
+    // thay vì ghi id người dùng vào cột id nhân viên
+    bc.nguoiChiDaoId = nvCd ? nvCd.id : null;
     bc.ngayChiDao = new Date();
     bc.trangThai = 'da_chi_dao';
 

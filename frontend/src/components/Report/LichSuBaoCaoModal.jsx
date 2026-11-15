@@ -62,10 +62,10 @@ export default function LichSuBaoCaoModal({
   useEffect(() => {
     if (isOpen) {
       fetchHistory(true);
-      // Tự động làm mới mỗi 2.5s (dưới 3s) để nhân viên thấy ngay ý kiến chỉ đạo của Giám đốc
+      // Làm mới ngầm mỗi 15s khi đang mở (trước đây 2,5s → tải DB không cần thiết; chỉ đạo mới còn có thông báo đẩy)
       const interval = setInterval(() => {
         fetchHistory(false);
-      }, 2500);
+      }, 15000);
       return () => clearInterval(interval);
     }
   }, [isOpen, boPhan, filterTrangThai]);
