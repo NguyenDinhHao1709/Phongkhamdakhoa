@@ -29,10 +29,11 @@ const SNAPSHOT_LABELS = {
 
   // Tiếp tân
   tongTiepDon: { label: 'Tổng lượt tiếp đón', unit: 'lượt' },
-  khamTrucTiep: { label: 'Khám trực tiếp', unit: 'lượt' },
-  khamDatLich: { label: 'Đặt lịch trước', unit: 'lượt' },
-  choKham: { label: 'Bệnh nhân chờ khám', unit: 'người' },
+  khamTrucTiep: { label: 'Vãng lai (không lịch hẹn)', unit: 'lượt' },
+  khamDatLich: { label: 'Có lịch hẹn trước', unit: 'lượt' },
+  choKham: { label: 'Chờ khám / đang làm CLS', unit: 'người' },
   dangKham: { label: 'Bệnh nhân đang khám', unit: 'người' },
+  choThanhToan: { label: 'Chờ thanh toán', unit: 'người' },
   hoanThanh: { label: 'Khám hoàn tất', unit: 'ca' },
   huyKham: { label: 'Hủy khám / Quá hạn', unit: 'ca' },
 

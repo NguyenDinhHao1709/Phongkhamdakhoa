@@ -106,6 +106,7 @@ export default function ThongKeKhachHangPage() {
       const statsRes = await apiGet(`/tiep-nhan/bao-cao/thong-ke?${dateParams}`);
       if (statsRes?.data) {
         setStats(statsRes.data);
+        setReviewPage(1); // kỳ mới có thể ít đánh giá hơn → tránh đứng ở trang trống
       }
 
       // 3. Tải danh sách lượt tiếp nhận theo trang thực tế
@@ -141,10 +142,12 @@ export default function ThongKeKhachHangPage() {
   const getKyBaoCaoLabel = () => {
     if (fromDate && toDate) return `Từ ${formatDate(fromDate)} đến ${formatDate(toDate)}`;
     if (fromDate) return `Từ ngày ${formatDate(fromDate)}`;
+    // Backend: chỉ có "đến ngày" → lấy đúng 1 ngày đó
+    if (toDate) return `Ngày ${formatDate(toDate)}`;
     if (timeRange === 'hom_nay') return `Hôm nay (${formatDate(new Date())})`;
     if (timeRange === '7_ngay') return '7 ngày qua';
     if (timeRange === 'thang_nay') return `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
-    if (timeRange === 'tat_ca') return 'Toàn thời gian';
+    if (timeRange === 'tat_ca' || timeRange === 'custom') return 'Toàn thời gian';
     return `Kỳ ${timeRange || 'thống kê'}`;
   };
 
@@ -194,6 +197,7 @@ export default function ThongKeKhachHangPage() {
       ['Hẹn qua nhân viên', stats?.henQuaNhanVienCount ?? 0],
       ['Vãng lai (không có lịch hẹn)', stats?.vangLaiCount ?? 0],
       ['Điểm hài lòng tiếp đón', danhGiaData.diemTrungBinhTiepDon != null ? `${danhGiaData.diemTrungBinhTiepDon} / 5.0 (${danhGiaData.tongSoDanhGia} lượt)` : 'Chưa có đánh giá'],
+      ['Tỷ lệ hài lòng tiếp đón (≥ 4 sao)', danhGiaData.tyLeHaiLongTiepDon != null ? `${danhGiaData.tyLeHaiLongTiepDon}%` : 'Chưa có đánh giá'],
     ];
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
     wsSummary['!cols'] = [{ wch: 30 }, { wch: 25 }];
@@ -592,18 +596,18 @@ export default function ThongKeKhachHangPage() {
         <div className="bg-gradient-to-br from-indigo-50/70 via-purple-50/30 to-white rounded-2xl p-4 border border-indigo-100 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-indigo-800 uppercase tracking-wider">
-              Đặt Lịch Online
+              Có Lịch Hẹn
             </span>
             <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
               <CalendarCheck className="h-4 w-4" />
             </div>
           </div>
           <p className="text-2xl font-extrabold text-indigo-900 mt-2">
-            {stats?.datLichCount?.toLocaleString('vi-VN') || 0}{' '}
+            {((stats?.datLichCount ?? 0) + (stats?.henQuaNhanVienCount ?? 0)).toLocaleString('vi-VN')}{' '}
             <span className="text-xs font-normal text-indigo-600">lượt</span>
           </p>
           <p className="text-[11px] text-indigo-600 mt-0.5 font-medium">
-            Bệnh nhân tự đặt · Hẹn qua nhân viên: {stats?.henQuaNhanVienCount?.toLocaleString('vi-VN') || 0}
+            Tự đặt online: {(stats?.datLichCount ?? 0).toLocaleString('vi-VN')} · Qua nhân viên: {(stats?.henQuaNhanVienCount ?? 0).toLocaleString('vi-VN')}
           </p>
         </div>
 
@@ -794,7 +798,10 @@ export default function ThongKeKhachHangPage() {
 
               {/* Bar chart dạng cột trực quan */}
               <div className="pt-2">
-                <div className="grid grid-cols-6 gap-2 h-44 items-end pb-2 border-b border-gray-100">
+                <div
+                  className="grid gap-2 h-44 items-end pb-2 border-b border-gray-100"
+                  style={{ gridTemplateColumns: `repeat(${stats?.khungGio?.length || 6}, minmax(0, 1fr))` }}
+                >
                   {stats?.khungGio &&
                     stats.khungGio.map((kg, i) => {
                       const heightPct = Math.round((kg.count / maxKhungGio) * 100);
@@ -821,7 +828,10 @@ export default function ThongKeKhachHangPage() {
                     })}
                 </div>
 
-                <div className="grid grid-cols-6 gap-1 pt-2 text-center">
+                <div
+                  className="grid gap-1 pt-2 text-center"
+                  style={{ gridTemplateColumns: `repeat(${stats?.khungGio?.length || 6}, minmax(0, 1fr))` }}
+                >
                   {stats?.khungGio &&
                     stats.khungGio.map((kg, i) => (
                       <div key={i}>
@@ -902,11 +912,13 @@ export default function ThongKeKhachHangPage() {
             <div className="flex items-center gap-2 self-start md:self-auto">
               <div className="bg-white/15 px-3 py-1.5 rounded-xl text-center backdrop-blur-xs">
                 <p className="text-[10px] text-white/80">BS Khám</p>
-                <p className="text-sm font-bold">{danhGiaData.diemTrungBinhChung ?? '—'}/5.0</p>
+                <p className="text-sm font-bold">{danhGiaData.diemTrungBinhBacSi ?? '—'}/5.0</p>
               </div>
               <div className="bg-white/15 px-3 py-1.5 rounded-xl text-center backdrop-blur-xs">
                 <p className="text-[10px] text-white/80">Tỷ lệ hài lòng</p>
-                <p className="text-sm font-bold text-emerald-200">100%</p>
+                <p className="text-sm font-bold text-emerald-200" title="Tỷ lệ đánh giá khâu tiếp đón từ 4 sao trở lên">
+                  {danhGiaData.tyLeHaiLongTiepDon != null ? `${danhGiaData.tyLeHaiLongTiepDon}%` : '—'}
+                </p>
               </div>
             </div>
           </div>
@@ -947,6 +959,17 @@ export default function ThongKeKhachHangPage() {
                 }`}
               >
                 <span>4 ⭐</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setReviewStarFilter('under4'); setReviewPage(1); }}
+                className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1 ${
+                  reviewStarFilter === 'under4'
+                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <span>Dưới 4 ⭐</span>
               </button>
               <label className="inline-flex items-center gap-1.5 ml-2 text-gray-600 cursor-pointer select-none">
                 <input
@@ -1185,7 +1208,7 @@ export default function ThongKeKhachHangPage() {
                           {item.phongKham?.ten_phong || 'Chưa chỉ định phòng'}
                         </div>
                         <div className="text-[11px] text-gray-500">
-                          {item.phongKham?.chuyen_khoa || 'Nội tổng quát'}
+                          {item.phongKham?.chuyen_khoa || ''}
                         </div>
                       </td>
 
@@ -1458,6 +1481,7 @@ export default function ThongKeKhachHangPage() {
           khamDatLich: (stats?.datLichCount ?? 0) + (stats?.henQuaNhanVienCount ?? 0),
           choKham: stats?.choKhamCount ?? stats?.choKham ?? 0,
           dangKham: stats?.dangKhamCount ?? stats?.dangKham ?? 0,
+          choThanhToan: stats?.choThanhToanCount ?? 0,
           hoanThanh: stats?.hoanThanhCount ?? stats?.hoanThanh ?? 0,
           huyKham: stats?.daHuyCount ?? stats?.huyKham ?? 0,
           diemHaiLongCSAT: danhGiaData.diemTrungBinhTiepDon != null ? `${danhGiaData.diemTrungBinhTiepDon}/5.0` : 'Chưa có đánh giá',

@@ -1530,13 +1530,19 @@ export class TiepNhanService implements OnModuleInit {
     let danhGiaList: any[] = [];
     let diemTrungBinhTiepDon: number | null = null;
     let diemTrungBinhChung: number | null = null;
+    let diemTrungBinhBacSi: number | null = null;
+    let tyLeHaiLongTiepDon: number | null = null;
     let tongSoDanhGia = 0;
 
     try {
+      // Bỏ đánh giá ca khám trực tuyến: ca online không qua quầy tiếp đón, và khi lưu
+      // danh-gia.service gán diem_tiep_don = diem_bac_si → trước đây làm sai điểm hài lòng tiếp đón.
       const dgQb = this.danhGiaRepo.createQueryBuilder('dg')
         .leftJoinAndSelect('dg.benhNhan', 'bn')
         .leftJoinAndSelect('dg.bacSi', 'bs')
         .leftJoinAndSelect('bs.nhanVien', 'bsNv')
+        .leftJoin('dg.lichHen', 'dgLh')
+        .where("(dgLh.id IS NULL OR dgLh.hinhThuc IS NULL OR dgLh.hinhThuc <> 'truc_tuyen')")
         .orderBy('dg.taoLuc', 'DESC');
 
       if (tuNgay) dgQb.andWhere('dg.taoLuc >= :tuNgay', { tuNgay });
@@ -1546,10 +1552,14 @@ export class TiepNhanService implements OnModuleInit {
       tongSoDanhGia = allDg.length;
 
       if (tongSoDanhGia > 0) {
-        const sumTiepDon = allDg.reduce((acc, cur) => acc + Number(cur.diemTiepDon), 0);
-        const sumTB = allDg.reduce((acc, cur) => acc + Number(cur.diemTrungBinh), 0);
-        diemTrungBinhTiepDon = Number((sumTiepDon / tongSoDanhGia).toFixed(1));
-        diemTrungBinhChung = Number((sumTB / tongSoDanhGia).toFixed(1));
+        const tb = (f: (d: any) => number) =>
+          Number((allDg.reduce((acc, cur) => acc + Number(f(cur) || 0), 0) / tongSoDanhGia).toFixed(1));
+        diemTrungBinhTiepDon = tb((d) => d.diemTiepDon);
+        diemTrungBinhChung = tb((d) => d.diemTrungBinh);
+        diemTrungBinhBacSi = tb((d) => d.diemBacSi);
+        // Hài lòng = chấm khâu tiếp đón từ 4 sao trở lên
+        const soHaiLong = allDg.filter((d) => Number(d.diemTiepDon) >= 4).length;
+        tyLeHaiLongTiepDon = Number(((soHaiLong / tongSoDanhGia) * 100).toFixed(1));
       }
 
       danhGiaList = allDg.map((dg) => ({
@@ -1603,6 +1613,8 @@ export class TiepNhanService implements OnModuleInit {
           tongSoDanhGia,
           diemTrungBinhTiepDon,
           diemTrungBinhChung,
+          diemTrungBinhBacSi,
+          tyLeHaiLongTiepDon,
           danhSach: danhGiaList,
         },
       },

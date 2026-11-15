@@ -19,10 +19,11 @@ const SNAPSHOT_LABELS = {
   
   // Tiếp tân
   tongTiepDon: { label: 'Tổng lượt tiếp đón', icon: '👥', isCurrency: false, unit: 'lượt' },
-  khamTrucTiep: { label: 'Khám trực tiếp', icon: '🚶', isCurrency: false, unit: 'lượt' },
-  khamDatLich: { label: 'Đặt lịch trước', icon: '📅', isCurrency: false, unit: 'lượt' },
-  choKham: { label: 'Bệnh nhân chờ khám', icon: '⏳', isCurrency: false, unit: 'người' },
+  khamTrucTiep: { label: 'Vãng lai (không lịch hẹn)', icon: '🚶', isCurrency: false, unit: 'lượt' },
+  khamDatLich: { label: 'Có lịch hẹn trước', icon: '📅', isCurrency: false, unit: 'lượt' },
+  choKham: { label: 'Chờ khám / đang làm CLS', icon: '⏳', isCurrency: false, unit: 'người' },
   dangKham: { label: 'Bệnh nhân đang khám', icon: '🩺', isCurrency: false, unit: 'người' },
+  choThanhToan: { label: 'Chờ thanh toán', icon: '💳', isCurrency: false, unit: 'người' },
   hoanThanh: { label: 'Khám hoàn tất', icon: '✅', isCurrency: false, unit: 'ca' },
   huyKham: { label: 'Hủy khám / Quá hạn', icon: '❌', isCurrency: false, unit: 'ca' },
 
@@ -100,12 +101,13 @@ function buildSmartDraft(boPhan, snapshot = {}, tenBoPhan = '', kyBaoCaoCustom =
       const dang = snapshot.dangKham ?? 0;
       const cho = snapshot.choKham ?? 0;
       const huy = snapshot.huyKham ?? 0;
-      const csat = snapshot.diemHaiLongCSAT || '5.0/5.0';
+      const choTT = snapshot.choThanhToan ?? 0;
+      const csat = snapshot.diemHaiLongCSAT || 'Chưa có đánh giá';
 
       return {
         tieuDe: `Báo cáo tình hình tiếp đón & lưu lượng bệnh nhân - ${kyStr}`,
         kyBaoCao: kyStr,
-        noiDung: `Kính gửi Ban Giám Đốc,\n\nBộ phận Tiếp đón & Lễ tân xin báo cáo lưu lượng bệnh nhân (${kyStr}):\n- Tổng lượt tiếp đón: ${tong} lượt (Trong đó: Khám trực tiếp ${tt} lượt, Đặt lịch trước qua Kiosk/App ${dl} lượt).\n- Tiến độ tại các phòng khám: Đã hoàn tất ${xong} ca, đang khám ${dang} ca, chờ khám ${cho} ca, hủy/quá hạn ${huy} ca.\n- Mức độ hài lòng tiếp đón (CSAT): ${csat}.\n- Khu vực sảnh tiếp đón trật tự, luồng đón tiếp vận hành thông suốt.`,
+        noiDung: `Kính gửi Ban Giám Đốc,\n\nBộ phận Tiếp đón & Lễ tân xin báo cáo lưu lượng bệnh nhân (${kyStr}):\n- Tổng lượt tiếp đón: ${tong} lượt (Trong đó: có lịch hẹn trước ${dl} lượt, vãng lai không lịch hẹn ${tt} lượt).\n- Tiến độ tại các phòng khám: Đã hoàn tất ${xong} ca, đang khám ${dang} ca, chờ khám / đang làm CLS ${cho} ca, chờ thanh toán ${choTT} ca, đã hủy ${huy} ca.\n- Mức độ hài lòng tiếp đón (CSAT): ${csat}.\n- Khu vực sảnh tiếp đón trật tự, luồng đón tiếp vận hành thông suốt.`,
         kienNghi: `- Kiến nghị tiếp tục đẩy mạnh hướng dẫn bệnh nhân quét mã QR và đặt hẹn trước để phân bổ tải đều trong ngày.`
       };
     }
