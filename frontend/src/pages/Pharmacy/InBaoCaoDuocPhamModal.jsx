@@ -1,10 +1,12 @@
 import { useRef, useEffect } from 'react';
 import { X, Printer, FileText, PackageCheck, AlertTriangle, TrendingUp, ShieldAlert } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatCurrency';
-import { formatDate, formatDateTime } from '../../utils/formatDate';
+import { formatDateTime } from '../../utils/formatDate';
+import useHospitalStore from '../../store/hospitalStore';
 
-export default function InBaoCaoDuocPhamModal({ stats, listThuoc = [], filterInfo = {}, onClose }) {
+export default function InBaoCaoDuocPhamModal({ stats, listThuoc = [], kyBaoCaoLabel, onClose }) {
   const printRef = useRef(null);
+  const hospitalInfo = useHospitalStore((s) => s.hospitalInfo);
 
   // Hỗ trợ phím tắt Esc để đóng modal
   useEffect(() => {
@@ -23,25 +25,13 @@ export default function InBaoCaoDuocPhamModal({ stats, listThuoc = [], filterInf
   const tongGiaTriKho = Number(stats?.tongGiaTriKho || 0);
   const sapHetHang = Number(stats?.sapHetHang || 0);
   const sapHetHanCount = Number(stats?.sapHetHanCount || 0);
-  const donXuatTrongNgay = Number(stats?.donXuatTrongNgay || 0);
+  const hetHang = Number(stats?.hetHang || 0);
+  const tongDonXuatTrongKy = Number(stats?.tongDonXuatTrongKy || 0);
   const top10Thuoc = stats?.top10Thuoc || [];
   const canhBaoRuiRo = stats?.canhBaoRuiRo || [];
 
-  // Xác định khoảng thời gian báo cáo
-  let kyBaoCaoStr = 'Toàn bộ thời gian';
-  if (filterInfo.fromDate && filterInfo.toDate) {
-    kyBaoCaoStr = `Từ ngày ${formatDate(filterInfo.fromDate)} đến ngày ${formatDate(filterInfo.toDate)}`;
-  } else if (filterInfo.fromDate) {
-    kyBaoCaoStr = `Từ ngày ${formatDate(filterInfo.fromDate)}`;
-  } else if (filterInfo.timeFilter === 'today') {
-    kyBaoCaoStr = `Hôm nay (${formatDate(new Date())})`;
-  } else if (filterInfo.timeFilter === '7days') {
-    kyBaoCaoStr = '7 ngày gần nhất';
-  } else if (filterInfo.timeFilter === 'month') {
-    kyBaoCaoStr = `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
-  } else if (filterInfo.timeFilter === 'quarter') {
-    kyBaoCaoStr = `Quý ${Math.floor(new Date().getMonth() / 3) + 1}/${new Date().getFullYear()}`;
-  }
+  // Kỳ báo cáo lấy đúng nhãn của trang
+  const kyBaoCaoStr = kyBaoCaoLabel || 'Toàn thời gian';
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-xs overflow-hidden">
@@ -114,22 +104,21 @@ export default function InBaoCaoDuocPhamModal({ stats, listThuoc = [], filterInf
             <div className="flex justify-between items-start border-b border-gray-300 pb-4">
               <div>
                 <h4 className="font-bold text-sm uppercase text-gray-900">
-                  PHÒNG KHÁM ĐA KHOA QUỐC TẾ
+                  {hospitalInfo?.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}
                 </h4>
-                <p className="text-gray-600 text-[11px] mt-0.5">
-                  Kho Dược Phẩm & Thiết Bị Y Tế · Chuẩn GPP / GDP
-                </p>
-                <p className="text-gray-500 text-[11px]">
-                  Địa chỉ: 123 Đường Y Dược, Quận 1, TP. Hồ Chí Minh · Hotline: 1900.xxxx
-                </p>
+                <p className="text-gray-600 text-[11px] mt-0.5">Nhà thuốc & Kho Dược</p>
+                {(hospitalInfo?.diaChi || hospitalInfo?.tongDai) && (
+                  <p className="text-gray-500 text-[11px]">
+                    {hospitalInfo?.diaChi ? `Địa chỉ: ${hospitalInfo.diaChi}` : ''}
+                    {hospitalInfo?.tongDai ? ` · Hotline: ${hospitalInfo.tongDai}` : ''}
+                  </p>
+                )}
               </div>
+              {/* Bỏ "Mã BC" sinh ngẫu nhiên: mỗi lần mở lại ra một số khác, không phải số chứng từ thật */}
               <div className="text-right">
                 <span className="inline-block px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-[11px] font-bold uppercase tracking-wider">
-                  MẪU BÁO CÁO DƯỢC
+                  Báo cáo nội bộ
                 </span>
-                <p className="text-[11px] text-gray-500 mt-1">
-                  Mã BC: BC-DP-{new Date().getFullYear()}{String(new Date().getMonth() + 1).padStart(2, '0')}-{Math.floor(1000 + Math.random() * 9000)}
-                </p>
               </div>
             </div>
 
@@ -149,7 +138,7 @@ export default function InBaoCaoDuocPhamModal({ stats, listThuoc = [], filterInf
             {/* I. CHỈ SỐ TỔNG QUAN TỒN KHO & HOẠT ĐỘNG */}
             <div className="space-y-2">
               <h3 className="font-bold text-xs uppercase tracking-wider text-emerald-800 border-l-4 border-emerald-600 pl-2">
-                I. Tổng Quan Tài Sản Kho Dược Phẩm
+                I. Tổng Quan Tài Sản Kho Dược Phẩm (tại thời điểm lập báo cáo)
               </h3>
               <div className="grid grid-cols-4 gap-3">
                 <div className="border border-gray-200 p-2.5 rounded bg-gray-50/50">
@@ -165,24 +154,29 @@ export default function InBaoCaoDuocPhamModal({ stats, listThuoc = [], filterInf
                   </div>
                 </div>
                 <div className="border border-amber-200 p-2.5 rounded bg-amber-50/40">
-                  <div className="text-amber-700 text-[11px] font-medium">Thuốc Cận Hạn Dùng (FEFO)</div>
+                  {/* Đếm theo LÔ (cận hạn ≤ 60 ngày hoặc đã hết hạn), không phải theo mặt hàng */}
+                  <div className="text-amber-700 text-[11px] font-medium">Lô Cận Hạn / Hết Hạn (FEFO)</div>
                   <div className="font-bold text-sm text-amber-700 mt-0.5">
-                    {sapHetHanCount.toLocaleString('vi-VN')} <span className="text-[10px] font-normal text-amber-600">mặt hàng</span>
+                    {sapHetHanCount.toLocaleString('vi-VN')} <span className="text-[10px] font-normal text-amber-600">lô</span>
                   </div>
                 </div>
                 <div className="border border-rose-200 p-2.5 rounded bg-rose-50/40">
-                  <div className="text-rose-700 text-[11px] font-medium">Thuốc Sắp Hết / Nguy Cấp</div>
+                  <div className="text-rose-700 text-[11px] font-medium">Dưới Định Mức / Hết Hàng</div>
                   <div className="font-bold text-sm text-rose-700 mt-0.5">
                     {sapHetHang.toLocaleString('vi-VN')} <span className="text-[10px] font-normal text-rose-600">mặt hàng</span>
+                    {hetHang > 0 && <span className="text-[10px] font-normal text-rose-600"> · {hetHang} đã hết</span>}
                   </div>
                 </div>
               </div>
+              <p className="text-[11px] text-gray-600">
+                Trong kỳ ({kyBaoCaoStr}): đã cấp phát <strong>{tongDonXuatTrongKy.toLocaleString('vi-VN')}</strong> đơn thuốc.
+              </p>
             </div>
 
             {/* II. TOP 10 THUỐC XUẤT DÙNG NHIỀU NHẤT TRONG KỲ */}
             <div className="space-y-2">
               <h3 className="font-bold text-xs uppercase tracking-wider text-emerald-800 border-l-4 border-emerald-600 pl-2">
-                II. Top Mặt Hàng Thuốc Xuất Dùng & Kê Đơn Cao Nhất
+                II. Top Mặt Hàng Thuốc Cấp Phát Nhiều Nhất Trong Kỳ
               </h3>
               <div className="border border-gray-300 rounded overflow-hidden">
                 <table className="w-full text-[11px] border-collapse">
@@ -214,7 +208,7 @@ export default function InBaoCaoDuocPhamModal({ stats, listThuoc = [], filterInf
                         return (
                           <tr key={idx} className={idx % 2 === 1 ? 'bg-gray-50/50' : ''}>
                             <td className="p-2 text-center font-medium text-gray-500">{idx + 1}</td>
-                            <td className="p-2 font-mono text-[10px] text-gray-600">{item.maThuoc || `TH-${idx + 1}`}</td>
+                            <td className="p-2 font-mono text-[10px] text-gray-600">{item.maThuoc || '—'}</td>
                             <td className="p-2 font-medium text-gray-900">{item.tenThuoc}</td>
                             <td className="p-2 text-center text-gray-600">{donViTinh}</td>
                             <td className="p-2 text-right font-bold text-emerald-700">
@@ -256,10 +250,14 @@ export default function InBaoCaoDuocPhamModal({ stats, listThuoc = [], filterInf
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {canhBaoRuiRo.slice(0, 6).map((cb, idx) => (
-                        <tr key={idx}>
+                      {/* In đủ mọi cảnh báo (trước đây chỉ 6 dòng đầu, không báo là còn thiếu) */}
+                      {canhBaoRuiRo.map((cb, idx) => (
+                        <tr key={cb.id || idx}>
                           <td className="p-2 text-center text-gray-500">{idx + 1}</td>
-                          <td className="p-2 font-medium text-gray-900">{cb.tenThuoc}</td>
+                          <td className="p-2 font-medium text-gray-900">
+                            {cb.tenThuoc}
+                            {cb.maLo && cb.id?.startsWith('lo_') && <span className="block text-[10px] text-gray-500">Lô {cb.maLo}</span>}
+                          </td>
                           <td className="p-2 text-rose-700 font-medium">{cb.loaiRuiRo}</td>
                           <td className="p-2 text-center">
                             <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -268,7 +266,7 @@ export default function InBaoCaoDuocPhamModal({ stats, listThuoc = [], filterInf
                               {cb.mucDo === 'nguy_cap' ? 'NGUY CẤP' : 'CẢNH BÁO'}
                             </span>
                           </td>
-                          <td className="p-2 text-gray-600 italic">{cb.khuyenNghi || 'Lập kế hoạch mua bổ sung / ưu tiên xuất kho FEFO'}</td>
+                          <td className="p-2 text-gray-600 italic">{cb.hanhDong || 'Lập kế hoạch mua bổ sung / ưu tiên xuất kho FEFO'}</td>
                         </tr>
                       ))}
                     </tbody>

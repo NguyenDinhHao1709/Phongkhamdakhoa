@@ -1713,7 +1713,11 @@ export class NhaThuocService {
       tongGiaTriKho += giaTriThuoc;
 
       const ngungKinhDoanh = t.trangThai === 'ngung_kinh_doanh';
-      const ton = Number(t.tonKhoTong);
+      // Tồn khả dụng = tồn các lô còn hạn. Lô hết hạn vẫn nằm trong ton_kho_tong (chờ tiêu hủy) nhưng không
+      // cấp phát được → trước đây thuốc chỉ còn hàng hết hạn vẫn báo "Còn hàng", không vào cảnh báo nhập.
+      const ton = loConTon.length > 0
+        ? loConTon.filter((lo) => !loHetHan(lo)).reduce((s, lo) => s + Number(lo.soLuongTon), 0)
+        : Number(t.tonKhoTong);
       const dinhMuc = chuanHoaDinhMuc(t.tonKhoToiThieu);
       return {
         id: t.id,
@@ -1724,6 +1728,7 @@ export class NhaThuocService {
         duongDung: t.duongDung,
         giaBan,
         tonKhoTong: ton,
+        tonKhoSoSach: Number(t.tonKhoTong), // gồm cả lô hết hạn chờ hủy
         tonKhoToiThieu: dinhMuc,
         thanhTien: giaTriThuoc,
         maLo: activeLo?.maLo || null,
@@ -1738,6 +1743,7 @@ export class NhaThuocService {
     const dangKinhDoanh = listThuoc.filter((t) => !t.ngungKinhDoanh);
     const tongSoThuoc = listThuoc.length;
     const sapHetHang = dangKinhDoanh.filter((t) => t.tonKhoTong > 0 && t.tonKhoTong <= t.tonKhoToiThieu).length;
+    const hetHang = dangKinhDoanh.filter((t) => t.tonKhoTong <= 0).length;
 
     // Đơn xuất trong ngày: theo NGÀY CẤP PHÁT (trước đây theo ngày kê đơn)
     const donXuatTrongNgay = await this.donThuocRepo
@@ -1800,7 +1806,9 @@ export class NhaThuocService {
           maLo: t.maLo,
           loaiRuiRo: 'Hết hàng trong kho',
           mucDo: 'nguy_cap',
-          moTa: `Thuốc ${t.tenThuoc} đã hết hoàn toàn tồn kho. Cần nhập bổ sung khẩn cấp.`,
+          moTa: t.tonKhoSoSach > 0
+            ? `Thuốc ${t.tenThuoc} không còn lô nào còn hạn (${t.tonKhoSoSach} ${t.donViTinh} hết hạn chờ hủy). Cần nhập bổ sung khẩn cấp.`
+            : `Thuốc ${t.tenThuoc} đã hết hoàn toàn tồn kho. Cần nhập bổ sung khẩn cấp.`,
           tonKho: 0,
           soLuong: 0,
           hanDung: t.ngayHetHan || '---',
@@ -1897,8 +1905,11 @@ export class NhaThuocService {
         kyBaoCao: { tuNgay: fromDate, denNgay: toDate },
         tongSoThuoc,
         sapHetHang,
+        hetHang,
         sapHetHanCount,
         donXuatTrongNgay,
+        // Tổng đơn đã cấp phát trong kỳ lọc (khác donXuatTrongNgay chỉ là số của hôm nay)
+        tongDonXuatTrongKy: luuLuongGiaoDich.reduce((s, d) => s + d.soDonXuat, 0),
         tongGiaTriKho,
         tongGiaTriKhoGiaBan,
         giaTriHetHan,
@@ -1912,13 +1923,18 @@ export class NhaThuocService {
 
   // ─── DỰ BÁO NHU CẦU THUỐC ───
   async getDuBaoNhuCauThuoc(horizonDays: number = 14) {
-    const thuocs = await this.thuocRepo.find();
+    // Thuốc ngừng kinh doanh không nhập lại → không đề xuất mua
+    const thuocs = (await this.thuocRepo.find({ relations: ['loThuocList'] }))
+      .filter((t) => t.trangThai !== 'ngung_kinh_doanh');
+    const homNay = ngayVN();
 
+    // Tiêu thụ = số lượng đã CẤP PHÁT trong 30 ngày qua (theo ngày cấp phát, giống trang thống kê;
+    // trước đây theo ngày kê đơn nên đơn kê cũ mới cấp không được tính)
     const consumptionRows = await this.donThuocChiTietRepo.createQueryBuilder('ct')
       .innerJoin('ct.donThuoc', 'dt')
       .select('ct.thuocId', 'thuocId')
       .addSelect('SUM(ct.soLuong)', 'totalQuantity')
-      .where('dt.ngayKe >= DATE_SUB(NOW(), INTERVAL 30 DAY)')
+      .where('DATE(dt.ngayCapPhat) BETWEEN :tu AND :den', { tu: congNgay(homNay, -29), den: homNay })
       .andWhere('dt.trangThai IN (:...statuses)', { statuses: ['da_cap_phat', 'da_hoan_thanh'] })
       .groupBy('ct.thuocId')
       .getRawMany();
@@ -1927,7 +1943,13 @@ export class NhaThuocService {
     );
 
     const itemsForForecast = thuocs.map((t) => {
-      const tonKhoTong = Number(t.tonKhoTong) || 0;
+      // Chỉ tính tồn của lô còn hạn (lô hết hạn không cấp phát được)
+      const loConTon = (t.loThuocList || []).filter((lo) => Number(lo.soLuongTon) > 0);
+      const tonKhoTong = loConTon.length > 0
+        ? loConTon
+          .filter((lo) => !lo.ngayHetHan || String(lo.ngayHetHan).slice(0, 10) >= homNay)
+          .reduce((s, lo) => s + Number(lo.soLuongTon), 0)
+        : Number(t.tonKhoTong) || 0;
       const tieuThuTrungBinhNgay = consumptionByMedicine.get(t.id) ?? null;
 
       return {
@@ -1965,14 +1987,19 @@ export class NhaThuocService {
           tonKhoHienTai: item.tonKhoTong,
           tieuThuTrungBinhNgay: Number(velocity.toFixed(1)),
           duBaoTieuThu7Ngay: projected_demand_7d,
+          // Tên trường giữ nguyên cho tương thích, nhưng giá trị là nhu cầu của chu kỳ horizonDays đang chọn
           duBaoTieuThu14Ngay: projected_demand_horizon,
+          duBaoTieuThuChuKy: projected_demand_horizon,
+          soNgayDuBao: horizonDays,
           soNgayConLai: days_left,
           nguongAnToan: safety_stock,
           trangThai: status,
           canNhapHang: reorder_needed,
           soLuongDeXuatNhap: reorder_needed ? suggested_reorder_qty : 0,
         };
-      });
+      })
+      // Khẩn nhất lên đầu (trang tổng quan chỉ hiện 10 dòng đầu)
+      .sort((a, b) => a.soNgayConLai - b.soNgayConLai);
 
     return {
       message: 'Dự báo nhu cầu thuốc thành công',

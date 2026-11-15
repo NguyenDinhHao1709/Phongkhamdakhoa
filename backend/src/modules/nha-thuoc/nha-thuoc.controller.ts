@@ -260,6 +260,8 @@ export class NhaThuocController {
   @Roles('nhan_vien_nha_thuoc', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Dự báo nhu cầu thuốc ML (Holt-Winters) và cảnh báo điểm đặt hàng lại' })
   getDuBaoNhuCauThuoc(@Query('horizonDays') horizonDays?: number) {
-    return this.nhaThuocService.getDuBaoNhuCauThuoc(horizonDays ? Number(horizonDays) : 14);
+    // Giá trị lạ (NaN, âm, quá lớn) → dùng mặc định 14 ngày thay vì trả dự báo NaN
+    const soNgay = Math.round(Number(horizonDays));
+    return this.nhaThuocService.getDuBaoNhuCauThuoc(soNgay >= 1 && soNgay <= 180 ? soNgay : 14);
   }
 }

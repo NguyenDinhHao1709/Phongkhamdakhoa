@@ -16,8 +16,10 @@ const SNAPSHOT_LABELS = {
   tongMatHang: { label: 'Tổng mặt hàng quản lý', unit: 'thuốc' },
   tongGiaTriTonKho: { label: 'Tổng giá trị kho dược', isCurrency: true },
   thuocSapHetHang: { label: 'Thuốc sắp hết hàng', unit: 'mặt hàng' },
-  thuocCanDateFEFO: { label: 'Thuốc cận hạn FEFO', unit: 'mặt hàng' },
-  donXuatTrongNgay: { label: 'Đơn xuất trong kỳ', unit: 'đơn' },
+  thuocCanDateFEFO: { label: 'Lô thuốc cận hạn (≤ 60 ngày)', unit: 'lô' },
+  donXuatTrongNgay: { label: 'Đơn xuất hôm nay', unit: 'đơn' },
+  thuocHetHang: { label: 'Thuốc đã hết hàng', unit: 'mặt hàng' },
+  donXuatTrongKy: { label: 'Đơn đã cấp phát trong kỳ', unit: 'đơn' },
 
   // Bác sĩ
   tongBenhNhanDaKham: { label: 'Tổng ca đã khám', unit: 'ca' },

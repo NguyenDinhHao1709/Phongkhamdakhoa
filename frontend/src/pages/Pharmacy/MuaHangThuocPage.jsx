@@ -210,7 +210,7 @@ export default function MuaHangThuocPage() {
     if (location.state?.createPrFromForecast) {
       const forecastItem = location.state.createPrFromForecast;
       setForm({
-        ghiChu: forecastItem.ghiChu || 'Nhu cầu bổ sung theo gợi ý AI dự báo',
+        ghiChu: forecastItem.ghiChu || 'Nhu cầu bổ sung theo dự báo tiêu thụ 30 ngày',
         chiTiet: [
           {
             thuocId: String(forecastItem.id),
@@ -247,7 +247,7 @@ export default function MuaHangThuocPage() {
     const defaultQty = Math.max(1, Number(forecastItem.soLuongDeXuatNhap || 50));
     setForm((prev) => ({
       ...prev,
-      ghiChu: prev.ghiChu || `Nhu cầu bổ sung theo gợi ý AI dự báo (${forecastItem.trangThai})`,
+      ghiChu: prev.ghiChu || `Nhu cầu bổ sung theo dự báo tiêu thụ 30 ngày (${forecastItem.trangThai})`,
       chiTiet: [
         ...prev.chiTiet.filter((item) => item.thuocId),
         {
@@ -958,7 +958,7 @@ export default function MuaHangThuocPage() {
               className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
             >
               <Sparkles className="h-4 w-4 text-amber-600" />
-              <span>Dự báo nhu cầu AI</span>
+              <span>Dự báo nhu cầu</span>
             </button>
 
             {isPharmacy && (
@@ -1640,7 +1640,7 @@ export default function MuaHangThuocPage() {
                   }}
                   className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:underline"
                 >
-                  <Sparkles className="h-3.5 w-3.5" /> Nhập nhanh từ Dự báo AI / Tồn kho thấp
+                  <Sparkles className="h-3.5 w-3.5" /> Nhập nhanh từ Dự báo nhu cầu / Tồn kho thấp
                 </button>
               </div>
 
@@ -1845,7 +1845,7 @@ export default function MuaHangThuocPage() {
             <div className="flex items-start justify-between border-b border-gray-100 pb-4">
               <div>
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
-                  <Sparkles className="h-3.5 w-3.5" /> Trợ lý Dược phẩm AI (Holt-Winters Drug Demand Estimator)
+                  <Sparkles className="h-3.5 w-3.5" /> Dự báo nhu cầu thuốc (trung bình tiêu thụ 30 ngày)
                 </span>
                 <h2 className="mt-1 text-xl font-bold text-gray-900">Dự Báo Nhu Cầu & Cảnh Báo Điểm Đặt Hàng Lại</h2>
                 <p className="text-xs text-gray-500">

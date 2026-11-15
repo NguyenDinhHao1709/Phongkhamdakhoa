@@ -6,8 +6,10 @@ const SNAPSHOT_LABELS = {
   tongMatHang: { label: 'Tổng mặt hàng theo dõi', icon: '📦', isCurrency: false, unit: 'thuốc' },
   tongGiaTriTonKho: { label: 'Tổng giá trị kho dược', icon: '💰', isCurrency: true },
   thuocSapHetHang: { label: 'Thuốc sắp hết hàng', icon: '⚠️', isCurrency: false, unit: 'mặt hàng' },
-  thuocCanDateFEFO: { label: 'Thuốc cận hạn FEFO', icon: '⏳', isCurrency: false, unit: 'mặt hàng' },
-  donXuatTrongNgay: { label: 'Đơn xuất trong kỳ', icon: '📋', isCurrency: false, unit: 'đơn' },
+  thuocCanDateFEFO: { label: 'Lô thuốc cận hạn (≤ 60 ngày)', icon: '⏳', isCurrency: false, unit: 'lô' },
+  donXuatTrongNgay: { label: 'Đơn xuất hôm nay', icon: '📋', isCurrency: false, unit: 'đơn' },
+  thuocHetHang: { label: 'Thuốc đã hết hàng', icon: '🚫', isCurrency: false, unit: 'mặt hàng' },
+  donXuatTrongKy: { label: 'Đơn đã cấp phát trong kỳ', icon: '📦', isCurrency: false, unit: 'đơn' },
   
   // Bác sĩ
   tongBenhNhanDaKham: { label: 'Tổng ca đã khám', icon: '🩺', isCurrency: false, unit: 'ca' },
@@ -65,12 +67,17 @@ function buildSmartDraft(boPhan, snapshot = {}, tenBoPhan = '', kyBaoCaoCustom =
       const giaTri = formatCurrency(snapshot.tongGiaTriTonKho ?? 0);
       const sapHet = snapshot.thuocSapHetHang ?? 0;
       const canDate = snapshot.thuocCanDateFEFO ?? 0;
-      const donXuat = snapshot.donXuatTrongNgay ?? 0;
+      const hetHang = snapshot.thuocHetHang;
+      // Báo cáo cũ chưa có donXuatTrongKy → ghi rõ là số của hôm nay thay vì gọi là "trong kỳ"
+      const dongXuat = snapshot.donXuatTrongKy != null
+        ? `Số đơn đã cấp phát trong kỳ: ${snapshot.donXuatTrongKy} đơn (hôm nay: ${snapshot.donXuatTrongNgay ?? 0} đơn).`
+        : `Số đơn đã cấp phát hôm nay: ${snapshot.donXuatTrongNgay ?? 0} đơn.`;
 
       return {
         tieuDe: `Báo cáo hoạt động Nhà thuốc & Tồn kho FEFO - ${kyStr}`,
         kyBaoCao: kyStr,
-        noiDung: `Kính gửi Ban Giám Đốc,\n\nBộ phận Nhà thuốc & Kho Dược xin báo cáo tình hình vận hành (${kyStr}):\n1. Tình hình danh mục & tài sản tồn kho:\n   - Đang quản lý ${matHang} mặt hàng dược phẩm đang lưu hành.\n   - Tổng giá trị dược phẩm tồn kho thực tế: ${giaTri}.\n2. An toàn dược phẩm & Cảnh báo kho:\n   - Thuốc sắp hết hàng (cần dự trù nhập bổ sung): ${sapHet} mặt hàng.\n   - Thuốc cận hạn sử dụng theo nguyên tắc FEFO: ${canDate} mặt hàng.\n3. Tiến độ cấp phát:\n   - Số đơn xuất trong kỳ: ${donXuat} đơn thuốc hoàn tất.\n4. Đánh giá chất lượng: Kho thuốc duy trì nhiệt độ/độ ẩm đạt chuẩn GPP, quy trình kiểm soát cấp phát theo đúng đơn bác sĩ kê.`,
+        // Bỏ câu "nhiệt độ/độ ẩm đạt chuẩn GPP": hệ thống không theo dõi nhiệt độ/độ ẩm kho
+        noiDung: `Kính gửi Ban Giám Đốc,\n\nBộ phận Nhà thuốc & Kho Dược xin báo cáo tình hình vận hành (${kyStr}):\n1. Tình hình danh mục & tài sản tồn kho (tại thời điểm báo cáo):\n   - Đang quản lý ${matHang} mặt hàng dược phẩm.\n   - Tổng giá trị tồn kho (giá nhập, lô còn hạn): ${giaTri}.\n2. An toàn dược phẩm & Cảnh báo kho:\n   - Thuốc dưới định mức tồn (cần dự trù nhập bổ sung): ${sapHet} mặt hàng.${hetHang != null ? `\n   - Thuốc đã hết hàng: ${hetHang} mặt hàng.` : ''}\n   - Lô thuốc cận hạn (≤ 60 ngày) hoặc đã hết hạn cần xử lý theo FEFO: ${canDate} lô.\n3. Tiến độ cấp phát:\n   - ${dongXuat}`,
         kienNghi: `- Đề nghị Ban Giám Đốc xem xét phê duyệt định mức tồn kho tối thiểu cho các nhóm thuốc tiêu thụ cao.\n- Tiếp tục ưu tiên xuất các lô thuốc cận hạn theo đúng nguyên tắc FEFO.`
       };
     }

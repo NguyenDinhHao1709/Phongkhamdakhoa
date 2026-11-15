@@ -134,7 +134,7 @@ export default function ThongKeNhaThuocPage() {
           tenThuoc: item.tenThuoc || fullThuoc.tenThuoc,
           donViTinh: item.donViTinh || fullThuoc.donViTinh || 'Hộp',
           soLuongDat: defaultQty,
-          ghiChu: `[AI Dự Báo Nhu Cầu] Tốc độ xuất ~${item.tieuThuTrungBinhNgay}/ngày. Tồn kho còn ~${item.soNgayConLai} ngày. Đề xuất lập phiếu yêu cầu mua (PR).`,
+          ghiChu: `[Dự báo nhu cầu – TB 30 ngày] Tốc độ xuất ~${item.tieuThuTrungBinhNgay}/ngày. Tồn kho còn ~${item.soNgayConLai} ngày. Đề xuất lập phiếu yêu cầu mua (PR).`,
         },
       },
     });
@@ -173,7 +173,7 @@ export default function ThongKeNhaThuocPage() {
           : forecastStatusFilter === 'nguy_cap'
           ? i.soNgayConLai <= 3
           : forecastStatusFilter === 'canh_bao'
-          ? i.soNgayConLai <= 7
+          ? i.soNgayConLai > 3 && i.soNgayConLai <= 7 // khớp số đếm trên nút (3 < ngày ≤ 7)
           : forecastStatusFilter === 'an_toan'
           ? !i.canNhapHang && i.soNgayConLai > 7
           : true;
@@ -205,15 +205,16 @@ export default function ThongKeNhaThuocPage() {
         t.maLo?.toLowerCase().includes(search.toLowerCase()) ||
         t.tenHoatChat?.toLowerCase().includes(search.toLowerCase());
 
+      // Dùng trạng thái backend tính (đã loại thuốc ngừng kinh doanh) để bảng khớp số trên thẻ KPI
       const matchStatus =
         statusFilter === 'all'
           ? true
           : statusFilter === 'canh_bao'
-          ? t.tonKhoTong > 0 && t.tonKhoTong <= dinhMuc(t)
+          ? t.trangThai === 'canh_bao'
           : statusFilter === 'het_hang'
-          ? t.tonKhoTong <= 0
+          ? t.trangThai === 'het_hang'
           : statusFilter === 'con_hang'
-          ? t.tonKhoTong > dinhMuc(t)
+          ? t.trangThai === 'con_hang'
           : statusFilter === 'can_date'
           ? Boolean(t.coLoCanDate)
           : true;
@@ -261,7 +262,8 @@ export default function ThongKeNhaThuocPage() {
 
   const getKyBaoCaoLabel = () => {
     if (fromDate && toDate) return `Từ ${formatDate(fromDate)} đến ${formatDate(toDate)}`;
-    if (fromDate) return `Từ ngày ${formatDate(fromDate)}`;
+    if (fromDate) return `Từ ngày ${formatDate(fromDate)} đến nay`;
+    if (toDate) return `Ngày ${formatDate(toDate)}`;
     if (timeFilter === 'today') return `Hôm nay (${formatDate(new Date())})`;
     if (timeFilter === '7days') return '7 ngày qua';
     if (timeFilter === 'month') return `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
@@ -282,9 +284,10 @@ export default function ThongKeNhaThuocPage() {
       'Giá Trị Tồn Theo Giá Nhập, Lô Còn Hạn (VNĐ)',
       'Trạng Thái',
     ];
+    const oCsv = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const rows = filteredList.map((t) => [
       t.maThuoc,
-      `"${t.tenThuoc}"`,
+      t.tenThuoc,
       t.donViTinh,
       t.maLo || '---',
       t.ngayHetHan ? String(t.ngayHetHan).slice(0, 10).split('-').reverse().join('/') : '---',
@@ -298,10 +301,10 @@ export default function ThongKeNhaThuocPage() {
         : t.trangThai === 'het_hang'
         ? 'Hết hàng'
         : 'Còn hàng',
-    ]);
+    ].map(oCsv));
 
     const csvContent =
-      '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      '\uFEFF' + [headers.map(oCsv).join(','), ...rows.map((e) => e.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -570,7 +573,8 @@ export default function ThongKeNhaThuocPage() {
             {stats.sapHetHang} <span className="text-xs font-normal text-amber-600">mã</span>
           </p>
           <p className="text-[11px] text-amber-700 mt-0.5 font-semibold flex items-center gap-1">
-            <AlertTriangle className="h-3 w-3" /> Cần lập phiếu nhập gấp
+            <AlertTriangle className="h-3 w-3" />
+            {stats.hetHang > 0 ? `+ ${stats.hetHang} mã đã hết hàng` : 'Cần lập phiếu nhập gấp'}
           </p>
         </div>
 
@@ -649,7 +653,7 @@ export default function ThongKeNhaThuocPage() {
           }`}
         >
           <Sparkles className="h-4 w-4 text-purple-600" />
-          <span>Dự Báo Nhu Cầu (AI)</span>
+          <span>Dự Báo Nhu Cầu</span>
           {forecastMetrics.canNhapCount > 0 && (
             <span className="bg-purple-100 text-purple-700 px-1.5 py-0.2 rounded-full text-[10px] font-extrabold">
               {forecastMetrics.canNhapCount} cần nhập
@@ -667,9 +671,10 @@ export default function ThongKeNhaThuocPage() {
         >
           <AlertTriangle className="h-4 w-4" />
           <span>Cảnh Báo Rủi Ro FEFO</span>
-          {stats.sapHetHang + stats.sapHetHanCount > 0 && (
+          {/* Đếm đúng số dòng trong tab (trước đây bỏ sót thuốc đã hết hàng) */}
+          {(stats.canhBaoRuiRo || []).length > 0 && (
             <span className="bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded-full text-[10px]">
-              {stats.sapHetHang + stats.sapHetHanCount}
+              {(stats.canhBaoRuiRo || []).length}
             </span>
           )}
         </button>
@@ -806,7 +811,7 @@ export default function ThongKeNhaThuocPage() {
               <div>
                 <h3 className="font-bold text-gray-900 text-sm sm:text-base flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-purple-600" />
-                  Dự Báo Nhu Cầu & Tốc Độ Tiêu Thụ Dược Phẩm (14 Ngày Tới)
+                  Dự Báo Nhu Cầu & Tốc Độ Tiêu Thụ Dược Phẩm ({forecastHorizon} Ngày Tới)
                 </h3>
                 <p className="text-xs text-gray-400 mt-0.5">
                   Tổng hợp tốc độ tiêu thụ trung bình ngày để đưa ra khuyến nghị đặt hàng lại
@@ -821,7 +826,7 @@ export default function ThongKeNhaThuocPage() {
                   <ArrowRight className="h-3.5 w-3.5" />
                 </button>
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                  Machine Learning
+                  Trung bình 30 ngày
                 </span>
               </div>
             </div>
@@ -843,7 +848,7 @@ export default function ThongKeNhaThuocPage() {
                       <th className="py-3 px-3.5 text-right">Tồn hiện tại</th>
                       <th className="py-3 px-3.5 text-right">Tốc độ xuất/ngày</th>
                       <th className="py-3 px-3.5 text-right">Dự báo 7 ngày</th>
-                      <th className="py-3 px-3.5 text-right">Dự báo 14 ngày</th>
+                      <th className="py-3 px-3.5 text-right">Dự báo {forecastHorizon} ngày</th>
                       <th className="py-3 px-3.5 text-center">Tồn kho còn (ngày)</th>
                       <th className="py-3 px-3.5 text-center">Khuyến nghị nhập</th>
                       <th className="py-3 px-3.5 text-center">Thao tác</th>
@@ -934,10 +939,10 @@ export default function ThongKeNhaThuocPage() {
                 </span>
                 <div>
                   <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
-                    Hệ Thống Trí Tuệ Nhân Tạo Dự Báo Nhu Cầu & Kế Hoạch Nhập Thuốc
+                    Dự Báo Nhu Cầu & Kế Hoạch Nhập Thuốc
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Mô hình Machine Learning phân tích tốc độ xuất kho từ đơn thuốc thực tế và đề xuất số lượng đặt hàng lại.
+                    Tính tốc độ xuất kho bình quân 30 ngày từ đơn thuốc đã cấp phát và đề xuất số lượng đặt hàng lại (không dùng mô hình học máy).
                   </p>
                 </div>
               </div>
@@ -983,10 +988,10 @@ export default function ThongKeNhaThuocPage() {
                 onClick={() => refetchForecast()}
                 disabled={isFetchingForecast}
                 className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all shadow-xs active:scale-95 cursor-pointer ml-1"
-                title="Làm mới mô hình dự báo"
+                title="Tính lại dự báo"
               >
                 <RefreshCw className={`h-3.5 w-3.5 text-gray-500 ${isFetchingForecast ? 'animate-spin text-purple-600' : ''}`} />
-                <span>Chạy lại ML</span>
+                <span>Tính lại</span>
               </button>
             </div>
           </div>
@@ -1007,7 +1012,7 @@ export default function ThongKeNhaThuocPage() {
               </div>
             </div>
             <p className="text-xs text-purple-900/80 leading-relaxed">
-              Mô hình học máy phân tích lịch sử tiêu thụ 30 ngày qua trên từng mã thuốc và tính toán tốc độ xuất bình quân mỗi ngày. Khi số ngày tồn khả dụng (Runway) giảm dưới 7 ngày hoặc thấp hơn định mức an toàn, hệ thống sẽ đề xuất số lượng cần nhập bù đắp. Bấm <strong>"Lập Phiếu Yêu Cầu (PR)"</strong> để chuyển sang quy trình mua thuốc ERP và gửi Ban Giám Đốc duyệt.
+              Hệ thống cộng số lượng đã cấp phát trong 30 ngày qua trên từng mã thuốc và tính toán tốc độ xuất bình quân mỗi ngày. Khi số ngày tồn khả dụng (Runway) giảm dưới 7 ngày hoặc thấp hơn định mức an toàn, hệ thống sẽ đề xuất số lượng cần nhập bù đắp. Bấm <strong>"Lập Phiếu Yêu Cầu (PR)"</strong> để chuyển sang quy trình mua thuốc ERP và gửi Ban Giám Đốc duyệt.
             </p>
           </div>
 
@@ -1067,7 +1072,7 @@ export default function ThongKeNhaThuocPage() {
             <div className="bg-white p-4 rounded-2xl border border-purple-200 shadow-xs bg-gradient-to-br from-purple-50/70 via-indigo-50/30 to-white">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-purple-900 uppercase tracking-wider">
-                  AI Đề Xuất Nhập Hàng
+                  Đề Xuất Nhập Hàng
                 </span>
                 <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-xs">
                   <Zap className="h-4 w-4" />
@@ -1172,7 +1177,7 @@ export default function ThongKeNhaThuocPage() {
                       <th className="py-3 px-3.5 text-right bg-purple-50/30">Dự báo {forecastHorizon} ngày</th>
                       <th className="py-3 px-3.5 text-center">Thời gian còn tồn</th>
                       <th className="py-3 px-3.5 text-right">Định mức an toàn</th>
-                      <th className="py-3 px-3.5 text-center">Đề xuất AI</th>
+                      <th className="py-3 px-3.5 text-center">Đề xuất nhập</th>
                       <th className="py-3 px-3.5 text-center">Hành động</th>
                     </tr>
                   </thead>
@@ -1519,11 +1524,7 @@ export default function ThongKeNhaThuocPage() {
         <InBaoCaoDuocPhamModal
           stats={stats}
           listThuoc={stats.listThuoc || []}
-          filterInfo={{
-            timeFilter,
-            fromDate,
-            toDate,
-          }}
+          kyBaoCaoLabel={getKyBaoCaoLabel()}
           onClose={() => setIsPrintModalOpen(false)}
         />
       )}
@@ -1541,8 +1542,11 @@ export default function ThongKeNhaThuocPage() {
           tongMatHang: stats?.tongSoThuoc || stats?.listThuoc?.length || 0,
           tongGiaTriTonKho: stats?.tongGiaTriKho || 0,
           thuocSapHetHang: stats?.sapHetHang || 0,
+          thuocHetHang: stats?.hetHang || 0,
           thuocCanDateFEFO: stats?.sapHetHanCount || 0,
           donXuatTrongNgay: stats?.donXuatTrongNgay || 0,
+          // Mẫu báo cáo ghi "Số đơn xuất trong kỳ" nhưng trước đây gửi số đơn của hôm nay
+          donXuatTrongKy: stats?.tongDonXuatTrongKy || 0,
         }}
       />
 
