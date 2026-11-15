@@ -13,6 +13,7 @@ import { join } from 'path';
 import { json, urlencoded } from 'express';
 import helmet from 'helmet';
 import { loadProtectionMiddleware, setHealthDataSource } from './common/middleware/load-protection.middleware';
+import { requestContextMiddleware } from './common/request-context';
 import { DataSource } from 'typeorm';
 
 async function bootstrap() {
@@ -33,6 +34,8 @@ async function bootstrap() {
   // Kích hoạt lớp bảo vệ chống quá tải, Rate Limiting & Health Check tức thì (/api/health)
   setHealthDataSource(app.get(DataSource));
   app.use(loadProtectionMiddleware);
+  // Lưu IP / trình duyệt của request cho nhật ký hệ thống (thay cho IP cứng 127.0.0.1)
+  app.use(requestContextMiddleware);
 
   // Tăng giới hạn payload body cho chấm công khuôn mặt & tải ảnh
   app.use(json({ limit: '50mb' }));

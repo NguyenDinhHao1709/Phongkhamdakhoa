@@ -1,4 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index, BeforeInsert } from 'typeorm';
+import { ipHienTai, userAgentHienTai } from '../../../common/request-context';
 
 export enum LoaiNhatKy {
   INFO = 'INFO',
@@ -37,11 +38,24 @@ export class NhatKyHeThong {
   @Column({ name: 'mo_ta', type: 'text' })
   moTa: string;
 
-  @Column({ name: 'dia_chi_ip', length: 50, nullable: true, default: '127.0.0.1' })
+  @Column({ name: 'dia_chi_ip', length: 50, nullable: true })
   diaChiIp: string;
 
   @Column({ name: 'user_agent', length: 255, nullable: true })
   userAgent: string;
+
+  /**
+   * Điền IP / trình duyệt thật của request đang xử lý. Nhiều chỗ ghi nhật ký trong service không có req
+   * nên trước đây ghi cứng '127.0.0.1' (và cột có mặc định 127.0.0.1) → không truy được ai làm từ đâu.
+   * Ngoài request (tác vụ nền) thì để trống thay vì ghi một IP không có thật.
+   */
+  @BeforeInsert()
+  dienNguCanhRequest() {
+    if (!this.diaChiIp || this.diaChiIp === '127.0.0.1') this.diaChiIp = ipHienTai() as string;
+    if (!this.userAgent || this.userAgent === 'Trình duyệt hệ thống') {
+      this.userAgent = (userAgentHienTai() ?? this.userAgent ?? null) as string;
+    }
+  }
 
   @Index()
   @CreateDateColumn({ name: 'thoi_gian' })

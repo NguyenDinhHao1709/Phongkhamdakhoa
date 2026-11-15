@@ -223,7 +223,7 @@ export class QuanLyController {
       hanhDong: body.hanhDong || 'THAO_TAC_HE_THONG',
       loaiNhatKy: body.loaiNhatKy,
       moTa: body.moTa || 'Thao tác hệ thống',
-      diaChiIp: body.diaChiIp || '127.0.0.1',
+      // Không nhận IP từ body (client tự khai được); entity nhật ký tự điền IP thật của request
     });
   }
 

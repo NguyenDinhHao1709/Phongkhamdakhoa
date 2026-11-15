@@ -628,7 +628,6 @@ export class QuanLyService implements OnModuleInit {
           hanhDong,
           loaiNhatKy: LoaiNhatKy.INFO,
           moTa,
-          diaChiIp: '127.0.0.1',
         }),
       );
     } catch (e) {
@@ -3446,7 +3445,7 @@ export class QuanLyService implements OnModuleInit {
         hanhDong: data.hanhDong,
         loaiNhatKy: data.loaiNhatKy || LoaiNhatKy.INFO,
         moTa: data.moTa,
-        diaChiIp: data.diaChiIp || '127.0.0.1',
+        diaChiIp: data.diaChiIp, // trống → entity tự điền IP thật của request
         userAgent: data.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
       });
       return await this.nhatKyRepo.save(log);
@@ -3684,8 +3683,8 @@ export class QuanLyService implements OnModuleInit {
         hanhDong: row.hanhDong,
         loaiNhatKy: row.loaiNhatKy,
         moTa: row.moTa,
-        diaChiIp: row.diaChiIp || '127.0.0.1',
-        userAgent: row.userAgent || 'Trình duyệt hệ thống',
+        diaChiIp: row.diaChiIp || '—', // dòng cũ không có IP: không hiển thị IP bịa
+        userAgent: row.userAgent || '—',
         thoiGian: row.thoiGian,
         // Các trường định dạng chuẩn theo mẫu Ảnh 2:
         nhanVien: tenNV,
@@ -3952,7 +3951,6 @@ export class QuanLyService implements OnModuleInit {
           hanhDong: 'GUI_BAO_CAO_BO_PHAN',
           loaiNhatKy: LoaiNhatKy.INFO,
           moTa: `Lập và gửi báo cáo "${dto.tieuDe}" (${dto.boPhan}) lên Ban Giám Đốc`,
-          diaChiIp: '127.0.0.1',
         }),
       );
     } catch (_) {}
@@ -4095,7 +4093,6 @@ export class QuanLyService implements OnModuleInit {
           hanhDong: 'CHI_DAO_BAO_CAO_BO_PHAN',
           loaiNhatKy: LoaiNhatKy.INFO,
           moTa: `Chỉ đạo báo cáo "${bc.tieuDe}" (${bc.maBaoCao}): "${bc.yKienGiamDoc}"`,
-          diaChiIp: '127.0.0.1',
         }),
       );
     } catch (errNotification) {
@@ -4235,7 +4232,6 @@ export class QuanLyService implements OnModuleInit {
         hanhDong: 'TAO_DICH_VU_KHAM_CHUA_BENH',
         loaiNhatKy: LoaiNhatKy.INFO,
         moTa: `Thêm dịch vụ "${saved.tenDichVu}" (${saved.maDichVu}) - Đơn giá: ${new Intl.NumberFormat('vi-VN').format(saved.gia)} VNĐ`,
-        diaChiIp: '127.0.0.1',
       }),
     );
 
@@ -4300,7 +4296,6 @@ export class QuanLyService implements OnModuleInit {
         hanhDong: 'CAP_NHAT_BANG_GIA_DICH_VU',
         loaiNhatKy: LoaiNhatKy.INFO,
         moTa: `Cập nhật dịch vụ "${saved.tenDichVu}" (${saved.maDichVu}). Giá cũ: ${new Intl.NumberFormat('vi-VN').format(giaCu)}đ -> Giá mới: ${new Intl.NumberFormat('vi-VN').format(saved.gia)}đ`,
-        diaChiIp: '127.0.0.1',
       }),
     );
 
@@ -4329,7 +4324,6 @@ export class QuanLyService implements OnModuleInit {
         hanhDong: 'DOI_TRANG_THAI_DICH_VU',
         loaiNhatKy: LoaiNhatKy.INFO,
         moTa: `Đổi trạng thái dịch vụ "${saved.tenDichVu}" (${saved.maDichVu}) thành: ${saved.trangThai === 'hoat_dong' ? 'Hoạt động' : 'Tạm ngừng'}`,
-        diaChiIp: '127.0.0.1',
       }),
     );
 
@@ -4369,7 +4363,6 @@ export class QuanLyService implements OnModuleInit {
         hanhDong: 'XOA_DICH_VU_KHAM_CHUA_BENH',
         loaiNhatKy: LoaiNhatKy.WARNING,
         moTa: `Xóa dịch vụ "${dv.tenDichVu}" (${dv.maDichVu})`,
-        diaChiIp: '127.0.0.1',
       }),
     );
 
@@ -4517,7 +4510,6 @@ export class QuanLyService implements OnModuleInit {
         hanhDong: 'CAP_NHAT_CAU_HINH_TIEN_COC',
         loaiNhatKy: LoaiNhatKy.INFO,
         moTa: `Điều chỉnh cấu hình tiền cọc "${saved.tenHinhThuc}" (${saved.loaiHinhThuc}): Cọc cũ ${new Intl.NumberFormat('vi-VN').format(giaCu)}đ -> Cọc mới: ${new Intl.NumberFormat('vi-VN').format(saved.soTienCoc)}đ (${saved.phanTramCoc}% phí khám)`,
-        diaChiIp: '127.0.0.1',
       }),
     );
 

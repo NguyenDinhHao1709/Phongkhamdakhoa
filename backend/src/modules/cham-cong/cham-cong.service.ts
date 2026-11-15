@@ -184,8 +184,6 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
         hanhDong: 'CAI_DAT_CHAM_CONG',
         loaiNhatKy: LoaiNhatKy.INFO,
         moTa: `Cập nhật cấu hình chấm công WiFi: Bắt buộc WiFi = ${giaTri.bat_buoc_wifi ? 'Có' : 'Không'}, ${giaTri.danh_sach_ip?.length || 0} IP được phép`,
-        diaChiIp: '127.0.0.1',
-        userAgent: 'Trình duyệt hệ thống',
       });
       await this.nhatKyRepo.save(log);
     } catch (err) {}
@@ -392,7 +390,7 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
         hanhDong: 'CHECKIN_CHAM_CONG',
         loaiNhatKy: LoaiNhatKy.INFO,
         moTa: `Nhân viên "${nv.hoTen}" check-in ca làm việc lúc ${gioVao} (${trangThai === 'di_muon' ? 'Đi muộn' : 'Đúng giờ'}, độ khớp khuôn mặt ${doKhop}%)`,
-        diaChiIp: ipCheck.ip || '127.0.0.1',
+        diaChiIp: ipCheck.ip || undefined,
         userAgent: 'Hệ thống nhận diện AI Face',
       });
       await this.nhatKyRepo.save(log);
@@ -477,7 +475,7 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
         hanhDong: 'CHECKOUT_CHAM_CONG',
         loaiNhatKy: LoaiNhatKy.INFO,
         moTa: `Nhân viên "${nv.hoTen}" check-out ca làm việc lúc ${gioRa} (độ khớp ${faceCheck.doKhop}%)${extraNote}`,
-        diaChiIp: ipCheck.ip || '127.0.0.1',
+        diaChiIp: ipCheck.ip || undefined,
         userAgent: 'Hệ thống nhận diện AI Face',
       });
       await this.nhatKyRepo.save(log);
@@ -619,7 +617,6 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
         loaiNhatKy: LoaiNhatKy.INFO,
         moTa: `${nguoiTh} thực hiện chấm công thủ công cho nhân viên "${nv.hoTen}" ngày ${data.ngayCham} (${data.gioVao ? `Vào: ${data.gioVao}` : ''}${data.gioRa ? `, Ra: ${data.gioRa}` : ''})${noteLyDo}`,
         diaChiIp: (data.diaChiIp || 'không rõ').slice(0, 50),
-        userAgent: 'Trình duyệt hệ thống',
       });
       await this.nhatKyRepo.save(log);
     } catch (err) {}
