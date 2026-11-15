@@ -1411,7 +1411,8 @@ CHỈ dùng số liệu ở trên, không bịa thêm. CHỈ trả về JSON chu
           model: 'gemini-2.5-flash',
           generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
         });
-        const value = JSON.parse((await model.generateContent(prompt)).response.text());
+        // nguon cho frontend ghi đúng ai/cái gì đã viết phần tóm lược
+        const value = { ...JSON.parse((await model.generateContent(prompt)).response.text()), nguon: 'gemini' };
         this.dienGiaiCache = { key: tomTat, value };
         return value;
       } catch (geminiErr) {
@@ -1424,6 +1425,7 @@ CHỈ dùng số liệu ở trên, không bịa thêm. CHỈ trả về JSON chu
     const [caoNhat, thapNhat] = [sapXep[0], sapXep[sapXep.length - 1]];
     const trungBinh = Math.round(forecast.reduce((s, d) => s + d.du_bao, 0) / forecast.length);
     return {
+      nguon: 'tong_hop_so_lieu', // không phải AI viết: câu chữ ghép thẳng từ số liệu dự báo
       tom_tat: `Dự báo trung bình ~${trungBinh} lượt/ngày trong ${forecast.length} ngày tới, dao động từ ${thapNhat.du_bao} đến ${caoNhat.du_bao} lượt.`,
       canh_bao: `Ngày đông nhất: ${caoNhat.thu} (${caoNhat.ngay}) với ~${caoNhat.du_bao} lượt.`,
       khuyen_nghi_nhan_su: `${caoNhat.thu}: ${caoNhat.bac_si_khuyen_nghi}, ${caoNhat.dieu_duong_khuyen_nghi}.`,

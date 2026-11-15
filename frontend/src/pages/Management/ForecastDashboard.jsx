@@ -96,7 +96,9 @@ export default function ForecastDashboard() {
                 ? forecastResult.mlDangKhoiDong
                   ? 'Dự phòng: Trung bình theo thứ (mô hình ML đang khởi động, tự cập nhật sau ít giây)'
                   : 'Dự phòng: Trung bình theo thứ (dịch vụ ML chưa phản hồi)'
-                : 'Mô Hình Dự Báo Holt-Winters ML & Gemini AI'}
+                : aiAnalysis.nguon === 'gemini'
+                  ? 'Mô Hình Dự Báo Holt-Winters ML & Gemini AI'
+                  : 'Mô Hình Dự Báo Holt-Winters ML'}
             </span>
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -147,7 +149,8 @@ export default function ForecastDashboard() {
               <Sparkles className="w-4 h-4" />
             </div>
             <h2 className="text-sm md:text-base font-bold text-white tracking-wide">
-              Báo Cáo Tóm Lược Điều Hành (Cố Vấn Y Khoa AI)
+              {/* Chỉ ghi AI khi Gemini thật sự viết; dự phòng là câu ghép từ số liệu */}
+              Báo Cáo Tóm Lược Điều Hành {aiAnalysis.nguon === 'gemini' ? '(Gemini AI diễn giải)' : '(tóm tắt tự động từ số liệu)'}
             </h2>
           </div>
           <span className="text-[11px] text-blue-200/80 font-medium">
