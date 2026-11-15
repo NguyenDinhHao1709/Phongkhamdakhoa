@@ -6,6 +6,20 @@ import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity'
 import { CauHinhTienCoc } from '../quan-ly/entities/cau-hinh-tien-coc.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
+import { ThanhToanService, MA_TAM_UNG_QUAY } from '../thanh-toan/thanh-toan.service';
+import { ThongBaoService } from '../thong-bao/thong-bao.service';
+
+/**
+ * orderCode của QR viện phí = HD_ORDER_BASE + hoaDonId * HD_ORDER_STEP + (ms hiện tại % HD_ORDER_STEP).
+ * Cọc lịch hẹn dùng Date.now() (~1.7e12) nên không bao giờ chạm mốc 8e15 → webhook phân biệt được 2 loại đơn,
+ * và đọc ngược ra hoaDonId mà không cần cột mới. Vẫn < Number.MAX_SAFE_INTEGER khi hoaDonId < 1 tỷ.
+ */
+const HD_ORDER_BASE = 8_000_000_000_000_000;
+const HD_ORDER_STEP = 1_000_000;
+const laDonHoaDon = (orderCode: number) => orderCode >= HD_ORDER_BASE;
+const hoaDonIdTuOrder = (orderCode: number) => Math.floor((orderCode - HD_ORDER_BASE) / HD_ORDER_STEP);
+const MARKER_HD = /\[PAYOS_HD:(\d+)\]/;
 
 @Injectable()
 export class PayosService implements OnModuleInit {
@@ -19,6 +33,10 @@ export class PayosService implements OnModuleInit {
     private readonly lichHenRepo: Repository<LichHen>,
     @InjectRepository(CauHinhTienCoc)
     private readonly tienCocRepo: Repository<CauHinhTienCoc>,
+    @InjectRepository(HoaDon)
+    private readonly hoaDonRepo: Repository<HoaDon>,
+    private readonly thanhToanService: ThanhToanService,
+    private readonly thongBaoService: ThongBaoService,
   ) {
     const clientId = this.configService.get<string>('PAYOS_CLIENT_ID');
     const apiKey = this.configService.get<string>('PAYOS_API_KEY');
@@ -41,6 +59,7 @@ export class PayosService implements OnModuleInit {
     // 2. Chạy Background Reconciliation Worker định kỳ mỗi 60 giây
     setInterval(() => {
       this.doiSoatLichHenChoThanhToan().catch(() => {});
+      this.doiSoatHoaDonChoThanhToan().catch(() => {});
     }, 60 * 1000);
   }
 
@@ -213,7 +232,14 @@ export class PayosService implements OnModuleInit {
       const verifiedData = await this.payOS.webhooks.verify(webhookBody);
       this.logger.log(`PayOS Webhook nhận thanh toán: OrderCode ${verifiedData?.orderCode}, Số tiền: ${verifiedData?.amount}`);
 
-      if (verifiedData?.orderCode) {
+      if (verifiedData?.orderCode && laDonHoaDon(verifiedData.orderCode)) {
+        await this.ghiNhanHoaDonDaChuyenKhoan(
+          hoaDonIdTuOrder(verifiedData.orderCode),
+          verifiedData.orderCode,
+          Number(verifiedData.amount || 0),
+          verifiedData.reference,
+        );
+      } else if (verifiedData?.orderCode) {
         const orderCode = verifiedData.orderCode;
         // Tìm lịch hẹn có chứa [PAYOS_ORDER:xxxx]
         const lh = await this.lichHenRepo.createQueryBuilder('lh')
@@ -269,5 +295,187 @@ export class PayosService implements OnModuleInit {
     } catch (err: any) {
       return { isPaid: false, status: 'PENDING', error: err?.message, appointment: lh };
     }
+  }
+
+  // ===================== QR CHUYỂN KHOẢN VIỆN PHÍ (HÓA ĐƠN) =====================
+
+  // Đơn lệch tiền đã báo thu ngân — tránh worker 60s báo lặp
+  private readonly daBaoLechTien = new Set<number>();
+
+  /**
+   * Tạo mã VietQR PayOS cho hóa đơn viện phí đang chờ thanh toán.
+   * Khi tiền vào, webhook / polling / worker đối soát sẽ tự xác nhận hóa đơn (không cần thu ngân bấm tay).
+   */
+  async taoLinkThanhToanHoaDon(hoaDonId: number) {
+    if (!this.payOS) {
+      throw new BadRequestException('Hệ thống thanh toán PayOS chưa được cấu hình.');
+    }
+    const hd = await this.hoaDonRepo.findOne({ where: { id: hoaDonId } });
+    if (!hd) throw new NotFoundException('Không tìm thấy hóa đơn');
+    if (hd.trangThai === 'da_thanh_toan') return { daThanhToan: true };
+    if (hd.trangThai !== 'cho_thanh_toan' || hd.maHoaDon?.startsWith(MA_TAM_UNG_QUAY)) {
+      throw new BadRequestException('Hóa đơn này không thanh toán chuyển khoản trực tuyến được');
+    }
+    const amount = Math.round(Number(hd.thucThu || 0));
+    if (amount <= 0) {
+      throw new BadRequestException('Hóa đơn không còn số tiền phải thu, vui lòng liên hệ Quầy Thu ngân');
+    }
+
+    // Đơn cũ: nếu khách đã trả thì xác nhận luôn; nếu còn chờ thì hủy để khách không quét nhầm mã cũ (sai số tiền)
+    const oldCode = Number(hd.ghiChu?.match(MARKER_HD)?.[1] || 0);
+    if (oldCode) {
+      try {
+        const old = await this.payOS.paymentRequests.get(oldCode);
+        if (old?.status === 'PAID') {
+          const ok = await this.ghiNhanHoaDonDaChuyenKhoan(hd.id, oldCode, Number(old.amountPaid || 0));
+          if (ok) return { daThanhToan: true };
+        } else if (old?.status === 'PENDING') {
+          await this.payOS.paymentRequests.cancel(oldCode, 'Tao ma QR moi').catch(() => {});
+        }
+      } catch {
+        // đơn cũ không tra được → bỏ qua, tạo đơn mới
+      }
+    }
+
+    const clientUrl = this.configService.get<string>('CLIENT_URL', 'http://localhost:3000');
+    const description = `VP ${(hd.maHoaDon || `HD${hd.id}`).replace(/[^a-zA-Z0-9]/g, '')}`.slice(0, 25);
+    let orderCode = HD_ORDER_BASE + hd.id * HD_ORDER_STEP + (Date.now() % HD_ORDER_STEP);
+    let res: any;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        res = await this.payOS.paymentRequests.create({
+          orderCode,
+          amount,
+          description,
+          items: [{ name: 'Vien phi kham chua benh', quantity: 1, price: amount }],
+          returnUrl: `${clientUrl}/benh-nhan?payment=success`,
+          cancelUrl: `${clientUrl}/benh-nhan?payment=cancelled`,
+        });
+        break;
+      } catch (err: any) {
+        const msg = err?.message || '';
+        const trungMa = msg.includes('231') || err?.code === '231' || msg.includes('đã tồn tại');
+        if (!trungMa || attempt >= 2) {
+          this.logger.error(`Lỗi tạo PayOS link cho hóa đơn ${hd.maHoaDon}: ${msg}`);
+          throw new BadRequestException(msg || 'Không thể tạo mã QR thanh toán PayOS');
+        }
+        orderCode = HD_ORDER_BASE + hd.id * HD_ORDER_STEP + ((Date.now() + Math.floor(Math.random() * 1000) + 1) % HD_ORDER_STEP);
+      }
+    }
+
+    // Ghi marker bằng UPDATE trực tiếp để không đè các cột khác nếu hóa đơn vừa được tính lại
+    const ghiChuMoi = `${(hd.ghiChu || '').replace(/\s*\[PAYOS_HD:\d+\]/g, '').trim()} [PAYOS_HD:${orderCode}]`.trim();
+    await this.hoaDonRepo.update(hd.id, { ghiChu: ghiChuMoi });
+
+    return {
+      daThanhToan: false,
+      orderCode,
+      amount,
+      description,
+      checkoutUrl: res.checkoutUrl,
+      qrCode: res.qrCode,
+      accountName: res.accountName,
+      accountNumber: res.accountNumber,
+      bin: res.bin,
+    };
+  }
+
+  /** Bệnh nhân/thu ngân kiểm tra hóa đơn đã nhận chuyển khoản chưa (đồng bộ ngay nếu PayOS báo PAID) */
+  async kiemTraHoaDon(hoaDonId: number) {
+    const hd = await this.hoaDonRepo.findOne({ where: { id: hoaDonId } });
+    if (!hd) throw new NotFoundException('Không tìm thấy hóa đơn');
+    if (hd.trangThai === 'da_thanh_toan') return { isPaid: true, status: 'PAID' };
+
+    const orderCode = Number(hd.ghiChu?.match(MARKER_HD)?.[1] || 0);
+    if (!orderCode || !this.payOS) return { isPaid: false, status: hd.trangThai };
+    try {
+      const order = await this.payOS.paymentRequests.get(orderCode);
+      if (order?.status === 'PAID') {
+        const ok = await this.ghiNhanHoaDonDaChuyenKhoan(hd.id, orderCode, Number(order.amountPaid || 0));
+        return { isPaid: ok, status: ok ? 'PAID' : 'LECH_SO_TIEN' };
+      }
+      return { isPaid: false, status: order?.status || 'PENDING' };
+    } catch (err: any) {
+      return { isPaid: false, status: 'PENDING', error: err?.message };
+    }
+  }
+
+  /** Worker 60s: lưới an toàn khi webhook PayOS không tới (server ngủ trên Render, lỗi mạng...) */
+  async doiSoatHoaDonChoThanhToan() {
+    if (!this.payOS) return;
+    const pending = await this.hoaDonRepo
+      .createQueryBuilder('hd')
+      .where('hd.trangThai = :tt', { tt: 'cho_thanh_toan' })
+      .andWhere('hd.ghiChu LIKE :mk', { mk: '%[PAYOS_HD:%' })
+      .orderBy('hd.id', 'DESC')
+      .take(50)
+      .getMany();
+
+    for (const hd of pending) {
+      const orderCode = Number(hd.ghiChu?.match(MARKER_HD)?.[1] || 0);
+      if (!orderCode) continue;
+      try {
+        const order = await this.payOS.paymentRequests.get(orderCode);
+        if (order?.status === 'PAID') {
+          this.logger.log(`[Reconciliation] Hóa đơn ${hd.maHoaDon} (order ${orderCode}) đã nhận chuyển khoản → tự xác nhận.`);
+          await this.ghiNhanHoaDonDaChuyenKhoan(hd.id, orderCode, Number(order.amountPaid || 0));
+        }
+      } catch {
+        // bỏ qua lỗi từng đơn
+      }
+    }
+  }
+
+  /**
+   * Ghi nhận tiền chuyển khoản vào hóa đơn: đủ tiền → xác nhận thanh toán (như thu ngân bấm "Thu tiền", phương thức chuyển khoản).
+   * Thiếu tiền (hóa đơn bị tính lại tăng sau khi tạo QR) → không tự xác nhận, báo thu ngân xử lý.
+   * Trả về true nếu hóa đơn đã ở trạng thái đã thanh toán.
+   */
+  private async ghiNhanHoaDonDaChuyenKhoan(hoaDonId: number, orderCode: number, soTienNhan: number, maGiaoDich?: string) {
+    const hd = await this.hoaDonRepo.findOne({ where: { id: hoaDonId }, relations: ['benhNhan'] });
+    if (!hd) {
+      this.logger.warn(`PayOS báo nhận tiền order ${orderCode} nhưng không có hóa đơn #${hoaDonId}`);
+      return false;
+    }
+    if (hd.trangThai === 'da_thanh_toan') return true;
+
+    const canThu = Math.round(Number(hd.thucThu || 0));
+    if (soTienNhan < canThu) {
+      if (!this.daBaoLechTien.has(orderCode)) {
+        this.daBaoLechTien.add(orderCode);
+        this.logger.warn(`Hóa đơn ${hd.maHoaDon}: nhận ${soTienNhan} đ qua PayOS nhưng cần thu ${canThu} đ → chờ thu ngân xử lý.`);
+        await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+          tieuDe: `Chuyển khoản thiếu: ${hd.maHoaDon}`,
+          noiDung: `Bệnh nhân ${hd.benhNhan?.hoTen || ''} đã chuyển khoản ${soTienNhan.toLocaleString('vi-VN')} đ (order ${orderCode}) nhưng hóa đơn cần thu ${canThu.toLocaleString('vi-VN')} đ. Vui lòng thu phần chênh lệch và xác nhận thủ công.`,
+          loai: 'thanh_toan',
+          doiTuongBang: 'hoa_don',
+          doiTuongId: hd.id,
+        }).catch(() => {});
+      }
+      return false;
+    }
+
+    try {
+      await this.thanhToanService.xacNhanThanhToan(hd.id, 0, {
+        phuongThucThanhToan: 'chuyen_khoan',
+        ghiChu: `${hd.ghiChu || ''} [CK PayOS tự động: ${soTienNhan.toLocaleString('vi-VN')} đ${maGiaoDich ? `, mã GD ${maGiaoDich}` : ''}]`.trim(),
+      });
+    } catch (err: any) {
+      // Webhook, polling và worker có thể chạy đồng thời — bên chậm hơn gặp "đã được thanh toán" là bình thường
+      const lai = await this.hoaDonRepo.findOne({ where: { id: hd.id } });
+      if (lai?.trangThai === 'da_thanh_toan') return true;
+      this.logger.error(`Không tự xác nhận được hóa đơn ${hd.maHoaDon}: ${err?.message}`);
+      return false;
+    }
+
+    this.logger.log(`Tự động xác nhận hóa đơn ${hd.maHoaDon} sau khi nhận ${soTienNhan} đ chuyển khoản PayOS.`);
+    await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+      tieuDe: `Đã nhận chuyển khoản: ${hd.maHoaDon}`,
+      noiDung: `Bệnh nhân ${hd.benhNhan?.hoTen || ''} đã chuyển khoản ${soTienNhan.toLocaleString('vi-VN')} đ. Hóa đơn đã tự động chuyển sang Đã thanh toán.`,
+      loai: 'thanh_toan',
+      doiTuongBang: 'hoa_don',
+      doiTuongId: hd.id,
+    }).catch(() => {});
+    return true;
   }
 }

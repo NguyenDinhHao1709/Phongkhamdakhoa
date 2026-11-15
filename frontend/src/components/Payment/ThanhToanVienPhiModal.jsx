@@ -17,9 +17,10 @@ import {
   Pill,
   Sparkles,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDateTime } from '../../utils/formatDate';
-import { apiGet, apiPatch } from '../../services/api';
+import { apiGet, apiPatch, apiPost } from '../../services/api';
 import BankAppLinks from './BankAppLinks';
 
 /**
@@ -43,6 +44,10 @@ export default function ThanhToanVienPhiModal({
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [updatingMedicine, setUpdatingMedicine] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  // Mã QR động PayOS: tiền vào là hóa đơn tự chuyển "Đã thanh toán" (webhook + polling)
+  const [payData, setPayData] = useState(null);
+  const [payosLoi, setPayosLoi] = useState(false);
+  const [daThanhToan, setDaThanhToan] = useState(false);
 
   // Tải chi tiết hóa đơn (Bảng kê chi tiết & Đơn thuốc) khi mở Modal
   useEffect(() => {
@@ -50,8 +55,55 @@ export default function ThanhToanVienPhiModal({
       fetchDetailHoaDon(hoaDon.id);
     } else {
       setDetailHd(null);
+      setPayData(null);
+      setPayosLoi(false);
+      setDaThanhToan(false);
     }
   }, [isOpen, hoaDon?.id]);
+
+  // Tạo mã QR PayOS sau khi có số tiền chính xác; tạo lại khi số tiền đổi (vd. đổi lựa chọn mua thuốc)
+  const soTienQr = detailHd && detailHd.trangThai === 'cho_thanh_toan' ? Number(detailHd.thucThu || 0) : null;
+  useEffect(() => {
+    if (!isOpen || !hoaDon?.id || !soTienQr) return;
+    let active = true;
+    setPayData(null);
+    setPayosLoi(false);
+    apiPost(`/payos/hoa-don/${hoaDon.id}/tao-link`)
+      .then((res) => {
+        if (!active) return;
+        const data = res?.data ?? res;
+        if (data?.daThanhToan) {
+          setDaThanhToan(true);
+          onSuccess?.();
+        } else if (data?.qrCode) {
+          setPayData(data);
+        } else {
+          setPayosLoi(true);
+        }
+      })
+      .catch(() => active && setPayosLoi(true));
+    return () => {
+      active = false;
+    };
+  }, [isOpen, hoaDon?.id, soTienQr]);
+
+  // Polling 4 giây: phát hiện tiền đã vào để báo bệnh nhân ngay (server cũng tự xác nhận qua webhook)
+  useEffect(() => {
+    if (!isOpen || !hoaDon?.id || !payData?.orderCode || daThanhToan) return;
+    const timer = setInterval(async () => {
+      try {
+        const res = await apiGet(`/payos/hoa-don/${hoaDon.id}/kiem-tra`);
+        const data = res?.data ?? res;
+        if (data?.isPaid) {
+          setDaThanhToan(true);
+          onSuccess?.();
+        }
+      } catch {
+        // bỏ qua lỗi mạng khi polling
+      }
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [isOpen, hoaDon?.id, payData?.orderCode, daThanhToan]);
 
   const fetchDetailHoaDon = async (id) => {
     setLoadingDetail(true);
@@ -85,8 +137,14 @@ export default function ThanhToanVienPhiModal({
     accountName: 'PHONG KHAM DA KHOA',
   };
 
-  const noiDungCK = `VP ${currentHd.maHoaDon || currentHd.id}`;
-  const vietQrUrl = `https://img.vietqr.io/image/${BANK_INFO.bankId}-${BANK_INFO.accountNo}-compact2.png?amount=${thucThu}&addInfo=${encodeURIComponent(noiDungCK)}&accountName=${encodeURIComponent(BANK_INFO.accountName)}`;
+  // Có mã PayOS thì dùng đúng tài khoản/nội dung PayOS cấp (để hệ thống đối soát tự động); nếu không thì QR tĩnh dự phòng
+  const soTaiKhoan = payData?.accountNumber || BANK_INFO.accountNo;
+  const maNganHang = payData?.bin || BANK_INFO.bankId;
+  const tenTaiKhoan = payData?.accountName || BANK_INFO.accountName;
+  const soTienCK = payData?.amount ?? thucThu;
+  const noiDungCK = payData?.description || `VP ${currentHd.maHoaDon || currentHd.id}`;
+  const vietQrUrl = `https://img.vietqr.io/image/${maNganHang}-${soTaiKhoan}-compact2.png?amount=${soTienCK}&addInfo=${encodeURIComponent(noiDungCK)}&accountName=${encodeURIComponent(tenTaiKhoan)}`;
+  const hoaDonDaThanhToan = daThanhToan || currentHd.trangThai === 'da_thanh_toan';
 
   const handleCopy = (text, fieldName) => {
     navigator.clipboard.writeText(text);
@@ -326,22 +384,50 @@ export default function ThanhToanVienPhiModal({
           </div>
 
           {/* TAB 1: CHUYỂN KHOẢN VIETQR */}
-          {activeTab === 'qr' && (
+          {activeTab === 'qr' && hoaDonDaThanhToan && (
+            <div className="p-5 rounded-xl bg-emerald-50 border border-emerald-200 text-center space-y-2">
+              <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto" />
+              <p className="font-bold text-emerald-900 text-sm">Đã nhận thanh toán viện phí</p>
+              <p className="text-xs text-emerald-800">
+                Hóa đơn đã chuyển sang <strong>Đã thanh toán</strong>. Nếu có đơn thuốc, vui lòng tới Quầy Dược để nhận thuốc.
+              </p>
+            </div>
+          )}
+
+          {activeTab === 'qr' && !hoaDonDaThanhToan && (
             <div className="space-y-3.5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
                 {/* Mã QR */}
                 <div className="flex flex-col items-center justify-center p-3 bg-white rounded-xl border border-gray-200 shadow-2xs">
-                  <img
-                    src={vietQrUrl}
-                    alt="VietQR Viện phí"
-                    className="w-48 h-48 object-contain rounded-lg border border-gray-100 shadow-2xs"
-                  />
+                  {payData?.qrCode ? (
+                    <QRCodeSVG value={payData.qrCode} size={192} level="M" className="rounded-lg" />
+                  ) : payosLoi ? (
+                    <img
+                      src={vietQrUrl}
+                      alt="VietQR Viện phí"
+                      className="w-48 h-48 object-contain rounded-lg border border-gray-100 shadow-2xs"
+                    />
+                  ) : (
+                    <div className="w-48 h-48 flex items-center justify-center text-[11px] text-gray-500">
+                      Đang tạo mã QR...
+                    </div>
+                  )}
                   <span className="mt-2 text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
                     <ShieldCheck className="h-3.5 w-3.5" /> Quét bằng bất kỳ App Ngân hàng
                   </span>
+                  {payData?.qrCode && (
+                    <span className="mt-1 text-[10px] text-gray-500 flex items-center gap-1">
+                      <Clock className="h-3 w-3 animate-pulse" /> Đang chờ tiền vào tài khoản...
+                    </span>
+                  )}
+                  {payosLoi && (
+                    <span className="mt-1 text-[10px] text-amber-700 text-center">
+                      Không kết nối được cổng thanh toán tự động — sau khi chuyển khoản, Thu ngân sẽ xác nhận thủ công.
+                    </span>
+                  )}
                 </div>
 
-                <BankAppLinks accountNo={BANK_INFO.accountNo} bank={BANK_INFO.bankId} amount={thucThu} content={noiDungCK} accountName={BANK_INFO.accountName} />
+                <BankAppLinks accountNo={soTaiKhoan} bank={maNganHang} amount={soTienCK} content={noiDungCK} accountName={tenTaiKhoan} />
 
                 {/* Thông tin chuyển khoản chi tiết */}
                 <div className="space-y-2.5 text-xs">
@@ -353,11 +439,11 @@ export default function ThanhToanVienPhiModal({
                   <div className="p-2.5 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-between">
                     <div>
                       <span className="text-[10px] uppercase font-bold text-gray-500 block">Số tài khoản:</span>
-                      <span className="font-mono font-black text-sm text-emerald-800">{BANK_INFO.accountNo}</span>
+                      <span className="font-mono font-black text-sm text-emerald-800">{soTaiKhoan}</span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleCopy(BANK_INFO.accountNo, 'stk')}
+                      onClick={() => handleCopy(soTaiKhoan, 'stk')}
                       className="px-2 py-1 rounded bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 flex items-center gap-1 text-[11px] font-medium transition cursor-pointer"
                     >
                       {copiedField === 'stk' ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
@@ -368,11 +454,11 @@ export default function ThanhToanVienPhiModal({
                   <div className="p-2.5 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-between">
                     <div>
                       <span className="text-[10px] uppercase font-bold text-gray-500 block">Số tiền chính xác:</span>
-                      <span className="font-mono font-black text-sm text-emerald-600">{formatCurrency(thucThu)}</span>
+                      <span className="font-mono font-black text-sm text-emerald-600">{formatCurrency(soTienCK)}</span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleCopy(String(thucThu), 'sotien')}
+                      onClick={() => handleCopy(String(soTienCK), 'sotien')}
                       className="px-2 py-1 rounded bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 flex items-center gap-1 text-[11px] font-medium transition cursor-pointer"
                     >
                       {copiedField === 'sotien' ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}

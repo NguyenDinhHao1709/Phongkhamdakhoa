@@ -36,6 +36,20 @@ export class PayosController {
     return this.payosService.kiemTraTheoLichHen(lichHenId);
   }
 
+  @Post('hoa-don/:hoaDonId/tao-link')
+  @ApiOperation({ summary: 'Tạo mã VietQR PayOS cho hóa đơn viện phí (tự xác nhận khi tiền vào)' })
+  async taoLinkHoaDon(@Param('hoaDonId', ParseIntPipe) hoaDonId: number, @CurrentUser() user: any) {
+    await assertBenhNhanSoHuu(this.dataSource, user, 'hoa_don', hoaDonId);
+    return this.payosService.taoLinkThanhToanHoaDon(hoaDonId);
+  }
+
+  @Get('hoa-don/:hoaDonId/kiem-tra')
+  @ApiOperation({ summary: 'Kiểm tra & đồng bộ trạng thái chuyển khoản của hóa đơn viện phí' })
+  async kiemTraHoaDon(@Param('hoaDonId', ParseIntPipe) hoaDonId: number, @CurrentUser() user: any) {
+    await assertBenhNhanSoHuu(this.dataSource, user, 'hoa_don', hoaDonId);
+    return this.payosService.kiemTraHoaDon(hoaDonId);
+  }
+
   @Public()
   @Post('webhook')
   @HttpCode(HttpStatus.OK)

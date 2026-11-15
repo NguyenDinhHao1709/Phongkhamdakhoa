@@ -45,6 +45,7 @@ export const AUDIT_PATIENT_ALLOWED: RegExp[] = [
   /^\/lich-hen\/?$/,
   /^\/lich-hen\/:id\/(huy|chinh-sua|cap-nhat-tk-hoan-coc|xac-nhan-thanh-toan)$/,
   /^\/payos\/tao-link\/:lichHenId$/,
+  /^\/payos\/hoa-don\/:hoaDonId\/tao-link$/,
   /^\/thanh-toan\/(vnpay\/tao-url|:id\/xac-nhan|hoa-don\/:id\/(xac-nhan|lua-chon-thuoc))$/,
   /^\/nha-thuoc\/don-thuoc\/:id\/lua-chon-mua$/,
   /^\/benh-nhan\/:id$/,

@@ -66,17 +66,22 @@ export default function HoaDonListPage() {
 
   useEffect(() => {
     fetchData();
+    // Tự làm mới ngầm: hóa đơn bệnh nhân chuyển khoản PayOS được server tự xác nhận, thu ngân không cần F5
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchData(true);
+    }, 30000);
+    return () => clearInterval(timer);
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await apiGet('/thanh-toan/danh-sach');
       if (res.data) setList(res.data);
     } catch (err) {
-      console.error('Lỗi khi lấy danh sách hóa đơn:', err);
+      if (!silent) console.error('Lỗi khi lấy danh sách hóa đơn:', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -294,7 +299,7 @@ export default function HoaDonListPage() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={fetchData}
+            onClick={() => fetchData()}
             disabled={loading}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-xs active:scale-95 cursor-pointer"
           >
@@ -944,12 +949,12 @@ export default function HoaDonListPage() {
         <ThanhToanModal
           hoaDonId={selectedHoaDonId}
           onClose={() => setSelectedHoaDonId(null)}
-          onSuccess={fetchData}
+          onSuccess={() => fetchData()}
         />
       )}
 
       {tamUngInvoice && (
-        <ThuTamUngModal hoaDon={tamUngInvoice} onClose={() => setTamUngInvoice(null)} onSuccess={fetchData} />
+        <ThuTamUngModal hoaDon={tamUngInvoice} onClose={() => setTamUngInvoice(null)} onSuccess={() => fetchData()} />
       )}
 
       {/* Modal In Hóa Đơn / Phiếu Thu */}
@@ -965,7 +970,7 @@ export default function HoaDonListPage() {
         <HuyHoaDonModal
           hoaDon={cancellingInvoice}
           onClose={() => setCancellingInvoice(null)}
-          onSuccess={fetchData}
+          onSuccess={() => fetchData()}
         />
       )}
     </div>

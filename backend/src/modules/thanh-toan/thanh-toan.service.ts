@@ -417,10 +417,13 @@ export class ThanhToanService {
       if (tienHoanTra > 0) {
         ghiChuParts.push(`Hoàn trả bệnh nhân ${tienHoanTra.toLocaleString('vi-VN')} đ tạm ứng dư`);
       }
+      // Giữ marker đơn PayOS (QR chuyển khoản viện phí) để webhook/đối soát còn tìm được đơn sau khi tính lại
+      const payosMarker = hd.ghiChu?.match(/\[PAYOS_HD:\d+\]/)?.[0];
       hd.ghiChu =
         ghiChuParts.length > 0
           ? ghiChuParts.join(' • ')
           : hd.ghiChu || 'Khám dịch vụ tự chi trả';
+      if (payosMarker && !hd.ghiChu.includes(payosMarker)) hd.ghiChu = `${hd.ghiChu} ${payosMarker}`;
 
       // Xóa chi tiết cũ nếu đã lưu
       if (hd.id) {
