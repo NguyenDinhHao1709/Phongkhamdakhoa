@@ -93,7 +93,7 @@ Mọi endpoint trừ `/health` yêu cầu header `x-internal-key`.
 | POST | `/triage-classify` | Phân loại chuyên khoa từ triệu chứng | ai-service |
 | GET | `/triage-classify/info` | Số mẫu và độ chính xác cross-validation | — |
 | POST | `/triage-classify/retrain` | Huấn luyện lại ngay | — |
-| POST | `/verify-face` | Thử thách quay đầu + so khớp khuôn mặt chấm công với mẫu | backend |
+| POST | `/verify-face` | Thử thách nháy mắt + so khớp khuôn mặt chấm công với mẫu | backend |
 | POST | `/check-duplicate-face` | Kiểm tra ảnh đại diện hợp lệ và không trùng | backend |
 
 ```bash
@@ -133,12 +133,17 @@ curl -X POST http://localhost:5001/forecast \
 - InsightFace `buffalo_sc`, so cosine giữa embedding ArcFace; ngưỡng chấp nhận cosine ≥ 0.445 (hiển thị 70%).
 - **Mẫu nhân viên**: backend gửi `ref_embedding` đã lưu trong bảng `nhan_vien_khuon_mat`; lần đầu gửi ảnh đại diện,
   service trả kèm `ref_embedding` để backend lưu. Đổi model → `TRUNCATE TABLE nhan_vien_khuon_mat`.
-- **Chống giả mạo bằng thử thách quay đầu** (`frames_b64`, 5–12 khung hình): người dùng nhìn thẳng rồi quay đầu sang một bên.
-  Service đo *thị sai của mũi* so với mặt phẳng hai mắt – hai khóe miệng: đầu thật quay thì mũi lệch khỏi mặt phẳng đó,
-  ảnh in/ảnh trên điện thoại thì không. Đạt khi: có khung nhìn thẳng, ≥ 2 khung có thị sai ≥ 0.22, mọi khung cùng một người.
-  - Thực nghiệm với ảnh phẳng (14 khuôn mặt × 4 cấu hình, quét nghiêng mô phỏng): lọt 0% khi nghiêng tới ±40°, 4% ở ±50°.
-  - Mặt thật: quay ~26° đo được 0.24, ~32° đo được 0.62 (chỉ 2 mẫu) → hướng dẫn người dùng quay khoảng 30°.
-  - **Giới hạn**: không chặn được video quay sẵn cảnh người đó quay đầu; chưa đo trên camera thật với nhiều người.
-    Backend ghi log số đo (`quay đầu …`, `cosine …`) mỗi lần chấm công để hiệu chỉnh `NGUONG_QUAY_DAU`.
+- **Chống giả mạo bằng thử thách nháy mắt** (`frames_b64`, 8–30 khung hình; frontend gửi 24 khung trong 3 giây):
+  người dùng nhìn thẳng và nháy mắt. Model 106 điểm mốc `models/2d106det.onnx` (lấy từ gói `buffalo_l` của InsightFace,
+  vì `buffalo_sc` chỉ có 5 điểm) cho vị trí mí mắt; *độ mở mắt* = khe mí trung bình / khoảng cách mắt–miệng.
+  Nghiêng/xoay ảnh phẳng thì tử và mẫu co giãn cùng tỉ lệ nên độ mở không đổi. Đạt khi: độ mở nhỏ nhất ≤ 0.55 × độ mở
+  lúc mở mắt, có khung nhìn thẳng đang mở mắt (dùng để so khớp), khung nhắm mắt + 6 khung rải đều cùng một người.
+  - Chỉ khung so khớp và các khung kiểm tra cùng người mới tính embedding ArcFace; mọi khung chạy dò mặt + 106 điểm.
+    Đo với 1 CPU: ~7–8 giây cho 24 khung.
+  - Thực nghiệm (cửa sổ 3 giây, lấy mẫu 8 khung/giây): video nháy mắt thật đạt 6/6, tỉ lệ 0.29–0.37; video người nói
+    chuyện không nháy mắt 0.73–0.93 và ảnh tĩnh nghiêng/xoay phối cảnh 0.80 đều bị từ chối.
+    Ảnh mắt nhắm của người khác nhau có độ mở tuyệt đối chồng lấn với mắt mở → bắt buộc so tương đối trong cùng lượt quét.
+  - **Giới hạn**: không chặn được video quay sẵn cảnh người đó nháy mắt; chưa đo trên camera thật với nhiều người.
+    Backend ghi log số đo (`nhắm mắt …`, `cosine …`) mỗi lần chấm công để hiệu chỉnh `NGUONG_NHAM_MAT`.
 - **Hiệu chỉnh ngưỡng độ khớp**: `python scripts/calibrate_face_threshold.py --backend-dir ../backend` in bảng FRR/FAR theo
   từng ngưỡng từ ảnh đại diện và ảnh chấm công đã lưu.

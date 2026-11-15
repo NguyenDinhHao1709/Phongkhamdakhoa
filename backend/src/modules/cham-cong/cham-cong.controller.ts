@@ -9,10 +9,10 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Public } from '../../common/decorators/public.decorator';
 import { getClientIp } from '../../common/middleware/load-protection.middleware';
 
-/** Chấm công bắt buộc gửi chuỗi khung hình cho thử thách quay đầu (chống giả mạo bằng ảnh) */
+/** Chấm công bắt buộc gửi chuỗi khung hình cho thử thách nháy mắt (chống giả mạo bằng ảnh) */
 function layChuoiKhungHinh(body: { framesB64?: string[] }): string[] {
   const frames = body?.framesB64;
-  if (!Array.isArray(frames) || frames.length < 5 || frames.length > 12 || frames.some((f) => typeof f !== 'string')) {
+  if (!Array.isArray(frames) || frames.length < 8 || frames.length > 30 || frames.some((f) => typeof f !== 'string')) {
     throw new BadRequestException('Phiên bản trang chấm công đã cũ. Vui lòng tải lại trang (Ctrl + F5) rồi thử lại.');
   }
   return frames;

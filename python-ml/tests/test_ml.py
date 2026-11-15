@@ -110,38 +110,53 @@ def test_do_chinh_xac_kiem_dinh_cheo_khong_tut(bo_phan_loai):
     assert len(info["cv_theo_khoa"]) == 11
 
 
-# ─── Thử thách quay đầu (khuôn mặt dựng từ 5 điểm mốc) ────────────────
+# ─── Thử thách nháy mắt (khuôn mặt dựng từ 5 + 106 điểm mốc) ──────────
 EMB = np.random.default_rng(1).normal(size=512).astype(np.float32)
 
 
-def mat_gia(lech_mui=0.0, co_ngang=1.0, embedding=EMB):
+def mat_gia(mo=1.0, lech_mui=0.0, co_doc=1.0, xoay_do=0.0, embedding=EMB):
+    """`mo`: độ mở mắt (1 = mở, ~0.3 = nhắm). `co_doc`, `xoay_do`: nghiêng / xoay cả khuôn mặt như một tấm ảnh phẳng."""
     kps = np.array([[-30, 0], [30, 0], [60 * lech_mui, 35], [-22, 70], [22, 70]], dtype=np.float32)
-    kps[:, 0] *= co_ngang
-    return SimpleNamespace(kps=kps + [320, 200], embedding=embedding, det_score=0.9, bbox=np.array([240, 120, 400, 320]))
+    lmk = np.zeros((106, 2), dtype=np.float32)
+    for (tren, duoi), dx in zip(fv.CAP_MI_MAT, [-6, 0, 6, -6, 0, 6]):
+        cx = -30 if tren < 87 else 30
+        lmk[tren], lmk[duoi] = [cx + dx, -4 * mo], [cx + dx, 4 * mo]
+    goc = np.radians(xoay_do)
+    bien_doi = np.array([[np.cos(goc), -np.sin(goc)], [np.sin(goc), np.cos(goc)]]) @ np.diag([1.0, co_doc])
+    return SimpleNamespace(kps=kps @ bien_doi.T + [320, 200], landmark_2d_106=lmk @ bien_doi.T + [320, 200],
+                           embedding=embedding, det_score=0.9, bbox=np.array([240, 120, 400, 320]))
 
 
-def dau_that():
-    return [(i, mat_gia(l, np.cos(np.arctan(l / 0.55)))) for i, l in enumerate([0.02, 0.0, 0.1, 0.2, 0.3, 0.3, 0.15, 0.03])]
+def danh_gia(faces):
+    return fv.danh_gia_nhay_mat(faces, embedding=lambda f: f.embedding)
 
 
-def test_dau_that_quay_thi_dat_va_chon_khung_nhin_thang():
-    kq = fv.danh_gia_quay_dau(dau_that())
-    assert kq["ok"] and kq["frame_index"] == 1 and kq["bien_do_quay_dau"] >= fv.NGUONG_QUAY_DAU
+def nguoi_that_nhay_mat():
+    mo = [1.0, 0.98, 1.0, 0.6, 0.25, 0.7, 1.0, 0.97, 1.0, 1.0]
+    lech = [0.12, 0.1, 0.02, 0.0, 0.0, 0.01, 0.05, 0.08, 0.1, 0.1]
+    return [(i, mat_gia(m, l)) for i, (m, l) in enumerate(zip(mo, lech))]
 
 
-def test_anh_phang_nghieng_bi_tu_choi():
-    phang = [(i, mat_gia(0.0, c)) for i, c in enumerate([1, 0.95, 0.85, 0.75, 0.7, 0.75, 0.9, 1])]
-    kq = fv.danh_gia_quay_dau(phang)
-    assert not kq["ok"] and kq["bien_do_quay_dau"] < 0.05
+def test_nguoi_that_nhay_mat_thi_dat_va_chon_khung_mo_mat_nhin_thang():
+    kq = danh_gia(nguoi_that_nhay_mat())
+    assert kq["ok"] and kq["frame_index"] == 2 and kq["ti_le_nham_mat"] <= fv.NGUONG_NHAM_MAT
+
+
+def test_anh_phang_nghieng_xoay_bi_tu_choi():
+    phang = [(i, mat_gia(1.0, 0.0, c, x)) for i, (c, x) in
+             enumerate(zip([1, 0.95, 0.8, 0.6, 0.5, 0.6, 0.8, 0.9, 1, 1], [0, 5, 10, 20, 30, 20, -10, -20, 0, 0]))]
+    kq = danh_gia(phang)
+    assert not kq["ok"] and kq["ti_le_nham_mat"] > 0.95 and "nháy mắt" in kq["reason"]
 
 
 def test_cac_truong_hop_tu_choi_khac():
-    assert not fv.danh_gia_quay_dau(dau_that()[:4])["ok"]  # thiếu khung hình
+    assert not danh_gia(nguoi_that_nhay_mat()[:5])["ok"]  # thiếu khung hình
     nguoi_khac = np.random.default_rng(2).normal(size=512).astype(np.float32)
-    trao = dau_that()[:6] + [(6, mat_gia(0.15, 0.96, nguoi_khac)), dau_that()[7]]
-    assert "thay đổi" in fv.danh_gia_quay_dau(trao)["reason"]  # tráo người giữa chừng
-    nghieng = [(i, mat_gia(l)) for i, l in enumerate([0.3, 0.35, 0.4, 0.5, 0.45, 0.3])]
-    assert "nhìn thẳng" in fv.danh_gia_quay_dau(nghieng)["reason"]  # không có khung nhìn thẳng
+    trao = nguoi_that_nhay_mat()
+    trao[4] = (4, mat_gia(0.25, 0.0, embedding=nguoi_khac))
+    assert "thay đổi" in danh_gia(trao)["reason"]  # khung nhắm mắt là người khác
+    nghieng = [(i, mat_gia(m, 0.4)) for i, (m, _) in enumerate(nguoi_that_nhay_mat())]
+    assert "nhìn thẳng" in danh_gia(nghieng)["reason"]  # không có khung nhìn thẳng
 
 
 def test_thang_diem_hien_thi():

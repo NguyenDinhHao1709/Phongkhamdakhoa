@@ -2,22 +2,25 @@
 services/face_verifier.py — Nhận diện khuôn mặt chấm công
 InsightFace (buffalo_sc) → embedding ArcFace → cosine similarity với ảnh mẫu.
 
-Chống giả mạo bằng thử thách quay đầu, đo THỊ SAI của mũi: hai mắt và hai khóe miệng gần như đồng phẳng,
-còn mũi nhô ra trước. Khi đầu thật quay, mũi dịch chuyển so với mặt phẳng mắt–miệng; với ảnh in / ảnh trên
-điện thoại (mặt phẳng), mọi điểm đi theo cùng một phép chiếu nên mũi không lệch dù nghiêng ảnh thế nào.
-Giới hạn: chặn được ảnh tĩnh, KHÔNG chặn được video quay sẵn cảnh người đó quay đầu.
+Chống giả mạo bằng thử thách nháy mắt: model 106 điểm mốc (2d106det) đo khe mí mắt trên mỗi khung hình,
+chia cho khoảng cách mắt–miệng. Ảnh in / ảnh trên điện thoại có độ mở mắt không đổi (nghiêng, xoay ảnh thì khe mí
+và khoảng mắt–miệng co giãn cùng tỉ lệ), mặt thật nháy mắt thì độ mở tụt mạnh trong một vài khung.
+Giới hạn: chặn được ảnh tĩnh, KHÔNG chặn được video quay sẵn cảnh người đó nháy mắt.
 """
 import base64
 import hashlib
 import io
 import threading
 from collections import OrderedDict
+from pathlib import Path
 
 import cv2
 import numpy as np
 from PIL import Image
 
 from insightface.app import FaceAnalysis
+from insightface.app.common import Face
+from insightface.model_zoo import get_model
 
 # Đổi model thì embedding đã lưu trong bảng nhan_vien_khuon_mat hết dùng được → TRUNCATE bảng đó
 MODEL_NAME = 'buffalo_sc'
@@ -29,16 +32,23 @@ DET_SIZE = (320, 320)
 # Đo lại bằng scripts/calibrate_face_threshold.py trước khi đổi.
 NGUONG_KHOP_PCT = 70.0
 
-# ─── Thử thách quay đầu ─────────────────────────────────────────────────────
-SO_FRAME_TOI_THIEU = 5      # số khung hình phải thấy rõ mặt
-# Thị sai mũi tối thiểu (đơn vị: khoảng cách hai mắt), xem thi_sai_mui(). Thực nghiệm (README): ảnh phẳng nghiêng
-# tới ±40° không vượt 0.22; mặt thật quay ~26° đo được 0.24, ~32° đo được 0.62 → người dùng cần quay khoảng 30°.
-NGUONG_QUAY_DAU = 0.22
+# ─── Thử thách nháy mắt ─────────────────────────────────────────────────────
+# Model 106 điểm mốc lấy từ gói buffalo_l của InsightFace (buffalo_sc chỉ có 5 điểm, không có mí mắt)
+LANDMARK_MODEL_PATH = Path(__file__).resolve().parent.parent / 'models' / '2d106det.onnx'
+# Cặp điểm (mí trên, mí dưới) của hai mắt trong bộ 106 điểm
+CAP_MI_MAT = [(41, 36), (40, 33), (42, 37), (95, 90), (94, 87), (96, 91)]
+SO_FRAME_TOI_THIEU = 8      # số khung hình phải thấy rõ mặt
+# Nháy mắt đạt khi độ mở mắt nhỏ nhất ≤ tỉ lệ này × độ mở lúc mở mắt. Thực nghiệm (README): video nháy mắt thật
+# xuống 0.25–0.45; video người nói chuyện không nháy và ảnh phẳng nghiêng/xoay không xuống dưới 0.7.
+NGUONG_NHAM_MAT = 0.55
+# Khung dùng để so khớp phải đang mở mắt (≥ tỉ lệ này × độ mở lúc mở mắt)
+NGUONG_MO_MAT = 0.8
 # Khung "nhìn thẳng" phải có độ lệch mũi (do_lech_mui) trong khoảng này; ảnh chấm công thật đo được ≤ 0.12
 NGUONG_NHIN_THANG = 0.15
-# Mọi khung hình phải cùng một người với khung nhìn thẳng (chống tráo ảnh giữa chừng). Ngưỡng lỏng
-# vì mặt nghiêng làm giảm độ khớp; hai người khác nhau thường < 0.2.
+# Các khung kiểm tra phải cùng một người với khung so khớp (chống tráo ảnh giữa chừng). Ngưỡng lỏng
+# vì mặt nhắm mắt làm giảm độ khớp; hai người khác nhau thường < 0.2.
 NGUONG_CUNG_NGUOI = 0.20
+SO_KHUNG_KIEM_TRA_NGUOI = 6  # số khung rải đều được tính embedding để kiểm tra cùng người (ngoài khung nhắm mắt)
 
 # ─── Khởi tạo InsightFace ───────────────────────────────────────────────────
 
@@ -58,6 +68,25 @@ def get_face_app():
     return _face_app
 
 
+_landmark_model = None
+
+
+def get_landmark_model():
+    """Model 106 điểm mốc cho thử thách nháy mắt (nạp 1 lần)."""
+    global _landmark_model
+    with _face_app_lock:
+        if _landmark_model is None:
+            model = get_model(str(LANDMARK_MODEL_PATH), providers=['CPUExecutionProvider'])
+            model.prepare(ctx_id=0)
+            _landmark_model = model
+    return _landmark_model
+
+
+def warmup_models():
+    get_face_app()
+    get_landmark_model()
+
+
 def decode_base64_image(b64_str: str) -> np.ndarray:
     """Giải mã base64 -> OpenCV BGR image."""
     data = b64_str
@@ -68,16 +97,43 @@ def decode_base64_image(b64_str: str) -> np.ndarray:
     return cv2.cvtColor(np.array(pil_img.convert('RGB')), cv2.COLOR_RGB2BGR)
 
 
-def get_face_info(img_bgr: np.ndarray):
-    """Lấy thông tin khuôn mặt (det_score, kps, embedding). Trả về None nếu không thấy mặt."""
+def thu_nho(img_bgr: np.ndarray) -> np.ndarray:
     h, w = img_bgr.shape[:2]
     if max(h, w) > MAX_SIDE:
         scale = MAX_SIDE / max(h, w)
         img_bgr = cv2.resize(img_bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-    faces = get_face_app().get(img_bgr)
+    return img_bgr
+
+
+def get_face_info(img_bgr: np.ndarray):
+    """Lấy thông tin khuôn mặt (det_score, kps, embedding). Trả về None nếu không thấy mặt."""
+    faces = get_face_app().get(thu_nho(img_bgr))
     if not faces:
         return None
     return max(faces, key=lambda f: f.det_score)
+
+
+def get_camera_face(img_bgr: np.ndarray):
+    """
+    Khuôn mặt trong một khung hình camera: chỉ chạy dò mặt + 106 điểm mốc (`landmark_2d_106`). Embedding ArcFace
+    (chậm nhất) để dành tính sau bằng ham_embedding(), vì thử thách nháy mắt cần nhiều khung hình.
+    """
+    img = thu_nho(img_bgr)
+    bboxes, kpss = get_face_app().det_model.detect(img, max_num=0, metric='default')
+    if bboxes.shape[0] == 0:
+        return None
+    i = int(np.argmax(bboxes[:, 4]))
+    face = Face(bbox=bboxes[i, 0:4], kps=kpss[i], det_score=bboxes[i, 4])
+    get_landmark_model().get(img, face)
+    face.img = img
+    return face
+
+
+def ham_embedding(face):
+    """Embedding của khuôn mặt; khung camera chưa có thì tính bây giờ (rồi giữ lại)."""
+    if getattr(face, 'embedding', None) is None:
+        get_face_app().models['recognition'].get(face.img, face)
+    return face.embedding
 
 
 # ─── Cache kết quả nhận diện ảnh mẫu theo hash nội dung ─────────────────────
@@ -129,59 +185,62 @@ def do_lech_mui(face) -> float:
     return float(np.dot(mui - (mat_trai + mat_phai) / 2, truc / kc_mat) / kc_mat)
 
 
-def thi_sai_mui(face, moc) -> float:
+def do_mo_mat(face) -> float:
     """
-    Thị sai của mũi giữa `face` và khung mốc `moc`: dựng phép chiếu phẳng (homography) đưa 2 mắt + 2 khóe miệng
-    của `face` về đúng vị trí ở `moc`, áp lên mũi rồi đo khoảng lệch so với mũi ở `moc` (chia khoảng cách hai mắt).
-    Vật phẳng → ≈ 0 với mọi góc nghiêng; đầu thật quay góc θ → xấp xỉ 0.45·sin θ.
+    Khe mí mắt trung bình (6 cặp điểm mí trên – mí dưới của hai mắt) chia cho khoảng cách trung điểm hai mắt –
+    trung điểm miệng. Nghiêng / xoay một tấm ảnh phẳng thì tử và mẫu co giãn cùng tỉ lệ nên giá trị gần như không đổi.
     """
-    mat_phang = [0, 1, 3, 4]
-    H = cv2.getPerspectiveTransform(face.kps[mat_phang].astype(np.float32), moc.kps[mat_phang].astype(np.float32))
-    mui = cv2.perspectiveTransform(face.kps[2].reshape(1, 1, 2).astype(np.float32), H)[0, 0]
-    return float(np.linalg.norm(mui - moc.kps[2]) / (np.linalg.norm(moc.kps[1] - moc.kps[0]) + 1e-9))
+    p, k = face.landmark_2d_106, face.kps
+    khe = np.mean([np.linalg.norm(p[tren] - p[duoi]) for tren, duoi in CAP_MI_MAT])
+    return float(khe / (np.linalg.norm((k[0] + k[1]) / 2 - (k[3] + k[4]) / 2) + 1e-9))
 
 
-def danh_gia_quay_dau(faces: list) -> dict:
+def danh_gia_nhay_mat(faces: list, embedding=ham_embedding) -> dict:
     """
-    Đánh giá thử thách quay đầu trên danh sách (vị trí khung hình, face). Đạt khi:
+    Đánh giá thử thách nháy mắt trên danh sách (vị trí khung hình, face). Đạt khi:
     1. Thấy rõ mặt ở ít nhất SO_FRAME_TOI_THIEU khung hình
-    2. Có khung nhìn thẳng (làm mốc đo và để so khớp với ảnh mẫu)
-    3. Ít nhất 2 khung có thị sai mũi so với khung nhìn thẳng ≥ NGUONG_QUAY_DAU (đầu thật quay, không phải ảnh phẳng)
-    4. Mọi khung hình là cùng một người
+    2. Có khung độ mở mắt ≤ NGUONG_NHAM_MAT × độ mở lúc mở mắt (đã nháy mắt)
+    3. Có khung nhìn thẳng, đang mở mắt (làm khung so khớp với ảnh mẫu)
+    4. Khung nhắm mắt và các khung rải đều là cùng một người với khung so khớp
     """
     if len(faces) < SO_FRAME_TOI_THIEU:
         return {'ok': False, 'reason': 'Không thấy rõ khuôn mặt trong lúc quét. Vui lòng lại gần camera, đủ ánh sáng và thử lại.'}
 
-    index, thang = min(faces, key=lambda f: abs(do_lech_mui(f[1])))
-    if abs(do_lech_mui(thang)) > NGUONG_NHIN_THANG:
-        return {'ok': False, 'reason': 'Vui lòng nhìn thẳng vào camera lúc bắt đầu, sau đó mới quay đầu sang một bên.'}
-
-    # Lấy giá trị lớn nhì: một khung hình nhiễu đơn lẻ không đủ để qua
-    bien_do = sorted(thi_sai_mui(face, thang) for _, face in faces)[-2]
-    if bien_do < NGUONG_QUAY_DAU:
+    mo = [do_mo_mat(face) for _, face in faces]
+    mo_mat = sorted(mo)[-2]  # lấy giá trị lớn nhì: một khung nhiễu đơn lẻ không làm lệch mốc
+    vt_nham = int(np.argmin(mo))
+    ti_le = round(mo[vt_nham] / (mo_mat + 1e-9), 3)
+    if ti_le > NGUONG_NHAM_MAT:
         return {
             'ok': False,
-            'bien_do_quay_dau': round(bien_do, 3),
-            'reason': 'Chưa nhận thấy chuyển động quay đầu. Vui lòng nhìn thẳng rồi quay đầu sang một bên (khoảng 30°) trong lúc quét.',
+            'ti_le_nham_mat': ti_le,
+            'reason': 'Chưa nhận thấy nháy mắt. Vui lòng nhìn thẳng vào camera và nháy mắt chậm 2–3 lần trong lúc quét.',
         }
 
-    if any(cosine(thang.embedding, face.embedding) < NGUONG_CUNG_NGUOI for _, face in faces):
-        return {'ok': False, 'reason': 'Khuôn mặt thay đổi trong lúc quét. Vui lòng chỉ để một người trước camera và thử lại.'}
+    vt_thang = min((vt for vt, m in enumerate(mo) if m >= NGUONG_MO_MAT * mo_mat), key=lambda vt: abs(do_lech_mui(faces[vt][1])))
+    index, thang = faces[vt_thang]
+    if abs(do_lech_mui(thang)) > NGUONG_NHIN_THANG:
+        return {'ok': False, 'ti_le_nham_mat': ti_le, 'reason': 'Vui lòng nhìn thẳng vào camera trong lúc quét.'}
 
-    return {'ok': True, 'face': thang, 'frame_index': index, 'bien_do_quay_dau': round(bien_do, 3)}
+    rai_deu = np.linspace(0, len(faces) - 1, SO_KHUNG_KIEM_TRA_NGUOI).round().astype(int).tolist()
+    goc = embedding(thang)
+    if any(cosine(goc, embedding(faces[vt][1])) < NGUONG_CUNG_NGUOI for vt in {vt_nham, *rai_deu}):
+        return {'ok': False, 'ti_le_nham_mat': ti_le, 'reason': 'Khuôn mặt thay đổi trong lúc quét. Vui lòng chỉ để một người trước camera và thử lại.'}
+
+    return {'ok': True, 'face': thang, 'frame_index': index, 'ti_le_nham_mat': ti_le}
 
 
-def check_head_turn(frames_b64: list[str]) -> dict:
-    """Giải mã chuỗi khung hình, giữ các khung thấy rõ mặt rồi đánh giá thử thách quay đầu."""
+def check_blink(frames_b64: list[str]) -> dict:
+    """Giải mã chuỗi khung hình, giữ các khung thấy rõ mặt rồi đánh giá thử thách nháy mắt."""
     faces = []
     for i, b64 in enumerate(frames_b64):
         try:
-            face = get_face_info(decode_base64_image(b64))
+            face = get_camera_face(decode_base64_image(b64))
         except Exception:
             continue
         if mat_hop_le(face):
             faces.append((i, face))
-    return danh_gia_quay_dau(faces)
+    return danh_gia_nhay_mat(faces)
 
 
 def verify_face(
@@ -190,9 +249,9 @@ def verify_face(
     ref_embedding: list[float] | None = None,
 ) -> dict:
     """
-    Xác thực khuôn mặt chấm công: thử thách quay đầu trên `frames_b64` rồi so khớp khung nhìn thẳng với mẫu.
+    Xác thực khuôn mặt chấm công: thử thách nháy mắt trên `frames_b64` rồi so khớp khung nhìn thẳng với mẫu.
     Mẫu: `ref_embedding` (đã lưu trong CSDL) hoặc `ref_image_base64` (khi đó trả kèm `ref_embedding` để lưu lại).
-    `liveness` = thử thách quay đầu đạt.
+    `liveness` = thử thách nháy mắt đạt.
     """
     def fail(reason: str) -> dict:
         return {'verified': False, 'liveness': False, 'similarity': 0.0, 'reason': reason}
@@ -213,14 +272,14 @@ def verify_face(
     else:
         return fail('Không nhận được mẫu khuôn mặt nhân viên từ backend')
 
-    # ── 2. Thử thách quay đầu ──
-    camera = check_head_turn(frames_b64)
-    ket_qua['bien_do_quay_dau'] = camera.get('bien_do_quay_dau')  # số đo thử thách quay đầu (để hiệu chỉnh)
+    # ── 2. Thử thách nháy mắt ──
+    camera = check_blink(frames_b64)
+    ket_qua['ti_le_nham_mat'] = camera.get('ti_le_nham_mat')  # số đo thử thách nháy mắt (để hiệu chỉnh)
     if not camera['ok']:
         return {**fail(camera['reason']), **ket_qua}
 
     # ── 3. So khớp khuôn mặt ──
-    cos_sim = cosine(mau, camera['face'].embedding)
+    cos_sim = cosine(mau, ham_embedding(camera['face']))
     score_pct = similarity_percent(cos_sim)
     verified = score_pct >= NGUONG_KHOP_PCT
 

@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from services.forecaster import DataLoader, HoltWintersForecaster, PatternAnalyzer, today_vn
-from services.face_verifier import verify_face, check_duplicate_face, get_face_app
+from services.face_verifier import verify_face, check_duplicate_face, warmup_models
 from services.triage_classifier import TriageClassifier
 
 load_dotenv()
@@ -52,7 +52,7 @@ async def unhandled_error(request: Request, exc: Exception):
 @app.on_event("startup")
 def warmup():
     """Nạp model khuôn mặt và huấn luyện bộ phân loại ở luồng nền → request đầu tiên không phải chờ."""
-    threading.Thread(target=get_face_app, daemon=True).start()
+    threading.Thread(target=warmup_models, daemon=True).start()
     triage_classifier.start()
 
 
@@ -66,13 +66,13 @@ class FaceVerifyRequest(BaseModel):
     # Mẫu nhân viên: embedding đã lưu, hoặc ảnh (khi đó kết quả trả kèm ref_embedding để backend lưu)
     ref_embedding: Optional[List[float]] = None
     ref_image_base64: Optional[str] = None
-    # Chuỗi khung hình camera cho thử thách quay đầu
-    frames_b64: List[str] = Field(min_length=5, max_length=12)
+    # Chuỗi khung hình camera cho thử thách nháy mắt (~8 khung/giây)
+    frames_b64: List[str] = Field(min_length=8, max_length=30)
 
 
 @app.post("/verify-face")
 def verify_face_endpoint(req: FaceVerifyRequest):
-    """Thử thách quay đầu (chống ảnh tĩnh) rồi so khớp embedding ArcFace với mẫu nhân viên."""
+    """Thử thách nháy mắt (chống ảnh tĩnh) rồi so khớp embedding ArcFace với mẫu nhân viên."""
     return verify_face(req.frames_b64, req.ref_image_base64, req.ref_embedding)
 
 
