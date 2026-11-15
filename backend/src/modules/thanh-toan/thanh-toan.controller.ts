@@ -288,6 +288,17 @@ export class ThanhToanController {
     return this.thanhToanService.xacNhanNhanCa(id, userId);
   }
 
+  @Get('chot-ca/xem-truoc')
+  @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
+  @ApiOperation({ summary: 'Xem trước tiền mặt hệ thống của ca trực trước khi chốt' })
+  xemTruocChotCa(
+    @CurrentUser('id') userId: number,
+    @Query('tu') tu: string,
+    @Query('den') den: string,
+  ) {
+    return this.thanhToanService.xemTruocChotCa(userId, tu, den);
+  }
+
   @Get('chot-ca/:id')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Lấy chi tiết chốt ca để in biên bản bàn giao' })

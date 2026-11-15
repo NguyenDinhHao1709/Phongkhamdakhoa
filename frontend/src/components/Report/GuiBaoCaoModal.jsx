@@ -39,8 +39,8 @@ const SNAPSHOT_LABELS = {
   tongThuVienPhi: { label: 'Tổng thu viện phí', icon: '💵', isCurrency: true },
   tongChiNhaCungCap: { label: 'Chi trả mua thuốc NCC', icon: '💸', isCurrency: true },
   thucThuRong: { label: 'Thực thu ròng', icon: '📈', isCurrency: true },
-  tienMatTaiKet: { label: 'Tiền mặt tại két', icon: '🪙', isCurrency: true },
-  chuyenKhoanNganHang: { label: 'Chuyển khoản QR / POS', icon: '💳', isCurrency: true },
+  tienMatTaiKet: { label: 'Tiền mặt thuần (thu − chi)', icon: '🪙', isCurrency: true },
+  chuyenKhoanNganHang: { label: 'Không dùng tiền mặt (CK / thẻ / ví)', icon: '💳', isCurrency: true },
   soLuongHoaDon: { label: 'Hóa đơn phát hành', icon: '🧾', isCurrency: false, unit: 'HĐ' },
   soLuongPhieuChi: { label: 'Phiếu chi đã lập', icon: '📃', isCurrency: false, unit: 'phiếu' },
 };
@@ -140,7 +140,8 @@ function buildSmartDraft(boPhan, snapshot = {}, tenBoPhan = '', kyBaoCaoCustom =
       return {
         tieuDe: `Báo cáo thu - chi viện phí & đối soát sổ quỹ - ${kyStr}`,
         kyBaoCao: kyStr,
-        noiDung: `Kính gửi Ban Giám Đốc,\n\nBộ phận Thu ngân xin báo cáo tình hình thu chi và dòng tiền (${kyStr}):\n- Tổng thu viện phí (Phiếu Thu): ${thu} (${hd} hóa đơn).\n- Tổng chi trả NCC và chi phí hoạt động (Phiếu Chi): ${chi} (${pc} phiếu chi).\n- Thực thu ròng: ${rong}.\n- Cơ cấu thu quỹ: Tiền mặt tại két: ${tienMat}, Chuyển khoản QR/Thẻ: ${ck}.\n- Sổ quỹ tiền mặt và biên lai đã được đối soát khớp 100%, chứng từ hợp lệ.`,
+        // Không khẳng định "đối soát khớp 100%": số liệu này chưa qua kiểm kê két (việc đó nằm ở biên bản chốt ca)
+        noiDung: `Kính gửi Ban Giám Đốc,\n\nBộ phận Thu ngân xin báo cáo tình hình thu chi và dòng tiền (${kyStr}${snapshot.phamVi ? `, phạm vi: ${snapshot.phamVi}` : ''}):\n- Tổng thu viện phí (Phiếu Thu, đã trừ tiền hoàn): ${thu} (${hd} hóa đơn).\n- Tổng chi trả NCC và chi phí hoạt động (Phiếu Chi): ${chi} (${pc} phiếu chi).\n- Dòng tiền thuần (Thu − Chi): ${rong}.\n- Theo phương thức: Tiền mặt thuần (thu − chi tiền mặt): ${tienMat}; Không dùng tiền mặt (chuyển khoản / thẻ / ví): ${ck}.\n- Kết quả kiểm kê két tiền mặt xem tại biên bản chốt ca của từng ca trực.`,
         kienNghi: `- Kính đề nghị Ban Giám Đốc phê duyệt chốt ca trực và cho phép bàn giao két tiền mặt theo quy chế tài chính.`
       };
     }

@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { X, Printer, FileText, CheckCircle2 } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate, formatDateTime } from '../../utils/formatDate';
+import useHospitalStore from '../../store/hospitalStore';
 
 const PHUONG_THUC_LABELS = {
   tien_mat: 'Tiền mặt',
@@ -12,36 +13,29 @@ const PHUONG_THUC_LABELS = {
   bao_hiem: 'BHYT',
 };
 
-export default function InBaoCaoSoQuyModal({ stats, chungTu = [], filterInfo = {}, onClose }) {
+export default function InBaoCaoSoQuyModal({ stats, chungTu = [], kyBaoCaoLabel, filterInfo = {}, onClose }) {
   const printRef = useRef(null);
+  const hospitalInfo = useHospitalStore((s) => s.hospitalInfo);
 
   const handlePrint = () => {
     window.print();
   };
 
   const byPhuongThuc = stats?.byPhuongThuc || {};
-  // Tính tổng thực thu từ các phương thức thanh toán làm chốt chặn an toàn
   const tongThuTheoPT = Object.values(byPhuongThuc).reduce((sum, v) => sum + Number(v || 0), 0);
-  const tongThu = Number(stats?.tongThucThu ?? stats?.tongPhieuThu ?? stats?.tongThu ?? (tongThuTheoPT > 0 ? tongThuTheoPT : 0));
-  const tongChi = Number(stats?.tongPhieuChi ?? stats?.tongChi ?? 0);
-  const soDuQuyRong = Number(stats?.soDuDongTien ?? stats?.soDuQuyRong ?? (tongThu - tongChi));
-  const tongDoanhThuPT = tongThuTheoPT > 0 ? tongThuTheoPT : tongThu;
+  const tongThu = Number(stats?.tongThucThu ?? stats?.tongPhieuThu ?? 0);
+  const tongChi = Number(stats?.tongPhieuChi ?? 0);
+  const soDuQuyRong = Number(stats?.soDuDongTien ?? (tongThu - tongChi));
+  // Liệt kê đúng các phương thức có phát sinh (kể cả mã chưa có nhãn), để cộng các dòng ra đúng dòng Tổng
+  const dongPhuongThuc = [
+    ...Object.keys(PHUONG_THUC_LABELS),
+    ...Object.keys(byPhuongThuc).filter((k) => !PHUONG_THUC_LABELS[k]),
+  ];
 
-  // Xác định khoảng thời gian hiển thị
-  let kyBaoCaoStr = 'Toàn bộ thời gian';
-  if (filterInfo.tuNgay && filterInfo.denNgay) {
-    kyBaoCaoStr = `Từ ngày ${formatDate(filterInfo.tuNgay)} đến ngày ${formatDate(filterInfo.denNgay)}`;
-  } else if (filterInfo.tuNgay) {
-    kyBaoCaoStr = `Từ ngày ${formatDate(filterInfo.tuNgay)}`;
-  } else if (filterInfo.timeRange === 'ca_hien_tai') {
-    kyBaoCaoStr = 'Ca trực hiện tại của thu ngân';
-  } else if (filterInfo.timeRange === 'hom_nay') {
-    kyBaoCaoStr = `Hôm nay (${formatDate(new Date())})`;
-  } else if (filterInfo.timeRange === 'tuan_nay') {
-    kyBaoCaoStr = 'Tuần này';
-  } else if (filterInfo.timeRange === 'thang_nay') {
-    kyBaoCaoStr = `Tháng ${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
-  }
+  // Kỳ báo cáo lấy đúng nhãn của trang (trước đây thiếu "Quý này", "Đến ngày...")
+  const kyBaoCaoStr = kyBaoCaoLabel || 'Toàn thời gian';
+  const namHienTai = new Date().getFullYear();
+  const soHoan = chungTu.filter((c) => c.loai === 'phieu_huy').length;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-xs overflow-hidden">
@@ -57,7 +51,7 @@ export default function InBaoCaoSoQuyModal({ stats, chungTu = [], filterInfo = {
                 Báo Cáo Sổ Quỹ & Dòng Tiền Thu - Chi (Khổ A4)
               </h3>
               <p className="text-xs text-gray-500">
-                Phạm vi: {filterInfo.phamVi === 'toan_vien' ? 'Toàn Viện' : 'Ca Trực Cá Nhân'} • {kyBaoCaoStr}
+                Phạm vi: {filterInfo.phamVi === 'ca_nhan' ? 'Ca Trực Cá Nhân' : 'Toàn Viện'} • {kyBaoCaoStr}
               </p>
             </div>
           </div>
@@ -113,13 +107,13 @@ export default function InBaoCaoSoQuyModal({ stats, chungTu = [], filterInfo = {
             {/* Header thông tin phòng khám */}
             <div className="flex justify-between items-start border-b border-gray-300 pb-4">
               <div>
-                <h2 className="text-sm font-black text-emerald-800 uppercase tracking-wide">PHÒNG KHÁM ĐA KHOA</h2>
-                <p className="text-[11px] text-gray-600">Địa chỉ: 123 Đường Sức Khỏe, Quận 1, TP. Hồ Chí Minh</p>
-                <p className="text-[11px] text-gray-600">Bộ phận: Kế toán thanh toán & Quản trị tài chính phòng khám</p>
+                <h2 className="text-sm font-black text-emerald-800 uppercase tracking-wide">{hospitalInfo?.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</h2>
+                {hospitalInfo?.diaChi && <p className="text-[11px] text-gray-600">Địa chỉ: {hospitalInfo.diaChi}</p>}
+                <p className="text-[11px] text-gray-600">Bộ phận: Thu ngân & Kế toán viện phí</p>
               </div>
               <div className="text-right">
-                <p className="font-bold text-[11px] text-gray-800">Mẫu số B01 - SQ</p>
-                <p className="text-[10px] text-gray-500 italic">(Ban hành theo TT số 200/2014/TT-BTC)</p>
+                {/* Báo cáo quản trị nội bộ — không ghi số hiệu mẫu biểu TT200 vì không theo mẫu đó */}
+                <p className="font-bold text-[11px] text-gray-800">Báo cáo quản trị nội bộ</p>
                 <p className="text-[10px] text-gray-500 mt-1">Ngày lập: {formatDateTime(new Date())}</p>
               </div>
             </div>
@@ -129,7 +123,9 @@ export default function InBaoCaoSoQuyModal({ stats, chungTu = [], filterInfo = {
               <h1 className="text-xl font-black text-gray-900 uppercase tracking-wide">
                 BÁO CÁO SỔ QUỸ & DÒNG TIỀN THU - CHI
               </h1>
-              <p className="text-[11px] text-gray-600 italic">Kỳ báo cáo: {kyBaoCaoStr}</p>
+              <p className="text-[11px] text-gray-600 italic">
+                Kỳ báo cáo: {kyBaoCaoStr} • Phạm vi: {filterInfo.phamVi === 'ca_nhan' ? 'Ca trực cá nhân' : 'Toàn phòng khám'}
+              </p>
               {stats?.isCaNhan && stats?.tenThuNgan && (
                 <p className="text-[11px] font-semibold text-emerald-800">
                   Thu ngân thực hiện: {stats.tenThuNgan}
@@ -158,7 +154,9 @@ export default function InBaoCaoSoQuyModal({ stats, chungTu = [], filterInfo = {
                     <td className="border border-gray-300 px-3 py-2 text-right font-bold text-blue-700">
                       {formatCurrency(tongThu)}
                     </td>
-                    <td className="border border-gray-300 px-3 py-2 text-gray-600">Khám bệnh, chỉ định, thuốc bán lẻ</td>
+                    <td className="border border-gray-300 px-3 py-2 text-gray-600">
+                      {stats?.soPhieuThu ?? 0} phiếu thu (viện phí, tạm ứng) — đã trừ tiền hoàn
+                    </td>
                   </tr>
                   <tr>
                     <td className="border border-gray-300 px-3 py-2 text-center font-bold">2</td>
@@ -166,7 +164,9 @@ export default function InBaoCaoSoQuyModal({ stats, chungTu = [], filterInfo = {
                     <td className="border border-gray-300 px-3 py-2 text-right font-bold text-rose-700">
                       {formatCurrency(tongChi)}
                     </td>
-                    <td className="border border-gray-300 px-3 py-2 text-gray-600">Thanh toán PO mua thuốc, chi phí vận hành</td>
+                    <td className="border border-gray-300 px-3 py-2 text-gray-600">
+                      Tiền thuốc NCC {formatCurrency(stats?.tongChiThuoc ?? 0)} • Vận hành {formatCurrency(stats?.tongChiOpex ?? 0)}
+                    </td>
                   </tr>
                   <tr className="bg-emerald-50/60">
                     <td className="border border-gray-300 px-3 py-2 text-center font-black text-emerald-900">3</td>
@@ -199,13 +199,13 @@ export default function InBaoCaoSoQuyModal({ stats, chungTu = [], filterInfo = {
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(PHUONG_THUC_LABELS).map(([key, label], idx) => {
+                  {dongPhuongThuc.map((key, idx) => {
                     const val = Number(byPhuongThuc[key] || 0);
-                    const pct = tongDoanhThuPT > 0 ? ((val / tongDoanhThuPT) * 100).toFixed(1) : '0.0';
+                    const pct = tongThuTheoPT > 0 ? ((val / tongThuTheoPT) * 100).toFixed(1) : '0.0';
                     return (
                       <tr key={key}>
                         <td className="border border-gray-300 px-3 py-2 text-center">{idx + 1}</td>
-                        <td className="border border-gray-300 px-3 py-2 font-medium">{label}</td>
+                        <td className="border border-gray-300 px-3 py-2 font-medium">{PHUONG_THUC_LABELS[key] || key}</td>
                         <td className="border border-gray-300 px-3 py-2 text-right font-semibold">
                           {formatCurrency(val)}
                         </td>
@@ -218,10 +218,10 @@ export default function InBaoCaoSoQuyModal({ stats, chungTu = [], filterInfo = {
                       Tổng Cộng
                     </td>
                     <td className="border border-gray-300 px-3 py-2 text-right text-blue-700">
-                      {formatCurrency(tongDoanhThuPT)}
+                      {formatCurrency(tongThuTheoPT)}
                     </td>
                     <td className="border border-gray-300 px-3 py-2 text-right">
-                      {tongDoanhThuPT > 0 ? '100%' : '0%'}
+                      {tongThuTheoPT > 0 ? '100%' : '0%'}
                     </td>
                   </tr>
                 </tbody>
@@ -255,8 +255,10 @@ export default function InBaoCaoSoQuyModal({ stats, chungTu = [], filterInfo = {
                       </td>
                     </tr>
                   ) : (
-                    chungTu.slice(0, 30).map((ct, idx) => {
+                    // In đủ mọi chứng từ của kỳ (trước đây cắt ở 30 dòng)
+                    chungTu.map((ct, idx) => {
                       const isThu = ct.loai === 'phieu_thu';
+                      const isHoan = ct.loai === 'phieu_huy';
                       return (
                         <tr key={idx} className="hover:bg-gray-50">
                           <td className="border border-gray-300 px-2 py-1.5 text-center">{idx + 1}</td>
@@ -271,28 +273,34 @@ export default function InBaoCaoSoQuyModal({ stats, chungTu = [], filterInfo = {
                           <td className="border border-gray-300 px-2 py-1.5 text-right font-bold text-blue-700">
                             {isThu ? formatCurrency(ct.soTien) : '-'}
                           </td>
-                          <td className="border border-gray-300 px-2 py-1.5 text-right font-bold text-rose-700">
-                            {!isThu ? formatCurrency(ct.soTien) : '-'}
+                          {/* Hoàn tiền đã trừ sẵn trong phiếu thu → ghi trong ngoặc, không phải khoản chi */}
+                          <td className={`border border-gray-300 px-2 py-1.5 text-right font-bold ${isHoan ? 'text-amber-700 italic' : 'text-rose-700'}`}>
+                            {isThu ? '-' : isHoan ? `(${formatCurrency(ct.soTien)})` : formatCurrency(ct.soTien)}
                           </td>
                         </tr>
                       );
                     })
                   )}
-                  {chungTu.length > 30 && (
-                    <tr>
-                      <td colSpan={7} className="border border-gray-300 px-3 py-2 text-center text-gray-500 italic">
-                        ... Và còn {chungTu.length - 30} chứng từ khác trong hệ thống.
-                      </td>
+                  {chungTu.length > 0 && (
+                    <tr className="bg-gray-100 font-bold">
+                      <td colSpan={5} className="border border-gray-300 px-2 py-1.5 text-right uppercase">Cộng phát sinh</td>
+                      <td className="border border-gray-300 px-2 py-1.5 text-right text-blue-700">{formatCurrency(tongThu)}</td>
+                      <td className="border border-gray-300 px-2 py-1.5 text-right text-rose-700">{formatCurrency(tongChi)}</td>
                     </tr>
                   )}
                 </tbody>
               </table>
+              {soHoan > 0 && (
+                <p className="mt-1 text-[10px] italic text-gray-500">
+                  Số trong ngoặc ( ): {soHoan} khoản hoàn tiền cho bệnh nhân — đã trừ trong cột Thu, không cộng vào tổng Chi.
+                </p>
+              )}
             </div>
 
             {/* CHỮ KÝ PHÊ DUYỆT 4 BÊN CHUẨN KẾ TOÁN */}
             <div className="pt-6">
               <div className="text-right text-[11px] italic text-gray-600 mb-2">
-                TP. Hồ Chí Minh, ngày ..... tháng ..... năm 2026
+                TP. Hồ Chí Minh, ngày ..... tháng ..... năm {namHienTai}
               </div>
               <div className="grid grid-cols-4 gap-4 text-center text-[10px]">
                 <div>

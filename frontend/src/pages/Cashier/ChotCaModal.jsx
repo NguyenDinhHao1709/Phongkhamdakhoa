@@ -19,13 +19,14 @@ const DENOMINATIONS = [
   { key: '1k', value: 1000, label: '1.000 đ' },
 ];
 
-export default function ChotCaModal({ onClose, onSuccess, defaultSystemCash = 0 }) {
+export default function ChotCaModal({ onClose, onSuccess }) {
   const { user } = useAuthStore();
 
-  // Thời gian ca
+  // Thời gian ca (theo giờ máy người dùng; toISOString() là giờ UTC nên trước 7h sáng ra ngày hôm qua)
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
-  const currentTimeStr = now.toTimeString().slice(0, 5);
+  const pad = (n) => String(n).padStart(2, '0');
+  const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const currentTimeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
   const [thoiGianBatDau, setThoiGianBatDau] = useState(`${todayStr}T07:00`);
   const [thoiGianKetThuc, setThoiGianKetThuc] = useState(`${todayStr}T${currentTimeStr}`);
@@ -93,8 +94,28 @@ export default function ChotCaModal({ onClose, onSuccess, defaultSystemCash = 0 
     }, 0);
   }, [counts]);
 
-  // Tiền hệ thống và chênh lệch
-  const tienMatHeThong = Number(defaultSystemCash || 0);
+  // Tiền mặt hệ thống của ĐÚNG khoảng ca đang chọn, tính bằng cùng công thức backend dùng khi lưu biên bản.
+  // (Trước đây lấy số dư tiền mặt theo bộ lọc của trang thống kê — mặc định "Hôm nay · Toàn viện" —
+  //  nên chênh lệch xem trước khác với chênh lệch được lưu.)
+  const [xemTruoc, setXemTruoc] = useState({ loading: true, tienMatHeThong: 0, loi: '' });
+  useEffect(() => {
+    if (!thoiGianBatDau || !thoiGianKetThuc) return undefined;
+    let huy = false;
+    const t = setTimeout(async () => {
+      setXemTruoc((s) => ({ ...s, loading: true, loi: '' }));
+      try {
+        const q = new URLSearchParams({ tu: thoiGianBatDau, den: thoiGianKetThuc });
+        const res = await apiGet(`/thanh-toan/chot-ca/xem-truoc?${q.toString()}`);
+        const d = res?.data?.data || res?.data || {};
+        if (!huy) setXemTruoc({ loading: false, tienMatHeThong: Number(d.tienMatHeThong || 0), loi: '' });
+      } catch (err) {
+        if (!huy) setXemTruoc({ loading: false, tienMatHeThong: 0, loi: err?.error?.message || err?.message || 'Không tính được tiền hệ thống' });
+      }
+    }, 300);
+    return () => { huy = true; clearTimeout(t); };
+  }, [thoiGianBatDau, thoiGianKetThuc]);
+
+  const tienMatHeThong = xemTruoc.tienMatHeThong;
   const chenhLech = tienMatThucTe - tienMatHeThong;
 
   const handleSubmit = async (e) => {
@@ -244,8 +265,11 @@ export default function ChotCaModal({ onClose, onSuccess, defaultSystemCash = 0 
           <div className="rounded-xl bg-gray-50 p-4 border border-gray-200 space-y-2">
             <div className="flex justify-between items-center text-xs">
               <span className="text-gray-600">Tiền mặt ghi nhận trên hệ thống ca trực:</span>
-              <span className="font-bold text-gray-900">{formatCurrency(tienMatHeThong)}</span>
+              <span className="font-bold text-gray-900">
+                {xemTruoc.loading ? 'Đang tính...' : xemTruoc.loi ? '—' : formatCurrency(tienMatHeThong)}
+              </span>
             </div>
+            {xemTruoc.loi && <p className="text-[11px] text-rose-600">{xemTruoc.loi}</p>}
             <div className="flex justify-between items-center text-xs">
               <span className="text-gray-600">Tiền mặt thực tế kiểm kê tại két:</span>
               <span className="text-base font-black text-blue-700">{formatCurrency(tienMatThucTe)}</span>

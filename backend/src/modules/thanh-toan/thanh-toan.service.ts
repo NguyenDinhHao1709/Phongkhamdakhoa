@@ -17,6 +17,7 @@ import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { YeuCauNhapKho } from '../nha-thuoc/entities/yeu-cau-nhap-kho.entity';
 import { PhieuChiHoatDong } from './entities/phieu-chi-hoat-dong.entity';
 import { ChotCaThuNgan } from './entities/chot-ca-thu-ngan.entity';
+import { khoangNgayVN, ngayVN } from '../../common/utils/khoang-ngay-vn.util';
 
 // Phiếu tạm ứng tại quầy: mã = 'TU' + id lượt tiếp nhận (luot_tiep_nhan_id để NULL như cọc đặt lịch HDT…)
 export const MA_TAM_UNG_QUAY = 'TU';
@@ -926,92 +927,45 @@ export class ThanhToanService {
       .leftJoinAndSelect('hd.chiTiet', 'ct')
       .orderBy('hd.ngayThanhToan', 'DESC');
 
-    let isThuNgan = false;
-    let nvThuNgan: NhanVien | null = null;
-    if (user?.vai_tro === 'thu_ngan') {
-      isThuNgan = true;
-      if (user?.id) {
-        nvThuNgan = await this.nhanVienRepo.findOne({ where: { nguoiDungId: user.id } });
-      }
-    }
+    // Tra nhân viên của mọi người dùng (không chỉ vai trò thu_ngan): trước đây kế toán / giám đốc chọn
+    // "Ca trực của tôi" vẫn thấy số liệu toàn viện vì không lọc được theo người thu.
+    const nvThuNgan: NhanVien | null = user?.id
+      ? await this.nhanVienRepo.findOne({ where: { nguoiDungId: user.id } })
+      : null;
+    const locCaNhan = phamVi === 'ca_nhan';
+    const myNvId = nvThuNgan?.id ?? -1; // không có hồ sơ nhân viên → phạm vi cá nhân rỗng
 
     // Chỉ lọc theo thu ngân cá nhân khi chọn phạm vi 'ca_nhan'
-    if (phamVi === 'ca_nhan' && nvThuNgan) {
-      qb.andWhere('hd.thuNganId = :myThuNganId', { myThuNganId: nvThuNgan.id });
+    if (locCaNhan) {
+      qb.andWhere('hd.thuNganId = :myThuNganId', { myThuNganId: myNvId });
     }
 
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth();
-    const d = now.getDate();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const formatDateStr = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-
-    // Helper tính chu kỳ ngày chuẩn
-    let rangeStart: string | null = null;
+    // Khoảng ngày theo giờ Việt Nam. Trước đây dùng new Date() theo giờ máy chủ (UTC trên Render)
+    // nên từ 0h–7h sáng "Hôm nay" vẫn là ngày hôm qua. Kết nối DB chạy múi +07:00 nên chuỗi giờ VN so sánh trực tiếp được.
+    let rangeStart: string | Date | null = null;
     let rangeEnd: string | null = null;
 
     if (query.range && query.range !== 'tat_ca') {
-      switch (query.range) {
-        case 'hom_nay': {
-          const todayStr = `${y}-${pad(m + 1)}-${pad(d)}`;
-          rangeStart = `${todayStr} 00:00:00`;
-          rangeEnd = `${todayStr} 23:59:59`;
-          break;
+      if (query.range === 'ca_hien_tai') {
+        // Từ lúc nhận ca gần nhất (nếu có) đến hết hôm nay; truyền Date để driver tự quy đổi múi giờ
+        let shiftStart: Date | null = null;
+        if (nvThuNgan) {
+          const lastShift = await this.chotCaRepo.createQueryBuilder('cc')
+            .where('(cc.nguoiNhanCaId = :myId OR cc.thuNganId = :myId) AND cc.trangThai = :stNhan', {
+              myId: nvThuNgan.id,
+              stNhan: 'da_nhan_ca',
+            })
+            .orderBy('cc.taoLuc', 'DESC')
+            .getOne();
+          if (lastShift?.thoiGianNhanCa) shiftStart = new Date(lastShift.thoiGianNhanCa);
         }
-        case 'tuan_nay': {
-          const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
-          const monday = new Date(y, m, d - dayOfWeek + 1);
-          const sunday = new Date(y, m, d - dayOfWeek + 7);
-          rangeStart = `${formatDateStr(monday)} 00:00:00`;
-          rangeEnd = `${formatDateStr(sunday)} 23:59:59`;
-          break;
-        }
-        case 'thang_nay': {
-          const firstDay = new Date(y, m, 1);
-          const lastDay = new Date(y, m + 1, 0);
-          rangeStart = `${formatDateStr(firstDay)} 00:00:00`;
-          rangeEnd = `${formatDateStr(lastDay)} 23:59:59`;
-          break;
-        }
-        case 'ca_hien_tai': {
-          let shiftStart: Date | null = null;
-          if (nvThuNgan) {
-            const lastShift = await this.chotCaRepo.createQueryBuilder('cc')
-              .where('(cc.nguoiNhanCaId = :myId AND cc.trangThai = :stNhan) OR (cc.thuNganId = :myId AND cc.trangThai = :stNhan)', {
-                myId: nvThuNgan.id,
-                stNhan: 'da_nhan_ca',
-              })
-              .orderBy('cc.taoLuc', 'DESC')
-              .getOne();
-            if (lastShift?.thoiGianNhanCa) {
-              shiftStart = new Date(lastShift.thoiGianNhanCa);
-            }
-          }
-          if (shiftStart) {
-            const sY = shiftStart.getFullYear();
-            const sM = pad(shiftStart.getMonth() + 1);
-            const sD = pad(shiftStart.getDate());
-            const sH = pad(shiftStart.getHours());
-            const sMin = pad(shiftStart.getMinutes());
-            const sS = pad(shiftStart.getSeconds());
-            rangeStart = `${sY}-${sM}-${sD} ${sH}:${sMin}:${sS}`;
-          } else {
-            const todayStr = `${y}-${pad(m + 1)}-${pad(d)}`;
-            rangeStart = `${todayStr} 00:00:00`;
-          }
-          const todayEndStr = `${y}-${pad(m + 1)}-${pad(d)}`;
-          rangeEnd = `${todayEndStr} 23:59:59`;
-          break;
-        }
-        case 'quy_nay': {
-          const currentQuarter = Math.floor(m / 3);
-          const firstDay = new Date(y, currentQuarter * 3, 1);
-          const lastDay = new Date(y, (currentQuarter + 1) * 3, 0);
-          rangeStart = `${formatDateStr(firstDay)} 00:00:00`;
-          rangeEnd = `${formatDateStr(lastDay)} 23:59:59`;
-          break;
-        }
+        const homNay = ngayVN();
+        rangeStart = shiftStart && ngayVN(shiftStart) <= homNay ? shiftStart : `${homNay} 00:00:00`;
+        rangeEnd = `${homNay} 23:59:59`;
+      } else {
+        const { fromDate, toDate } = khoangNgayVN({ range: query.range }, 'hom_nay');
+        rangeStart = `${fromDate} 00:00:00`;
+        rangeEnd = `${toDate} 23:59:59`;
       }
     }
 
@@ -1076,8 +1030,8 @@ export class ThanhToanService {
       .where('hd.trangThai = :st', { st: 'da_thanh_toan' })
       .andWhere('DATE(hd.ngayThanhToan) = CURDATE()');
 
-    if (phamVi === 'ca_nhan' && nvThuNgan) {
-      rawHourlyQb.andWhere('hd.thuNganId = :myThuNganId', { myThuNganId: nvThuNgan.id });
+    if (locCaNhan) {
+      rawHourlyQb.andWhere('hd.thuNganId = :myThuNganId', { myThuNganId: myNvId });
     }
 
     const rawHourly = await rawHourlyQb.groupBy('HOUR(hd.ngayThanhToan)').getRawMany();
@@ -1100,8 +1054,8 @@ export class ThanhToanService {
       .orderBy('yc.ngay_chi_tra', 'DESC');
 
     // Phạm vi két cá nhân: chỉ khoản chi do chính thu ngân này chi (giống phiếu chi OPEX bên dưới)
-    if (phamVi === 'ca_nhan' && nvThuNgan) {
-      chiQuery.andWhere('yc.nguoiChiTraId = :myChiTraId', { myChiTraId: nvThuNgan.id });
+    if (locCaNhan) {
+      chiQuery.andWhere('yc.nguoiChiTraId = :myChiTraId', { myChiTraId: myNvId });
     }
 
     if (query.tuNgay || query.denNgay) {
@@ -1133,8 +1087,9 @@ export class ThanhToanService {
       .where('pc.trangThai = :stDaChi', { stDaChi: 'da_chi' })
       .orderBy('pc.ngayChi', 'DESC');
 
-    if (phamVi === 'ca_nhan' && nvThuNgan) {
-      opexQuery.andWhere('pc.nguoiLapId = :myNguoiLapId', { myNguoiLapId: nvThuNgan.id });
+    if (locCaNhan) {
+      // Cùng quy tắc với chốt ca: người chi tiền (hoặc người lập nếu chưa ghi người chi)
+      opexQuery.andWhere('(pc.nguoiChiId = :myNguoiLapId OR (pc.nguoiLapId = :myNguoiLapId AND pc.nguoiChiId IS NULL))', { myNguoiLapId: myNvId });
     }
 
     if (query.tuNgay || query.denNgay) {
@@ -1655,6 +1610,75 @@ export class ThanhToanService {
   }
 
   /**
+   * Giờ ca trực nhập từ form là giờ Việt Nam ("YYYY-MM-DDTHH:mm"). Chuỗi dùng để so sánh trong SQL
+   * (kết nối DB chạy múi +07:00); Date lưu xuống phải gắn rõ +07:00 — new Date('...T07:00') bị hiểu
+   * theo giờ máy chủ (UTC trên Render) nên biên bản bị lệch 7 tiếng.
+   */
+  private khoangCaTruc(thoiGianBatDau: string, thoiGianKetThuc: string) {
+    const tu = `${thoiGianBatDau}:00`;
+    const den = `${thoiGianKetThuc}:59`;
+    const batDau = new Date(`${tu}+07:00`);
+    const ketThuc = new Date(`${den}+07:00`);
+    if (Number.isNaN(batDau.getTime()) || Number.isNaN(ketThuc.getTime())) {
+      throw new BadRequestException('Thời gian ca trực không hợp lệ');
+    }
+    if (batDau > ketThuc) throw new BadRequestException('Giờ bắt đầu ca phải trước giờ kết thúc');
+    return { tu, den, batDau, ketThuc };
+  }
+
+  /** Tiền thu / chi của một thu ngân trong khoảng ca trực — dùng chung cho xem trước và chốt ca */
+  private async tinhTienCaTruc(nvId: number, tu: string, den: string) {
+    const hoaDonList = await this.hoaDonRepo.createQueryBuilder('hd')
+      .where('hd.thuNganId = :myId', { myId: nvId })
+      .andWhere('hd.trangThai = :st', { st: 'da_thanh_toan' })
+      .andWhere('hd.ngayThanhToan >= :tu AND hd.ngayThanhToan <= :den', { tu, den })
+      .getMany();
+    const laTienMat = (pt?: string | null) => (pt || 'tien_mat') === 'tien_mat';
+    const thuTienMat = hoaDonList.filter(h => laTienMat(h.phuongThucThanhToan)).reduce((s, h) => s + thuRong(h), 0);
+    const thuChuyenKhoan = hoaDonList.filter(h => !laTienMat(h.phuongThucThanhToan)).reduce((s, h) => s + thuRong(h), 0);
+
+    // Phiếu chi vận hành do thu ngân chi trong ca
+    const opexList = await this.phieuChiHoatDongRepo.createQueryBuilder('pc')
+      .where('(pc.nguoiChiId = :myId OR (pc.nguoiLapId = :myId AND pc.nguoiChiId IS NULL))', { myId: nvId })
+      .andWhere('pc.trangThai = :stDaChi', { stDaChi: 'da_chi' })
+      .andWhere('pc.ngayChi >= :tu AND pc.ngayChi <= :den', { tu, den })
+      .getMany();
+    // Chi trả tiền thuốc cho NCC do chính thu ngân chi (trước đây bỏ sót → chi bằng tiền mặt thì két bị báo thừa)
+    const chiThuocList = await this.yeuCauNhapKhoRepo.createQueryBuilder('yc')
+      .where('yc.trang_thai_chi_tra = :daChi', { daChi: 'da_chi' })
+      .andWhere('yc.nguoiChiTraId = :myId', { myId: nvId })
+      .andWhere('yc.ngay_chi_tra >= :tu AND yc.ngay_chi_tra <= :den', { tu, den })
+      .getMany();
+
+    const chiTienMat =
+      opexList.filter(pc => laTienMat(pc.phuongThucChi)).reduce((s, pc) => s + Number(pc.soTien || 0), 0) +
+      chiThuocList.filter(yc => (yc.phuongThucChi || 'chuyen_khoan') === 'tien_mat').reduce((s, yc) => s + Number(yc.soTienChiTra || 0), 0);
+    const tongThucChi =
+      opexList.reduce((s, pc) => s + Number(pc.soTien || 0), 0) +
+      chiThuocList.reduce((s, yc) => s + Number(yc.soTienChiTra || 0), 0);
+
+    return {
+      hoaDonList,
+      soPhieuChi: opexList.length + chiThuocList.length,
+      thuTienMat,
+      thuChuyenKhoan,
+      chiTienMat,
+      tongThucThu: thuTienMat + thuChuyenKhoan,
+      tongThucChi,
+      tienMatHeThong: thuTienMat - chiTienMat, // Tiền mặt hệ thống = Thu tiền mặt − Chi tiền mặt
+    };
+  }
+
+  /** Xem trước tiền mặt hệ thống của ca trước khi chốt (cùng công thức với lúc lưu biên bản) */
+  async xemTruocChotCa(userId: number, thoiGianBatDau: string, thoiGianKetThuc: string) {
+    const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
+    if (!nv) throw new BadRequestException('Không tìm thấy thông tin nhân viên thu ngân');
+    const { tu, den } = this.khoangCaTruc(thoiGianBatDau, thoiGianKetThuc);
+    const { hoaDonList, ...tong } = await this.tinhTienCaTruc(nv.id, tu, den);
+    return { data: { ...tong, soPhieuThu: hoaDonList.length } };
+  }
+
+  /**
    * Thực hiện chốt ca làm việc & đối soát két tiền mặt
    */
   async thucHienChotCa(userId: number, dto: {
@@ -1669,15 +1693,14 @@ export class ThanhToanService {
       const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
       if (!nv) throw new BadRequestException('Không tìm thấy thông tin nhân viên thu ngân');
 
-      const tu = `${dto.thoiGianBatDau}:00`;
-      const den = `${dto.thoiGianKetThuc}:59`;
+      const { tu, den, batDau, ketThuc } = this.khoangCaTruc(dto.thoiGianBatDau, dto.thoiGianKetThuc);
 
       // Chặn bấm đúp tạo 2 biên bản chốt ca trùng khoảng thời gian
       const duplicateShift = await this.chotCaRepo.findOne({
         where: {
           thuNganId: nv.id,
-          thoiGianBatDau: new Date(tu),
-          thoiGianKetThuc: new Date(den),
+          thoiGianBatDau: batDau,
+          thoiGianKetThuc: ketThuc,
         },
       });
       if (duplicateShift) {
@@ -1687,42 +1710,13 @@ export class ThanhToanService {
         });
       }
 
-      // 1. Quét hóa đơn đã thu của thu ngân này trong ca
-      const hoaDonList = await this.hoaDonRepo.createQueryBuilder('hd')
-        .where('hd.thuNganId = :myId', { myId: nv.id })
-        .andWhere('hd.trangThai = :st', { st: 'da_thanh_toan' })
-        .andWhere('hd.ngayThanhToan >= :tu AND hd.ngayThanhToan <= :den', { tu, den })
-        .getMany();
-
-      const thuTienMat = hoaDonList
-        .filter(h => (h.phuongThucThanhToan || 'tien_mat') === 'tien_mat')
-        .reduce((s, h) => s + thuRong(h), 0);
-
-      const thuChuyenKhoan = hoaDonList
-        .filter(h => (h.phuongThucThanhToan || 'tien_mat') !== 'tien_mat')
-        .reduce((s, h) => s + thuRong(h), 0);
-
-      const tongThucThu = thuTienMat + thuChuyenKhoan;
-
-      // 2. Quét phiếu chi hoạt động do thu ngân chi trong ca
-      const opexList = await this.phieuChiHoatDongRepo.createQueryBuilder('pc')
-        .where('(pc.nguoiChiId = :myId OR (pc.nguoiLapId = :myId AND pc.nguoiChiId IS NULL))', { myId: nv.id })
-        .andWhere('pc.trangThai = :stDaChi', { stDaChi: 'da_chi' })
-        .andWhere('pc.ngayChi >= :tu AND pc.ngayChi <= :den', { tu, den })
-        .getMany();
-
-      const chiTienMat = opexList
-        .filter(pc => (pc.phuongThucChi || 'tien_mat') === 'tien_mat')
-        .reduce((s, pc) => s + Number(pc.soTien || 0), 0);
-
-      const tongThucChi = opexList.reduce((s, pc) => s + Number(pc.soTien || 0), 0);
-
-      // 3. Tiền mặt hệ thống = Thu tiền mặt - Chi tiền mặt
-      const tienMatHeThong = thuTienMat - chiTienMat;
+      const {
+        hoaDonList, soPhieuChi, thuChuyenKhoan, chiTienMat, tongThucThu, tongThucChi, tienMatHeThong,
+      } = await this.tinhTienCaTruc(nv.id, tu, den);
       const tienMatThucTe = Number(dto.tienMatThucTe || 0);
       const chenhLech = tienMatThucTe - tienMatHeThong;
 
-      const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const todayStr = ngayVN().replace(/-/g, '');
       const prefix = `CC-${todayStr}-`;
       const maxRows: any[] = await this.chotCaRepo.query(
         `SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(ma_chot_ca, '-', -1) AS UNSIGNED)), 0) AS maxNum
@@ -1737,8 +1731,8 @@ export class ThanhToanService {
         maChotCa,
         thuNganId: nv.id,
         nguoiNhanCaId: dto.nguoiNhanCaId || null,
-        thoiGianBatDau: new Date(tu),
-        thoiGianKetThuc: new Date(den),
+        thoiGianBatDau: batDau,
+        thoiGianKetThuc: ketThuc,
         tienMatHeThong,
         tienMatThucTe,
         chenhLech,
@@ -1748,7 +1742,7 @@ export class ThanhToanService {
         tongThucThu,
         tongThucChi,
         soLuongPhieuThu: hoaDonList.length,
-        soLuongPhieuChi: opexList.length,
+        soLuongPhieuChi: soPhieuChi,
         ghiChu: dto.ghiChu || null,
         trangThai: dto.nguoiNhanCaId ? 'da_ban_giao' : 'da_chot',
       });

@@ -138,28 +138,34 @@ export default function ThongKeThuNganPage() {
     return cashReconciliation.find((r) => r.phuongThuc === 'tien_mat')?.ton || 0;
   }, [cashReconciliation]);
 
+  // Ô CSV: bọc ngoặc kép và nhân đôi dấu " bên trong (diễn giải có dấu phẩy / ngoặc kép làm lệch cột)
+  const oCsv = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
   const handleExportCSV = () => {
-    const list = filteredChungTu;
+    // Xuất toàn bộ sổ chứng từ của kỳ đang chọn; tab loại / ô tìm kiếm chỉ để lọc trên màn hình
+    const list = chungTu;
     if (list.length === 0) return;
     const headers = ['Loại chứng từ', 'Số chứng từ', 'Đối tượng giao dịch', 'Diễn giải nội dung', 'Số tiền (VNĐ)', 'Phương thức', 'Ngày lập'];
     const rows = list.map((h) => [
       h.loai === 'phieu_thu' ? 'Phiếu thu (+)' : h.loai === 'phieu_huy' ? 'Hoàn tiền (đã trừ trong phiếu thu)' : 'Phiếu chi (-)',
       h.soChungTu,
-      `"${h.doiTuong || ''}"`,
-      `"${h.dienGiai || ''}"`,
+      h.doiTuong,
+      h.dienGiai,
       h.loai === 'phieu_chi' ? -h.soTien : h.soTien,
       PHUONG_THUC_LABELS[h.phuongThuc] || h.phuongThuc,
       h.ngayLap ? new Date(h.ngayLap).toLocaleString('vi-VN') : '',
-    ]);
+    ].map(oCsv));
 
-    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    // Blob thay cho data-URI: encodeURI làm hỏng ký tự '#' trong diễn giải và giới hạn độ dài URL
+    const csv = '\uFEFF' + [headers.map(oCsv).join(','), ...rows.map((e) => e.join(','))].join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `SoChungTuThuChi_ERP_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.href = url;
+    link.download = `SoChungTuThuChi_${new Date().toLocaleDateString('en-CA')}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handlePrintChungTu = async (item) => {
@@ -179,7 +185,8 @@ export default function ThongKeThuNganPage() {
 
   const getKyBaoCaoLabel = () => {
     if (tuNgay && denNgay) return `Từ ${formatDate(tuNgay)} đến ${formatDate(denNgay)}`;
-    if (tuNgay) return `Từ ngày ${formatDate(tuNgay)}`;
+    if (tuNgay) return `Từ ngày ${formatDate(tuNgay)} đến nay`;
+    if (denNgay) return `Đến hết ngày ${formatDate(denNgay)}`;
     if (timeRange === 'ca_hien_tai') return 'Ca trực hiện tại';
     if (timeRange === 'hom_nay') return `Hôm nay (${formatDate(new Date())})`;
     if (timeRange === 'tuan_nay') return 'Tuần này';
@@ -444,7 +451,7 @@ export default function ThongKeThuNganPage() {
           <p className="mt-2 text-2xl font-black text-rose-700">
             {isLoading ? '...' : formatCurrency(stats?.tongPhieuChi ?? 0)}
           </p>
-          <p className="mt-1 text-xs text-rose-600">Chi trả mua thuốc cho các Nhà cung cấp</p>
+          <p className="mt-1 text-xs text-rose-600">Chi tiền thuốc NCC + chi vận hành</p>
         </div>
 
         {/* Card 3: Dòng Tiền Thuần */}
@@ -476,7 +483,7 @@ export default function ThongKeThuNganPage() {
             </span>
           </div>
           <p className="mt-2 text-lg font-bold text-gray-900">
-            {stats?.soHoaDonChoThu || 0} HĐ chờ thu
+            {stats?.soHoaDonChoThu || 0} HĐ đang chờ thu
           </p>
           <p className="mt-0.5 text-xs text-purple-700 font-medium">
             Miễn giảm / BHYT: <b>{formatCurrency(stats?.tongTienGiam || 0)}</b>
@@ -791,7 +798,6 @@ export default function ThongKeThuNganPage() {
       {openChotCaModal && (
         <ChotCaModal
           onClose={() => setOpenChotCaModal(false)}
-          defaultSystemCash={currentTienMat}
           onSuccess={(record) => {
             refetch();
             setChotCaRecord(record);
@@ -822,8 +828,9 @@ export default function ThongKeThuNganPage() {
       {openBaoCaoModal && (
         <InBaoCaoSoQuyModal
           stats={stats}
-          chungTu={filteredChungTu}
-          filterInfo={{ tuNgay, denNgay, timeRange, phamVi }}
+          chungTu={chungTu}
+          kyBaoCaoLabel={getKyBaoCaoLabel()}
+          filterInfo={{ phamVi }}
           onClose={() => setOpenBaoCaoModal(false)}
         />
       )}
@@ -844,8 +851,12 @@ export default function ThongKeThuNganPage() {
           thucThuRong: Number(stats?.soDuDongTien ?? stats?.soDuQuyRong ?? 0),
           soLuongHoaDon: stats?.soPhieuThu ?? stats?.soHoaDonDaThu ?? stats?.soLuongHoaDon ?? 0,
           soLuongPhieuChi: stats?.soPhieuChi ?? stats?.soLuongPhieuChi ?? 0,
-          tienMatTaiKet: currentTienMat || stats?.tienMatTaiKet || stats?.tienMat || 0,
-          chuyenKhoanNganHang: byPhuongThuc?.chuyen_khoan || stats?.chuyenKhoan || 0,
+          // Tiền mặt thuần trong kỳ/phạm vi đang chọn (thu − chi tiền mặt), không phải số kiểm kê két
+          tienMatTaiKet: currentTienMat,
+          // Mọi kênh không dùng tiền mặt (trước đây chỉ lấy chuyển khoản, bỏ sót thẻ / VNPay / MoMo)
+          chuyenKhoanNganHang: cashReconciliation
+            .filter((r) => r.phuongThuc !== 'tien_mat')
+            .reduce((s, r) => s + r.ton, 0),
         }}
       />
 

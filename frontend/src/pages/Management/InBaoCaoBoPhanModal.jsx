@@ -49,8 +49,8 @@ const SNAPSHOT_LABELS = {
   tongThuVienPhi: { label: 'Tổng thu viện phí', isCurrency: true },
   tongChiNhaCungCap: { label: 'Chi trả mua thuốc NCC', isCurrency: true },
   thucThuRong: { label: 'Thực thu ròng', isCurrency: true },
-  tienMatTaiKet: { label: 'Tiền mặt tại két', isCurrency: true },
-  chuyenKhoanNganHang: { label: 'Chuyển khoản QR/Thẻ', isCurrency: true },
+  tienMatTaiKet: { label: 'Tiền mặt thuần (thu − chi)', isCurrency: true },
+  chuyenKhoanNganHang: { label: 'Không dùng tiền mặt (CK / thẻ / ví)', isCurrency: true },
   soLuongHoaDon: { label: 'Hóa đơn phát hành', unit: 'HĐ' },
   soLuongPhieuChi: { label: 'Phiếu chi đã lập', unit: 'phiếu' },
 };
