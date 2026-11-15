@@ -135,15 +135,19 @@ curl -X POST http://localhost:5001/forecast \
   service trả kèm `ref_embedding` để backend lưu. Đổi model → `TRUNCATE TABLE nhan_vien_khuon_mat`.
 - **Chống giả mạo bằng thử thách nháy mắt** (`frames_b64`, 8–30 khung hình; frontend gửi 24 khung trong 3 giây):
   người dùng nhìn thẳng và nháy mắt. Model 106 điểm mốc `models/2d106det.onnx` (lấy từ gói `buffalo_l` của InsightFace,
-  vì `buffalo_sc` chỉ có 5 điểm) cho vị trí mí mắt; *độ mở mắt* = khe mí trung bình / khoảng cách mắt–miệng.
-  Nghiêng/xoay ảnh phẳng thì tử và mẫu co giãn cùng tỉ lệ nên độ mở không đổi. Đạt khi: độ mở nhỏ nhất ≤ 0.55 × độ mở
-  lúc mở mắt, có khung nhìn thẳng đang mở mắt (dùng để so khớp), khung nhắm mắt + 6 khung rải đều cùng một người.
-  - Chỉ khung so khớp và các khung kiểm tra cùng người mới tính embedding ArcFace; mọi khung chạy dò mặt + 106 điểm.
-    Đo với 1 CPU: ~7–8 giây cho 24 khung.
-  - Thực nghiệm (cửa sổ 3 giây, lấy mẫu 8 khung/giây): video nháy mắt thật đạt 6/6, tỉ lệ 0.29–0.37; video người nói
-    chuyện không nháy mắt 0.73–0.93 và ảnh tĩnh nghiêng/xoay phối cảnh 0.80 đều bị từ chối.
+  vì `buffalo_sc` chỉ có 5 điểm) cho vị trí mí mắt; *độ mở mắt* = khe mí trung bình / khoảng cách tâm mắt – khóe miệng.
+  Nghiêng/xoay ảnh phẳng thì tử và mẫu co giãn cùng tỉ lệ nên độ mở không đổi.
+  Đạt khi có **một lần nháy mắt**: khung mở mắt (≥ 0.8 × độ mở lúc mở) → tối đa 5 khung (~0.6 giây) trong đó có khung
+  nhắm (≤ 0.55 × độ mở lúc mở) → khung mở mắt lại. Nhắm mắt lâu hoặc nhắm rồi không mở lại đều bị từ chối.
+  Thêm: có khung nhìn thẳng đang mở mắt (dùng để so khớp), khung nhắm mắt + 3 khung rải đều cùng một người.
+  - **Tốc độ**: khung camera dò mặt ở 224px, chỉ khung so khớp + các khung kiểm tra cùng người mới tính embedding.
+    ONNX Runtime chạy 1 luồng mỗi model (`ORT_NUM_THREADS`, mặc định 1): mặc định ONNX tạo luồng theo số nhân của máy
+    vật lý, trong container bị giới hạn CPU các luồng tranh nhau → đo với `docker --cpus=1`: 24 khung mất 5.5 giây với
+    mặc định, 0.27 giây với 1 luồng.
+  - Thực nghiệm (cửa sổ 3 giây, lấy mẫu 8 khung/giây): video nháy mắt thật đạt 6/6, tỉ lệ 0.35–0.41; video người nói
+    chuyện không nháy mắt 0.70–0.97, ảnh tĩnh nghiêng/xoay phối cảnh 0.78, nhắm mắt ~1 giây, nhắm không mở lại đều bị từ chối.
     Ảnh mắt nhắm của người khác nhau có độ mở tuyệt đối chồng lấn với mắt mở → bắt buộc so tương đối trong cùng lượt quét.
   - **Giới hạn**: không chặn được video quay sẵn cảnh người đó nháy mắt; chưa đo trên camera thật với nhiều người.
-    Backend ghi log số đo (`nhắm mắt …`, `cosine …`) mỗi lần chấm công để hiệu chỉnh `NGUONG_NHAM_MAT`.
+    Backend ghi log số đo (`nháy mắt …`, `cosine …`) mỗi lần chấm công để hiệu chỉnh `NGUONG_NHAM_MAT`.
 - **Hiệu chỉnh ngưỡng độ khớp**: `python scripts/calibrate_face_threshold.py --backend-dir ../backend` in bảng FRR/FAR theo
   từng ngưỡng từ ảnh đại diện và ảnh chấm công đã lưu.

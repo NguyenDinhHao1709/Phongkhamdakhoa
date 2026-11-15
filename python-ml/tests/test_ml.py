@@ -121,6 +121,8 @@ def mat_gia(mo=1.0, lech_mui=0.0, co_doc=1.0, xoay_do=0.0, embedding=EMB):
     for (tren, duoi), dx in zip(fv.CAP_MI_MAT, [-6, 0, 6, -6, 0, 6]):
         cx = -30 if tren < 87 else 30
         lmk[tren], lmk[duoi] = [cx + dx, -4 * mo], [cx + dx, 4 * mo]
+    lmk[list(fv.TAM_MAT)] = [[-30, 0], [30, 0]]
+    lmk[list(fv.KHOE_MIENG)] = [[-22, 70], [22, 70]]
     goc = np.radians(xoay_do)
     bien_doi = np.array([[np.cos(goc), -np.sin(goc)], [np.sin(goc), np.cos(goc)]]) @ np.diag([1.0, co_doc])
     return SimpleNamespace(kps=kps @ bien_doi.T + [320, 200], landmark_2d_106=lmk @ bien_doi.T + [320, 200],
@@ -131,22 +133,44 @@ def danh_gia(faces):
     return fv.danh_gia_nhay_mat(faces, embedding=lambda f: f.embedding)
 
 
-def nguoi_that_nhay_mat():
-    mo = [1.0, 0.98, 1.0, 0.6, 0.25, 0.7, 1.0, 0.97, 1.0, 1.0]
-    lech = [0.12, 0.1, 0.02, 0.0, 0.0, 0.01, 0.05, 0.08, 0.1, 0.1]
+def chuoi_mat(mo, lech=None):
+    lech = lech or [0.0] * len(mo)
     return [(i, mat_gia(m, l)) for i, (m, l) in enumerate(zip(mo, lech))]
+
+
+def nguoi_that_nhay_mat():
+    return chuoi_mat([1.0, 0.98, 1.0, 0.6, 0.25, 0.7, 1.0, 0.97, 1.0, 1.0],
+                 [0.12, 0.1, 0.02, 0.0, 0.0, 0.01, 0.05, 0.08, 0.1, 0.1])
 
 
 def test_nguoi_that_nhay_mat_thi_dat_va_chon_khung_mo_mat_nhin_thang():
     kq = danh_gia(nguoi_that_nhay_mat())
-    assert kq["ok"] and kq["frame_index"] == 2 and kq["ti_le_nham_mat"] <= fv.NGUONG_NHAM_MAT
+    assert kq["ok"] and kq["frame_index"] == 2 and kq["ti_le_nhay_mat"] <= fv.NGUONG_NHAM_MAT
 
 
 def test_anh_phang_nghieng_xoay_bi_tu_choi():
     phang = [(i, mat_gia(1.0, 0.0, c, x)) for i, (c, x) in
              enumerate(zip([1, 0.95, 0.8, 0.6, 0.5, 0.6, 0.8, 0.9, 1, 1], [0, 5, 10, 20, 30, 20, -10, -20, 0, 0]))]
     kq = danh_gia(phang)
-    assert not kq["ok"] and kq["ti_le_nham_mat"] > 0.95 and "nháy mắt" in kq["reason"]
+    assert not kq["ok"] and kq["ti_le_nhay_mat"] > 0.95 and "Chưa nhận thấy nháy mắt" in kq["reason"]
+
+
+def test_nham_mat_khong_phai_nhay_mat():
+    # Nhắm mắt lâu (> SO_KHUNG_NHAM_TOI_DA khung) rồi mới mở
+    lau = danh_gia(chuoi_mat([1, 1, 1, 0.3, 0.25, 0.2, 0.2, 0.25, 0.3, 0.3, 1, 1]))
+    assert not lau["ok"] and "không nhắm mắt lâu" in lau["reason"]
+    # Nhắm mắt đến hết lượt quét, không mở lại
+    khong_mo_lai = danh_gia(chuoi_mat([1, 1, 1, 1, 1, 0.9, 0.5, 0.25, 0.2, 0.2]))
+    assert not khong_mo_lai["ok"] and "không nhắm mắt lâu" in khong_mo_lai["reason"]
+    # Nhắm sẵn từ đầu rồi mở ra
+    mo_ra = danh_gia(chuoi_mat([0.2, 0.2, 0.3, 1, 1, 1, 1, 1, 1, 1]))
+    assert not mo_ra["ok"]
+
+
+def test_khung_mat_mat_giua_lan_nhay_tinh_theo_vi_tri_goc():
+    # Khung 4..8 mất mặt: khoảng nhắm giữa hai khung mở dài 6 khung gốc → không tính là nháy mắt
+    faces = [f for f in chuoi_mat([1, 1, 1, 1, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 1, 1, 1]) if f[0] not in (5, 6, 7, 8)]
+    assert not danh_gia(faces)["ok"]
 
 
 def test_cac_truong_hop_tu_choi_khac():

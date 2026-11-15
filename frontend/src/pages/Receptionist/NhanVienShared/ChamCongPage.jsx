@@ -457,7 +457,7 @@ export default function ChamCongPage() {
                 <ShieldCheck className="h-5 w-5 flex-shrink-0 text-blue-600" />
                 <div>
                   <p className="text-sm font-semibold">
-                    Nhìn thẳng vào camera và nháy mắt chậm 2–3 lần
+                    Nhìn thẳng vào camera và nháy mắt 2–3 lần
                   </p>
                   <p className="text-xs text-blue-600 mt-0.5">
                     Giữ khuôn mặt trong khung hình. Nháy mắt giúp hệ thống phân biệt người thật với ảnh chụp.

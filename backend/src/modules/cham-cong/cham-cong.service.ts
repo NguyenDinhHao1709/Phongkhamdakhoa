@@ -295,7 +295,7 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
     const hopLe = data.verified === true && data.liveness === true;
     const doKhop = data.similarity_percent ?? 0;
     // Ghi lại số đo để hiệu chỉnh ngưỡng nháy mắt / độ khớp từ dữ liệu thật
-    this.logger.log(`Khuôn mặt NV#${nv.id}: ${hopLe ? 'đạt' : 'không đạt'} | nhắm mắt ${data.ti_le_nham_mat ?? '-'} | cosine ${data.raw_cosine ?? '-'}`);
+    this.logger.log(`Khuôn mặt NV#${nv.id}: ${hopLe ? 'đạt' : 'không đạt'} | nháy mắt ${data.ti_le_nhay_mat ?? '-'} | cosine ${data.raw_cosine ?? '-'}`);
 
     return {
       hopLe,
