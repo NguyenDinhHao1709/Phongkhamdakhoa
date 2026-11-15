@@ -23,7 +23,7 @@ import {
 import * as XLSX from 'xlsx';
 import { xuatExcel } from '../../utils/xuatFile';
 import { apiGet } from '../../services/api';
-import { formatDateTime } from '../../utils/formatDate';
+import { formatDateTime, getLocalDateString } from '../../utils/formatDate';
 import CapPhatThuocModal from './CapPhatThuocModal';
 import InDonThuocModal from './InDonThuocModal';
 
@@ -72,11 +72,11 @@ export default function DonThuocListPage() {
   // Bộ lọc dữ liệu đa tiêu chí
   const filteredList = useMemo(() => {
     const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
+    const todayStr = getLocalDateString(today);
 
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    const yesterdayStr = getLocalDateString(yesterday);
 
     const sevenDaysAgo = new Date(today);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);

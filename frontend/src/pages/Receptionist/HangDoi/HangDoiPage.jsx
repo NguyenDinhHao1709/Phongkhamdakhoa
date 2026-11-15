@@ -7,7 +7,7 @@ import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { VitalsCard } from '../../../design-system/components/VitalSign/VitalDisplay';
 import { apiGet, apiPost, apiPatch } from '../../../services/api';
-import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
+import { formatDateTime, tinhTuoi, getLocalDateString } from '../../../utils/formatDate';
 import { GIOI_TINH, DOI_TUONG_UU_TIEN } from '../../../utils/constants';
 import NhanUuTienTre from '../../../components/Queue/NhanUuTienTre';
 import { Clock, AlertTriangle, User2, Tv, Volume2, Loader2, Download } from 'lucide-react';
@@ -119,7 +119,7 @@ export default function HangDoiPage() {
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SoTiepDonHangDoi');
-    const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const now = getLocalDateString().replace(/-/g, '');
     xuatExcel(wb, `So_Tiep_Don_Hang_Doi_${now}.xlsx`);
   };
 

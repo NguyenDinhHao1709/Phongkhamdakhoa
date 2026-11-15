@@ -9,7 +9,7 @@ import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { VitalsCard } from '../../../design-system/components/VitalSign/VitalDisplay';
 import { apiGet, apiPost, apiPatch, apiDelete } from '../../../services/api';
-import { formatDateTime, tinhTuoi } from '../../../utils/formatDate';
+import { formatDateTime, tinhTuoi, getLocalDateString } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
 import NhanUuTienTre from '../../../components/Queue/NhanUuTienTre';
 import {
@@ -1805,7 +1805,7 @@ function KeDonThuocModal({ benhAnKhamId, chanDoan, diUng, onClose, onSuccess }) 
 
 /* ──── MODAL ĐẶT LỊCH TÁI KHÁM HỘ BỆNH NHÂN ──── */
 function DatLichTaiKhamModal({ benhNhanId, onClose, onSuccess }) {
-  const [ngayKham, setNgayKham] = useState(new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
+  const [ngayKham, setNgayKham] = useState(getLocalDateString(new Date(Date.now() + 7 * 86400000)));
   const [gioKham, setGioKham] = useState('09:00');
   const [lyDo, setLyDo] = useState('Tái khám theo hẹn bác sĩ');
   const [loading, setLoading] = useState(false);

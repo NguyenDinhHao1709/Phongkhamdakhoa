@@ -6,6 +6,7 @@ const DEFAULT_HOSPITAL_INFO = {
   slogan: 'TRUNG TÂM Y KHOA CHẤT LƯỢNG CAO',
   moTa: 'Cơ sở khám chữa bệnh đa khoa kỹ thuật cao, đáp ứng các tiêu chuẩn y tế nghiêm ngặt của Bộ Y Tế.',
   soGiayPhep: '08922/BYT-GPHĐ',
+  coQuanChuQuan: 'SỞ Y TẾ TP. HỒ CHÍ MINH',
   diaChi: '123 Nguyễn Văn Cừ, Quận 5, TP.HCM',
   tongDai: '1900 8888',
   gioLamViec: '07:00 – 20:00 (Thứ 2 - CN)',

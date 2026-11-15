@@ -9,7 +9,7 @@ import {
   Sparkles, Users, UserPlus, ShieldAlert, Baby, Clock, Download
 } from 'lucide-react';
 import { apiGet } from '../../../services/api';
-import { formatDate, formatDateTime, tinhTuoi } from '../../../utils/formatDate';
+import { formatDate, formatDateTime, tinhTuoi, getLocalDateString } from '../../../utils/formatDate';
 import { GIOI_TINH } from '../../../utils/constants';
 
 function useBenhNhan(params) {
@@ -144,7 +144,7 @@ export default function BenhNhanListPage() {
       ];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'DanhSachBenhNhan');
-      const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const now = getLocalDateString().replace(/-/g, '');
       xuatExcel(wb, `Danh_Sach_Benh_Nhan_${now}.xlsx`);
     } catch (err) {
       console.error('Lỗi xuất Excel:', err);

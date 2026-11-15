@@ -30,7 +30,7 @@ import {
 import { apiGet, apiPost, apiPatch } from '../../../services/api';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
-import { formatDate } from '../../../utils/formatDate';
+import { formatDate, getLocalDateString } from '../../../utils/formatDate';
 import { DOI_TUONG_UU_TIEN } from '../../../utils/constants';
 import DanhGiaCaKhamModal from '../../../components/Appointment/DanhGiaCaKhamModal';
 
@@ -390,7 +390,7 @@ export default function LichHenQuanLyPage() {
         benhNhanId: null,
         hoTen: '',
         soDienThoai: '',
-        ngayHen: new Date().toISOString().split('T')[0],
+        ngayHen: getLocalDateString(),
         gioHen: '08:00',
         chuyenKhoa: '',
         bacSiId: '',
@@ -533,7 +533,7 @@ export default function LichHenQuanLyPage() {
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'DanhSachLichHen');
-    const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const now = getLocalDateString().replace(/-/g, '');
     xuatExcel(wb, `Danh_Sach_Lich_Hen_${now}.xlsx`);
   };
 

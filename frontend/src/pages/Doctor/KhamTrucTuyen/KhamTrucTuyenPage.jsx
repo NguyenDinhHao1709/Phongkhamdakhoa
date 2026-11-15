@@ -5,7 +5,7 @@ import { MedCard } from '../../../design-system/components/Card/MedCard';
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { apiGet, apiPost, apiPatch } from '../../../services/api';
-import { formatDateTime, formatDate, normalizeDateOnly, checkTelehealthAccess } from '../../../utils/formatDate';
+import { formatDateTime, formatDate, normalizeDateOnly, checkTelehealthAccess, getLocalDateString } from '../../../utils/formatDate';
 import useTelehealthStore from '../../../store/telehealthStore';
 import {
   Video, Calendar, Clock, User,
@@ -889,7 +889,7 @@ export default function KhamTrucTuyenPage() {
 
 /* ──── MODAL ĐẶT LỊCH KHÁM HỘ BỆNH NHÂN KHI TƯ VẤN ONLINE ──── */
 function DatLichHoModal({ benhNhan, activeLich, doctorUser, onClose, onSuccess }) {
-  const [ngayHen, setNgayHen] = useState(new Date(Date.now() + 86400000).toISOString().slice(0, 10));
+  const [ngayHen, setNgayHen] = useState(getLocalDateString(new Date(Date.now() + 86400000)));
   const [gioHen, setGioHen] = useState('08:30');
   const [lyDo, setLyDo] = useState('Khám trực tiếp theo chỉ định từ ca tư vấn Telehealth từ xa');
   const [loading, setLoading] = useState(false);

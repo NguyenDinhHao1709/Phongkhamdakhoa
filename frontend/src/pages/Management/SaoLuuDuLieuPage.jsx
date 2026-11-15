@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { apiGet } from '../../services/api';
 import { ghiNhanXuatFile } from '../../utils/xuatFile';
+import { getLocalDateString } from '../../utils/formatDate';
 
 export default function SaoLuuDuLieuPage() {
   const [data, setData] = useState(null);
@@ -63,7 +64,7 @@ export default function SaoLuuDuLieuPage() {
     downloadAnchor.setAttribute('href', jsonString);
     downloadAnchor.setAttribute(
       'download',
-      `phong_kham_backup_meta_${new Date().toISOString().slice(0, 10)}.json`
+      `phong_kham_backup_meta_${getLocalDateString()}.json`
     );
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();

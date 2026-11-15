@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { xuatExcel } from '../../../utils/xuatFile';
 import { apiGet, apiPost, apiPatch, apiDelete } from '../../../services/api';
-import { formatDateTime, formatDate } from '../../../utils/formatDate';
+import { formatDateTime, formatDate, getLocalDateString } from '../../../utils/formatDate';
 import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge';
 import { toBackendUrl } from '../../../utils/backendUrl';
 import {
@@ -415,7 +415,7 @@ export default function XetNghiemListPage() {
     return colors[hash % colors.length];
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   // Hàm kiểm tra ngày tháng
   const matchesDate = (d, from, to) => {
@@ -424,7 +424,7 @@ export default function XetNghiemListPage() {
     const dStr =
       typeof d.thoiGianChiDinh === 'string'
         ? d.thoiGianChiDinh.substring(0, 10)
-        : new Date(d.thoiGianChiDinh).toISOString().substring(0, 10);
+        : getLocalDateString(new Date(d.thoiGianChiDinh));
     if (from && dStr < from) return false;
     if (to && dStr > to) return false;
     return true;
@@ -501,19 +501,19 @@ export default function XetNghiemListPage() {
   const handleQuickDate = (daysAgo) => {
     const now = new Date();
     if (daysAgo === 0) {
-      const today = now.toISOString().split('T')[0];
+      const today = getLocalDateString(now);
       setFilterDateFrom(today);
       setFilterDateTo(today);
     } else if (daysAgo === 7) {
       const past = new Date();
       past.setDate(past.getDate() - 7);
-      setFilterDateFrom(past.toISOString().split('T')[0]);
-      setFilterDateTo(now.toISOString().split('T')[0]);
+      setFilterDateFrom(getLocalDateString(past));
+      setFilterDateTo(getLocalDateString(now));
     } else if (daysAgo === 30) {
       const past = new Date();
       past.setDate(1);
-      setFilterDateFrom(past.toISOString().split('T')[0]);
-      setFilterDateTo(now.toISOString().split('T')[0]);
+      setFilterDateFrom(getLocalDateString(past));
+      setFilterDateTo(getLocalDateString(now));
     } else {
       setFilterDateFrom('');
       setFilterDateTo('');
@@ -601,7 +601,7 @@ export default function XetNghiemListPage() {
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SoXetNghiemCLS');
-    const now = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const now = getLocalDateString().replace(/-/g, '');
     xuatExcel(wb, `So_Xet_Nghiem_CLS_${now}.xlsx`);
   };
 

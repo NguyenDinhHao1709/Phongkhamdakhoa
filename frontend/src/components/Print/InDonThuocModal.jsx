@@ -92,7 +92,7 @@ export default function InDonThuocModal({ isOpen, onClose, donThuoc, benhNhan, b
             {/* Header Phòng khám */}
             <div className="grid grid-cols-2 gap-4 pb-4 border-b border-gray-400">
               <div className="text-left">
-                <p className="font-bold text-xs uppercase text-gray-800">SỞ Y TẾ TP. HỒ CHÍ MINH</p>
+                <p className="font-bold text-xs uppercase text-gray-800">{ttPk.coQuanChuQuan || 'SỞ Y TẾ TP. HỒ CHÍ MINH'}</p>
                 <p className="font-bold text-sm uppercase text-emerald-800">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</p>
                 <p className="text-xs text-gray-600">Đ/c: {ttPk.diaChi}</p>
                 <p className="text-xs text-gray-600">ĐT: {ttPk.tongDai}</p>

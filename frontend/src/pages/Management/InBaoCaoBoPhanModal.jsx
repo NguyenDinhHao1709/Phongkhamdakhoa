@@ -194,7 +194,7 @@ export default function InBaoCaoBoPhanModal({
             {/* Header Quốc hiệu */}
             <div className="flex justify-between items-start border-b border-gray-800 pb-4">
               <div className="text-left space-y-0.5">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">SỞ Y TẾ TP. HỒ CHÍ MINH</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-700">{ttPk.coQuanChuQuan || 'SỞ Y TẾ TP. HỒ CHÍ MINH'}</p>
                 <p className="text-sm font-black uppercase text-blue-900">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</p>
                 <p className="text-[10px] text-gray-500">Đơn vị: <strong>{BO_PHAN_MAP[baoCao.boPhan] || baoCao.boPhan}</strong></p>
               </div>

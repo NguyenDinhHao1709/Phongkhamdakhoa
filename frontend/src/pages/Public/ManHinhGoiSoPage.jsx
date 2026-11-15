@@ -96,11 +96,19 @@ export default function ManHinhGoiSoPage() {
   // 3. Kết nối WebSocket Socket.io nhận sự kiện queue:call tức thì
   useEffect(() => {
     fetchTvData();
-    const interval = setInterval(fetchTvData, 4000);
-
     const wsUrl = BACKEND_URL || window.location.origin;
     const s = io(wsUrl, { transports: ['websocket', 'polling'] });
     socketRef.current = s;
+
+    // Polling dự phòng: socket đang kết nối thì 30s/lần (queue:update / queue:call đã báo tức thì),
+    // mất kết nối thì 4s như trước. Trước đây luôn 4s (≈ 15 truy vấn/phút cho mỗi TV, chạy cả ngày).
+    let lanTaiCuoi = Date.now();
+    const taiLai = () => { lanTaiCuoi = Date.now(); fetchTvData(); };
+    const interval = setInterval(() => {
+      if (!s.connected || Date.now() - lanTaiCuoi >= 30000) taiLai();
+    }, 4000);
+    // Số người chờ từng phòng đổi khi tiếp nhận / khám xong → tải lại khi hàng đợi thay đổi
+    s.on('queue:update', taiLai);
 
     s.on('connect', () => {
       setIsConnected(true);

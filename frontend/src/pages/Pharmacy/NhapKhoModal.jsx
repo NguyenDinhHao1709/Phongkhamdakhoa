@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { apiPost } from '../../services/api';
 import useAuthStore from '../../store/authStore';
+import { getLocalDateString } from '../../utils/formatDate';
 
 export default function NhapKhoModal({ medicineList = [], defaultThuoc = null, onClose, onSuccess }) {
   const user = useAuthStore((s) => s.user);
@@ -45,8 +46,8 @@ export default function NhapKhoModal({ medicineList = [], defaultThuoc = null, o
       giaNhap: defaultThuoc?.giaBan ? Math.round(Number(defaultThuoc.giaBan) * 0.7) : 45000,
       giaBan: defaultThuoc?.giaBan || 65000,
       maLo: `LO${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}`,
-      ngaySanXuat: new Date().toISOString().slice(0, 10),
-      ngayHetHan: new Date(Date.now() + 365 * 24 * 3600 * 1000 * 2).toISOString().slice(0, 10),
+      ngaySanXuat: getLocalDateString(),
+      ngayHetHan: getLocalDateString(new Date(Date.now() + 365 * 24 * 3600 * 1000 * 2)),
       nhaCungCap: 'Dược Hậu Giang (DHG Pharma)',
       ghiChu:
         defaultThuoc?.ghiChu ||

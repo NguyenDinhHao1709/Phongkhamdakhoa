@@ -218,7 +218,7 @@ export default function InBaoCaoModal({
             {/* 1. HEADER SỞ Y TẾ & QUỐC HIỆU */}
             <div className="grid grid-cols-2 gap-4 pb-4 border-b border-gray-400">
               <div className="text-left">
-                <p className="font-bold text-xs uppercase text-gray-800">SỞ Y TẾ TP. HỒ CHÍ MINH</p>
+                <p className="font-bold text-xs uppercase text-gray-800">{ttPk.coQuanChuQuan || 'SỞ Y TẾ TP. HỒ CHÍ MINH'}</p>
                 <p className="font-bold text-sm uppercase text-blue-900">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</p>
                 <p className="text-xs text-gray-600">Đ/c: {ttPk.diaChi}</p>
                 <p className="text-xs text-gray-600">Hotline: {ttPk.tongDai} - Cấp cứu: {ttPk.hotlineCapCuu}</p>
@@ -243,7 +243,7 @@ export default function InBaoCaoModal({
                 {reportType === 'toan_bo' && '【 BẢN BÁO CÁO TOÀN DIỆN & TỔNG HỢP CA LÂM SÀNG 】'}
               </p>
               <p className="text-xs italic text-gray-600 mt-1">
-                Kính gửi: Ban Giám Đốc & Hội Đồng Y Khoa Phòng Khám Đa Khoa Quốc Tế
+                Kính gửi: Ban Giám Đốc & Hội Đồng Y Khoa {ttPk.tenBenhVien || 'Phòng Khám Đa Khoa'}
               </p>
             </div>
 

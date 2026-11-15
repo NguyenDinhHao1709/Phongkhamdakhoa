@@ -24,7 +24,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { apiPost, apiGet } from '../../services/api';
-import { formatDate } from '../../utils/formatDate';
+import { formatDate, getLocalDateString } from '../../utils/formatDate';
 import { postWithWakeRetry } from '../../utils/serviceWakeUp';
 
 // Hàm render văn bản có format Markdown đơn giản (in đậm, bullet, xuống dòng)
@@ -139,7 +139,7 @@ export default function ChatAiPage() {
   const chatContainerRef = useRef(null);
 
   // Lưu trạng thái uống thuốc theo ngày hiện tại trong localStorage
-  const todayKey = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayKey = useMemo(() => getLocalDateString(), []);
   const [takenMap, setTakenMap] = useState(() => {
     try {
       const stored = localStorage.getItem(`patient_meds_taken_${todayKey}`);

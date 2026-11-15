@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import { formatCurrency } from '../../utils/formatCurrency';
-import { formatDateTime, formatDate } from '../../utils/formatDate';
+import { formatDateTime, formatDate, getLocalDateString } from '../../utils/formatDate';
 import {
   BarChart3,
   AlertTriangle,
@@ -311,7 +311,7 @@ export default function ThongKeNhaThuocPage() {
     link.href = url;
     link.setAttribute(
       'download',
-      `Bao_Cao_Kho_Thuoc_${timeFilter}_${new Date().toISOString().slice(0, 10)}.csv`,
+      `Bao_Cao_Kho_Thuoc_${timeFilter}_${getLocalDateString()}.csv`,
     );
     document.body.appendChild(link);
     link.click();

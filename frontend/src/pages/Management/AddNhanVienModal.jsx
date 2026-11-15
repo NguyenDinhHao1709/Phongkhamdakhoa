@@ -5,6 +5,7 @@ import { X, Camera, Trash2, User, Loader2, AlertCircle, CheckCircle2 } from 'luc
 import { useQuery } from '@tanstack/react-query';
 import { apiGet, apiPost } from '../../services/api';
 import { toBackendUrl } from '../../utils/backendUrl';
+import { getLocalDateString } from '../../utils/formatDate';
 
 export function AddNhanVienModal({ isOpen, onClose, onSubmit }) {
   const { register, handleSubmit, watch, reset, setValue, formState: { errors } } = useForm();
@@ -119,7 +120,7 @@ export function AddNhanVienModal({ isOpen, onClose, onSubmit }) {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ngày sinh</label>
-                  <input type="date" max={new Date().toISOString().split('T')[0]} {...register('ngaySinh')} className="w-full rounded-md border-gray-300 p-2 border" />
+                  <input type="date" max={getLocalDateString()} {...register('ngaySinh')} className="w-full rounded-md border-gray-300 p-2 border" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Giới tính</label>
@@ -135,7 +136,7 @@ export function AddNhanVienModal({ isOpen, onClose, onSubmit }) {
                 </div>
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ngày vào làm</label>
-                  <input type="date" max={new Date().toISOString().split('T')[0]} {...register('ngayVaoLam')} className="w-full rounded-md border-gray-300 p-2 border" />
+                  <input type="date" max={getLocalDateString()} {...register('ngayVaoLam')} className="w-full rounded-md border-gray-300 p-2 border" />
                 </div>
 
                 {/* Khu vực ảnh đại diện / khuôn mặt mẫu */}

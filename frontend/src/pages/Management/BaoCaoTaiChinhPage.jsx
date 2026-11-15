@@ -5,7 +5,7 @@ import { xuatExcel } from '../../utils/xuatFile';
 import { apiGet } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
 import { formatCurrency } from '../../utils/formatCurrency';
-import { formatDate } from '../../utils/formatDate';
+import { formatDate, getLocalDateString } from '../../utils/formatDate';
 
 const formatLocalDate = (date) => {
   if (!date) return '';
@@ -409,7 +409,7 @@ export default function BaoCaoTaiChinhPage() {
       XLSX.utils.book_append_sheet(wb, wsDuoc, 'Doanh_Thu_Duoc_Pham');
     }
 
-    const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const nowStr = getLocalDateString().replace(/-/g, '');
     xuatExcel(wb, `Bao_Cao_Tai_Chinh_Giam_Doc_${nowStr}.xlsx`);
   };
 

@@ -10,7 +10,7 @@ import InBaoCaoModal from '../../../components/Print/InBaoCaoModal';
 import GuiBaoCaoModal from '../../../components/Report/GuiBaoCaoModal';
 import LichSuBaoCaoModal from '../../../components/Report/LichSuBaoCaoModal';
 import { apiGet } from '../../../services/api';
-import { formatDate } from '../../../utils/formatDate';
+import { formatDate, getLocalDateString } from '../../../utils/formatDate';
 import {
   Users, Pill, FlaskConical, BarChart3, TrendingUp, CheckCircle2,
   Clock, Sparkles, HeartHandshake, Star, Calendar,
@@ -257,7 +257,7 @@ export default function ThongKeBacSiPage() {
       XLSX.utils.book_append_sheet(wb, wsReview, 'Danh_Gia_CSAT');
     }
 
-    const fileName = `Bao_Cao_Bac_Si_${(stats.thongTinBacSi?.hoTen || 'BS').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const fileName = `Bao_Cao_Bac_Si_${(stats.thongTinBacSi?.hoTen || 'BS').replace(/\s+/g, '_')}_${getLocalDateString()}.xlsx`;
     xuatExcel(wb, fileName);
   };
 

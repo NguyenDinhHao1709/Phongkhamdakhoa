@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiGet } from '../../../services/api';
 import useAuthStore from '../../../store/authStore';
+import { getLocalDateString } from '../../../utils/formatDate';
 
 const DAYS_OF_WEEK = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ Nhật'];
 const SHORT_DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -18,7 +19,7 @@ function getMonday(d) {
 }
 
 function formatDateISO(d) {
-  return d.toISOString().slice(0, 10);
+  return getLocalDateString(d);
 }
 
 // Cắt ngắn chuỗi giờ: "07:30:00" -> "07:30"

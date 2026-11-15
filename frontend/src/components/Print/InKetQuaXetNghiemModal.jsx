@@ -177,7 +177,7 @@ export default function InKetQuaXetNghiemModal({
             {/* Header Cơ quan y tế & Phòng khám */}
             <div className="grid grid-cols-2 gap-4 pb-4 border-b border-gray-400">
               <div className="text-left">
-                <p className="font-bold text-xs uppercase text-gray-800">SỞ Y TẾ TP. HỒ CHÍ MINH</p>
+                <p className="font-bold text-xs uppercase text-gray-800">{ttPk.coQuanChuQuan || 'SỞ Y TẾ TP. HỒ CHÍ MINH'}</p>
                 <p className="font-bold text-sm uppercase text-purple-800">
                   {ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}
                 </p>

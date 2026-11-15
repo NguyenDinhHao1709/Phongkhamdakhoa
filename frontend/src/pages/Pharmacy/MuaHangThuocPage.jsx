@@ -13,6 +13,7 @@ import {
 import { apiGet, apiPatch, apiPost, apiDel } from '../../services/api';
 import useAuthStore from '../../store/authStore';
 import useHospitalStore from '../../store/hospitalStore';
+import { getLocalDateString } from '../../utils/formatDate';
 
 const emptyItem = { thuocId: '', nhaCungCapId: '', soLuongDat: 1, donGiaBao: 0 };
 
@@ -150,7 +151,7 @@ export default function MuaHangThuocPage() {
     phuongThucChi: 'chuyen_khoan',
     soChungTuChi: '',
     soHoaDonNcc: '',
-    ngayHoaDonNcc: new Date().toISOString().slice(0, 10),
+    ngayHoaDonNcc: getLocalDateString(),
     ghiChu: '',
   });
   const [paymentChecks, setPaymentChecks] = useState({
@@ -604,7 +605,7 @@ export default function MuaHangThuocPage() {
     setReceivingItems(request.chiTiet.map((item) => {
       const soLuongDat = Number(item.soLuongDat || 1);
       const today = new Date();
-      const nextYear = new Date(today.setFullYear(today.getFullYear() + 2)).toISOString().slice(0, 10);
+      const nextYear = getLocalDateString(new Date(today.setFullYear(today.getFullYear() + 2)));
       return {
         id: item.id,
         tenThuoc: item.tenThuoc,
@@ -750,7 +751,7 @@ export default function MuaHangThuocPage() {
       phuongThucChi: 'chuyen_khoan',
       soChungTuChi: `PC-${request.maYeuCau}-${Date.now().toString().slice(-4)}`,
       soHoaDonNcc: request.soHoaDonNcc || `HD-${Date.now().toString().slice(-6)}`,
-      ngayHoaDonNcc: request.ngayHoaDonNcc ? String(request.ngayHoaDonNcc).slice(0, 10) : new Date().toISOString().slice(0, 10),
+      ngayHoaDonNcc: request.ngayHoaDonNcc ? String(request.ngayHoaDonNcc).slice(0, 10) : getLocalDateString(),
       ghiChu: 'Thanh toán tiền thuốc theo phiếu kiểm nhận đạt chất lượng',
     });
   };
@@ -2511,7 +2512,7 @@ export default function MuaHangThuocPage() {
                         <input
                           required={item.soLuongDatChatLuong > 0}
                           type="date"
-                          min={new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 10)}
+                          min={getLocalDateString(new Date(Date.now() + 24 * 3600 * 1000))}
                           value={item.ngayHetHan}
                           onChange={(e) => updateReceivingItem(index, 'ngayHetHan', e.target.value)}
                           className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 text-xs focus:ring-1 focus:ring-blue-500"

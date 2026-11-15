@@ -157,7 +157,7 @@ export default function InDonThuocModal({ donThuoc, donThuocId, onClose }) {
                   {ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}
                 </h4>
                 <p className="text-gray-600 text-[11px] mt-0.5">
-                  Khoa Khám Bệnh · Nhà Thuốc Đạt Chuẩn GPP
+                  Khoa Khám Bệnh · Nhà Thuốc
                 </p>
                 <p className="text-gray-500 text-[11px]">
                   Địa chỉ: {ttPk.diaChi} · Hotline: {ttPk.tongDai}

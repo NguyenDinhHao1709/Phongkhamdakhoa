@@ -16,6 +16,7 @@ import {
   ComposedChart, Bar, Line, PieChart, Pie, Cell, Tooltip, XAxis, YAxis,
   CartesianGrid, ResponsiveContainer, Legend
 } from 'recharts';
+import { getLocalDateString } from '../../utils/formatDate';
 
 const COLORS = ['#2563EB', '#0D9488', '#F59E0B', '#8B5CF6', '#EC4899', '#6B7280'];
 
@@ -207,7 +208,7 @@ export default function DashboardGiamDocPage() {
       XLSX.utils.book_append_sheet(wb, wsBxh, 'CSAT_Danh_Gia_Toan_Vien');
     }
 
-    const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const nowStr = getLocalDateString().replace(/-/g, '');
     xuatExcel(wb, `Bao_Cao_Dieu_Hanh_Toan_Vien_${nowStr}.xlsx`);
   };
 

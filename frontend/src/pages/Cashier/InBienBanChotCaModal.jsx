@@ -82,7 +82,7 @@ export default function InBienBanChotCaModal({ record, onClose }) {
             {/* Header Phòng Khám & Mã Biên Bản */}
             <div className="flex justify-between items-start border-b-2 border-gray-900 pb-3">
               <div>
-                <p className="text-xs uppercase font-bold text-gray-700">SỞ Y TẾ TP. HỒ CHÍ MINH</p>
+                <p className="text-xs uppercase font-bold text-gray-700">{ttPk.coQuanChuQuan || 'SỞ Y TẾ TP. HỒ CHÍ MINH'}</p>
                 <h2 className="text-sm font-black text-emerald-800 uppercase">{ttPk.tenBenhVien || 'PHÒNG KHÁM ĐA KHOA'}</h2>
                 <p className="text-[11px] text-gray-600">Địa chỉ: {ttPk.diaChi}</p>
                 <p className="text-[11px] text-gray-600">Bộ phận: Kế toán thu ngân & Quản trị tài chính ERP</p>

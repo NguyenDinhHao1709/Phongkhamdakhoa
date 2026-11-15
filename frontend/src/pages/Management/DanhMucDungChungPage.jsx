@@ -19,6 +19,7 @@ const DEFAULT_HOSPITAL_INFO = {
   slogan: 'TRUNG TÂM Y KHOA CHẤT LƯỢNG CAO',
   moTa: 'Cơ sở khám chữa bệnh đa khoa kỹ thuật cao, đáp ứng các tiêu chuẩn y tế nghiêm ngặt của Bộ Y Tế.',
   soGiayPhep: '08922/BYT-GPHĐ',
+  coQuanChuQuan: 'SỞ Y TẾ TP. HỒ CHÍ MINH',
   diaChi: '123 Nguyễn Văn Cừ, Quận 5, TP.HCM',
   tongDai: '1900 8888',
   gioLamViec: '07:00 – 20:00 (Thứ 2 - CN)',
@@ -908,6 +909,19 @@ export default function DanhMucDungChungPage() {
                       onChange={(e) => setHospitalInfo({ ...hospitalInfo, moTa: e.target.value })}
                       placeholder="Cơ sở khám chữa bệnh đa khoa kỹ thuật cao, đáp ứng các tiêu chuẩn y tế nghiêm ngặt..."
                       className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Cơ Quan Chủ Quản (dòng đầu trên các bản in)
+                    </label>
+                    <input
+                      type="text"
+                      value={hospitalInfo.coQuanChuQuan || ''}
+                      onChange={(e) => setHospitalInfo({ ...hospitalInfo, coQuanChuQuan: e.target.value })}
+                      placeholder="Ví dụ: SỞ Y TẾ TP. HỒ CHÍ MINH"
+                      className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium"
                     />
                   </div>
 

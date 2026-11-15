@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { xuatExcel } from '../../utils/xuatFile';
 import { apiGet, apiPatch } from '../../services/api';
-import { formatDateTime, formatDate } from '../../utils/formatDate';
+import { formatDateTime, formatDate, getLocalDateString } from '../../utils/formatDate';
 import {
   FileText,
   CheckCircle2,
@@ -482,7 +482,7 @@ export default function DuyetYeuCauPage() {
   const matchesDate = (d, from, to) => {
     if (!from && !to) return true;
     if (!d.ngayGui) return false;
-    const dStr = typeof d.ngayGui === 'string' ? d.ngayGui.substring(0, 10) : new Date(d.ngayGui).toISOString().substring(0, 10);
+    const dStr = typeof d.ngayGui === 'string' ? d.ngayGui.substring(0, 10) : getLocalDateString(new Date(d.ngayGui));
     if (from && dStr < from) return false;
     if (to && dStr > to) return false;
     return true;
@@ -644,19 +644,19 @@ export default function DuyetYeuCauPage() {
   const handleQuickDate = (daysAgo) => {
     const now = new Date();
     if (daysAgo === 0) {
-      const todayStr = now.toISOString().split('T')[0];
+      const todayStr = getLocalDateString(now);
       setFilterDateFrom(todayStr);
       setFilterDateTo(todayStr);
     } else if (daysAgo === 7) {
       const past = new Date();
       past.setDate(past.getDate() - 7);
-      setFilterDateFrom(past.toISOString().split('T')[0]);
-      setFilterDateTo(now.toISOString().split('T')[0]);
+      setFilterDateFrom(getLocalDateString(past));
+      setFilterDateTo(getLocalDateString(now));
     } else if (daysAgo === 30) {
       const past = new Date();
       past.setDate(1); // Đầu tháng
-      setFilterDateFrom(past.toISOString().split('T')[0]);
-      setFilterDateTo(now.toISOString().split('T')[0]);
+      setFilterDateFrom(getLocalDateString(past));
+      setFilterDateTo(getLocalDateString(now));
     } else {
       setFilterDateFrom('');
       setFilterDateTo('');
@@ -712,7 +712,7 @@ export default function DuyetYeuCauPage() {
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SoTheoDoiPheDuyet');
-    const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const nowStr = getLocalDateString().replace(/-/g, '');
     xuatExcel(wb, `So_Theo_Doi_Phe_Duyet_Don_Tu_${nowStr}.xlsx`);
   };
 

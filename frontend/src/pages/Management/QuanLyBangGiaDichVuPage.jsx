@@ -9,6 +9,7 @@ import {
   Building2, Video, Download
 } from 'lucide-react';
 import api from '../../services/api';
+import { getLocalDateString } from '../../utils/formatDate';
 
 const LOAI_OPTIONS = [
   { value: 'tat_ca', label: 'Tất cả danh mục' },
@@ -350,7 +351,7 @@ export default function QuanLyBangGiaDichVuPage() {
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'BangGiaDichVu');
-    const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const nowStr = getLocalDateString().replace(/-/g, '');
     xuatExcel(wb, `Bang_Gia_Dich_Vu_Kham_Chua_Benh_${nowStr}.xlsx`);
   };
 

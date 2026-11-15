@@ -10,6 +10,7 @@ import useAuthStore from '../../store/authStore';
 import LapPhieuChiHoatDongModal from './LapPhieuChiHoatDongModal';
 import InPhieuChiModal from './InPhieuChiModal';
 import InSoCongNoModal from './InSoCongNoModal';
+import { getLocalDateString } from '../../utils/formatDate';
 
 const formatMoney = (value) => `${Number(value || 0).toLocaleString('vi-VN')} đ`;
 const formatDate = (dateString) => {
@@ -64,7 +65,7 @@ export default function ChiTraNhaCungCapPage() {
     phuongThucChi: 'chuyen_khoan',
     soChungTuChi: '',
     soHoaDonNcc: '',
-    ngayHoaDonNcc: new Date().toISOString().slice(0, 10),
+    ngayHoaDonNcc: getLocalDateString(),
     ghiChu: '',
   });
   const [paymentChecks, setPaymentChecks] = useState({
@@ -133,7 +134,7 @@ export default function ChiTraNhaCungCapPage() {
       phuongThucChi: 'chuyen_khoan',
       soChungTuChi: `PC-${request.maYeuCau}-${Date.now().toString().slice(-4)}`,
       soHoaDonNcc: request.soHoaDonNcc || `HD-${Date.now().toString().slice(-6)}`,
-      ngayHoaDonNcc: request.ngayHoaDonNcc ? String(request.ngayHoaDonNcc).slice(0, 10) : new Date().toISOString().slice(0, 10),
+      ngayHoaDonNcc: request.ngayHoaDonNcc ? String(request.ngayHoaDonNcc).slice(0, 10) : getLocalDateString(),
       ghiChu: 'Thanh toán tiền thuốc theo phiếu kiểm nhận đạt chất lượng',
     });
   };

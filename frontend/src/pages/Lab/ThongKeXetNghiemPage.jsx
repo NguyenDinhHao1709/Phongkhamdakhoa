@@ -5,7 +5,7 @@ import { xuatExcel } from '../../utils/xuatFile';
 import { useAuthStore } from '../../store/authStore';
 import { apiGet } from '../../services/api';
 import { MedCard } from '../../design-system/components/Card/MedCard';
-import { formatDateTime, formatDate } from '../../utils/formatDate';
+import { formatDateTime, formatDate, getLocalDateString } from '../../utils/formatDate';
 import GuiBaoCaoModal from '../../components/Report/GuiBaoCaoModal';
 import LichSuBaoCaoModal from '../../components/Report/LichSuBaoCaoModal';
 import InBaoCaoXetNghiemModal from './InBaoCaoXetNghiemModal';
@@ -160,11 +160,11 @@ export default function ThongKeXetNghiemPage() {
     ];
     XLSX.utils.book_append_sheet(wb, wsDetail, 'Danh_Sach_Chi_Dinh');
 
-    const fileName = `Bao_Cao_Xet_Nghiem_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const fileName = `Bao_Cao_Xet_Nghiem_${getLocalDateString()}.xlsx`;
     xuatExcel(wb, fileName);
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
 
   const getKyBaoCaoLabel = () => {
     if (tuNgay && denNgay) return `Từ ${formatDate(tuNgay)} đến ${formatDate(denNgay)}`;

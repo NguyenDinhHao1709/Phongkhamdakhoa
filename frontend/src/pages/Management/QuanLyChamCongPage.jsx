@@ -8,6 +8,7 @@ import {
   Users, Download
 } from 'lucide-react';
 import { apiGet, apiPost } from '../../services/api';
+import { getLocalDateString } from '../../utils/formatDate';
 
 // Tính thời lượng làm việc chính xác (số giờ, số phút; nếu dưới 1 giờ thì hiện đúng số phút làm)
 function tinhThoiLuongLamViec(gioVao, gioRa, ngayCham) {
@@ -257,7 +258,7 @@ export default function QuanLyChamCongPage() {
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'BangChamCong');
-    const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const nowStr = getLocalDateString().replace(/-/g, '');
     xuatExcel(wb, `Bang_Tong_Hop_Cham_Cong_${nowStr}.xlsx`);
   };
 

@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { apiGet } from '../../services/api';
 import { ghiNhanXuatFile } from '../../utils/xuatFile';
+import { getLocalDateString } from '../../utils/formatDate';
 
 export default function NhatKyHeThongPage() {
   const [logs, setLogs] = useState([]);
@@ -27,14 +28,14 @@ export default function NhatKyHeThongPage() {
       if (search.trim()) params += `&search=${encodeURIComponent(search.trim())}`;
 
       if (timeRange === 'HOM_NAY') {
-        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayStr = getLocalDateString();
         params += `&tuNgay=${todayStr}`;
       } else if (timeRange === '7_NGAY') {
         const d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        params += `&tuNgay=${d.toISOString().slice(0, 10)}`;
+        params += `&tuNgay=${getLocalDateString(d)}`;
       } else if (timeRange === '30_NGAY') {
         const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        params += `&tuNgay=${d.toISOString().slice(0, 10)}`;
+        params += `&tuNgay=${getLocalDateString(d)}`;
       }
 
       const logsRes = await apiGet(`/quan-ly/nhat-ky${params}`);
