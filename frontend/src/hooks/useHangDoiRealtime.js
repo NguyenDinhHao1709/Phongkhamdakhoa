@@ -33,8 +33,9 @@ function traSocket() {
   }
 }
 
-/** Polling dự phòng khi đã có socket: đủ thưa để không tạo tải, đủ dày để không lỡ thay đổi quá lâu */
-export const POLL_DU_PHONG_MS = 20000;
+/** Polling dự phòng: socket đã báo mọi thay đổi ghi qua TypeORM (xem HangDoiRealtimeSubscriber); đây chỉ
+ * phòng khi socket rớt mạng hoặc dữ liệu đổi bằng SQL thô */
+export const POLL_DU_PHONG_MS = 30000;
 
 /**
  * @param {Array<Array<unknown>>} queryKeys các queryKey (tiền tố) cần làm mới khi hàng đợi thay đổi

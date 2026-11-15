@@ -2032,8 +2032,8 @@ function XetNghiemTab({ benhAnKhamId, onOpenModal, onApplyLabConclusion }) {
     queryKey: ['xn-benh-an', benhAnKhamId],
     queryFn: () => apiGet(`/xet-nghiem/benh-an-kham/${benhAnKhamId}`),
     enabled: !!benhAnKhamId,
-    // Socket hàng đợi làm mới tab này (xem useHangDoi); 15s dự phòng cho kết quả nhập không kèm đổi trạng thái
-    refetchInterval: 15000,
+    // Socket hàng đợi làm mới tab này khi chỉ định / kết quả xét nghiệm thay đổi (xem useHangDoi); 30s chỉ là dự phòng
+    refetchInterval: 30000,
   });
   const items = (data?.data || []).filter((it) => it.chiDinh?.trangThai !== 'huy');
 
