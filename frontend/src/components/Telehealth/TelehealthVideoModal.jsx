@@ -30,6 +30,57 @@ const compressImage = (dataUrl, maxSize = 1600, quality = 0.8) =>
     img.src = dataUrl;
   });
 
+const VIDEO_CONSTRAINTS = { width: { ideal: 1280 }, height: { ideal: 720 } };
+const AUDIO_CONSTRAINTS = {
+  echoCancellation: true,  // Khử tiếng vọng loa-mic
+  noiseSuppression: true,  // Lọc tạp âm môi trường
+  autoGainControl: true,   // Tự động cân bằng âm lượng đàm thoại
+};
+
+// STUN + TURN. TURN cấu hình qua biến môi trường lúc build (VITE_TURN_URLS cách nhau bằng dấu phẩy,
+// VITE_TURN_USERNAME, VITE_TURN_CREDENTIAL). Thiếu TURN thì mạng 4G / mạng công ty dễ không nối được WebRTC.
+const buildIceServers = () => {
+  const servers = [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+  ];
+  const turnUrls = (import.meta.env.VITE_TURN_URLS || '').split(',').map((u) => u.trim()).filter(Boolean);
+  if (turnUrls.length) {
+    servers.push({
+      urls: turnUrls,
+      username: import.meta.env.VITE_TURN_USERNAME,
+      credential: import.meta.env.VITE_TURN_CREDENTIAL,
+    });
+  } else {
+    // Dự phòng: TURN công khai miễn phí, không đảm bảo còn hoạt động
+    servers.push({
+      urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'],
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    });
+  }
+  return servers;
+};
+
+// Lý do không mở được thiết bị, để báo đúng cho người dùng
+const describeMediaError = (err) => {
+  switch (err?.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'chưa được cấp quyền';
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return 'không tìm thấy thiết bị';
+    case 'NotReadableError':
+    case 'AbortError':
+      return 'đang bị ứng dụng khác sử dụng';
+    default:
+      return 'không khả dụng';
+  }
+};
+
+const newPcId = () => `${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`;
+
 export default function TelehealthVideoModal({
   isOpen,
   onClose,
@@ -97,6 +148,23 @@ export default function TelehealthVideoModal({
   const videoOnRef = useRef(true);
   const speakerMutedRef = useRef(false);
   const [remoteFallbackFrame, setRemoteFallbackFrame] = useState(null);
+  // Trình duyệt chặn tự phát âm thanh → hiện nút "Bấm để bật âm thanh"
+  const [audioBlocked, setAudioBlocked] = useState(false);
+  // WebRTC đang chập chờn (disconnected) → hiện "Đang kết nối lại..."
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const mountedRef = useRef(false);
+  // Mỗi RTCPeerConnection có 1 mã riêng; đối phương đổi mã = vừa tải lại trang → phải dựng lại kết nối mới
+  const pcIdRef = useRef(newPcId());
+  const remotePcIdRef = useRef(null);
+  const retiredRemotePcIdsRef = useRef(new Set());
+  const peerPresentRef = useRef(false);
+  const disconnectTimerRef = useRef(null);
+  // Thiết bị: track giả lập (thiếu camera/mic), lỗi theo từng loại, chống khôi phục chồng nhau
+  const virtualTrackIdsRef = useRef(new Set());
+  const virtualCleanupRef = useRef([]);
+  const deviceIssuesRef = useRef({ audio: null, video: null });
+  const recoveringRef = useRef({ audio: false, video: false });
+  const deviceChangeHandlerRef = useRef(null);
 
   const roomId = String(appointmentInfo?.maLichHen || appointmentInfo?.id || 'telehealth_general');
 
@@ -171,8 +239,7 @@ export default function TelehealthVideoModal({
       if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
         remoteVideoRef.current.srcObject = remoteStreamRef.current;
       }
-      remoteVideoRef.current.muted = speakerMuted;
-      remoteVideoRef.current.play().catch(() => {});
+      playRemote();
     }
   }, [activeMinimized, isPeerConnected, hasRemoteVideo, speakerMuted]);
 
@@ -187,6 +254,317 @@ export default function TelehealthVideoModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [previewImage]);
 
+  // Phát hình/tiếng đối phương. Trình duyệt chặn tự phát âm thanh → phát tắt tiếng để vẫn thấy hình, hiện nút bật âm thanh
+  const audioBlockedRef = useRef(false);
+  const playRemote = () => {
+    const el = remoteVideoRef.current;
+    if (!el || !el.srcObject) return;
+    el.muted = speakerMutedRef.current || audioBlockedRef.current;
+    el.play()
+      .then(() => {
+        if (!audioBlockedRef.current) setAudioBlocked(false);
+      })
+      .catch((err) => {
+        if (err?.name !== 'NotAllowedError') return;
+        audioBlockedRef.current = true;
+        setAudioBlocked(true);
+        el.muted = true;
+        el.play().catch(() => {});
+      });
+  };
+
+  // Người dùng bấm "Bật âm thanh" (thao tác thật nên trình duyệt cho phép phát tiếng)
+  const unlockAudio = () => {
+    audioBlockedRef.current = false;
+    setAudioBlocked(false);
+    [audioContextRef, remoteAudioContextRef].forEach((ctxRef) => {
+      if (ctxRef.current && ctxRef.current.state === 'suspended') ctxRef.current.resume().catch(() => {});
+    });
+    playRemote();
+  };
+
+  // Ghi lỗi thiết bị theo từng loại (camera / micro) và hiện gộp lên banner
+  const setDeviceIssue = (kind, message) => {
+    deviceIssuesRef.current = { ...deviceIssuesRef.current, [kind]: message };
+    const { video, audio } = deviceIssuesRef.current;
+    setStreamError([video, audio].filter(Boolean).join(' · ') || null);
+  };
+
+  // Mở camera + micro. Một thiết bị lỗi (không có webcam, camera bị app khác giữ...) không được kéo theo mất thiết bị còn lại
+  const acquireLocalMedia = async () => {
+    const gum = navigator.mediaDevices?.getUserMedia?.bind(navigator.mediaDevices);
+    if (!gum) {
+      return {
+        stream: createVirtualStream(),
+        issues: { video: 'Trình duyệt không cho dùng camera/micro (cần mở trang bằng HTTPS)', audio: null },
+      };
+    }
+    try {
+      return { stream: await gum({ video: VIDEO_CONSTRAINTS, audio: AUDIO_CONSTRAINTS }), issues: {} };
+    } catch (err) {
+      console.warn('[Media] Không mở được camera + micro cùng lúc, thử từng thiết bị:', err);
+    }
+    const tryGet = async (constraints) => {
+      try {
+        return { track: (await gum(constraints)).getTracks()[0] };
+      } catch (error) {
+        return { error };
+      }
+    };
+    const audio = await tryGet({ audio: AUDIO_CONSTRAINTS });
+    const video = await tryGet({ video: VIDEO_CONSTRAINTS });
+    const virtual = !audio.track || !video.track ? createVirtualStream() : null;
+    const stream = new MediaStream(
+      [audio.track || virtual.getAudioTracks()[0], video.track || virtual.getVideoTracks()[0]].filter(Boolean),
+    );
+    return {
+      stream,
+      issues: {
+        video: video.track ? null : `Không mở được camera (${describeMediaError(video.error)}), đang dùng hình thay thế`,
+        audio: audio.track ? null : `Không mở được micro (${describeMediaError(audio.error)}), bên kia sẽ không nghe thấy bạn`,
+      },
+    };
+  };
+
+  // Thiết bị bị rút / bị app khác chiếm giữa cuộc gọi → tự mở lại
+  const watchTrack = (track) => {
+    if (!track || virtualTrackIdsRef.current.has(track.id)) return;
+    track.onended = () => {
+      if (!mountedRef.current) return;
+      console.warn(`[Media] Mất ${track.kind === 'video' ? 'camera' : 'micro'}, thử mở lại thiết bị`);
+      recoverDevice(track.kind);
+    };
+  };
+
+  // Mở lại camera/micro rồi thay track đang gửi cho đối phương (replaceTrack, không cần bắt tay lại)
+  const recoverDevice = async (kind) => {
+    const stream = mediaStreamRef.current;
+    if (!stream || !mountedRef.current || recoveringRef.current[kind]) return false;
+    if (!navigator.mediaDevices?.getUserMedia) return false;
+    recoveringRef.current[kind] = true;
+    try {
+      const fresh = await navigator.mediaDevices.getUserMedia(
+        kind === 'audio' ? { audio: AUDIO_CONSTRAINTS } : { video: VIDEO_CONSTRAINTS },
+      );
+      const newTrack = fresh.getTracks()[0];
+      if (!mountedRef.current || mediaStreamRef.current !== stream) {
+        newTrack.stop();
+        return false;
+      }
+      const oldTrack = (kind === 'audio' ? stream.getAudioTracks() : stream.getVideoTracks())[0];
+      newTrack.enabled = kind === 'audio' ? micOnRef.current : videoOnRef.current;
+      if (oldTrack) {
+        stream.removeTrack(oldTrack);
+        oldTrack.onended = null;
+        oldTrack.stop();
+        virtualTrackIdsRef.current.delete(oldTrack.id);
+      }
+      stream.addTrack(newTrack);
+      watchTrack(newTrack);
+
+      const pc = peerConnectionRef.current;
+      if (pc && pc.signalingState !== 'closed') {
+        const sender =
+          pc.getSenders().find((s) => s.track && oldTrack && s.track === oldTrack) ||
+          pc.getSenders().find((s) => s.track?.kind === kind);
+        if (sender) await sender.replaceTrack(newTrack);
+        else pc.addTrack(newTrack, stream);
+      }
+
+      if (kind === 'audio') {
+        setupAudioAnalyser(stream, (level) => {
+          if (mountedRef.current) setLocalAudioLevel(level);
+        }, false);
+      } else if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+        localVideoRef.current.srcObject = stream;
+        localVideoRef.current.play().catch(() => {});
+      }
+      setDeviceIssue(kind, null);
+      return true;
+    } catch (err) {
+      console.warn(`[Media] Chưa mở lại được ${kind}:`, err);
+      setDeviceIssue(
+        kind,
+        `Mất ${kind === 'video' ? 'camera' : 'micro'} (${describeMediaError(err)}), sẽ tự kết nối lại khi thiết bị sẵn sàng`,
+      );
+      return false;
+    } finally {
+      recoveringRef.current[kind] = false;
+    }
+  };
+
+  // Cắm thêm / rút thiết bị → thử khôi phục thiết bị đang lỗi hoặc đang dùng bản thay thế
+  const handleDeviceChange = () => {
+    const stream = mediaStreamRef.current;
+    if (!stream || !mountedRef.current) return;
+    const needsRecovery = (track) => !track || track.readyState === 'ended' || virtualTrackIdsRef.current.has(track.id);
+    if (needsRecovery(stream.getAudioTracks()[0])) recoverDevice('audio');
+    if (needsRecovery(stream.getVideoTracks()[0])) recoverDevice('video');
+  };
+
+  // Đối phương thật sự đã rời phòng → về màn hình chờ
+  const markPeerGone = () => {
+    if (disconnectTimerRef.current) {
+      clearTimeout(disconnectTimerRef.current);
+      disconnectTimerRef.current = null;
+    }
+    webrtcConnectedRef.current = false;
+    peerJoinedAtRef.current = 0;
+    setIsReconnecting(false);
+    setIsPeerConnected(false);
+    setHasRemoteVideo(false);
+    setRemoteFallbackFrame(null);
+    setRemoteAudioLevel(0);
+  };
+
+  // Dựng RTCPeerConnection mới: lúc vào phòng, hoặc khi đối phương tải lại trang (kết nối cũ không dùng lại được)
+  const createPeerConnection = () => {
+    const old = peerConnectionRef.current;
+    if (old) {
+      old.ontrack = null;
+      old.onicecandidate = null;
+      old.onconnectionstatechange = null;
+      old.oniceconnectionstatechange = null;
+      old.close();
+    }
+    if (disconnectTimerRef.current) {
+      clearTimeout(disconnectTimerRef.current);
+      disconnectTimerRef.current = null;
+    }
+    if (remoteAnimFrameRef.current) cancelAnimationFrame(remoteAnimFrameRef.current);
+    if (remoteAudioContextRef.current && remoteAudioContextRef.current.state !== 'closed') {
+      remoteAudioContextRef.current.close().catch(() => {});
+    }
+    pendingCandidatesRef.current = [];
+    localCandidatesRef.current = [];
+    lastOfferTimeRef.current = 0;
+    makingOfferRef.current = false;
+    webrtcConnectedRef.current = false;
+    if (remotePcIdRef.current) retiredRemotePcIdsRef.current.add(remotePcIdRef.current);
+    remotePcIdRef.current = null;
+    pcIdRef.current = newPcId();
+    setIsReconnecting(false);
+
+    const pc = new RTCPeerConnection({ iceServers: buildIceServers(), iceCandidatePoolSize: 10 });
+    peerConnectionRef.current = pc;
+    remoteStreamRef.current = new MediaStream();
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStreamRef.current;
+
+    const localStream = mediaStreamRef.current;
+    if (localStream) {
+      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+    }
+
+    // Nhận remote stream từ đối phương
+    pc.ontrack = (event) => {
+      if (peerConnectionRef.current !== pc) return;
+      console.log('[WebRTC] Nhận được remote track:', event.track?.kind);
+      const incomingTracks = event.streams && event.streams[0] ? event.streams[0].getTracks() : [event.track];
+      incomingTracks.filter(Boolean).forEach((t) => {
+        if (!remoteStreamRef.current.getTracks().some((ex) => ex.id === t.id)) {
+          remoteStreamRef.current.addTrack(t);
+        }
+      });
+
+      webrtcConnectedRef.current = true;
+      setRemoteFallbackFrame(null);
+
+      if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+        remoteVideoRef.current.srcObject = remoteStreamRef.current;
+      }
+      playRemote();
+      setIsPeerConnected(true);
+      if (event.track?.kind === 'video' || remoteStreamRef.current.getVideoTracks().length > 0) {
+        setHasRemoteVideo(true);
+      }
+
+      // Đo âm lượng phía đối phương khi nhận track audio
+      if (event.track?.kind === 'audio' || remoteStreamRef.current.getAudioTracks().length > 0) {
+        setupAudioAnalyser(remoteStreamRef.current, (level) => {
+          if (mountedRef.current) setRemoteAudioLevel(level);
+        }, true);
+      }
+    };
+
+    // Gửi ICE candidates khi tìm thấy và lưu lại để gửi kèm nếu cần phát lại Offer/Answer
+    pc.onicecandidate = (event) => {
+      if (peerConnectionRef.current !== pc || !event.candidate) return;
+      const candObj = event.candidate.toJSON ? event.candidate.toJSON() : event.candidate;
+      localCandidatesRef.current.push(candObj);
+      sendSignal({ type: 'candidate', candidate: candObj });
+    };
+
+    const handleConnState = () => {
+      if (peerConnectionRef.current !== pc) return;
+      const conn = pc.connectionState;
+      const ice = pc.iceConnectionState;
+      console.log('[WebRTC] Connection/ICE state:', conn, ice);
+
+      if (conn === 'connected' || ice === 'connected' || ice === 'completed') {
+        if (disconnectTimerRef.current) {
+          clearTimeout(disconnectTimerRef.current);
+          disconnectTimerRef.current = null;
+        }
+        webrtcConnectedRef.current = true;
+        setIsReconnecting(false);
+        setIsPeerConnected(true);
+        if (remoteStreamRef.current && remoteStreamRef.current.getVideoTracks().length > 0) {
+          setHasRemoteVideo(true);
+        }
+        if (remoteVideoRef.current && remoteStreamRef.current) {
+          if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+            remoteVideoRef.current.srcObject = remoteStreamRef.current;
+          }
+          playRemote();
+        }
+        return;
+      }
+
+      if (conn === 'disconnected' || ice === 'disconnected') {
+        // Đối phương đã báo rời phòng → không chờ nữa
+        if (!peerPresentRef.current) {
+          markPeerGone();
+          return;
+        }
+        // Rớt gói tạm thời (đổi wifi/4G, sóng yếu): chờ 5 giây cho tự hồi, quá thì bác sĩ khởi động lại ICE
+        setIsReconnecting(true);
+        if (!disconnectTimerRef.current) {
+          disconnectTimerRef.current = setTimeout(() => {
+            disconnectTimerRef.current = null;
+            if (peerConnectionRef.current !== pc) return;
+            if (pc.connectionState === 'connected' || ['connected', 'completed'].includes(pc.iceConnectionState)) return;
+            if (role === 'doctor') createAndSendOffer(true);
+          }, 5000);
+        }
+        return;
+      }
+
+      if (conn === 'failed' || ice === 'failed') {
+        webrtcConnectedRef.current = false;
+        if (!peerPresentRef.current) {
+          markPeerGone();
+          return;
+        }
+        setIsReconnecting(true);
+        if (role === 'doctor') createAndSendOffer(true);
+      }
+    };
+
+    pc.onconnectionstatechange = handleConnState;
+    pc.oniceconnectionstatechange = handleConnState;
+    return pc;
+  };
+
+  // Đối phương xuất hiện với mã kết nối khác mã mình đã bắt tay = họ vừa tải lại trang → dựng kết nối mới
+  const resetIfNewPeerInstance = (remotePcId) => {
+    if (!remotePcId || !remotePcIdRef.current || remotePcId === remotePcIdRef.current) return false;
+    if (retiredRemotePcIdsRef.current.has(remotePcId)) return false;
+    console.log('[WebRTC] Đối phương đã tạo kết nối mới, dựng lại RTCPeerConnection');
+    createPeerConnection();
+    return true;
+  };
+
   // 2. Khởi tạo Media Stream + WebRTC Peer Connection + Audio Analyser
   useEffect(() => {
     if (!isOpen) {
@@ -195,157 +573,41 @@ export default function TelehealthVideoModal({
     }
 
     let isMounted = true;
+    mountedRef.current = true;
 
     const initWebRTCAndMedia = async () => {
       try {
         setStreamError(null);
+        deviceIssuesRef.current = { audio: null, video: null };
 
-        // A. Lấy Local Media (Camera + Mic chất lượng cao với bộ lọc âm thanh)
-        let localStream = null;
-        try {
-          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            localStream = await navigator.mediaDevices.getUserMedia({
-              video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-              audio: {
-                echoCancellation: true,  // Khử tiếng vọng loa-mic
-                noiseSuppression: true,  // Lọc tạp âm môi trường
-                autoGainControl: true,   // Tự động cân bằng âm lượng đàm thoại
-              },
-            });
-          }
-        } catch (mediaErr) {
-          console.warn('Webcam/Mic vật lý không sẵn sàng hoặc bị từ chối, tạo virtual canvas stream:', mediaErr);
-          localStream = createVirtualStream();
-          setStreamError('Không thể mở micro/webcam trực tiếp (đang dùng luồng giả lập HD).');
+        // A. Lấy camera + micro (lỗi từng thiết bị được xử lý riêng)
+        const { stream: localStream, issues } = await acquireLocalMedia();
+        if (!isMounted) {
+          localStream.getTracks().forEach((t) => t.stop());
+          return;
         }
-
-        if (!isMounted) return;
         mediaStreamRef.current = localStream;
-        if (localVideoRef.current && localStream) {
+        localStream.getTracks().forEach(watchTrack);
+        Object.entries(issues).forEach(([kind, message]) => {
+          if (message) setDeviceIssue(kind, message);
+        });
+        if (localVideoRef.current) {
           localVideoRef.current.srcObject = localStream;
         }
 
-        // Setup Local Audio Meter
+        // Đo âm lượng micro của mình
         setupAudioAnalyser(localStream, (level) => {
           if (isMounted) setLocalAudioLevel(level);
         }, false);
 
-        // B. Tạo RTCPeerConnection chuẩn WebRTC với STUN + TURN servers (xuyên NAT/Firewall/4G)
-        const pcConfig = {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun.cloudflare.com:3478' },
-            {
-              urls: 'turn:openrelay.metered.ca:80',
-              username: 'openrelayproject',
-              credential: 'openrelayproject',
-            },
-            {
-              urls: 'turn:openrelay.metered.ca:443',
-              username: 'openrelayproject',
-              credential: 'openrelayproject',
-            },
-            {
-              urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-              username: 'openrelayproject',
-              credential: 'openrelayproject',
-            },
-          ],
-          iceCandidatePoolSize: 10,
-        };
-        const pc = new RTCPeerConnection(pcConfig);
-        peerConnectionRef.current = pc;
-        remoteStreamRef.current = new MediaStream();
-
-        // Thêm tracks từ local stream sang PeerConnection
-        if (localStream) {
-          localStream.getTracks().forEach((track) => {
-            pc.addTrack(track, localStream);
-          });
+        // Theo dõi cắm/rút thiết bị để tự khôi phục
+        if (navigator.mediaDevices?.addEventListener) {
+          deviceChangeHandlerRef.current = handleDeviceChange;
+          navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
         }
 
-        // Nhận remote stream từ đối phương
-        pc.ontrack = (event) => {
-          console.log('[WebRTC] Nhận được remote track:', event.track?.kind);
-          if (!remoteStreamRef.current) {
-            remoteStreamRef.current = new MediaStream();
-          }
-          const incomingStream = event.streams && event.streams[0];
-          if (incomingStream) {
-            incomingStream.getTracks().forEach((t) => {
-              if (!remoteStreamRef.current.getTracks().some((ex) => ex.id === t.id)) {
-                remoteStreamRef.current.addTrack(t);
-              }
-            });
-          } else if (event.track) {
-            if (!remoteStreamRef.current.getTracks().some((ex) => ex.id === event.track.id)) {
-              remoteStreamRef.current.addTrack(event.track);
-            }
-          }
-
-          webrtcConnectedRef.current = true;
-          setRemoteFallbackFrame(null);
-
-          if (remoteVideoRef.current) {
-            if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
-              remoteVideoRef.current.srcObject = remoteStreamRef.current;
-            }
-            remoteVideoRef.current.muted = speakerMutedRef.current;
-            remoteVideoRef.current.play().catch((playErr) => {
-              console.warn('[WebRTC] Tự động phát âm thanh bị giới hạn bởi trình duyệt:', playErr);
-            });
-          }
-          setIsPeerConnected(true);
-          if (event.track?.kind === 'video' || remoteStreamRef.current.getVideoTracks().length > 0) {
-            setHasRemoteVideo(true);
-          }
-
-          // Setup Remote Audio Meter khi nhận track audio
-          if (event.track?.kind === 'audio' || remoteStreamRef.current.getAudioTracks().length > 0) {
-            setupAudioAnalyser(remoteStreamRef.current, (level) => {
-              if (isMounted) setRemoteAudioLevel(level);
-            }, true);
-          }
-        };
-
-        // Gửi ICE candidates khi tìm thấy và lưu lại để gửi kèm nếu cần phát lại Offer/Answer
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            const candObj = event.candidate.toJSON ? event.candidate.toJSON() : event.candidate;
-            localCandidatesRef.current.push(candObj);
-            sendSignal({ type: 'candidate', candidate: candObj });
-          }
-        };
-
-        const handleConnState = () => {
-          const state = pc.connectionState || pc.iceConnectionState;
-          console.log('[WebRTC] Connection/ICE state:', pc.connectionState, pc.iceConnectionState);
-          if (
-            pc.connectionState === 'connected' ||
-            pc.iceConnectionState === 'connected' ||
-            pc.iceConnectionState === 'completed'
-          ) {
-            webrtcConnectedRef.current = true;
-            setIsPeerConnected(true);
-            if (remoteStreamRef.current && remoteStreamRef.current.getVideoTracks().length > 0) {
-              setHasRemoteVideo(true);
-            }
-            if (remoteVideoRef.current && remoteStreamRef.current) {
-              remoteVideoRef.current.srcObject = remoteStreamRef.current;
-              remoteVideoRef.current.play().catch(() => {});
-            }
-          } else if (state === 'failed') {
-            webrtcConnectedRef.current = false;
-            if (role === 'doctor') {
-              createAndSendOffer(true);
-            }
-          }
-        };
-
-        pc.onconnectionstatechange = handleConnState;
-        pc.oniceconnectionstatechange = handleConnState;
+        // B. RTCPeerConnection với STUN + TURN (xuyên NAT/Firewall/4G)
+        createPeerConnection();
 
         // C. Kênh truyền tin (Signaling) đa kênh: BroadcastChannel (cùng máy/tab) + Socket.io (khác máy)
         const channelName = `telehealth_${roomId}`;
@@ -377,7 +639,12 @@ export default function TelehealthVideoModal({
 
         socket.on('connect', () => {
           console.log('[Socket] Đã kết nối Socket.IO thành công, id =', socket.id);
-          socket.emit('call:join', { roomId, role, userName: role === 'doctor' ? 'Bác sĩ' : participantName });
+          socket.emit('call:join', {
+            roomId,
+            role,
+            userName: role === 'doctor' ? 'Bác sĩ' : participantName,
+            pcId: pcIdRef.current,
+          });
           setTimeout(() => {
             if (!isMounted) return;
             sendSignal({ type: 'peer_joined', role, senderRole: role });
@@ -390,6 +657,8 @@ export default function TelehealthVideoModal({
 
         socket.on('call:peer_joined', async (data) => {
           console.log('[Signaling] Peer joined:', data);
+          peerPresentRef.current = true;
+          resetIfNewPeerInstance(data?.pcId);
           if (!peerJoinedAtRef.current) peerJoinedAtRef.current = Date.now();
           setIsPeerConnected(true);
           if (role === 'doctor') {
@@ -428,12 +697,15 @@ export default function TelehealthVideoModal({
           });
         });
 
-        socket.on('call:peer_left', () => {
-          webrtcConnectedRef.current = false;
-          peerJoinedAtRef.current = 0;
-          setIsPeerConnected(false);
-          setHasRemoteVideo(false);
-          setRemoteFallbackFrame(null);
+        socket.on('call:peer_left', (data) => {
+          peerPresentRef.current = false;
+          const pc = peerConnectionRef.current;
+          const p2pAlive =
+            pc && (pc.connectionState === 'connected' || ['connected', 'completed'].includes(pc.iceConnectionState));
+          // Chỉ rớt Socket (mạng chập chờn) mà hình/tiếng P2P vẫn chạy → giữ nguyên cuộc gọi.
+          // Nếu P2P cũng đứt, trạng thái disconnected/failed của pc sẽ chuyển về màn hình chờ.
+          if (data?.reason !== 'leave' && p2pAlive) return;
+          markPeerGone();
         });
 
         // Báo cho các tab khác biết mình đã tham gia
@@ -472,9 +744,7 @@ export default function TelehealthVideoModal({
 
         // Ghi âm các đoạn ngắn 750ms gửi qua Socket nếu sau 6 giây WebRTC UDP vẫn bị chặn
         try {
-          const audioTracks = localStream ? localStream.getAudioTracks() : [];
-          if (audioTracks.length > 0 && typeof MediaRecorder !== 'undefined') {
-            const audioOnlyStream = new MediaStream([audioTracks[0]]);
+          if (typeof MediaRecorder !== 'undefined') {
             const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
               ? 'audio/webm;codecs=opus'
               : MediaRecorder.isTypeSupported('audio/webm')
@@ -482,11 +752,21 @@ export default function TelehealthVideoModal({
                 : '';
             const startChunkCycle = () => {
               if (!isMounted || webrtcConnectedRef.current) return;
-              if (!micOnRef.current || !peerJoinedAtRef.current || Date.now() - peerJoinedAtRef.current < 6000) {
+              // Lấy micro hiện tại (có thể đã được thay sau khi rút/cắm lại thiết bị)
+              const micTrack = mediaStreamRef.current?.getAudioTracks()[0];
+              if (
+                !micTrack ||
+                micTrack.readyState === 'ended' ||
+                virtualTrackIdsRef.current.has(micTrack.id) ||
+                !micOnRef.current ||
+                !peerJoinedAtRef.current ||
+                Date.now() - peerJoinedAtRef.current < 6000
+              ) {
                 setTimeout(startChunkCycle, 1000);
                 return;
               }
               try {
+                const audioOnlyStream = new MediaStream([micTrack]);
                 const recorder = mimeType
                   ? new MediaRecorder(audioOnlyStream, { mimeType, audioBitsPerSecond: 24000 })
                   : new MediaRecorder(audioOnlyStream);
@@ -519,7 +799,9 @@ export default function TelehealthVideoModal({
                     recorder.stop();
                   }
                 }, 750);
-              } catch (recErr) {}
+              } catch (recErr) {
+                setTimeout(startChunkCycle, 1000);
+              }
             };
             setTimeout(startChunkCycle, 6500);
           }
@@ -535,6 +817,7 @@ export default function TelehealthVideoModal({
 
     return () => {
       isMounted = false;
+      mountedRef.current = false;
       cleanupCall();
     };
   }, [isOpen, roomId]);
@@ -552,7 +835,15 @@ export default function TelehealthVideoModal({
   // Gửi tín hiệu WebRTC qua cả BroadcastChannel lẫn Socket.io với ID khử trùng lặp
   const sendSignal = (signalData) => {
     const msgId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    const payload = { ...signalData, senderRole: role, roomId, msgId };
+    // pcId: kết nối hiện tại của mình; toPcId: kết nối của đối phương mà mình đang bắt tay
+    const payload = {
+      ...signalData,
+      senderRole: role,
+      roomId,
+      msgId,
+      pcId: pcIdRef.current,
+      toPcId: remotePcIdRef.current,
+    };
     seenSignalsRef.current.add(msgId);
 
     if (broadcastChannelRef.current) {
@@ -623,9 +914,22 @@ export default function TelehealthVideoModal({
       }
     }
 
+    // Tín hiệu bắt tay của kết nối cũ (đối phương đã tải lại trang) hoặc gửi cho kết nối cũ của mình → bỏ qua
+    const isNegotiation = data.type === 'offer' || data.type === 'answer' || data.type === 'candidate';
+    if (isNegotiation) {
+      if (data.pcId && retiredRemotePcIdsRef.current.has(data.pcId)) return;
+      if (data.toPcId && data.toPcId !== pcIdRef.current) return;
+    }
+
     // Bất kỳ tín hiệu nào từ đối phương cũng xác nhận đối phương đang ở trong phòng
+    peerPresentRef.current = true;
     if (!peerJoinedAtRef.current) peerJoinedAtRef.current = Date.now();
     setIsPeerConnected(true);
+
+    // Đối phương vừa vào lại bằng kết nối mới (tải lại trang) → bỏ kết nối cũ của mình, dựng mới
+    if (data.type === 'peer_joined' || data.type === 'peer_ready' || data.type === 'offer') {
+      resetIfNewPeerInstance(data.pcId);
+    }
 
     const pc = peerConnectionRef.current;
     if (!pc) return;
@@ -667,16 +971,28 @@ export default function TelehealthVideoModal({
         }
         localCandidatesRef.current = [];
         await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        if (data.pcId) remotePcIdRef.current = data.pcId;
         await flushPendingCandidates();
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         sendSignal({ type: 'answer', sdp: pc.localDescription });
       } else if (data.type === 'answer') {
+        // Answer từ một kết nối mới của đối phương cho kết nối cũ của mình → dựng mới rồi gửi lại Offer
+        if (data.pcId && remotePcIdRef.current && data.pcId !== remotePcIdRef.current) {
+          if (role === 'doctor') {
+            createPeerConnection();
+            await createAndSendOffer(false);
+          }
+          return;
+        }
         if (pc.signalingState === 'have-local-offer') {
           await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+          if (data.pcId) remotePcIdRef.current = data.pcId;
           await flushPendingCandidates();
         }
       } else if (data.type === 'candidate' && data.candidate) {
+        // Candidate của một kết nối khác kết nối đang bắt tay → không dùng được
+        if (data.pcId && remotePcIdRef.current && data.pcId !== remotePcIdRef.current) return;
         if (pc.remoteDescription && pc.remoteDescription.type) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
@@ -698,7 +1014,12 @@ export default function TelehealthVideoModal({
           if (!speakerMutedRef.current) {
             try {
               const audioEl = new Audio(data.chunk);
-              audioEl.play().catch(() => {});
+              audioEl.play().catch((err) => {
+                if (err?.name === 'NotAllowedError') {
+                  audioBlockedRef.current = true;
+                  setAudioBlocked(true);
+                }
+              });
             } catch (e) {}
           }
         }
@@ -758,23 +1079,28 @@ export default function TelehealthVideoModal({
       ctx.font = 'bold 24px Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(role === 'doctor' ? 'Bác sĩ (Cam Ảo HD)' : 'Bệnh nhân (Cam Ảo HD)', 320, 248);
-      requestAnimationFrame(draw);
+      rafId = requestAnimationFrame(draw);
     };
-    draw();
+    let rafId = requestAnimationFrame(draw);
 
     const vStream = canvas.captureStream(30);
 
-    // Thêm âm thanh giả lập (Silent audio track)
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioCtx.createOscillator();
-    const dst = audioCtx.createMediaStreamDestination();
-    osc.connect(dst);
-    osc.start();
-    const silentTrack = dst.stream.getAudioTracks()[0];
-    if (silentTrack) {
-      silentTrack.enabled = false;
-      vStream.addTrack(silentTrack);
+    // Track âm thanh im lặng: đích phát không có nguồn nào nối vào, nên bật/tắt mic cũng không phát ra tiếng
+    let audioCtx = null;
+    const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtxClass) {
+      audioCtx = new AudioCtxClass();
+      const silentTrack = audioCtx.createMediaStreamDestination().stream.getAudioTracks()[0];
+      if (silentTrack) vStream.addTrack(silentTrack);
     }
+
+    vStream.getTracks().forEach((t) => virtualTrackIdsRef.current.add(t.id));
+    // Dừng vòng vẽ + AudioContext khi kết thúc cuộc gọi
+    virtualCleanupRef.current.push(() => {
+      cancelAnimationFrame(rafId);
+      vStream.getTracks().forEach((t) => t.stop());
+      if (audioCtx && audioCtx.state !== 'closed') audioCtx.close().catch(() => {});
+    });
 
     return vStream;
   };
@@ -849,14 +1175,34 @@ export default function TelehealthVideoModal({
     if (remoteAudioContextRef.current && remoteAudioContextRef.current.state !== 'closed') {
       remoteAudioContextRef.current.close().catch(() => {});
     }
+    if (disconnectTimerRef.current) {
+      clearTimeout(disconnectTimerRef.current);
+      disconnectTimerRef.current = null;
+    }
+    if (deviceChangeHandlerRef.current && navigator.mediaDevices?.removeEventListener) {
+      navigator.mediaDevices.removeEventListener('devicechange', deviceChangeHandlerRef.current);
+      deviceChangeHandlerRef.current = null;
+    }
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current.getTracks().forEach((t) => {
+        t.onended = null;
+        t.stop();
+      });
       mediaStreamRef.current = null;
     }
+    virtualCleanupRef.current.forEach((fn) => fn());
+    virtualCleanupRef.current = [];
+    virtualTrackIdsRef.current.clear();
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
+    remotePcIdRef.current = null;
+    retiredRemotePcIdsRef.current.clear();
+    peerPresentRef.current = false;
+    audioBlockedRef.current = false;
+    setAudioBlocked(false);
+    setIsReconnecting(false);
     if (broadcastChannelRef.current) {
       broadcastChannelRef.current.close();
       broadcastChannelRef.current = null;
@@ -919,10 +1265,15 @@ export default function TelehealthVideoModal({
   const toggleSpeaker = () => {
     const nextMuted = !speakerMuted;
     speakerMutedRef.current = nextMuted;
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.muted = nextMuted;
-    }
     setSpeakerMuted(nextMuted);
+    // Bấm bật loa cũng là thao tác người dùng → mở luôn âm thanh nếu trình duyệt đang chặn
+    if (!nextMuted && audioBlockedRef.current) {
+      unlockAudio();
+      return;
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.muted = nextMuted || audioBlockedRef.current;
+    }
   };
 
   // Xử lý kéo thả bằng Pointer Events (chuẩn W3C: hỗ trợ 100% cả Chuột máy tính, Touch điện thoại và Bút cảm ứng)
@@ -1143,6 +1494,25 @@ export default function TelehealthVideoModal({
                 {isPeerConnected ? 'Đang gọi trực tuyến' : 'Đang kết nối...'}
               </p>
             </div>
+          )}
+
+          {isReconnecting && isPeerConnected && (
+            <div className="absolute bottom-2 left-2 right-2 z-20 bg-amber-500/90 text-white text-[9px] sm:text-[10px] font-semibold px-2 py-1 rounded-lg text-center pointer-events-none">
+              Mạng chập chờn, đang kết nối lại...
+            </div>
+          )}
+
+          {audioBlocked && !speakerMuted && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                unlockAudio();
+              }}
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-primary-600 hover:bg-primary-700 text-white text-[10px] sm:text-xs font-bold px-2.5 py-1.5 rounded-xl shadow-xl flex items-center gap-1 whitespace-nowrap"
+            >
+              <Volume2 className="h-3.5 w-3.5" /> Bật âm thanh
+            </button>
           )}
 
           {/* Popup cảnh báo sắp hết 60 phút khám */}
@@ -1445,6 +1815,24 @@ export default function TelehealthVideoModal({
                   </p>
                 </div>
               </div>
+            )}
+
+            {/* Mạng chập chờn: WebRTC đang tự kết nối lại */}
+            {isReconnecting && isPeerConnected && (
+              <div className="absolute top-28 sm:top-4 left-1/2 -translate-x-1/2 z-30 bg-amber-500/90 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2 pointer-events-none whitespace-nowrap">
+                <Radio className="h-3.5 w-3.5 animate-pulse" /> Mạng chập chờn, đang kết nối lại...
+              </div>
+            )}
+
+            {/* Trình duyệt chặn tự phát âm thanh → cần người dùng bấm một lần */}
+            {audioBlocked && !speakerMuted && (
+              <button
+                type="button"
+                onClick={unlockAudio}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2 animate-pulse"
+              >
+                <Volume2 className="h-5 w-5" /> Bấm để bật âm thanh
+              </button>
             )}
 
             {/* Tag thông tin người đối thoại + Thanh âm lượng nói (Equalizer) */}

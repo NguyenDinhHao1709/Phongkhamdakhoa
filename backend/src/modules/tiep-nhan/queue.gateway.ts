@@ -51,6 +51,15 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   handleConnection(client: Socket) {
     this.logger.log(`Client kết nối: ${client.id}`);
+    // Rớt mạng / đóng tab không kịp gửi call:leave → vẫn báo người còn lại trong phòng gọi.
+    // Dùng 'disconnecting' vì lúc này client.rooms chưa bị xóa (khác handleDisconnect).
+    client.on('disconnecting', () => {
+      client.rooms.forEach((room) => {
+        if (room.startsWith('call:')) {
+          client.to(room).emit('call:peer_left', { peerId: client.id, reason: 'disconnect' });
+        }
+      });
+    });
   }
 
   handleDisconnect(client: Socket) {
@@ -73,7 +82,7 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // ─── WebRTC Signaling cho Telehealth Video Call ────────────────────
   @SubscribeMessage('call:join')
-  async handleJoinCall(client: Socket, payload: { roomId: string; role: string; userName: string }) {
+  async handleJoinCall(client: Socket, payload: { roomId: string; role: string; userName: string; pcId?: string }) {
     if (!payload?.roomId) {
       client.emit('call:error', { code: 'INVALID_ROOM', message: 'Mã phòng gọi không hợp lệ.' });
       return;
@@ -179,7 +188,13 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const room = `call:${payload.roomId}`;
     client.join(room);
     this.logger.log(`Client ${client.id} (${payload.role} - ${payload.userName}) joined call room ${room}`);
-    client.to(room).emit('call:peer_joined', { peerId: client.id, role: payload.role, userName: payload.userName });
+    // pcId: mã kết nối WebRTC của người vừa vào — đổi mã nghĩa là họ vừa tải lại trang, bên kia phải dựng kết nối mới
+    client.to(room).emit('call:peer_joined', {
+      peerId: client.id,
+      role: payload.role,
+      userName: payload.userName,
+      pcId: payload.pcId,
+    });
 
     client.emit('call:session_info', { startedAt: this.getCallStartedAt(roomKey, apptStartMs), serverNow: Date.now() });
 
@@ -244,7 +259,7 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleLeaveCall(client: Socket, payload: { roomId: string }) {
     const room = `call:${payload.roomId}`;
     client.leave(room);
-    client.to(room).emit('call:peer_left', { peerId: client.id });
+    client.to(room).emit('call:peer_left', { peerId: client.id, reason: 'leave' });
   }
 
   // ─── CÁC SỰ KIỆN PHÁT RA (gọi từ Service) ────────────────────
