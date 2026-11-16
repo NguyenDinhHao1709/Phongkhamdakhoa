@@ -4,6 +4,7 @@ import { apiGet } from '../../services/api';
 import { formatDateTime, formatDate } from '../../utils/formatDate';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { tamUngCuaHoaDon } from '../../utils/hoaDon';
+import TomTatThanhToan from '../../components/Payment/TomTatThanhToan';
 import {
   FileText, Activity, Pill, FlaskConical, Stethoscope, User, AlertTriangle, Clock,
   Printer, ExternalLink, Eye, CheckCircle2, CreditCard, Search, Calendar,
@@ -523,10 +524,12 @@ export default function HoSoYTeBenhNhanPage() {
                         {(() => {
                           // Chi phí lần khám = viện phí − BHYT; thucThu chỉ là phần thu thêm sau khi trừ tạm ứng/cọc
                           const hd = item.hoaDon;
-                          const tamUng = tamUngCuaHoaDon(hd);
-                          const ghiChuTamUng = tamUng > 0 ? ` (gồm tạm ứng ${formatCurrency(tamUng)})` : '';
+                          const chiTra = Math.max(0, hd.tongTien - hd.soTienGiam);
+                          // Phần chi phí trả bằng tạm ứng không vượt chi phí (phần dư được hoàn lại)
+                          const tamUng = Math.min(tamUngCuaHoaDon(hd), chiTra);
+                          const ghiChuTamUng = tamUng > 0 ? ` (trừ từ tạm ứng ${formatCurrency(tamUng)})` : '';
                           return hd.trangThai === 'da_thanh_toan'
-                            ? `Đã thanh toán ${formatCurrency(hd.tongTien - hd.soTienGiam)}${ghiChuTamUng}`
+                            ? `Đã thanh toán ${formatCurrency(chiTra)}${ghiChuTamUng}`
                             : `Chờ thanh toán viện phí (${formatCurrency(hd.thucThu)})${ghiChuTamUng}`;
                         })()}
                       </span>
@@ -981,34 +984,7 @@ export default function HoSoYTeBenhNhanPage() {
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-gray-200 space-y-1">
-                    <div className="flex justify-between text-gray-600">
-                      <span>Tổng viện phí:</span>
-                      <span className="font-medium text-gray-800">{formatCurrency(item.hoaDon.tongTien)}</span>
-                    </div>
-                    {item.hoaDon.soTienGiam > 0 && (
-                      <div className="flex justify-between text-emerald-700">
-                        <span>BHYT chi trả:</span>
-                        <span className="font-medium">- {formatCurrency(item.hoaDon.soTienGiam)}</span>
-                      </div>
-                    )}
-                    {tamUngCuaHoaDon(item.hoaDon) > 0 && (
-                  <div className="flex justify-between text-blue-700">
-                    <span>Đã tạm ứng / cọc:</span>
-                    <span className="font-medium">- {formatCurrency(tamUngCuaHoaDon(item.hoaDon))}</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-bold text-gray-900 text-sm pt-1 border-t border-gray-200">
-                      <span>Số tiền thực thu:</span>
-                      <span className="text-primary-600 font-bold">{formatCurrency(item.hoaDon.thucThu)}</span>
-                    </div>
-                    {item.hoaDon.tienHoanTra > 0 && (
-                      <div className="flex justify-between font-bold text-rose-600 text-sm">
-                        <span>Hoàn trả bệnh nhân (tạm ứng dư):</span>
-                        <span>{formatCurrency(item.hoaDon.tienHoanTra)}</span>
-                      </div>
-                    )}
-                  </div>
+                  <TomTatThanhToan hoaDon={item.hoaDon} />
                 </div>
               </div>
             )}

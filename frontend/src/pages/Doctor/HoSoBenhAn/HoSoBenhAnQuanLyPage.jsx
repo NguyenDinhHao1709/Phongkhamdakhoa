@@ -5,7 +5,7 @@ import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge
 import { apiGet } from '../../../services/api';
 import { formatDateTime, formatDate, tinhTuoi } from '../../../utils/formatDate';
 import { formatCurrency } from '../../../utils/formatCurrency';
-import { tamUngCuaHoaDon } from '../../../utils/hoaDon';
+import TomTatThanhToan from '../../../components/Payment/TomTatThanhToan';
 import {
   ClipboardList, Search, User, FileText, Activity, FlaskConical, Pill, Calendar,
   Clock, Printer, ExternalLink, Eye, CheckCircle2, CreditCard, ChevronDown,
@@ -1075,34 +1075,7 @@ export default function HoSoBenhAnQuanLyPage() {
                                 </div>
                               )}
 
-                              <div className="pt-2 border-t border-gray-200 space-y-1">
-                                <div className="flex justify-between text-gray-600">
-                                  <span>Tổng viện phí:</span>
-                                  <span className="font-medium text-gray-800">{formatCurrency(hs.hoaDon.tongTien)}</span>
-                                </div>
-                                {hs.hoaDon.soTienGiam > 0 && (
-                                  <div className="flex justify-between text-emerald-700">
-                                    <span>BHYT chi trả:</span>
-                                    <span className="font-medium">- {formatCurrency(hs.hoaDon.soTienGiam)}</span>
-                                  </div>
-                                )}
-                                {tamUngCuaHoaDon(hs.hoaDon) > 0 && (
-                  <div className="flex justify-between text-blue-700">
-                    <span>Đã tạm ứng / cọc:</span>
-                    <span className="font-medium">- {formatCurrency(tamUngCuaHoaDon(hs.hoaDon))}</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-bold text-gray-900 text-sm pt-1 border-t border-gray-200">
-                                  <span>Số tiền thực thu:</span>
-                                  <span className="text-primary-600 font-bold">{formatCurrency(hs.hoaDon.thucThu)}</span>
-                                </div>
-                                {hs.hoaDon.tienHoanTra > 0 && (
-                                  <div className="flex justify-between font-bold text-rose-600 text-sm">
-                                    <span>Hoàn trả bệnh nhân (tạm ứng dư):</span>
-                                    <span>{formatCurrency(hs.hoaDon.tienHoanTra)}</span>
-                                  </div>
-                                )}
-                              </div>
+                              <TomTatThanhToan hoaDon={hs.hoaDon} />
                             </div>
                           </div>
                         )}
