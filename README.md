@@ -1,4 +1,7 @@
-﻿# Hệ thống quản lý phòng khám đa khoa
+﻿Backend: https://phongkham-backend-i06n.onrender.com/api/health
+AI: https://phongkham-ai.onrender.com/api/ai/health
+Python ML: https://phongkham-python-ml.onrender.com/health
+# Hệ thống quản lý phòng khám đa khoa
 
 Đồ án tốt nghiệp: phần mềm số hóa quy trình khám bệnh ngoại trú của phòng khám đa khoa. Quy trình bám theo Quyết định 1313/QĐ-BYT; tính BHYT theo Luật BHYT và Nghị định 146/2018/NĐ-CP.
 
