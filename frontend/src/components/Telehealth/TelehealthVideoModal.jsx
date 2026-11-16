@@ -836,6 +836,10 @@ export default function TelehealthVideoModal({
   const sendSignal = (signalData) => {
     const msgId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     // pcId: kết nối hiện tại của mình; toPcId: kết nối của đối phương mà mình đang bắt tay
+    // RTCSessionDescription không sao chép được qua BroadcastChannel (DataCloneError) → đổi sang object thuần
+    if (signalData.sdp && typeof signalData.sdp.toJSON === 'function') {
+      signalData = { ...signalData, sdp: signalData.sdp.toJSON() };
+    }
     const payload = {
       ...signalData,
       senderRole: role,
