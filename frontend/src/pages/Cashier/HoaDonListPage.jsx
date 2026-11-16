@@ -220,7 +220,7 @@ export default function HoaDonListPage() {
 
     const pendingRefundList = allList.filter((i) => Boolean(i.choHoanCoc)); // việc cần xử lý: không lọc theo ngày
     const pendingRefundCount = pendingRefundList.length;
-    const pendingRefundAmount = pendingRefundList.reduce((sum, i) => sum + Number(i.thucThu || i.tongTien || 40000), 0);
+    const pendingRefundAmount = pendingRefundList.reduce((sum, i) => sum + Number(i.soTienChoHoan ?? i.thucThu ?? 0), 0);
 
     const tamUngChoThuCount = list.filter(isChoThuTamUng).length;
     const tamUngDaThuAmount = list
@@ -494,7 +494,7 @@ export default function HoaDonListPage() {
               <option value="cho_thanh_toan">⏳ Chờ thanh toán</option>
               <option value="cho_thu_tam_ung">💜 Chờ thu tạm ứng tại quầy</option>
               <option value="cho_hoan_tra">↩️ Chờ hoàn trả tạm ứng dư</option>
-              <option value="cho_hoan_coc">🔔 Chờ hoàn cọc đặt lịch (40k)</option>
+              <option value="cho_hoan_coc">🔔 Chờ hoàn tiền tạm ứng / cọc</option>
               <option value="da_thanh_toan">✅ Đã thanh toán</option>
               <option value="huy">❌ Đã hủy / Hoàn tiền</option>
             </select>
@@ -783,7 +783,7 @@ export default function HoaDonListPage() {
                           <div className="space-y-1">
                             <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-orange-50 text-orange-800 border border-orange-300">
                               <span className="w-1.5 h-1.5 rounded-full bg-orange-600 animate-ping" />
-                              Chờ hoàn cọc 40k
+                              Chờ hoàn {formatCurrency(hd.soTienChoHoan ?? hd.thucThu)}
                             </span>
                             {hd.thongTinHoanCoc?.soTaiKhoan ? (
                               <p
@@ -873,13 +873,13 @@ export default function HoaDonListPage() {
                                 }`}
                                 title={
                                   hd.choHoanCoc
-                                    ? 'Xem STK / Mã QR của bệnh nhân và xác nhận hoàn cọc 40.000đ'
+                                    ? `Xem STK / Mã QR của bệnh nhân và xác nhận hoàn ${formatCurrency(hd.soTienChoHoan ?? hd.thucThu)}`
                                     : 'Hủy hóa đơn & Hoàn tiền viện phí'
                                 }
                               >
                                 <RotateCcw className={`h-3.5 w-3.5 ${hd.choHoanCoc ? 'text-white' : 'text-rose-600'}`} />
                                 <span className="hidden sm:inline">
-                                  {hd.choHoanCoc ? 'Hoàn cọc (40k)' : 'Hủy / Hoàn'}
+                                  {hd.choHoanCoc ? `Hoàn tiền (${formatCurrency(hd.soTienChoHoan ?? hd.thucThu)})` : 'Hủy / Hoàn'}
                                 </span>
                               </button>
                             </>

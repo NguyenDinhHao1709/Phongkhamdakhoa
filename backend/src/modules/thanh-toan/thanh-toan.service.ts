@@ -154,6 +154,14 @@ export class ThanhToanService {
         const choHoanCoc =
           hd.trangThai === 'da_thanh_toan' &&
           Boolean(hd.ghiChu?.includes('[CHỜ HOÀN CỌC'));
+        // Số tiền chờ hoàn: theo yêu cầu ghi trong ghi chú (có thể hoàn một phần), không vượt số đã thu
+        const daThuHd = Number(hd.thucThu || hd.tongTien || 0);
+        const yeuCauHoanMatch = hd.ghiChu?.match(/\[CHỜ HOÀN CỌC ([\d.,]+)/);
+        const soTienChoHoan = choHoanCoc
+          ? yeuCauHoanMatch
+            ? Math.min(daThuHd, Number(yeuCauHoanMatch[1].replace(/\D/g, '')))
+            : daThuHd
+          : 0;
 
         const tkMatch = hd.ghiChu?.match(/\[TK_HOÀN_TIỀN:\s*([^\]]+)\]/i);
         const lyDoMatch = hd.ghiChu?.match(/\[LÝ_DO_HỦY:\s*([^\]]+)\]/i);
@@ -175,6 +183,7 @@ export class ThanhToanService {
           loaiHoaDon: isTamUngQuay ? 'tam_ung_tai_quay' : isTamUng ? 'tam_ung_dat_lich' : 'vien_phi',
           maLichHen,
           choHoanCoc,
+          soTienChoHoan,
           thongTinHoanCoc,
           ghiChu: hd.ghiChu || null,
           benhNhan: {

@@ -964,9 +964,11 @@ export default function HoSoYTeBenhNhanPage() {
                                     ? 'bg-blue-50 text-blue-700 border-blue-200'
                                     : ct.loaiPhi === 'xet_nghiem' || ct.loaiPhi === 'cdha'
                                     ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                    : ct.loaiPhi === 'tam_ung'
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
                                     : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                 }`}>
-                                  {ct.loaiPhi === 'kham_benh' ? 'Khám bệnh' : (ct.loaiPhi === 'xet_nghiem' || ct.loaiPhi === 'cdha') ? 'Cận lâm sàng' : 'Thuốc'}
+                                  {ct.loaiPhi === 'kham_benh' ? 'Khám bệnh' : (ct.loaiPhi === 'xet_nghiem' || ct.loaiPhi === 'cdha') ? 'Cận lâm sàng' : ct.loaiPhi === 'tam_ung' ? 'Tạm ứng' : 'Thuốc'}
                                 </span>
                               </td>
                               <td className="px-3 py-2 text-center text-gray-700 font-semibold">{ct.soLuong || 1}</td>
@@ -1000,6 +1002,12 @@ export default function HoSoYTeBenhNhanPage() {
                       <span>Số tiền thực thu:</span>
                       <span className="text-primary-600 font-bold">{formatCurrency(item.hoaDon.thucThu)}</span>
                     </div>
+                    {item.hoaDon.tienHoanTra > 0 && (
+                      <div className="flex justify-between font-bold text-rose-600 text-sm">
+                        <span>Hoàn trả bệnh nhân (tạm ứng dư):</span>
+                        <span>{formatCurrency(item.hoaDon.tienHoanTra)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

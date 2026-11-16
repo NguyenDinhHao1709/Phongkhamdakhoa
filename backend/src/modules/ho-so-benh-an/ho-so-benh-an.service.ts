@@ -573,6 +573,7 @@ export class HoSoBenhAnService {
                 tongTien: Number(hd.tongTien),
                 soTienGiam: Number(hd.soTienGiam),
                 thucThu: Number(hd.thucThu),
+                tienHoanTra: Number(hd.tienHoanTra || 0),
                 phuongThucThanhToan: hd.phuongThucThanhToan,
                 trangThai: hd.trangThai,
                 ngayThanhToan: hd.ngayThanhToan,

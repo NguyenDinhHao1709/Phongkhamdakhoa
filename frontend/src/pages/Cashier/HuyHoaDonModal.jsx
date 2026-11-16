@@ -47,6 +47,9 @@ export default function HuyHoaDonModal({ hoaDon, onClose, onSuccess }) {
     hoaDon?.maHoaDon?.startsWith('HDT') ||
     hoaDon?.choHoanCoc;
   const infoHoan = hoaDon?.thongTinHoanCoc || null;
+  // Số tiền chờ hoàn do backend tính (có thể chỉ một phần theo quy định hủy)
+  const soTienHoan = Number(hoaDon?.soTienChoHoan || hoaDon?.thucThu || hoaDon?.tongTien || 0);
+  const soTienHoanText = formatCurrency(soTienHoan);
 
   const [lyDoHuy, setLyDoHuy] = useState(
     isTamUng ? LY_DO_PRESETS[0] : LY_DO_PRESETS[1]
@@ -62,19 +65,18 @@ export default function HuyHoaDonModal({ hoaDon, onClose, onSuccess }) {
     if (isTamUng && infoHoan) {
       if (infoHoan.phuongThucNhan === 'chuyen_khoan' && infoHoan.soTaiKhoan) {
         setGhiChu(
-          `Đã CK hoàn cọc 40.000đ về ${infoHoan.nganHang} - STK ${infoHoan.soTaiKhoan} (${infoHoan.chuTaiKhoan})`
+          `Đã CK hoàn ${soTienHoanText} về ${infoHoan.nganHang} - STK ${infoHoan.soTaiKhoan} (${infoHoan.chuTaiKhoan})`
         );
       } else if (infoHoan.phuongThucNhan === 'tien_mat') {
-        setGhiChu('Đã chi tiền mặt hoàn cọc 40.000đ trực tiếp cho bệnh nhân tại quầy');
+        setGhiChu(`Đã chi tiền mặt hoàn ${soTienHoanText} trực tiếp cho bệnh nhân tại quầy`);
       } else {
-        setGhiChu('Đã liên hệ bệnh nhân và hoàn trả 40.000đ tiền cọc lịch hẹn');
+        setGhiChu(`Đã liên hệ bệnh nhân và hoàn trả ${soTienHoanText}`);
       }
     }
   }, [hoaDon, isTamUng]);
 
   if (!hoaDon) return null;
 
-  const soTienHoan = Number(hoaDon.thucThu || hoaDon.tongTien || 40000);
   const bankBin = infoHoan?.nganHang ? getBankBin(infoHoan.nganHang) : null;
   const qrTransferUrl =
     bankBin && infoHoan?.soTaiKhoan
@@ -109,7 +111,7 @@ export default function HuyHoaDonModal({ hoaDon, onClose, onSuccess }) {
       });
       alert(
         isTamUng
-          ? 'Đã xác nhận giải ngân hoàn trả 40.000đ tiền cọc lịch hẹn cho bệnh nhân thành công!'
+          ? `Đã xác nhận hoàn trả ${soTienHoanText} cho bệnh nhân thành công!`
           : 'Đã hủy hóa đơn và ghi nhận hoàn tiền thành công!'
       );
       onSuccess?.();
@@ -251,7 +253,7 @@ export default function HuyHoaDonModal({ hoaDon, onClose, onSuccess }) {
                         className="w-32 h-32 object-contain rounded-lg border border-gray-200 bg-white p-1"
                       />
                       <span className="text-[10px] font-semibold text-indigo-700 mt-1 flex items-center gap-1">
-                        <QrCode className="h-3 w-3" /> Quét QR chuyển hoàn 40k
+                        <QrCode className="h-3 w-3" /> Quét QR chuyển hoàn {soTienHoanText}
                       </span>
                     </div>
                   )}

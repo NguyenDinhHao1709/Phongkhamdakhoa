@@ -3,6 +3,7 @@ import { X, Printer, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDateTime } from '../../utils/formatDate';
 import useHospitalStore from '../../store/hospitalStore';
+import { tamUngCuaHoaDon } from '../../utils/hoaDon';
 
 export default function InHoaDonModal({ hoaDon, onClose }) {
   // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
@@ -170,10 +171,22 @@ export default function InHoaDonModal({ hoaDon, onClose }) {
                 <span className="font-semibold w-28">-{formatCurrency(hoaDon.soTienGiam)}</span>
               </div>
             )}
+            {tamUngCuaHoaDon(hoaDon) > 0 && (
+              <div className="flex justify-end gap-8 text-blue-700">
+                <span>Đã tạm ứng / cọc:</span>
+                <span className="font-semibold w-28">-{formatCurrency(tamUngCuaHoaDon(hoaDon))}</span>
+              </div>
+            )}
             <div className="flex justify-end gap-8 text-sm font-black text-emerald-700 border-t border-dashed border-gray-300 pt-1.5">
-              <span>BỆNH NHÂN ĐÃ NỘP:</span>
+              <span>BỆNH NHÂN NỘP THÊM:</span>
               <span className="w-28 text-base">{formatCurrency(hoaDon.thucThu)}</span>
             </div>
+            {Number(hoaDon.tienHoanTra) > 0 && (
+              <div className="flex justify-end gap-8 text-sm font-black text-rose-600">
+                <span>HOÀN TRẢ BỆNH NHÂN:</span>
+                <span className="w-28 text-base">{formatCurrency(hoaDon.tienHoanTra)}</span>
+              </div>
+            )}
           </div>
 
           {/* Chữ ký hai bên */}
