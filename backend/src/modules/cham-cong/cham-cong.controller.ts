@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ChamCongService } from './cham-cong.service';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Roles, Quyen } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Public } from '../../common/decorators/public.decorator';
 import { getClientIp } from '../../common/middleware/load-protection.middleware';
@@ -19,7 +19,7 @@ function layChuoiKhungHinh(body: { framesB64?: string[] }): string[] {
 }
 
 @Controller('cham-cong')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class ChamCongController {
   constructor(private readonly chamCongService: ChamCongService) {}
 
@@ -32,6 +32,7 @@ export class ChamCongController {
 
   // ─── 1. Check-in ────────────────────────────────────────────────────────────
   @Post('check-in')
+  @Quyen('cham_cong.ca_nhan')
   async checkIn(
     @Request() req,
     @Body() body: { framesB64: string[] },
@@ -46,6 +47,7 @@ export class ChamCongController {
 
   // ─── 2. Check-out ───────────────────────────────────────────────────────────
   @Post('check-out')
+  @Quyen('cham_cong.ca_nhan')
   async checkOut(
     @Request() req,
     @Body() body: { framesB64: string[] },
@@ -60,6 +62,7 @@ export class ChamCongController {
 
   // ─── 3. Trạng thái hôm nay ──────────────────────────────────────────────────
   @Get('trang-thai-hom-nay')
+  @Quyen('cham_cong.ca_nhan')
   async trangThaiHomNay(@Request() req) {
     const userId = req.user.id;
     return this.chamCongService.trangThaiHomNay(userId);
@@ -67,6 +70,7 @@ export class ChamCongController {
 
   // ─── 4. Lịch sử cá nhân ─────────────────────────────────────────────────────
   @Get('lich-su')
+  @Quyen('cham_cong.ca_nhan')
   async lichSu(
     @Request() req,
     @Query('tuNgay') tuNgay?: string,
@@ -93,15 +97,15 @@ export class ChamCongController {
 
   // ─── 6. Cấu hình WiFi (Admin only) ─────────────────────────────────────────
   @Get('cau-hinh')
-  @UseGuards(RolesGuard)
   @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Quyen('he_thong.cai_dat_cham_cong')
   async layCauHinh() {
     return this.chamCongService.layCauHinhChamCong();
   }
 
   @Put('cau-hinh')
-  @UseGuards(RolesGuard)
   @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @Quyen('he_thong.cai_dat_cham_cong')
   async capNhatCauHinh(
     @Body() body: { bat_buoc_wifi: boolean; danh_sach_ip: string[] },
   ) {
@@ -114,8 +118,8 @@ export class ChamCongController {
 
   // ─── 7. Lịch sử tất cả nhân viên (Admin/Giám đốc) ──────────────────────────
   @Get('toan-bo')
-  @UseGuards(RolesGuard)
   @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
+  @Quyen('cham_cong.quan_ly', 'he_thong.cai_dat_cham_cong')
   async tatCa(
     @Query('ngay') ngay?: string,
     @Query('nhanVienId') nhanVienId?: string,
@@ -132,8 +136,8 @@ export class ChamCongController {
 
   // ─── 8. Chấm công thủ công (Ban Giám đốc & Quản trị viên) ───────────────────
   @Post('cham-cong-thu-cong')
-  @UseGuards(RolesGuard)
   @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
+  @Quyen('cham_cong.quan_ly', 'he_thong.cai_dat_cham_cong')
   async chamCongThuCong(
     @Request() req,
     @Body() body: {

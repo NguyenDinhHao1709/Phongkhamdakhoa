@@ -8,7 +8,7 @@ import { BenhNhanService } from './benh-nhan.service';
 import { TaoBenhNhanDto, CapNhatBenhNhanDto, TimKiemBenhNhanDto } from './dto/benh-nhan.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Roles, Quyen } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { assertBenhNhanSoHuu } from '../../common/utils/benh-nhan-so-huu.util';
 
@@ -25,6 +25,7 @@ export class BenhNhanController {
   @Get()
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Tìm kiếm danh sách bệnh nhân' })
+  @Quyen('benh_nhan.xem', 'benh_nhan.them', 'kham_benh.xem_lich_su', 'he_thong.benh_nhan')
   findAll(@Query() dto: TimKiemBenhNhanDto) {
     return this.service.findAll(dto);
   }
@@ -32,6 +33,7 @@ export class BenhNhanController {
   @Get(':id')
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'benh_nhan')
   @ApiOperation({ summary: 'Xem chi tiết bệnh nhân' })
+  @Quyen('benh_nhan.xem', 'benh_nhan.them', 'kham_benh.xem_lich_su', 'he_thong.benh_nhan')
   async findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     await assertBenhNhanSoHuu(this.dataSource, user, 'benh_nhan', id);
     return this.service.findOne(id);
@@ -40,6 +42,7 @@ export class BenhNhanController {
   @Get('ma/:ma')
   @Roles('tiep_tan', 'bac_si')
   @ApiOperation({ summary: 'Tìm bệnh nhân theo mã (BN000001)' })
+  @Quyen('benh_nhan.xem', 'benh_nhan.them')
   findByMa(@Param('ma') ma: string) {
     return this.service.findByMa(ma);
   }
@@ -54,6 +57,7 @@ export class BenhNhanController {
   @Post()
   @Roles('tiep_tan', 'quan_tri_vien')
   @ApiOperation({ summary: 'Tạo hồ sơ bệnh nhân mới' })
+  @Quyen('benh_nhan.them', 'he_thong.benh_nhan')
   create(@Body() dto: TaoBenhNhanDto) {
     return this.service.create(dto);
   }
@@ -61,6 +65,7 @@ export class BenhNhanController {
   @Patch(':id')
   @Roles('tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'benh_nhan')
   @ApiOperation({ summary: 'Cập nhật thông tin bệnh nhân' })
+  @Quyen('benh_nhan.them', 'he_thong.benh_nhan')
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CapNhatBenhNhanDto,

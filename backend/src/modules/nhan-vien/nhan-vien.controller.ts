@@ -4,7 +4,7 @@ import { NhanVienService } from './nhan-vien.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Roles, Quyen } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Nhân sự & Đơn từ nội bộ')
@@ -35,10 +35,11 @@ export class NhanVienController {
     return this.nhanVienService.updateHoSoCaNhan(user.id || user.userId, body);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @ApiBearerAuth()
   @Post('don-tu')
   @ApiOperation({ summary: 'Nhân viên gửi đơn xin nghỉ phép / đề xuất' })
+  @Quyen('don_tu.gui')
   taoDonTu(@CurrentUser() user: any, @Body() body: any) {
     return this.nhanVienService.taoDonTu(user.id || user.userId, body);
   }
@@ -56,6 +57,7 @@ export class NhanVienController {
   @ApiBearerAuth()
   @Patch('don-tu/:id/duyet')
   @ApiOperation({ summary: 'Ban giám đốc phê duyệt hoặc từ chối đơn' })
+  @Quyen('don_tu.phe_duyet')
   duyetDonTu(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
     return this.nhanVienService.duyetDonTu(id, body);
   }

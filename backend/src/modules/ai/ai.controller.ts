@@ -7,7 +7,7 @@ import { AiService } from './ai.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Roles, Quyen } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IsString, IsOptional, IsArray, IsIn, IsInt, ArrayMaxSize, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -59,7 +59,7 @@ class PhanLuongNhanhDto {
 
 @ApiTags('🤖 AI Assistant & Triage')
 @Controller('ai')
-@UseGuards(JwtAuthGuard) // mặc định phải đăng nhập; route cho khách đánh dấu @Public()
+@UseGuards(JwtAuthGuard, RolesGuard) // mặc định phải đăng nhập; route cho khách đánh dấu @Public()
 export class AiController {
   constructor(private readonly aiService: AiService) {}
 
@@ -107,7 +107,6 @@ export class AiController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(RolesGuard)
   @Roles('quan_tri_vien', 'quan_tri_vien_cap_cao')
   @Get('chat-stats')
   @ApiOperation({ summary: 'Thống kê vận hành chat AI (lượng dùng, nguồn trả lời, độ trễ, đánh giá, tỉ lệ bấm đặt lịch)' })
@@ -158,6 +157,7 @@ export class AiController {
   @ApiBearerAuth()
   @Post('phan-loai-nhan')
   @ApiOperation({ summary: 'Lễ tân xác nhận/sửa chuyên khoa AI gợi ý — dùng làm nhãn huấn luyện bộ phân loại' })
+  @Quyen('ai_triage.phan_luong')
   phanLoaiNhan(@Body() dto: PhanLoaiNhanDto, @CurrentUser() user: any) {
     return this.aiService.phanLoaiNhan(dto, user.id);
   }
@@ -165,6 +165,7 @@ export class AiController {
   @ApiBearerAuth()
   @Get('phan-loai-stats')
   @ApiOperation({ summary: 'Độ chính xác gợi ý chuyên khoa của AI theo từng khoa (theo nhãn lễ tân)' })
+  @Quyen('dieu_hanh.du_bao_ai', 'ai_triage.phan_luong')
   phanLoaiStats(@Query('days') days?: string) {
     return this.aiService.phanLoaiStats(Number(days) || 90);
   }
@@ -198,6 +199,7 @@ export class AiController {
   // ─── 5. PATIENT VOLUME FORECASTING (Legacy — Moving Average) ─────
   @Get('du-bao-luong-benh-nhan')
   @ApiOperation({ summary: '[Legacy] Dự báo lưu lượng bệnh nhân 7 ngày tới (Moving Average)' })
+  @Quyen('dieu_hanh.du_bao_ai')
   forecastLuong() {
     return this.aiService.getForecastLuongBenhNhan();
   }
@@ -205,18 +207,21 @@ export class AiController {
   // ─── 6. FORECAST NÂNG CAO: Python ML + Gemini AI ─────────────────
   @Get('du-bao-nang-cao')
   @ApiOperation({ summary: 'Dự báo nâng cao: Python Holt-Winters ML + Gemini AI diễn giải (tự động fallback về Moving Average nếu Python offline)' })
+  @Quyen('dieu_hanh.du_bao_ai')
   forecastNangCao(@Query('horizon') horizon?: string) {
     return this.aiService.getForecastNangCao(horizon ? parseInt(horizon, 10) : 7);
   }
 
   @Post('forecast')
   @ApiOperation({ summary: 'Dự báo lưu lượng bệnh nhân 7 ngày tới (POST kịch bản test)' })
+  @Quyen('dieu_hanh.du_bao_ai')
   postForecast(@Body() body: { horizon?: number; history_days?: number }) {
     return this.aiService.getForecastNangCao(body?.horizon || 7);
   }
 
   @Post('forecast-medicine')
   @ApiOperation({ summary: 'Dự báo nhu cầu thuốc 14 ngày tới' })
+  @Quyen('thuoc.thong_ke', 'dieu_hanh.du_bao_ai')
   postForecastMedicine(@Body() body: { horizon_days?: number; items?: any[] }) {
     return this.aiService.forecastMedicine(body);
   }

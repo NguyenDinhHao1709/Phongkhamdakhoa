@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   FileText, RefreshCw, Search, Download, ChevronLeft, ChevronRight
 } from 'lucide-react';
@@ -15,32 +15,46 @@ export default function NhatKyHeThongPage() {
   const [timeRange, setTimeRange] = useState('TAT_CA');
   const [loaiNguoiDung, setLoaiNguoiDung] = useState('NHAN_VIEN'); // NHAN_VIEN | BENH_NHAN | TAT_CA
 
-  // Pagination
+  // Phân trang phía server: mỗi trang gọi API riêng, không giới hạn tổng số bản ghi
   const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [exporting, setExporting] = useState(false);
   const limit = 15;
+
+  // Debounce ô tìm kiếm để không gọi API mỗi lần gõ phím
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const buildParams = (p, lim) => {
+    let params = `?page=${p}&limit=${lim}&loaiNguoiDung=${loaiNguoiDung}`;
+    if (loaiNhatKy !== 'TAT_CA') params += `&loaiNhatKy=${loaiNhatKy}`;
+    if (hanhDong !== 'TAT_CA') params += `&hanhDong=${hanhDong}`;
+    if (debouncedSearch) params += `&search=${encodeURIComponent(debouncedSearch)}`;
+
+    if (timeRange === 'HOM_NAY') {
+      params += `&tuNgay=${getLocalDateString()}`;
+    } else if (timeRange === '7_NGAY') {
+      const d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      params += `&tuNgay=${getLocalDateString(d)}`;
+    } else if (timeRange === '30_NGAY') {
+      const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      params += `&tuNgay=${getLocalDateString(d)}`;
+    }
+    return params;
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      let params = `?page=1&limit=100&loaiNguoiDung=${loaiNguoiDung}`;
-      if (loaiNhatKy !== 'TAT_CA') params += `&loaiNhatKy=${loaiNhatKy}`;
-      if (hanhDong !== 'TAT_CA') params += `&hanhDong=${hanhDong}`;
-      if (search.trim()) params += `&search=${encodeURIComponent(search.trim())}`;
-
-      if (timeRange === 'HOM_NAY') {
-        const todayStr = getLocalDateString();
-        params += `&tuNgay=${todayStr}`;
-      } else if (timeRange === '7_NGAY') {
-        const d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        params += `&tuNgay=${getLocalDateString(d)}`;
-      } else if (timeRange === '30_NGAY') {
-        const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        params += `&tuNgay=${getLocalDateString(d)}`;
-      }
-
-      const logsRes = await apiGet(`/quan-ly/nhat-ky${params}`);
+      const logsRes = await apiGet(`/quan-ly/nhat-ky${buildParams(page, limit)}`);
       const items = Array.isArray(logsRes?.data) ? logsRes.data : (logsRes?.data?.items || []);
       setLogs(items);
+      setTotal(Number(logsRes?.meta?.total) || items.length);
+      setTotalPages(Number(logsRes?.meta?.totalPages) || 1);
     } catch (err) {
       console.error('Lỗi khi tải nhật ký hệ thống:', err);
     } finally {
@@ -48,36 +62,28 @@ export default function NhatKyHeThongPage() {
     }
   };
 
+  // (ô tìm kiếm & các bộ lọc đã tự setPage(1) trong onChange)
   useEffect(() => {
     fetchData();
-  }, [loaiNhatKy, hanhDong, timeRange, loaiNguoiDung]);
+  }, [page, loaiNhatKy, hanhDong, timeRange, loaiNguoiDung, debouncedSearch]);
 
-  // Client search filter
-  const filteredLogs = useMemo(() => {
-    if (!search.trim()) return logs;
-    const kw = search.trim().toLowerCase();
-    return logs.filter(item =>
-      (item.nhanVien && item.nhanVien.toLowerCase().includes(kw)) ||
-      (item.email && item.email.toLowerCase().includes(kw)) ||
-      (item.chucNang && item.chucNang.toLowerCase().includes(kw)) ||
-      (item.thaoTac && item.thaoTac.toLowerCase().includes(kw)) ||
-      (item.noiDung && item.noiDung.toLowerCase().includes(kw)) ||
-      (item.tenNguoiDung && item.tenNguoiDung.toLowerCase().includes(kw)) ||
-      (item.moTa && item.moTa.toLowerCase().includes(kw))
-    );
-  }, [logs, search]);
+  const paginatedLogs = logs;
 
-  // Pagination
-  const totalPages = Math.ceil(filteredLogs.length / limit) || 1;
-  const paginatedLogs = useMemo(() => {
-    const start = (page - 1) * limit;
-    return filteredLogs.slice(start, start + limit);
-  }, [filteredLogs, page, limit]);
-
-  // Xuất file CSV
-  const handleExportCSV = () => {
+  // Xuất file CSV: lấy toàn bộ bản ghi khớp bộ lọc (không chỉ trang đang xem)
+  const handleExportCSV = async () => {
+    setExporting(true);
+    let allLogs = [];
+    try {
+      const res = await apiGet(`/quan-ly/nhat-ky${buildParams(1, Math.max(total, 1))}`);
+      allLogs = Array.isArray(res?.data) ? res.data : (res?.data?.items || []);
+    } catch (err) {
+      console.error('Lỗi khi xuất nhật ký:', err);
+      setExporting(false);
+      return;
+    }
+    setExporting(false);
     const headers = ['Nhân viên', 'Email', 'Chức năng', 'Thao tác', 'Thời gian', 'Rủi ro', 'Kết quả', 'Nội dung'];
-    const rows = filteredLogs.map(item => [
+    const rows = allLogs.map(item => [
       `"${item.nhanVien || item.tenNguoiDung || ''}"`,
       `"${item.email || ''}"`,
       `"${item.chucNang || ''}"`,
@@ -156,13 +162,14 @@ export default function NhatKyHeThongPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={handleExportCSV}
-            className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-sm transition-all"
+            disabled={exporting || total === 0}
+            className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-sm transition-all disabled:opacity-60"
           >
             <Download className="w-4 h-4 text-gray-500" />
-            Xuất file
+            {exporting ? 'Đang xuất...' : 'Xuất file'}
           </button>
           <button
-            onClick={() => { setPage(1); fetchData(); }}
+            onClick={() => { if (page === 1) fetchData(); else setPage(1); }}
             disabled={loading}
             className="p-2 text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 shadow-sm transition-all disabled:opacity-60"
             title="Làm mới"
@@ -339,8 +346,8 @@ export default function NhatKyHeThongPage() {
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50/50">
             <div className="text-xs text-gray-500">
               Hiển thị từ <strong className="font-semibold text-gray-700">{(page - 1) * limit + 1}</strong> đến{' '}
-              <strong className="font-semibold text-gray-700">{Math.min(page * limit, filteredLogs.length)}</strong> trên{' '}
-              <strong className="font-semibold text-gray-700">{filteredLogs.length}</strong> kết quả
+              <strong className="font-semibold text-gray-700">{Math.min(page * limit, total)}</strong> trên{' '}
+              <strong className="font-semibold text-gray-700">{total}</strong> kết quả
             </div>
             <div className="flex items-center gap-1">
               <button

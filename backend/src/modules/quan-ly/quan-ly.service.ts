@@ -32,6 +32,7 @@ import { BaoCaoBoPhan } from './entities/bao-cao-bo-phan.entity';
 import { CauHinhTienCoc } from './entities/cau-hinh-tien-coc.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { MemoryCacheService } from '../../common/cache/memory-cache.service';
+import { QUYEN_CACHE_PREFIX } from '../../common/guards/roles.guard';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import * as path from 'path';
@@ -610,21 +611,23 @@ export class QuanLyService implements OnModuleInit {
 
   private async ganQuyenTheoMa(vaiTroId: number, maQuyens: string[]) {
     const perms = maQuyens.length ? await this.quyenHanRepo.find({ where: { maQuyen: In(maQuyens) } }) : [];
-    await this.vaiTroQuyenHanRepo.delete({ vaiTroId });
-    if (perms.length) {
-      await this.vaiTroQuyenHanRepo.save(perms.map(p => ({ vaiTroId, quyenHanId: p.id })));
-    }
+    await this.vaiTroQuyenHanRepo.manager.transaction(async (em) => {
+      await em.delete(VaiTroQuyenHan, { vaiTroId });
+      if (perms.length) await em.insert(VaiTroQuyenHan, perms.map(p => ({ vaiTroId, quyenHanId: p.id })));
+    });
     return perms.length;
   }
 
   private async ghiNhatKyPhanQuyen(currentUserId: number | undefined, hanhDong: string, moTa: string) {
     try {
-      const actor = currentUserId ? await this.nguoiDungRepo.findOne({ where: { id: currentUserId } }) : null;
+      const actor = currentUserId
+        ? await this.nguoiDungRepo.findOne({ where: { id: currentUserId }, relations: ['vaiTro'] })
+        : null;
       await this.nhatKyRepo.save(
         this.nhatKyRepo.create({
           nguoiDungId: currentUserId || null,
           tenNguoiDung: actor?.tenDangNhap || 'Quản trị viên',
-          vaiTro: 'quan_tri_vien',
+          vaiTro: actor?.vaiTro?.maVaiTro || 'quan_tri_vien',
           hanhDong,
           loaiNhatKy: LoaiNhatKy.INFO,
           moTa,
@@ -642,6 +645,14 @@ export class QuanLyService implements OnModuleInit {
       throw new BadRequestException('Không thể chỉnh sửa vai trò hệ thống gốc');
     }
     return role;
+  }
+
+  // Không ai được tự đổi quyền của vai trò mình đang giữ (chống tự nâng quyền)
+  private async chanTuSuaQuyenVaiTroMinh(vaiTroId: number, currentUserId?: number) {
+    const actor = currentUserId ? await this.nguoiDungRepo.findOne({ where: { id: currentUserId } }) : null;
+    if (!actor || actor.vaiTroId === vaiTroId) {
+      throw new BadRequestException('Không thể tự điều chỉnh quyền của vai trò bạn đang giữ. Hãy nhờ Quản trị viên cấp cao.');
+    }
   }
 
   async getPhanQuyenData() {
@@ -703,21 +714,28 @@ export class QuanLyService implements OnModuleInit {
 
   async capNhatPhanQuyen(vaiTroId: number, quyenHanIds: number[], currentUserId?: number) {
     const role = await this.layVaiTroChinhSua(vaiTroId);
+    await this.chanTuSuaQuyenVaiTroMinh(vaiTroId, currentUserId);
 
-    await this.vaiTroQuyenHanRepo.delete({ vaiTroId });
-
-    if (quyenHanIds && quyenHanIds.length > 0) {
-      const newMappings = quyenHanIds.map(qhId => ({
-        vaiTroId: vaiTroId,
-        quyenHanId: qhId,
-      }));
-      await this.vaiTroQuyenHanRepo.save(newMappings);
+    if (!Array.isArray(quyenHanIds) || quyenHanIds.some(id => !Number.isInteger(Number(id)))) {
+      throw new BadRequestException('Danh sách quyền hạn không hợp lệ');
     }
+    const ids = [...new Set(quyenHanIds.map(Number))];
+    const tonTai = ids.length ? await this.quyenHanRepo.count({ where: { id: In(ids) } }) : 0;
+    if (tonTai !== ids.length) {
+      throw new BadRequestException('Có quyền hạn không tồn tại trong danh mục');
+    }
+
+    // Xóa + ghi trong 1 transaction: lỗi giữa chừng không làm vai trò mất sạch quyền
+    await this.vaiTroQuyenHanRepo.manager.transaction(async (em) => {
+      await em.delete(VaiTroQuyenHan, { vaiTroId });
+      if (ids.length) await em.insert(VaiTroQuyenHan, ids.map(quyenHanId => ({ vaiTroId, quyenHanId })));
+    });
+    this.cache.invalidatePrefix(QUYEN_CACHE_PREFIX);
 
     await this.ghiNhatKyPhanQuyen(
       currentUserId,
       'CAP_NHAT_PHAN_QUYEN',
-      `Điều chỉnh phân quyền vai trò "${role.tenVaiTro}" (${role.maVaiTro}): Đã cấp ${quyenHanIds?.length || 0} quyền hạn.`,
+      `Điều chỉnh phân quyền vai trò "${role.tenVaiTro}" (${role.maVaiTro}): Đã cấp ${ids.length} quyền hạn.`,
     );
 
     return { message: 'Cập nhật phân quyền thành công' };
@@ -739,11 +757,13 @@ export class QuanLyService implements OnModuleInit {
 
   async khoiPhucQuyenMacDinh(vaiTroId: number, currentUserId?: number) {
     const role = await this.layVaiTroChinhSua(vaiTroId);
+    await this.chanTuSuaQuyenVaiTroMinh(vaiTroId, currentUserId);
     const preset = DEFAULT_ROLE_PERMISSIONS[role.maVaiTro];
     if (!preset) {
       throw new BadRequestException('Vai trò này chưa có bộ quyền chuẩn mặc định');
     }
     const soQuyen = await this.ganQuyenTheoMa(vaiTroId, preset);
+    this.cache.invalidatePrefix(QUYEN_CACHE_PREFIX);
 
     await this.ghiNhatKyPhanQuyen(
       currentUserId,
@@ -3469,6 +3489,33 @@ export class QuanLyService implements OnModuleInit {
     }
   }
 
+  // Bỏ dấu + chữ thường để so khớp giống collation *_ci của MySQL ("xac thuc" khớp "Xác thực")
+  private boDauTimKiem(s: string): string {
+    return (s || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .toLowerCase();
+  }
+
+  // Tìm ngược các mã hanh_dong có nhãn "Chức năng"/"Thao tác" chứa từ khóa.
+  // hanh_dong có index nên DISTINCT rẻ; không cache để mã mới ghi tìm được ngay.
+  private async timMaHanhDongTheoNhan(keyword: string): Promise<string[]> {
+    const kw = this.boDauTimKiem(keyword);
+    const rows: { hanhDong: string }[] = await this.nhatKyRepo
+      .createQueryBuilder('log')
+      .select('DISTINCT log.hanh_dong', 'hanhDong')
+      .getRawMany();
+    return rows
+      .map(r => r.hanhDong)
+      .filter(Boolean)
+      .filter(code => {
+        const { chucNang, thaoTac } = this.xacDinhChucNangVaThaoTac(code, '');
+        return this.boDauTimKiem(`${chucNang} ${thaoTac}`).includes(kw);
+      });
+  }
+
   // ─── Xác định Phân hệ Chức năng & Thao tác chi tiết ────────────────────────
   private xacDinhChucNangVaThaoTac(hanhDong: string, moTa: string = '') {
     const act = (hanhDong || '').toUpperCase();
@@ -3623,9 +3670,13 @@ export class QuanLyService implements OnModuleInit {
     }
 
     if (query.search && query.search.trim()) {
+      const kwRaw = query.search.trim();
+      // Cột "Chức năng"/"Thao tác" là nhãn dịch từ hanh_dong sau truy vấn → tìm ngược các mã có nhãn khớp từ khóa
+      const maKhopNhan = await this.timMaHanhDongTheoNhan(kwRaw);
+      const dkNhan = maKhopNhan.length ? ' OR log.hanh_dong IN (:...maKhopNhan)' : '';
       qb.andWhere(
-        '(log.ten_nguoi_dung LIKE :kw OR log.mo_ta LIKE :kw OR log.dia_chi_ip LIKE :kw OR log.hanh_dong LIKE :kw OR log.vai_tro LIKE :kw OR nv.ho_ten LIKE :kw OR nv.email LIKE :kw)',
-        { kw: `%${query.search.trim()}%` },
+        `(log.ten_nguoi_dung LIKE :kw OR log.mo_ta LIKE :kw OR log.dia_chi_ip LIKE :kw OR log.hanh_dong LIKE :kw OR log.vai_tro LIKE :kw OR nv.ho_ten LIKE :kw OR nv.email LIKE :kw OR bn.ho_ten LIKE :kw OR bn.email LIKE :kw${dkNhan})`,
+        { kw: `%${kwRaw}%`, maKhopNhan },
       );
     }
 

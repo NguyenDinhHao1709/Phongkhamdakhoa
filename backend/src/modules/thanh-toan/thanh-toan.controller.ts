@@ -4,7 +4,7 @@ import {
 import { DataSource } from 'typeorm';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ThanhToanService } from './thanh-toan.service';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Roles, Quyen } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -27,6 +27,7 @@ export class ThanhToanController {
   @Get('danh-sach')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Lấy danh sách hóa đơn' })
+  @Quyen('hoa_don.xem', 'hoa_don.chot_ca', 'bao_cao.doanh_thu')
   getDanhSach(
     @Query('trangThai') trangThai?: string,
     @Query('search') search?: string,
@@ -37,6 +38,7 @@ export class ThanhToanController {
   @Get('thong-ke-thu-ngan')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Báo cáo thống kê doanh thu thu ngân' })
+  @Quyen('hoa_don.xem', 'hoa_don.chot_ca', 'bao_cao.doanh_thu')
   getThongKeThuNgan(
     @CurrentUser() user: any,
     @Query('range') range?: string,
@@ -50,6 +52,7 @@ export class ThanhToanController {
   @Get('danh-sach-thu-ngan')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Lấy danh sách nhân viên thu ngân để bàn giao ca trực (loại trừ chính mình)' })
+  @Quyen('hoa_don.xem', 'hoa_don.chot_ca', 'bao_cao.doanh_thu')
   getDanhSachThuNgan(@CurrentUser('id') currentUserId: number) {
     return this.thanhToanService.getDanhSachThuNgan(currentUserId);
   }
@@ -57,6 +60,7 @@ export class ThanhToanController {
   @Get('phieu-chi-hoat-dong')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Lấy danh sách phiếu chi hoạt động OPEX' })
+  @Quyen('hoa_don.chi_tra_ncc', 'don_tu.phe_duyet', 'bao_cao.doanh_thu')
   getDanhSachPhieuChiHoatDong(
     @Query('tuNgay') tuNgay?: string,
     @Query('denNgay') denNgay?: string,
@@ -70,6 +74,7 @@ export class ThanhToanController {
   @Post('phieu-chi-hoat-dong')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Lập phiếu chi hoạt động OPEX mới' })
+  @Quyen('hoa_don.chi_tra_ncc')
   taoPhieuChiHoatDong(
     @CurrentUser('id') userId: number,
     @Body() dto: {
@@ -88,6 +93,7 @@ export class ThanhToanController {
   @Patch('phieu-chi-hoat-dong/:id/duyet')
   @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Ban Giám Đốc phê duyệt hoặc từ chối phiếu chi hoạt động' })
+  @Quyen('don_tu.phe_duyet')
   duyetPhieuChiHoatDong(
     @CurrentUser('id') userId: number,
     @Param('id', ParseIntPipe) id: number,
@@ -99,6 +105,7 @@ export class ThanhToanController {
   @Patch('phieu-chi-hoat-dong/:id/xuat-tien')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Thu ngân xác nhận xuất tiền quỹ cho phiếu chi hoạt động đã được duyệt' })
+  @Quyen('hoa_don.chi_tra_ncc')
   xuatTienPhieuChiHoatDong(
     @CurrentUser('id') userId: number,
     @Param('id', ParseIntPipe) id: number,
@@ -109,6 +116,7 @@ export class ThanhToanController {
   @Patch('phieu-chi-hoat-dong/:id/huy-truc-tiep')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Thu ngân hủy trực tiếp phiếu chi khi chưa xuất quỹ' })
+  @Quyen('hoa_don.chi_tra_ncc')
   huyTrucTiepPhieuChiHoatDong(
     @CurrentUser('id') userId: number,
     @Param('id', ParseIntPipe) id: number,
@@ -120,6 +128,7 @@ export class ThanhToanController {
   @Patch('phieu-chi-hoat-dong/:id/yeu-cau-huy')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Thu ngân lập đơn yêu cầu Giám đốc phê duyệt hủy phiếu chi đã xuất quỹ' })
+  @Quyen('hoa_don.chi_tra_ncc')
   yeuCauHuyPhieuChiHoatDong(
     @CurrentUser('id') userId: number,
     @Param('id', ParseIntPipe) id: number,
@@ -131,6 +140,7 @@ export class ThanhToanController {
   @Patch('phieu-chi-hoat-dong/:id/duyet-huy')
   @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Ban Giám Đốc phê duyệt hoặc từ chối đơn yêu cầu hủy phiếu chi' })
+  @Quyen('don_tu.phe_duyet')
   duyetHuyPhieuChiHoatDong(
     @CurrentUser('id') userId: number,
     @Param('id', ParseIntPipe) id: number,
@@ -142,6 +152,7 @@ export class ThanhToanController {
   @Patch('phieu-chi-hoat-dong/:id/xac-nhan-hoan-quy')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Thu ngân xác nhận tiền hoàn về quỹ sau khi Giám đốc đã duyệt hủy' })
+  @Quyen('hoa_don.chi_tra_ncc')
   xacNhanHoanQuyPhieuChiHoatDong(
     @CurrentUser('id') userId: number,
     @Param('id', ParseIntPipe) id: number,
@@ -152,6 +163,7 @@ export class ThanhToanController {
   @Get(':id')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc', 'benh_nhan')
   @ApiOperation({ summary: 'Xem chi tiết hóa đơn' })
+  @Quyen('hoa_don.xem', 'hoa_don.thanh_toan', 'bao_cao.doanh_thu')
   async getChiTiet(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     await this.soHuu(user, id);
     return this.thanhToanService.getChiTietHoaDon(id);
@@ -160,6 +172,7 @@ export class ThanhToanController {
   @Get('hoa-don/luot-kham/:luotId')
   @Roles('thu_ngan', 'tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'bac_si')
   @ApiOperation({ summary: 'Lấy hoặc tính tổng viện phí trọn gói theo lượt tiếp nhận' })
+  @Quyen('hoa_don.xem', 'hoa_don.thanh_toan', 'benh_nhan.them', 'kham_benh.kham')
   layHoaDonTheoLuot(@Param('luotId', ParseIntPipe) luotId: number) {
     return this.thanhToanService.taoHoacCapNhatTuLuotKham(luotId);
   }
@@ -167,6 +180,7 @@ export class ThanhToanController {
   @Post(['hoa-don', 'luot-tiep-nhan/:luotTiepNhanId'])
   @Roles('thu_ngan', 'tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Tạo hoặc cập nhật hóa đơn từ lượt khám' })
+  @Quyen('hoa_don.thanh_toan', 'benh_nhan.them')
   taoHoaDonTuLuotKham(
     @Param('luotTiepNhanId') luotTiepNhanId?: string,
     @Body() body?: { luotKhamId?: number; apDungBhyt?: boolean; tyLeBhyt?: number },
@@ -178,6 +192,7 @@ export class ThanhToanController {
   @Patch([':id/xac-nhan', 'hoa-don/:id/xac-nhan'])
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Xác nhận thu tiền hóa đơn' })
+  @Quyen('hoa_don.thanh_toan')
   xacNhanThanhToan(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('id') userId: number,
@@ -194,6 +209,7 @@ export class ThanhToanController {
   @Patch('hoa-don/:id/thu-tam-ung')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Thu tiền tạm ứng tại quầy (thu ngân tự nhập số tiền)' })
+  @Quyen('hoa_don.thanh_toan')
   thuTamUng(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('id') userId: number,
@@ -205,6 +221,7 @@ export class ThanhToanController {
   @Patch('hoa-don/:id/lua-chon-thuoc')
   @Roles('thu_ngan', 'tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'benh_nhan')
   @ApiOperation({ summary: 'Chọn mua thuốc tại bệnh viện hoặc mua ngoài trước khi thanh toán' })
+  @Quyen('hoa_don.thanh_toan', 'benh_nhan.them')
   async capNhatLuaChonThuoc(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { luaChonMua: 'mua_tai_benh_vien' | 'mua_ngoai' },
@@ -217,6 +234,7 @@ export class ThanhToanController {
   @Post('vnpay/tao-url')
   @Roles('thu_ngan', 'benh_nhan', 'quan_tri_vien')
   @ApiOperation({ summary: 'Tạo URL thanh toán VNPay Sandbox' })
+  @Quyen('hoa_don.thanh_toan')
   async taoUrlVNPay(@Body() body: { hoaDonId: number; soTien?: number; nganHang?: string }, @CurrentUser() user: any) {
     await this.soHuu(user, Number(body.hoaDonId));
     return this.thanhToanService.taoUrlVNPay(body.hoaDonId, body.soTien, body.nganHang);
@@ -231,6 +249,7 @@ export class ThanhToanController {
   @Get('in-hoa-don/:id')
   @Roles('thu_ngan', 'quan_tri_vien', 'benh_nhan')
   @ApiOperation({ summary: 'Lấy dữ liệu in biên lai tài chính song ngữ' })
+  @Quyen('hoa_don.xem', 'hoa_don.thanh_toan')
   async inHoaDon(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     await this.soHuu(user, id);
     return this.thanhToanService.getInHoaDon(id);
@@ -239,6 +258,7 @@ export class ThanhToanController {
   @Patch(['hoa-don/:id/huy', ':id/huy'])
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Hủy hóa đơn & hoàn tiền viện phí' })
+  @Quyen('hoa_don.thanh_toan')
   huyHoaDon(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('id') userId: number,
@@ -250,6 +270,7 @@ export class ThanhToanController {
   @Post('chot-ca')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Chốt ca trực & kiểm kê két tiền mặt' })
+  @Quyen('hoa_don.chot_ca')
   thucHienChotCa(
     @CurrentUser('id') userId: number,
     @Body() dto: {
@@ -267,6 +288,7 @@ export class ThanhToanController {
   @Get('chot-ca/lich-su')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Lấy lịch sử các lần chốt ca' })
+  @Quyen('hoa_don.chot_ca', 'hoa_don.xem')
   getLichSuChotCa() {
     return this.thanhToanService.getLichSuChotCa();
   }
@@ -274,6 +296,7 @@ export class ThanhToanController {
   @Get('chot-ca/ca-hien-tai')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Lấy thông tin ca trực hiện tại và bàn giao ca đang chờ tiếp nhận' })
+  @Quyen('hoa_don.chot_ca', 'hoa_don.thanh_toan', 'hoa_don.xem')
   getCaTrucHienTai(@CurrentUser('id') userId: number) {
     return this.thanhToanService.getCaTrucHienTai(userId);
   }
@@ -281,6 +304,7 @@ export class ThanhToanController {
   @Post('chot-ca/:id/xac-nhan-nhan-ca')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Xác nhận tiếp nhận bàn giao ca và mở ca trực mới' })
+  @Quyen('hoa_don.chot_ca', 'hoa_don.thanh_toan', 'hoa_don.xem')
   xacNhanNhanCa(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('id') userId: number,
@@ -291,6 +315,7 @@ export class ThanhToanController {
   @Get('chot-ca/xem-truoc')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Xem trước tiền mặt hệ thống của ca trực trước khi chốt' })
+  @Quyen('hoa_don.chot_ca')
   xemTruocChotCa(
     @CurrentUser('id') userId: number,
     @Query('tu') tu: string,
@@ -302,6 +327,7 @@ export class ThanhToanController {
   @Get('chot-ca/:id')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Lấy chi tiết chốt ca để in biên bản bàn giao' })
+  @Quyen('hoa_don.chot_ca', 'hoa_don.xem')
   getChiTietChotCa(@Param('id', ParseIntPipe) id: number) {
     return this.thanhToanService.getChiTietChotCa(id);
   }

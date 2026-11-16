@@ -19,12 +19,15 @@ import { OfficeService } from './office.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { Quyen } from '../../common/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import { uploadToCloudinary } from '../../common/utils/cloudinary-upload.util';
 import { extname } from 'path';
 
 @ApiTags('🏢 MediCare Digital Office (Gateway)')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Quyen('office.truy_cap')
 @Controller('office')
 export class OfficeController {
   constructor(private readonly officeService: OfficeService) {}

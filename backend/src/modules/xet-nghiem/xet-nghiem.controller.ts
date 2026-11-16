@@ -16,7 +16,7 @@ import {
 } from './xet-nghiem.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Roles, Quyen } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { chiChoPhepDuoi, DUOI_ANH } from '../../common/utils/upload-filter.util';
 
@@ -45,6 +45,7 @@ export class XetNghiemController {
     }),
   )
   @ApiOperation({ summary: 'Upload file / ảnh kết quả xét nghiệm (X-Quang, siêu âm, tài liệu...)' })
+  @Quyen('xet_nghiem.nhap_kq', 'kham_benh.kham')
   uploadFileKQXN(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('Vui lòng chọn file ảnh hoặc tài liệu kết quả');
@@ -66,6 +67,7 @@ export class XetNghiemController {
   @Delete('upload/:filename')
   @Roles('ky_thuat_vien', 'bac_si', 'quan_tri_vien')
   @ApiOperation({ summary: 'Xóa file kết quả xét nghiệm đã tải lên' })
+  @Quyen('xet_nghiem.nhap_kq', 'kham_benh.kham')
   xoaFileKQXN(@Param('filename') filename: string) {
     const safeFilename = basename(filename);
     if (!safeFilename || safeFilename !== filename || !safeFilename.startsWith('kqxn-')) {
@@ -89,6 +91,7 @@ export class XetNghiemController {
   @Post('chi-dinh')
   @Roles('bac_si')
   @ApiOperation({ summary: 'Bác sĩ chỉ định xét nghiệm / CĐHA' })
+  @Quyen('chi_dinh.tao')
   taoChiDinh(@Body() dto: TaoChiDinhDto, @CurrentUser() user: any) {
     return this.service.taoChiDinh(user.id, dto);
   }
@@ -97,6 +100,7 @@ export class XetNghiemController {
   @Get(['', 'chi-dinh', 'danh-sach-cho'])
   @Roles('ky_thuat_vien', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Danh sách chỉ định xét nghiệm (lọc theo trạng thái)' })
+  @Quyen('xet_nghiem.xem', 'xet_nghiem.nhap_kq', 'chi_dinh.tao', 'kham_benh.kham')
   danhSachChiDinh(@Query() dto: TimKiemChiDinhDto) {
     return this.service.danhSachChiDinh(dto);
   }
@@ -106,6 +110,7 @@ export class XetNghiemController {
   @Get('chi-dinh/:id')
   @Roles('ky_thuat_vien', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Chi tiết chỉ định + kết quả (nếu có)' })
+  @Quyen('xet_nghiem.xem', 'xet_nghiem.nhap_kq', 'chi_dinh.tao', 'kham_benh.kham')
   chiTietChiDinh(@Param('id', ParseIntPipe) id: number) {
     return this.service.chiTietChiDinh(id);
   }
@@ -114,6 +119,7 @@ export class XetNghiemController {
   @Patch('chi-dinh/:id/trang-thai')
   @Roles('ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'KTV cập nhật trạng thái (lấy mẫu → xử lý → có kết quả)' })
+  @Quyen('xet_nghiem.xem', 'xet_nghiem.nhap_kq')
   capNhatTrangThai(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CapNhatTrangThaiChiDinhDto,
@@ -126,6 +132,7 @@ export class XetNghiemController {
   @Delete('chi-dinh/:id')
   @Roles('bac_si', 'ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Bác sĩ hủy chỉ định cận lâm sàng khi còn chờ lấy mẫu' })
+  @Quyen('chi_dinh.tao', 'xet_nghiem.nhap_kq')
   huyChiDinh(@Param('id', ParseIntPipe) id: number) {
     return this.service.huyChiDinh(id);
   }
@@ -134,6 +141,7 @@ export class XetNghiemController {
   @Post(['chi-dinh/:id/ket-qua', 'ket-qua/:id'])
   @Roles('ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'KTV nhập kết quả xét nghiệm' })
+  @Quyen('xet_nghiem.nhap_kq')
   nhapKetQua(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: NhapKetQuaDto,
@@ -146,6 +154,7 @@ export class XetNghiemController {
   @Patch('chi-dinh/:id/gui-bac-si')
   @Roles('ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Đánh dấu đã gửi kết quả cho bác sĩ' })
+  @Quyen('xet_nghiem.nhap_kq')
   guiKetQuaChoBacSi(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.service.guiKetQuaChoBacSi(id);
   }
@@ -153,6 +162,7 @@ export class XetNghiemController {
   @Patch('chi-dinh/:id/hieu-chinh')
   @Roles('ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Hiệu chỉnh nhận xét sau khi đã gửi kết quả cho bác sĩ' })
+  @Quyen('xet_nghiem.nhap_kq')
   hieuChinhNhanXet(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: HieuChinhKetQuaDto,
@@ -165,6 +175,7 @@ export class XetNghiemController {
   @Get('benh-an-kham/:benhAnKhamId')
   @Roles('bac_si', 'ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Tất cả chỉ định + kết quả XN của 1 phiếu khám' })
+  @Quyen('kham_benh.kham', 'kham_benh.xem_lich_su', 'xet_nghiem.xem')
   ketQuaTheoBenhAnKham(@Param('benhAnKhamId', ParseIntPipe) id: number) {
     return this.service.ketQuaTheoBenhAnKham(id);
   }
@@ -173,6 +184,7 @@ export class XetNghiemController {
   @Get('thong-ke')
   @Roles('ky_thuat_vien', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'ban_giam_doc')
   @ApiOperation({ summary: 'Báo cáo thống kê hoạt động xét nghiệm / CĐHA' })
+  @Quyen('xet_nghiem.thong_ke', 'bao_cao.doanh_thu', 'dieu_hanh.bao_cao_bo_phan')
   getThongKeXetNghiem(
     @CurrentUser() user: any,
     @Query('range') range?: string,

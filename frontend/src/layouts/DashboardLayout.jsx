@@ -172,17 +172,18 @@ export function DashboardLayout({ children }) {
   }, [user?.id]);
 
   const allMenuItems = MENU_CONFIG[user?.vaiTro] || [];
-  const menuItems = allMenuItems.filter(item => {
-    // Nếu item không cấu hình perm thì mọi nhân sự trong vai trò đều truy cập được (vd: Thông tin cá nhân)
-    if (!item.perm) return true;
-    // Super Admin gốc (Root) luôn có toàn quyền kiểm soát
-    if (user?.vaiTro === 'quan_tri_vien_cap_cao') return true;
-    // Kiểm tra danh sách quyền thực tế của nhân sự được cấp động trong CSDL
-    if (Array.isArray(user?.quyenHans)) {
-      return user.quyenHans.includes(item.perm);
-    }
-    return false;
-  });
+  const coQuyen = (item) =>
+    // Item không cấu hình perm (vd: Thông tin cá nhân) / Super Admin gốc → luôn được vào
+    !item.perm || user?.vaiTro === 'quan_tri_vien_cap_cao' ||
+    (Array.isArray(user?.quyenHans) && user.quyenHans.includes(item.perm));
+  const menuItems = allMenuItems.filter(coQuyen);
+
+  // Chặn truy cập trang bằng URL trực tiếp khi vai trò không được cấp quyền của trang đó
+  // (chỉ chặn khi đã có danh sách quyền; API backend vẫn tự kiểm tra lần nữa)
+  const trangHienTai = allMenuItems
+    .filter((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`))
+    .sort((a, b) => b.to.length - a.to.length)[0];
+  const biChanTrang = Boolean(trangHienTai && Array.isArray(user?.quyenHans) && !coQuyen(trangHienTai));
 
   const activeMenuItem = menuItems.find((item) => location.pathname.startsWith(item.to)) || menuItems[0];
   const ActivePageIcon = activeMenuItem?.icon || Stethoscope;
@@ -454,7 +455,23 @@ export function DashboardLayout({ children }) {
 
         {/* Page Content với padding linh hoạt tương thích điện thoại & máy tính */}
         <main className="flex-1 overflow-y-auto med-scrollbar p-2.5 pb-16 sm:p-4 sm:pb-16 md:p-5 md:pb-5 print:p-0 print:overflow-visible print:h-auto">
-          {children}
+          {biChanTrang ? (
+            <div className="max-w-md mx-auto mt-16 text-center bg-white border border-gray-200 rounded-xl shadow-sm p-8">
+              <Shield className="w-12 h-12 text-red-400 mx-auto mb-3" />
+              <h2 className="text-lg font-semibold text-gray-900">Không có quyền truy cập</h2>
+              <p className="text-sm text-gray-600 mt-2">
+                Vai trò của bạn chưa được cấp quyền dùng chức năng &quot;{trangHienTai.label}&quot;. Vui lòng liên hệ Quản trị viên.
+              </p>
+              {menuItems[0] && (
+                <button
+                  onClick={() => navigate(menuItems[0].to)}
+                  className="mt-5 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                >
+                  Về {menuItems[0].label}
+                </button>
+              )}
+            </div>
+          ) : children}
         </main>
 
         {/* ─── MOBILE QUICK BOTTOM BAR (Điện thoại < 768px) ──────────── */}

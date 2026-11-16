@@ -25,7 +25,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Roles, Quyen } from '../../common/decorators/roles.decorator';
 import { chiChoPhepDuoi, DUOI_ANH } from '../../common/utils/upload-filter.util';
 
 @ApiTags('Bài Viết & Cẩm Nang Y Khoa')
@@ -75,6 +75,7 @@ export class BaiVietController {
   @ApiConsumes('multipart/form-data')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Tải file ảnh bài viết y khoa lên máy chủ' })
+  @Quyen('bai_viet.soan_thao', 'bai_viet.phe_duyet')
   uploadBaiVietImage(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('Vui lòng chọn file hình ảnh hợp lệ');
@@ -93,6 +94,7 @@ export class BaiVietController {
   @Get('noi-bo')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Lấy danh sách bài viết nội bộ (Bác sĩ, Ban Giám Đốc)' })
+  @Quyen('bai_viet.soan_thao', 'bai_viet.phe_duyet')
   getNoiBoBaiViets(@CurrentUser() user: any, @Query() query: QueryBaiVietDto) {
     return this.baiVietService.getNoiBoBaiViets(user, query);
   }
@@ -102,6 +104,7 @@ export class BaiVietController {
   @Post()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Soạn bài viết mới (Bác sĩ, Ban Giám Đốc)' })
+  @Quyen('bai_viet.soan_thao', 'bai_viet.phe_duyet')
   createBaiViet(@Body() dto: CreateBaiVietDto, @CurrentUser() user: any) {
     return this.baiVietService.createBaiViet(dto, user);
   }
@@ -111,6 +114,7 @@ export class BaiVietController {
   @Put(':id')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cập nhật nội dung bài viết' })
+  @Quyen('bai_viet.soan_thao', 'bai_viet.phe_duyet')
   updateBaiViet(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateBaiVietDto,
@@ -124,6 +128,7 @@ export class BaiVietController {
   @Patch(':id/gui-duyet')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Bác sĩ gửi duyệt bài viết lên Ban Giám Đốc' })
+  @Quyen('bai_viet.soan_thao', 'bai_viet.phe_duyet')
   guiDuyetBaiViet(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.baiVietService.guiDuyetBaiViet(id, user);
   }
@@ -134,6 +139,7 @@ export class BaiVietController {
   @Patch(':id/phe-duyet')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Chỉ Ban Giám Đốc phê duyệt, xuất bản hoặc trả về bài viết' })
+  @Quyen('bai_viet.phe_duyet')
   pheDuyetBaiViet(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: PheDuyetBaiVietDto,
@@ -147,6 +153,7 @@ export class BaiVietController {
   @Delete(':id')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Xóa hoặc tạm ẩn bài viết (Bác sĩ xóa bài mình, Ban Giám Đốc quản lý)' })
+  @Quyen('bai_viet.soan_thao', 'bai_viet.phe_duyet')
   xoaBaiViet(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.baiVietService.xoaBaiViet(id, user);
   }

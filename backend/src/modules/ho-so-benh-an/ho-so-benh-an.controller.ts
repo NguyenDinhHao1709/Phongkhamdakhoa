@@ -10,7 +10,7 @@ import {
 } from './ho-so-benh-an.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Roles, Quyen } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { assertBenhNhanSoHuu } from '../../common/utils/benh-nhan-so-huu.util';
 
@@ -34,6 +34,7 @@ export class HoSoBenhAnController {
   @Get('lich-su/:benhNhanId')
   @Roles('bac_si', 'tiep_tan', 'quan_tri_vien', 'benh_nhan')
   @ApiOperation({ summary: 'Lịch sử khám của bệnh nhân' })
+  @Quyen('kham_benh.xem_lich_su', 'kham_benh.kham', 'benh_nhan.xem')
   async lichSuKham(@Param('benhNhanId', ParseIntPipe) benhNhanId: number, @CurrentUser() user: any) {
     await assertBenhNhanSoHuu(this.dataSource, user, 'benh_nhan', benhNhanId);
     return this.service.lichSuKham(benhNhanId);
@@ -42,6 +43,7 @@ export class HoSoBenhAnController {
   @Post('benh-an-kham/:benhNhanId')
   @Roles('bac_si')
   @ApiOperation({ summary: 'Bác sĩ tạo phiếu khám mới' })
+  @Quyen('kham_benh.kham')
   taoBenhAnKham(
     @Param('benhNhanId', ParseIntPipe) benhNhanId: number,
     @Body() dto: TaoBenhAnKhamDto,
@@ -53,6 +55,7 @@ export class HoSoBenhAnController {
   @Get('benh-an-kham/luot/:luotTiepNhanId')
   @Roles('bac_si', 'tiep_tan', 'quan_tri_vien')
   @ApiOperation({ summary: 'Lấy phiếu khám theo lượt tiếp nhận' })
+  @Quyen('kham_benh.xem_lich_su', 'kham_benh.kham', 'benh_nhan.xem')
   layBenhAnTheoLuot(@Param('luotTiepNhanId', ParseIntPipe) luotTiepNhanId: number) {
     return this.service.layBenhAnTheoLuot(luotTiepNhanId);
   }
@@ -60,6 +63,7 @@ export class HoSoBenhAnController {
   @Get('benh-an-kham/:id')
   @Roles('bac_si', 'tiep_tan')
   @ApiOperation({ summary: 'Chi tiết phiếu khám' })
+  @Quyen('kham_benh.xem_lich_su', 'kham_benh.kham', 'benh_nhan.xem')
   chiTietBenhAnKham(@Param('id', ParseIntPipe) id: number) {
     return this.service.chiTietBenhAnKham(id);
   }
@@ -67,6 +71,7 @@ export class HoSoBenhAnController {
   @Patch('benh-an-kham/:id')
   @Roles('bac_si')
   @ApiOperation({ summary: 'Cập nhật phiếu khám (đang khám)' })
+  @Quyen('kham_benh.kham')
   capNhatBenhAnKham(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CapNhatBenhAnKhamDto,
@@ -77,6 +82,7 @@ export class HoSoBenhAnController {
   @Patch('benh-an-kham/:id/ket-thuc')
   @Roles('bac_si')
   @ApiOperation({ summary: 'Kết thúc khám — chuyển trạng thái hoàn thành' })
+  @Quyen('kham_benh.kham')
   ketThucKham(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: KetThucKhamDto,
@@ -87,6 +93,7 @@ export class HoSoBenhAnController {
   @Get('thong-ke-bac-si')
   @Roles('bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Thống kê & Báo cáo hiệu suất lâm sàng của Bác sĩ' })
+  @Quyen('kham_benh.thong_ke')
   thongKeBacSi(
     @CurrentUser() user: any,
     @Query('range') range?: string,

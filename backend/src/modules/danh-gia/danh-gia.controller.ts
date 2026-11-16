@@ -6,7 +6,7 @@ import { DanhGiaService } from './danh-gia.service';
 import { TaoDanhGiaDto, PhanHoiGiamDocDto } from './dto/danh-gia.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Roles, Quyen } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Đánh giá chất lượng & CSAT')
@@ -33,6 +33,7 @@ export class DanhGiaController {
   @Get('bac-si')
   @Roles('bac_si', 'ban_giam_doc', 'quan_tri_vien')
   @ApiOperation({ summary: 'Bác sĩ xem chỉ số hài lòng CSAT và danh sách phản hồi của bệnh nhân' })
+  @Quyen('kham_benh.thong_ke')
   thongKeDanhGiaBacSi(
     @CurrentUser() user: any,
     @Query('range') range?: string,
@@ -46,6 +47,7 @@ export class DanhGiaController {
   @Get('giam-doc')
   @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Giám Đốc xem chỉ số CSAT toàn viện, BXH bác sĩ & cảnh báo phản hồi thấp' })
+  @Quyen('dieu_hanh.dashboard', 'dieu_hanh.bao_cao_bo_phan')
   thongKeDanhGiaGiamDoc(
     @Query('range') range?: string,
     @Query('tuNgay') tuNgay?: string,
@@ -58,6 +60,7 @@ export class DanhGiaController {
   @Patch(':id/phan-hoi')
   @Roles('ban_giam_doc', 'quan_tri_vien')
   @ApiOperation({ summary: 'Giám Đốc phản hồi / ghi chú vào đánh giá của bệnh nhân' })
+  @Quyen('dieu_hanh.dashboard', 'dieu_hanh.bao_cao_bo_phan')
   phanHoiDanhGia(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: PhanHoiGiamDocDto,

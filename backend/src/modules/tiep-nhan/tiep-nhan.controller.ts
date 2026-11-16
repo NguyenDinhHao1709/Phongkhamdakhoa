@@ -11,7 +11,7 @@ import {
 } from './tiep-nhan.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Roles, Quyen } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 import { Public } from '../../common/decorators/public.decorator';
@@ -40,6 +40,7 @@ export class TiepNhanController {
   @Post(':id/goi-loa')
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Phát loa gọi số thứ tự bệnh nhân vào phòng khám' })
+  @Quyen('tiep_nhan.goi_so', 'kham_benh.kham')
   goiSoLoa(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.service.goiSoLoa(id, user?.id || user?.userId);
   }
@@ -47,6 +48,7 @@ export class TiepNhanController {
   @Patch(':id/uu-tien')
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Đổi đối tượng ưu tiên của lượt khám (vd. chuyển cấp cứu)' })
+  @Quyen('tiep_nhan.goi_so', 'kham_benh.kham')
   capNhatUuTien(@Param('id', ParseIntPipe) id: number, @Body('doiTuongUuTien') doiTuongUuTien: string | null) {
     return this.service.capNhatUuTien(id, doiTuongUuTien);
   }
@@ -54,6 +56,7 @@ export class TiepNhanController {
   @Post(':id/qua-luot')
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Gọi mà bệnh nhân vắng mặt: qua lượt, xếp cuối hàng chờ' })
+  @Quyen('tiep_nhan.goi_so', 'kham_benh.kham')
   quaLuot(@Param('id', ParseIntPipe) id: number) {
     return this.service.quaLuot(id);
   }
@@ -61,6 +64,7 @@ export class TiepNhanController {
   @Get('hang-doi')
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien')
   @ApiOperation({ summary: 'Hàng đợi bệnh nhân chờ khám hôm nay' })
+  @Quyen('tiep_nhan.goi_so', 'kham_benh.kham')
   hangDoi(@Query('phongKhamId') phongKhamId?: number, @CurrentUser() user?: any) {
     return this.service.hangDoi(phongKhamId ? +phongKhamId : undefined, user);
   }
@@ -94,6 +98,7 @@ export class TiepNhanController {
   @Post()
   @Roles('tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Tạo lượt tiếp nhận mới' })
+  @Quyen('benh_nhan.them')
   create(@Body() dto: TaoTiepNhanDto, @CurrentUser() user: any) {
     return this.service.create(dto, user.id);
   }
@@ -101,6 +106,7 @@ export class TiepNhanController {
   @Post('tai-quay')
   @Roles('tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Tiếp nhận bệnh nhân đến khám trực tiếp tại quầy' })
+  @Quyen('benh_nhan.them')
   createTaiQuay(@Body() dto: TiepNhanTaiQuayDto, @CurrentUser() user: any) {
     return this.service.createTaiQuay(dto, user.id);
   }
@@ -108,6 +114,7 @@ export class TiepNhanController {
   @Post(':id/sinh-hieu')
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Ghi sinh hiệu ban đầu' })
+  @Quyen('benh_nhan.them', 'tiep_nhan.goi_so', 'kham_benh.kham')
   ghiSinhHieu(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: GhiSinhHieuDto,
@@ -119,6 +126,7 @@ export class TiepNhanController {
   @Get(':id/sinh-hieu')
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien')
   @ApiOperation({ summary: 'Xem sinh hiệu của lượt tiếp nhận' })
+  @Quyen('benh_nhan.them', 'tiep_nhan.goi_so', 'kham_benh.kham')
   xemSinhHieu(@Param('id', ParseIntPipe) id: number) {
     return this.service.xemSinhHieu(id);
   }
@@ -126,6 +134,7 @@ export class TiepNhanController {
   @Patch(':id/phong-kham')
   @Roles('tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Điều phối bệnh nhân vào phòng khám' })
+  @Quyen('tiep_nhan.goi_so')
   dieuPhoiPhong(@Param('id', ParseIntPipe) id: number, @Body() dto: DieuPhoiPhongDto) {
     return this.service.dieuPhoiPhong(id, dto);
   }
@@ -133,6 +142,7 @@ export class TiepNhanController {
   @Patch(':id/trang-thai')
   @Roles('tiep_tan', 'bac_si')
   @ApiOperation({ summary: 'Cập nhật trạng thái lượt tiếp nhận' })
+  @Quyen('tiep_nhan.goi_so', 'kham_benh.kham')
   capNhatTrangThai(@Param('id', ParseIntPipe) id: number, @Body() dto: CapNhatTrangThaiTiepNhanDto) {
     return this.service.capNhatTrangThai(id, dto);
   }
@@ -141,6 +151,7 @@ export class TiepNhanController {
   @Get('bao-cao/thong-ke')
   @Roles('tiep_tan', 'ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Thống kê tổng quan KPI và biểu đồ lưu lượng tiếp đón' })
+  @Quyen('tiep_nhan.thong_ke')
   getThongKeBaoCao(
     @Query('khoangThoiGian') khoangThoiGian?: string,
     @Query('tuNgay') tuNgay?: string,
@@ -152,6 +163,7 @@ export class TiepNhanController {
   @Get('bao-cao/danh-sach')
   @Roles('tiep_tan', 'ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Danh sách chi tiết lượt tiếp đón có tìm kiếm & bộ lọc' })
+  @Quyen('tiep_nhan.thong_ke')
   getDanhSachBaoCao(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
