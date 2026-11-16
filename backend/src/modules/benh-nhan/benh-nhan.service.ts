@@ -1,11 +1,19 @@
 import {
-  Injectable, NotFoundException, ConflictException,
+  Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, Or, ILike } from 'typeorm';
 import { BenhNhan } from './entities/benh-nhan.entity';
 import { TaoBenhNhanDto, CapNhatBenhNhanDto, TimKiemBenhNhanDto } from './dto/benh-nhan.dto';
 import { maBenhNhanTiepTheo, voiKhoaDb } from '../../common/utils/db-sequence.util';
+import { Aes256Transformer } from '../../common/transformers/aes-256.transformer';
+
+// so_cmnd lưu mã hóa tất định → tìm theo CCCD phải so khớp chính xác bản mã, LIKE chỉ khớp được dữ liệu cũ chưa mã hóa
+const maHoaCmnd = new Aes256Transformer({ deterministic: true });
+
+// Các trường quyết định tỷ lệ BHYT chi trả khi thanh toán → chỉ nhân viên đối chiếu thẻ thật mới được sửa
+const TRUONG_BHYT = ['soBhyt', 'bhytHanDen', 'bhytNoiDangKy', 'bhytChuyenTuyenDen'] as const;
+const chuanHoa = (v: unknown) => (v === null || v === undefined || v === '' ? null : String(v).slice(0, 10).trim().toUpperCase());
 
 @Injectable()
 export class BenhNhanService {
@@ -35,8 +43,8 @@ export class BenhNhanService {
     const keyword = (q || search || '').trim();
     if (keyword !== '') {
       qb.andWhere(
-        '(bn.ho_ten LIKE :q OR bn.ma_benh_nhan LIKE :q OR bn.so_cmnd LIKE :q OR bn.so_dien_thoai LIKE :q OR nd.ten_dang_nhap LIKE :q)',
-        { q: `%${keyword}%` },
+        '(bn.ho_ten LIKE :q OR bn.ma_benh_nhan LIKE :q OR bn.so_cmnd LIKE :q OR bn.so_cmnd = :cmndMaHoa OR bn.so_dien_thoai LIKE :q OR nd.ten_dang_nhap LIKE :q)',
+        { q: `%${keyword}%`, cmndMaHoa: maHoaCmnd.to(keyword) },
       );
     }
 
@@ -63,18 +71,15 @@ export class BenhNhanService {
       qb.andWhere('bn.gioi_tinh = :gioiTinh', { gioiTinh });
     }
 
-    // 5. Lọc Nhóm Tuổi (Nhi <15t, Trưởng thành 15-60t, Cao tuổi >60t)
+    // 5. Lọc Nhóm Tuổi theo tuổi thực (Nhi <15t, Trưởng thành 15-60t, Cao tuổi >60t)
     if (doTuoi && doTuoi !== '') {
-      const currentYear = new Date().getFullYear();
+      const tuoi = 'TIMESTAMPDIFF(YEAR, bn.ngay_sinh, CURDATE())';
       if (doTuoi === 'nhi') {
-        qb.andWhere('YEAR(bn.ngay_sinh) >= :minYearNhi', { minYearNhi: currentYear - 15 });
+        qb.andWhere(`${tuoi} < 15`);
       } else if (doTuoi === 'truong_thanh') {
-        qb.andWhere('YEAR(bn.ngay_sinh) BETWEEN :minYearTT AND :maxYearTT', {
-          minYearTT: currentYear - 60,
-          maxYearTT: currentYear - 15,
-        });
+        qb.andWhere(`${tuoi} BETWEEN 15 AND 60`);
       } else if (doTuoi === 'cao_tuoi') {
-        qb.andWhere('YEAR(bn.ngay_sinh) < :maxYearCaoTuoi', { maxYearCaoTuoi: currentYear - 60 });
+        qb.andWhere(`${tuoi} > 60`);
       }
     }
 
@@ -131,7 +136,7 @@ export class BenhNhanService {
       // Sinh mã bệnh nhân nguyên tử tự động
       const maBenhNhan = await this.generateNextMaBenhNhan();
 
-      const payload = { ...dto, diUng: dto.diUng ?? dto.diUngThuoc };
+      const payload = { ...dto, diUng: dto.diUng !== undefined ? dto.diUng : dto.diUngThuoc };
       delete (payload as any).diUngThuoc;
 
       const bn = this.repo.create({ ...payload, maBenhNhan });
@@ -142,16 +147,27 @@ export class BenhNhanService {
   }
 
   // ─── CẬP NHẬT ───────────────────────────────────────────────
-  async update(id: number, dto: CapNhatBenhNhanDto) {
+  async update(id: number, dto: CapNhatBenhNhanDto, laBenhNhan = false) {
     const bn = await this.repo.findOne({ where: { id } });
     if (!bn) throw new NotFoundException({ code: 'BENH_NHAN_KHONG_TON_TAI', message: 'Không tìm thấy bệnh nhân' });
+
+    if (laBenhNhan) {
+      // Gửi lại đúng giá trị đang lưu thì cho qua (form hồ sơ gửi toàn bộ trường); chỉ chặn khi thay đổi
+      const doi = TRUONG_BHYT.filter((k) => dto[k] !== undefined && chuanHoa(dto[k]) !== chuanHoa(bn[k]));
+      if (doi.length) {
+        throw new ForbiddenException({
+          code: 'KHONG_DUOC_SUA_BHYT',
+          message: 'Thông tin thẻ BHYT chỉ được cập nhật tại quầy tiếp tân sau khi đối chiếu thẻ. Vui lòng mang thẻ BHYT khi đến khám.',
+        });
+      }
+    }
 
     if (dto.soCmnd && dto.soCmnd !== bn.soCmnd) {
       const existing = await this.repo.findOne({ where: { soCmnd: dto.soCmnd } });
       if (existing) throw new ConflictException({ code: 'CMND_DA_TON_TAI', message: 'Số CMND/CCCD đã được đăng ký' });
     }
 
-    const payload = { ...dto, diUng: dto.diUng ?? dto.diUngThuoc };
+    const payload = { ...dto, diUng: dto.diUng !== undefined ? dto.diUng : dto.diUngThuoc };
     delete (payload as any).diUngThuoc;
 
     Object.assign(bn, payload);
@@ -159,38 +175,26 @@ export class BenhNhanService {
     return { data: saved, message: 'Cập nhật thông tin bệnh nhân thành công' };
   }
 
-  // ─── TRA CỨU THẺ BHYT ─────────────────────────────────────────
+  // ─── GIẢI MÃ THẺ BHYT ────────────────────────────────────────
+  // Chỉ giải mã từ cấu trúc mã thẻ (mã đối tượng + mức hưởng); hệ thống không kết nối cổng giám định BHXH
+  // nên không xác minh được hạn thẻ hay nơi đăng ký — những thông tin đó lấy từ hồ sơ do tiếp tân nhập.
   traCuuBhyt(soBhyt: string) {
     const raw = (soBhyt || '').trim().toUpperCase();
-    if (raw.length < 10) {
-      throw new NotFoundException({ code: 'SO_BHYT_KHONG_HOP_LE', message: 'Mã số thẻ BHYT không đúng định dạng chuẩn' });
+    if (!/^[A-Z]{2}[1-5][0-9]{12}$/.test(raw)) {
+      throw new BadRequestException({ code: 'SO_BHYT_KHONG_HOP_LE', message: 'Mã thẻ BHYT gồm 15 ký tự: 2 chữ cái, mức hưởng (1-5) và 12 chữ số' });
     }
-    const maDoiTuong = raw.substring(0, 2);
-    const mucHuongKyTu = raw.substring(2, 3);
-    let tyLeHuong = 80;
-    if (mucHuongKyTu === '1' || mucHuongKyTu === '2' || mucHuongKyTu === '5') {
-      tyLeHuong = 100;
-    } else if (mucHuongKyTu === '3') {
-      tyLeHuong = 95;
-    } else {
-      tyLeHuong = 80;
-    }
+    const tyLeHuong = ({ '1': 100, '2': 100, '3': 95, '4': 80, '5': 100 } as Record<string, number>)[raw[2]];
 
     return {
       success: true,
-      message: 'Tra cứu thông tin thẻ BHYT thành công',
+      message: 'Giải mã thẻ BHYT thành công',
       data: {
         soBhyt: raw,
-        maDoiTuong,
+        maDoiTuong: raw.substring(0, 2),
         tyLeHuong,
         mucHuong: `${tyLeHuong}%`,
-        noiDangKyKCB: 'Phòng khám Đa khoa Quốc tế',
-        maKCB: '79-026',
-        hanSuDungTu: '2026-01-01',
-        hanSuDungDen: '2026-12-31',
-        trangThaiThe: 'hop_le',
+        daXacMinhVoiBhxh: false,
       },
     };
   }
 }
-

@@ -30,7 +30,7 @@ export class BenhNhanController {
   }
 
   @Get(':id')
-  @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'benh_nhan')
+  @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'benh_nhan')
   @ApiOperation({ summary: 'Xem chi tiết bệnh nhân' })
   async findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     await assertBenhNhanSoHuu(this.dataSource, user, 'benh_nhan', id);
@@ -59,7 +59,7 @@ export class BenhNhanController {
   }
 
   @Patch(':id')
-  @Roles('tiep_tan', 'quan_tri_vien', 'benh_nhan')
+  @Roles('tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao', 'benh_nhan')
   @ApiOperation({ summary: 'Cập nhật thông tin bệnh nhân' })
   async update(
     @Param('id', ParseIntPipe) id: number,
@@ -67,7 +67,7 @@ export class BenhNhanController {
     @CurrentUser() user: any,
   ) {
     await assertBenhNhanSoHuu(this.dataSource, user, 'benh_nhan', id);
-    return this.service.update(id, dto);
+    return this.service.update(id, dto, user?.vai_tro === 'benh_nhan');
   }
 }
 

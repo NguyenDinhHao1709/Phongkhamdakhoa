@@ -86,6 +86,8 @@ export default function CapNhatHoSoModal({ isOpen, onClose, benhNhanId, onSucces
       const val = formData[key];
       cleanedPayload[key] = (typeof val === 'string' && val.trim() === '') ? null : val;
     });
+    // Thẻ BHYT chỉ tiếp tân được sửa → không gửi lên
+    delete cleanedPayload.soBhyt;
 
     try {
       await apiPatch(`/benh-nhan/${benhNhanId}`, cleanedPayload);
@@ -285,12 +287,12 @@ export default function CapNhatHoSoModal({ isOpen, onClose, benhNhanId, onSucces
                   <input
                     type="text"
                     value={formData.soBhyt}
-                    onChange={(e) => setFormData({ ...formData, soBhyt: e.target.value.toUpperCase() })}
-                    placeholder="15 ký tự (VD: DN4791234567890)..."
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-hidden focus:border-primary-500 focus:ring-2 focus:ring-primary-100 text-xs sm:text-sm font-mono uppercase"
+                    readOnly
+                    placeholder="Chưa có thông tin thẻ"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed text-xs sm:text-sm font-mono uppercase"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
-                    Nhập mã số thẻ BHYT để được tiếp nhận hưởng quyền lợi bảo hiểm khi đến khám.
+                    Thẻ BHYT được cập nhật tại quầy tiếp tân sau khi đối chiếu thẻ. Vui lòng mang thẻ khi đến khám.
                   </p>
                 </div>
 
