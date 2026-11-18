@@ -14,6 +14,7 @@ import HoSoYTeBenhNhanPage from './HoSoYTeBenhNhanPage';
 import ChatAiPage from './ChatAiPage';
 import TienDoKhamPage from './TienDoKhamPage';
 import CapNhatHoSoModal from '../../components/Patient/CapNhatHoSoModal';
+import { NotificationDropdown } from '../../components/NotificationDropdown';
 
 export default function PatientPortal() {
   const { user, setUser, logout } = useAuthStore();
@@ -102,6 +103,8 @@ export default function PatientPortal() {
 
           {/* User info & Logout */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Chuông thông báo: đặt lịch, xác nhận, nhắc lịch, có kết quả, hoàn cọc (realtime qua socket) */}
+            <NotificationDropdown />
             <button
               onClick={toggleTheme}
               className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors cursor-pointer"

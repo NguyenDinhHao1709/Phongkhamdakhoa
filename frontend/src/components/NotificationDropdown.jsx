@@ -135,6 +135,12 @@ export function NotificationDropdown() {
     setIsOpen(false);
     setToast(null);
 
+    // Bệnh nhân: kết quả xét nghiệm → Hồ sơ y tế; lịch hẹn, cọc, hoàn cọc... → Lịch hẹn của tôi
+    if (user?.vaiTro === 'benh_nhan') {
+      navigate(item.loai === 'xet_nghiem' ? '/benh-nhan/ho-so-y-te' : '/benh-nhan/lich-hen');
+      return;
+    }
+
     // Chuyển hướng thông minh theo ngữ cảnh và loại đối tượng
     if (item.loai === 'xet_nghiem' || item.loai === 'ket_qua_xet_nghiem_hieu_chinh') {
       const chiDinhId = item.doiTuongId;
@@ -314,7 +320,7 @@ export function NotificationDropdown() {
 
       {/* Popover Menu */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden transition-all duration-200">
+        <div className="fixed left-2 right-2 top-16 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden transition-all duration-200">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100">
             <div className="flex items-center gap-2">
