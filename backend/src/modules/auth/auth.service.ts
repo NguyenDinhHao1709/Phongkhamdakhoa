@@ -330,7 +330,13 @@ export class AuthService {
 
   private async goiGraphZalo(path: string, headers: Record<string, string>, params?: Record<string, string>): Promise<any> {
     try {
-      const res = await axios.get(`https://graph.zalo.me/v2.0/${path}`, { headers, params, timeout: 10_000 });
+      // Zalo chỉ trả thông tin cá nhân cho IP Việt Nam: backend ở nước ngoài đi qua relay đặt ở Việt Nam
+      // (tools/zalo-relay). Relay tự thêm secret_key của app nên không gửi secret_key qua relay.
+      const relay = (this.config.get<string>('ZALO_GRAPH_BASE_URL') || '').trim().replace(/\/+$/, '');
+      const url = relay ? `${relay}/${path}` : `https://graph.zalo.me/v2.0/${path}`;
+      const gui = relay ? { ...headers, 'x-relay-key': (this.config.get<string>('ZALO_RELAY_KEY') || '').trim() } : headers;
+      if (relay) delete (gui as any).secret_key;
+      const res = await axios.get(url, { headers: gui, params, timeout: 15_000 });
       return res.data;
     } catch {
       throw new BadRequestException({ code: 'ZALO_KHONG_PHAN_HOI', message: 'Không kết nối được máy chủ Zalo, vui lòng thử lại.' });
