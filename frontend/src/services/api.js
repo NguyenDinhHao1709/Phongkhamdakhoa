@@ -60,7 +60,8 @@ api.interceptors.response.use(
       return api(originalRequest);
     }
 
-    if (status === 401 && !originalRequest._retry) {
+    // 401 của đăng nhập là sai mật khẩu / tài khoản bị khóa, không phải token hết hạn: trả nguyên lỗi để hiện thông báo của backend
+    if (status === 401 && !originalRequest._retry && originalRequest.url !== '/auth/login') {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
