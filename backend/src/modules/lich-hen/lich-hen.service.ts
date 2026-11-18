@@ -346,6 +346,23 @@ export class LichHenService implements OnModuleInit {
   // ─── TỰ ĐỘNG HỦY LỊCH HẸN ĐÃ QUA GIỜ KHÁM (NO-SHOW / HẾT HẠN) ───
   async tuDongHuyLichQuaGio() {
     try {
+      // 0. Quá hạn thanh toán cọc (15 phút sau khi đặt) mà chưa trả → hủy để nhả suất cho người khác.
+      //    Trước đây chỉ trang web tự hủy bằng đồng hồ đếm ngược; đặt từ Zalo Mini App / app khác thì lịch treo mãi.
+      //    Tiền vào muộn sau khi hủy vẫn an toàn: xacNhanSauThanhToan tự khôi phục lịch (gỡ đúng marker bên dưới).
+      const hetHanCoc = await this.repo.createQueryBuilder()
+        .update(LichHen)
+        .set({
+          trangThai: TrangThaiLichHen.DA_HUY,
+          ghiChu: () => `TRIM(CONCAT(COALESCE(ghi_chu, ''), ' [Đã hủy khi chưa thanh toán tạm ứng] [Tự động hủy do quá hạn thanh toán cọc]'))`,
+        })
+        .where('trang_thai = :cho', { cho: TrangThaiLichHen.CHO_THANH_TOAN })
+        .andWhere('han_thanh_toan IS NOT NULL AND han_thanh_toan < :now', { now: new Date() })
+        .execute();
+      if (hetHanCoc.affected) {
+        this.cache.invalidatePrefix('lich_hen:bac_si_ca_trong');
+        console.log(`[LichHen] Đã tự động hủy ${hetHanCoc.affected} lịch hẹn quá hạn thanh toán cọc.`);
+      }
+
       // Bệnh nhân không check-in (không có lượt khám) sau giờ hẹn 15 phút → hủy (no-show, không hoàn cọc)
       const threshold = new Date(Date.now() - 15 * 60 * 1000);
       const thresholdDateStr = getLocalDateString(threshold);

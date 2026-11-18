@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Sheet, Box, Text, Button, Spinner, useSnackbar } from "zmp-ui";
 import { QRCodeSVG } from "qrcode.react";
-import { openOutApp } from "zmp-sdk/apis";
+import { openOutApp, openWebview } from "zmp-sdk/apis";
 import { api } from "../lib/api";
 import { tien } from "../lib/format";
 import { moTrangWeb } from "../lib/zalo";
@@ -78,6 +78,15 @@ export default function PaymentSheet({ lichHen, onClose, onPaid }) {
   const [maNganHang, setMaNganHang] = useState(null);
   const [daThanhToan, setDaThanhToan] = useState(false);
   const daBao = useRef(false);
+  // Hạn thanh toán (backend đặt 15 phút sau khi đặt lịch); hết hạn backend tự hủy lịch
+  const han = lichHen?.hanThanhToan ? new Date(lichHen.hanThanhToan).getTime() : null;
+  const [conLai, setConLai] = useState(() => (han ? Math.max(0, Math.floor((han - Date.now()) / 1000)) : null));
+  useEffect(() => {
+    if (!han || daThanhToan) return;
+    const t = setInterval(() => setConLai(Math.max(0, Math.floor((han - Date.now()) / 1000))), 1000);
+    return () => clearInterval(t);
+  }, [han, daThanhToan]);
+  const hetHan = conLai === 0;
 
   // Tạo link PayOS khi mở
   useEffect(() => {
@@ -106,7 +115,7 @@ export default function PaymentSheet({ lichHen, onClose, onPaid }) {
 
   // Tự kiểm tra trạng thái thanh toán (webhook PayOS cũng tự xác nhận phía backend)
   useEffect(() => {
-    if (!lichHen || !pay || daThanhToan) return;
+    if (!lichHen || !pay || daThanhToan || hetHan) return;
     const t = setInterval(async () => {
       try {
         const res = await api.get(`/payos/kiem-tra-lich-hen/${lichHen.id}`);
@@ -121,9 +130,11 @@ export default function PaymentSheet({ lichHen, onClose, onPaid }) {
       }
     }, 3000);
     return () => clearInterval(t);
-  }, [lichHen?.id, pay, daThanhToan]);
+  }, [lichHen?.id, pay, daThanhToan, hetHan]);
 
-  const moAppNganHang = (app) => {
+  // Deeplink VietQR (dl.vietqr.io) mở app ngân hàng với STK, số tiền, nội dung điền sẵn.
+  // Trong Zalo: thử mở ra ngoài Zalo (openOutApp), không được thì mở trong webview của Zalo; cả hai lỗi thì báo rõ.
+  const moAppNganHang = async (app) => {
     const params = new URLSearchParams({
       ba: `${pay.accountNumber}@${maNganHang}`,
       am: String(pay.amount),
@@ -131,9 +142,21 @@ export default function PaymentSheet({ lichHen, onClose, onPaid }) {
       ...(pay.accountName ? { bn: pay.accountName } : {}),
     });
     const url = `${app.deeplink}&${params}`;
-    openOutApp({ url }).catch(() => {
-      window.location.href = url;
-    });
+    try {
+      await openOutApp({ url });
+      return;
+    } catch (e1) {
+      try {
+        await openWebview({ url, config: { style: "normal", leftButton: "back" } });
+        return;
+      } catch (e2) {
+        openSnackbar({
+          text: `Không mở được ${app.appName}. Hãy quét mã QR hoặc sao chép số tài khoản. (${e1?.code ?? e1?.message ?? ""} / ${e2?.code ?? e2?.message ?? ""})`,
+          type: "error",
+          duration: 6000,
+        });
+      }
+    }
   };
 
   return (
@@ -160,8 +183,22 @@ export default function PaymentSheet({ lichHen, onClose, onPaid }) {
           </div>
         )}
 
-        {pay && !daThanhToan && (
+        {pay && !daThanhToan && hetHan && (
+          <div className="center-box">
+            <Text bold>Đã hết hạn thanh toán</Text>
+            <Text size="small" className="muted">
+              Lịch {lichHen.maLichHen} được giữ chỗ 15 phút và sẽ tự hủy. Nếu bạn đã chuyển khoản, hệ thống vẫn tự xác nhận khi tiền vào.
+            </Text>
+          </div>
+        )}
+
+        {pay && !daThanhToan && !hetHan && (
           <>
+            {conLai !== null && (
+              <div className={`pay-countdown ${conLai <= 120 ? "pay-countdown-gap" : ""}`}>
+                Giữ chỗ còn <b>{String(Math.floor(conLai / 60)).padStart(2, "0")}:{String(conLai % 60).padStart(2, "0")}</b>
+              </div>
+            )}
             <div className="pay-qr">
               <QRCodeSVG value={pay.qrCode} size={200} level="M" includeMargin />
               <Text size="xSmall" className="muted">
