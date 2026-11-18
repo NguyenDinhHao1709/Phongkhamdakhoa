@@ -126,3 +126,15 @@ export class DatLaiMatKhauDto {
   @MinLength(6, { message: 'Mật khẩu mới phải có ít nhất 6 ký tự' })
   matKhauMoi: string;
 }
+
+export class DangNhapZaloDto {
+  @ApiProperty({ description: 'Access token lấy từ getAccessToken() của zmp-sdk' })
+  @IsString()
+  @IsNotEmpty()
+  accessToken: string;
+
+  @ApiPropertyOptional({ description: 'Token lấy từ getPhoneNumber() — bắt buộc ở lần đăng nhập Zalo đầu tiên' })
+  @IsOptional()
+  @IsString()
+  phoneToken?: string;
+}

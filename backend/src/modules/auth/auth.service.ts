@@ -22,11 +22,12 @@ import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 import { maBenhNhanTiepTheo } from '../../common/utils/db-sequence.util';
 import {
   LoginDto, SendOtpDto, VerifyOtpDto, RegisterPatientDto,
-  DoiMatKhauDto, QuenMatKhauSendOtpDto, DatLaiMatKhauDto,
+  DoiMatKhauDto, QuenMatKhauSendOtpDto, DatLaiMatKhauDto, DangNhapZaloDto,
 } from './dto/auth.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { MemoryCacheService } from '../../common/cache/memory-cache.service';
 import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 
 const SAI_MK_TOI_DA = 5;
 const KHOA_DANG_NHAP_MS = 15 * 60_000;
@@ -235,6 +236,11 @@ export class AuthService {
     }
     this.cache.del(saiMkKey);
 
+    return this.ketQuaDangNhap(nguoiDung);
+  }
+
+  /** Cập nhật lần đăng nhập cuối, gom thông tin hiển thị + quyền hạn và cấp JWT (dùng chung cho mật khẩu và Zalo) */
+  private async ketQuaDangNhap(nguoiDung: NguoiDung) {
     // Cập nhật lần đăng nhập cuối
     await this.nguoiDungRepo.update(nguoiDung.id, { lanDangNhapCuoi: new Date() });
 
@@ -287,6 +293,134 @@ export class AuthService {
       },
       message: 'Đăng nhập thành công',
     };
+  }
+
+  // ─── ĐĂNG NHẬP BẰNG ZALO (ZALO MINI APP) ──────────────────────
+  /**
+   * Mini App gửi access token (getAccessToken) và ở lần đầu kèm phone token (getPhoneNumber).
+   * Backend tự gọi Graph API của Zalo để lấy Zalo ID và số điện thoại đã xác thực — không tin dữ liệu client tự khai.
+   * Lần đầu: liên kết với hồ sơ bệnh nhân trùng số điện thoại, hoặc tạo tài khoản bệnh nhân mới.
+   */
+  async dangNhapZalo(dto: DangNhapZaloDto) {
+    const secretKey = (this.config.get<string>('ZALO_APP_SECRET') || '').trim();
+    if (!secretKey) {
+      throw new BadRequestException({ code: 'ZALO_CHUA_CAU_HINH', message: 'Hệ thống chưa cấu hình đăng nhập Zalo (ZALO_APP_SECRET).' });
+    }
+
+    const profile = await this.layHoSoZalo(dto.accessToken);
+    let nguoiDungId = await this.timNguoiDungTheoZaloId(profile.id);
+
+    if (!nguoiDungId) {
+      if (!dto.phoneToken) {
+        throw new BadRequestException({ code: 'CAN_SO_DIEN_THOAI', message: 'Lần đầu đăng nhập bằng Zalo, vui lòng cho phép chia sẻ số điện thoại.' });
+      }
+      const soDienThoai = await this.laySoDienThoaiZalo(dto.accessToken, dto.phoneToken, secretKey);
+      nguoiDungId = await this.lienKetTaiKhoanZalo(profile, soDienThoai);
+    }
+
+    const nguoiDung = await this.nguoiDungRepo.findOne({ where: { id: nguoiDungId }, relations: ['vaiTro'] });
+    if (!nguoiDung) {
+      throw new UnauthorizedException({ code: 'DANG_NHAP_THAT_BAI', message: 'Không tìm thấy tài khoản liên kết Zalo' });
+    }
+    if (nguoiDung.trangThai === TrangThaiNguoiDung.KHOA) {
+      throw new UnauthorizedException({ code: 'TAI_KHOAN_BI_KHOA', message: 'Tài khoản đã bị khóa. Liên hệ quản trị viên.' });
+    }
+    return this.ketQuaDangNhap(nguoiDung);
+  }
+
+  private async goiGraphZalo(path: string, headers: Record<string, string>, params?: Record<string, string>): Promise<any> {
+    try {
+      const res = await axios.get(`https://graph.zalo.me/v2.0/${path}`, { headers, params, timeout: 10_000 });
+      return res.data;
+    } catch {
+      throw new BadRequestException({ code: 'ZALO_KHONG_PHAN_HOI', message: 'Không kết nối được máy chủ Zalo, vui lòng thử lại.' });
+    }
+  }
+
+  private async layHoSoZalo(accessToken: string): Promise<{ id: string; name: string }> {
+    const data = await this.goiGraphZalo('me', { access_token: accessToken }, { fields: 'id,name,picture' });
+    if (!data?.id || (data.error && data.error !== 0)) {
+      throw new UnauthorizedException({ code: 'ZALO_TOKEN_KHONG_HOP_LE', message: 'Phiên Zalo không hợp lệ hoặc đã hết hạn, vui lòng mở lại Mini App.' });
+    }
+    return { id: String(data.id), name: String(data.name || '').trim() };
+  }
+
+  /** Giải mã phone token bằng secret key của app → 84xxxxxxxxx; đổi về 0xxxxxxxxx như dữ liệu trong hệ thống */
+  private async laySoDienThoaiZalo(accessToken: string, phoneToken: string, secretKey: string): Promise<string> {
+    const res = await this.goiGraphZalo('me/info', { access_token: accessToken, code: phoneToken, secret_key: secretKey });
+    const so = String(res?.data?.number || '').replace(/\D/g, '');
+    if (!so) {
+      throw new BadRequestException({ code: 'ZALO_KHONG_LAY_DUOC_SDT', message: 'Không lấy được số điện thoại từ Zalo, vui lòng thử lại.' });
+    }
+    return so.startsWith('84') ? `0${so.slice(2)}` : so;
+  }
+
+  // Cột zalo_id đọc/ghi bằng SQL thô, không khai báo trong entity: backend chưa chạy migration vẫn đăng nhập mật khẩu bình thường
+  private async timNguoiDungTheoZaloId(zaloId: string): Promise<number | null> {
+    const rows: any[] = await this.dataSource.query('SELECT id FROM nguoi_dung WHERE zalo_id = ? LIMIT 1', [zaloId]);
+    return rows[0]?.id ?? null;
+  }
+
+  /**
+   * Gắn Zalo ID vào tài khoản bệnh nhân trùng số điện thoại (số do Zalo xác thực);
+   * hồ sơ lễ tân tạo chưa có tài khoản → tạo tài khoản cho hồ sơ đó; chưa có hồ sơ → tạo mới cả hai.
+   */
+  private async lienKetTaiKhoanZalo(profile: { id: string; name: string }, soDienThoai: string): Promise<number> {
+    const role = await this.vaiTroRepo.findOne({ where: { maVaiTro: 'benh_nhan' } });
+    if (!role) throw new BadRequestException('Chưa cấu hình vai trò Bệnh nhân trong hệ thống');
+
+    const soQuocTe = `84${soDienThoai.slice(1)}`;
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const bnRepo = manager.getRepository(BenhNhan);
+        const ndRepo = manager.getRepository(NguoiDung);
+        const bn = await bnRepo.findOne({
+          where: [{ soDienThoai }, { soDienThoai: soQuocTe }, { soDienThoai: `+${soQuocTe}` }],
+          order: { nguoiDungId: 'DESC', id: 'ASC' },
+        });
+
+        if (bn?.nguoiDungId) {
+          const [nd]: any[] = await manager.query('SELECT zalo_id FROM nguoi_dung WHERE id = ?', [bn.nguoiDungId]);
+          if (nd?.zalo_id && nd.zalo_id !== profile.id) {
+            throw new ConflictException({
+              code: 'SDT_DA_LIEN_KET_ZALO_KHAC',
+              message: 'Số điện thoại này đã liên kết với một tài khoản Zalo khác. Vui lòng liên hệ phòng khám.',
+            });
+          }
+          await manager.query('UPDATE nguoi_dung SET zalo_id = ? WHERE id = ?', [profile.id, bn.nguoiDungId]);
+          return bn.nguoiDungId;
+        }
+
+        // Mật khẩu ngẫu nhiên không ai biết: tài khoản này chỉ đăng nhập qua Zalo
+        const user = await ndRepo.save(ndRepo.create({
+          tenDangNhap: `zalo_${profile.id}`.slice(0, 100),
+          matKhauHash: await bcrypt.hash(randomBytes(24).toString('hex'), 10),
+          vaiTroId: role.id,
+          loaiTaiKhoan: LoaiTaiKhoan.BENH_NHAN,
+          trangThai: TrangThaiNguoiDung.HOAT_DONG,
+        }));
+        await manager.query('UPDATE nguoi_dung SET zalo_id = ? WHERE id = ?', [profile.id, user.id]);
+
+        if (bn) {
+          await bnRepo.update(bn.id, { nguoiDungId: user.id });
+        } else {
+          await bnRepo.save(bnRepo.create({
+            maBenhNhan: await maBenhNhanTiepTheo(manager),
+            nguoiDungId: user.id,
+            hoTen: (profile.name || 'Khách hàng Zalo').slice(0, 100),
+            soDienThoai,
+          }));
+        }
+        return user.id;
+      });
+    } catch (err: any) {
+      // Hai lượt đăng nhập lần đầu chạy song song: lượt sau đụng unique → dùng tài khoản lượt trước vừa tạo
+      if (err?.code === 'ER_DUP_ENTRY') {
+        const id = await this.timNguoiDungTheoZaloId(profile.id);
+        if (id) return id;
+      }
+      throw err;
+    }
   }
 
   // ─── CỔNG SMS GATEWAY (BRANDNAME SMS DISPATCHER) ─────────────

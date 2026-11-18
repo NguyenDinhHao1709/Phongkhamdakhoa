@@ -1,0 +1,15 @@
+{
+  "app": {
+    "title": "Phòng Khám Đa Khoa",
+    "headerColor": "#1d4ed8",
+    "textColor": "white",
+    "hideIOSSafeAreaBottom": false,
+    "hideAndroidBottomNavigationBar": false,
+    "statusBar": "normal",
+    "actionBarHidden": false
+  },
+  "debug": false,
+  "listCSS": [],
+  "listSyncJS": [],
+  "listAsyncJS": []
+}

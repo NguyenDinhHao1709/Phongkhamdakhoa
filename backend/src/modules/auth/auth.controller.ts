@@ -5,7 +5,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import {
   LoginDto, SendOtpDto, VerifyOtpDto, RefreshTokenDto,
-  RegisterPatientDto, DoiMatKhauDto, QuenMatKhauSendOtpDto, DatLaiMatKhauDto,
+  RegisterPatientDto, DoiMatKhauDto, QuenMatKhauSendOtpDto, DatLaiMatKhauDto, DangNhapZaloDto,
 } from './dto/auth.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -30,6 +30,14 @@ export class AuthController {
   @ApiOperation({ summary: 'Đăng nhập hệ thống' })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Public()
+  @Post('zalo')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Đăng nhập bằng Zalo từ Zalo Mini App (tự tạo/liên kết tài khoản bệnh nhân theo số điện thoại)' })
+  dangNhapZalo(@Body() dto: DangNhapZaloDto) {
+    return this.authService.dangNhapZalo(dto);
   }
 
   @Public()

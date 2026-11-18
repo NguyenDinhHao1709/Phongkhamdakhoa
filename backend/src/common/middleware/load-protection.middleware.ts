@@ -37,7 +37,7 @@ const AUTH_LIMIT_PER_MINUTE = 30;
 // /auth/refresh không băm mật khẩu nên tính vào ngưỡng chung, tránh chặn nhầm nhiều máy chung mạng LAN
 const AUTH_SENSITIVE_ROUTES = [
   '/api/auth/login', '/api/auth/register', '/api/auth/send-otp', '/api/auth/verify-otp',
-  '/api/auth/forgot-password-otp', '/api/auth/reset-password',
+  '/api/auth/forgot-password-otp', '/api/auth/reset-password', '/api/auth/zalo',
 ];
 
 
