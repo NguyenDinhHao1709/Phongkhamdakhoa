@@ -7,6 +7,17 @@
 // Bảo mật: chỉ chuyển tiếp 2 đường dẫn (me, me/info), phải có đúng RELAY_KEY, và secret key của app
 // do relay tự thêm vào nên không đi qua Render / ngrok.
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+// Đọc .env cạnh file này (nếu có) để khỏi phải `set` biến mỗi lần chạy; biến đã set sẵn được ưu tiên
+const fileEnv = path.join(__dirname, '.env');
+if (fs.existsSync(fileEnv)) {
+  for (const dong of fs.readFileSync(fileEnv, 'utf8').split(/\r?\n/)) {
+    const m = dong.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+}
 
 const PORT = Number(process.env.PORT || 8788);
 const RELAY_KEY = process.env.RELAY_KEY || '';
@@ -14,8 +25,8 @@ const ZALO_APP_SECRET = process.env.ZALO_APP_SECRET || '';
 const GRAPH = 'https://graph.zalo.me/v2.0';
 const DUONG_DAN_CHO_PHEP = new Set(['/me', '/me/info']);
 
-if (!RELAY_KEY) {
-  console.error('Thiếu RELAY_KEY (mật khẩu chung với backend).');
+if (!RELAY_KEY || !ZALO_APP_SECRET) {
+  console.error('Thiếu RELAY_KEY hoặc ZALO_APP_SECRET. Điền vào file .env trong thư mục tools/zalo-relay.');
   process.exit(1);
 }
 

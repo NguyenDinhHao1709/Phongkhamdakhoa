@@ -4,13 +4,13 @@ Zalo chỉ trả tên / số điện thoại cho request từ IP Việt Nam. Bac
 bị lỗi `-501`. Relay này chạy trên máy có IP Việt Nam và chuyển tiếp lời gọi tới `graph.zalo.me`.
 
 ## Chạy
-```powershell
-cd d:\KLTN\tools\zalo-relay
-$env:RELAY_KEY = "mat-khau-dai-ngau-nhien"      # đặt giống ZALO_RELAY_KEY trên Render
-$env:ZALO_APP_SECRET = "<khóa bí mật của Zalo App>"
-node relay.js
-```
-Mở ra internet (cửa sổ khác): `ngrok http 8788` (có thể cấu hình tên miền tĩnh miễn phí trong tài khoản ngrok).
+Lần đầu: copy `.env.example` thành `.env` rồi điền `RELAY_KEY` (giống `ZALO_RELAY_KEY` trên Render) và `ZALO_APP_SECRET`.
+File `.env` không được đưa lên Git.
+
+Mỗi lần dùng: **bấm đúp `chay-relay.bat`** → mở 2 cửa sổ (relay + ngrok). Đóng 2 cửa sổ đó để tắt.
+Kiểm tra: mở `https://<ten-mien-ngrok>/health` thấy `{"ok":true}`.
+
+Chỉ cần relay lúc bấm "Đăng nhập bằng Zalo"; đăng nhập xong, phiên được làm mới qua backend, không qua relay.
 
 ## Cấu hình backend (Render)
 ```
