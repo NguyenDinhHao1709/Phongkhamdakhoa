@@ -410,6 +410,14 @@ export class XetNghiemService {
       const benhNhan = cdFull?.benhAnKham?.hoSoBenhAn?.benhNhan;
       if (duKetQua && benhNhan) {
         const nk = cdFull.benhAnKham.ngayKham ? new Date(cdFull.benhAnKham.ngayKham) : new Date();
+        this.thongBaoService.taoNeuChuaCo({
+          nguoiNhanId: benhNhan.nguoiDungId,
+          tieuDe: 'Đã có kết quả xét nghiệm',
+          noiDung: `Kết quả khám ngày ${String(nk.getDate()).padStart(2, '0')}/${String(nk.getMonth() + 1).padStart(2, '0')}/${nk.getFullYear()} (${tenDichVu}) đã có. Vào mục Hồ sơ để xem chi tiết.`,
+          loai: 'xet_nghiem',
+          doiTuongBang: 'benh_an_kham',
+          doiTuongId: cd.benhAnKhamId,
+        }).catch(() => {});
         this.zaloZns.gui({
           loai: 'co_ket_qua',
           soDienThoai: benhNhan.soDienThoai,

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Page, Box, Text, Button, Icon, useNavigate, useSnackbar } from "zmp-ui";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
@@ -27,6 +27,13 @@ export default function HomePage() {
       .sort((a, b) => `${a.ngayHen} ${a.gioHen}`.localeCompare(`${b.ngayHen} ${b.gioHen}`))[0] || null;
   }, []);
 
+  // Số thông báo chưa đọc; tự làm mới mỗi 60 giây khi đang ở trang chủ
+  const { data: thongBao, reload: taiLaiThongBao } = useTaiDuLieu(async () => (await api.get("/thong-bao", { limit: 1 })).data, []);
+  useEffect(() => {
+    const t = setInterval(taiLaiThongBao, 60000);
+    return () => clearInterval(t);
+  }, [taiLaiThongBao]);
+
   const bat = async () => {
     try {
       await batThongBaoZalo();
@@ -39,10 +46,18 @@ export default function HomePage() {
   return (
     <Page className="page page-with-nav">
       <Box className="home-header">
-        <Text size="small" className="home-hello">Xin chào,</Text>
-        <Text.Title size="large" className="home-name">
-          {user?.hoTen || "Quý khách"}
-        </Text.Title>
+        <div className="row-between">
+          <div>
+            <Text size="small" className="home-hello">Xin chào,</Text>
+            <Text.Title size="large" className="home-name">
+              {user?.hoTen || "Quý khách"}
+            </Text.Title>
+          </div>
+          <button type="button" className="bell-btn" aria-label="Thông báo" onClick={() => navigate("/thong-bao", { animate: false })}>
+            <Icon icon="zi-notif" />
+            {thongBao?.unreadCount > 0 && <span className="bell-badge">{thongBao.unreadCount > 9 ? "9+" : thongBao.unreadCount}</span>}
+          </button>
+        </div>
       </Box>
 
       <Box className="content">

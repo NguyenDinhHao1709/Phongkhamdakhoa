@@ -59,6 +59,36 @@ export class ThongBaoService {
     return this.tbRepo.save(entity);
   }
 
+  /**
+   * Tạo thông báo cho người dùng nếu chưa có thông báo cùng tiêu đề cho cùng đối tượng
+   * (các luồng xác nhận / nhắc lịch có thể chạy lặp). Lỗi không được làm hỏng luồng nghiệp vụ gọi vào.
+   */
+  async taoNeuChuaCo(data: {
+    nguoiNhanId?: number | null;
+    tieuDe: string;
+    noiDung?: string;
+    loai: string;
+    doiTuongBang: string;
+    doiTuongId: number;
+  }) {
+    if (!data.nguoiNhanId) return null;
+    try {
+      const daCo = await this.tbRepo.count({
+        where: {
+          nguoiNhanId: data.nguoiNhanId,
+          tieuDe: data.tieuDe,
+          doiTuongBang: data.doiTuongBang,
+          doiTuongId: data.doiTuongId,
+        },
+      });
+      if (daCo > 0) return null;
+      return await this.taoThongBao({ ...data, nguoiNhanId: data.nguoiNhanId });
+    } catch (e: any) {
+      console.warn('[ThongBao] Không tạo được thông báo:', e?.message);
+      return null;
+    }
+  }
+
   // Gửi thông báo cho vai trò cụ thể (ví dụ: ban_giam_doc)
   async taoThongBaoTheoRole(
     maVaiTro: string,

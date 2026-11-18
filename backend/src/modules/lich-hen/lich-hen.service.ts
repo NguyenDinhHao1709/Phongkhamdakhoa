@@ -1880,6 +1880,16 @@ export class LichHenService implements OnModuleInit {
       // Ưu tiên Zalo ZNS (tới thẳng số điện thoại); gửi Zalo lỗi / chưa cấu hình thì gửi email như cũ
       const zalo = await this.zaloZns.guiTheoLichHen('nhac_lich', lh).catch(() => null);
 
+      // Nhắc lịch ngay trong Mini App / web (mỗi lịch chỉ nhắc 1 lần nhờ dấu [ĐÃ_NHẮC_LỊCH])
+      await this.thongBaoService.taoNeuChuaCo({
+        nguoiNhanId: bn?.nguoiDungId,
+        tieuDe: 'Nhắc lịch khám sắp tới',
+        noiDung: `Lịch ${lh.maLichHen}: ${String(lh.gioHen || '').slice(0, 5)} ngày ${String(lh.ngayHen || '').slice(0, 10).split('-').reverse().join('/')} với ${bacSiTen}. Vui lòng đến trước 15 phút, mang theo CCCD và thẻ BHYT (nếu có).`,
+        loai: 'lich_hen',
+        doiTuongBang: 'lich_hen',
+        doiTuongId: lh.id,
+      });
+
       if (email && !zalo?.ok) {
         try {
           await this.mailer.sendMail({
@@ -1970,6 +1980,20 @@ export class LichHenService implements OnModuleInit {
       if (loaiEmail === 'da_xac_nhan') {
         this.zaloZns.guiTheoLichHen('xac_nhan_lich', lh).catch(() => {});
       }
+
+      // Thông báo trong Mini App / web của bệnh nhân (chống trùng theo lịch hẹn)
+      const tenBs = lh.bacSi?.nhanVien?.hoTen ? `, bác sĩ ${lh.bacSi.nhanVien.hoTen}` : '';
+      const thoiGian = `${String(lh.gioHen || '').slice(0, 5)} ngày ${String(lh.ngayHen || '').slice(0, 10).split('-').reverse().join('/')}`;
+      this.thongBaoService.taoNeuChuaCo({
+        nguoiNhanId: lh.benhNhan?.nguoiDungId,
+        tieuDe: loaiEmail === 'da_xac_nhan' ? 'Lịch khám đã được xác nhận' : 'Đặt lịch thành công, chờ thanh toán cọc',
+        noiDung: loaiEmail === 'da_xac_nhan'
+          ? `Lịch ${lh.maLichHen}: ${thoiGian}${tenBs}. Vui lòng đến trước 15 phút.`
+          : `Lịch ${lh.maLichHen}: ${thoiGian}. Vui lòng thanh toán tiền cọc để giữ lịch.`,
+        loai: 'lich_hen',
+        doiTuongBang: 'lich_hen',
+        doiTuongId: lh.id,
+      }).catch(() => {});
 
       // 1. Phân giải email người nhận
       let email = fallbackEmail?.trim() || null;
