@@ -1,36 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Sheet, Box, Text, Button, Spinner, useSnackbar } from "zmp-ui";
-import { QRCodeSVG } from "qrcode.react";
-import { openOutApp, openWebview } from "zmp-sdk/apis";
+import { QRCodeCanvas } from "qrcode.react";
+import { saveImageToGallery } from "zmp-sdk/apis";
 import { api } from "../lib/api";
 import { tien } from "../lib/format";
 import { moTrangWeb } from "../lib/zalo";
-
-// Danh sách app ngân hàng hỗ trợ deeplink VietQR (giống bản web); tải 1 lần rồi dùng lại
-const laNenIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-let huaApps = null;
-let huaBanks = null;
-function taiApps() {
-  huaApps ||= fetch(`https://api.vietqr.io/v2/${laNenIOS ? "ios" : "android"}-app-deeplinks`)
-    .then((r) => r.json())
-    .then((j) => [...(j.apps || [])].sort((a, b) => b.autofill - a.autofill))
-    .catch(() => {
-      huaApps = null;
-      return [];
-    });
-  return huaApps;
-}
-// BIN 6 số (vd 970422) → mã ngân hàng VietQR (vd "mb")
-function taiBanks() {
-  huaBanks ||= fetch("https://api.vietqr.io/v2/banks")
-    .then((r) => r.json())
-    .then((j) => new Map((j.data || []).map((b) => [b.bin, b.code.toLowerCase()])))
-    .catch(() => {
-      huaBanks = null;
-      return new Map();
-    });
-  return huaBanks;
-}
 
 async function saoChep(text) {
   try {
@@ -74,8 +48,8 @@ export default function PaymentSheet({ lichHen, onClose, onPaid }) {
   const { openSnackbar } = useSnackbar();
   const [pay, setPay] = useState(null);
   const [loi, setLoi] = useState(null);
-  const [apps, setApps] = useState([]);
-  const [maNganHang, setMaNganHang] = useState(null);
+  const qrRef = useRef(null);
+  const [dangLuu, setDangLuu] = useState(false);
   const [daThanhToan, setDaThanhToan] = useState(false);
   const daBao = useRef(false);
   // Hạn thanh toán (backend đặt 15 phút sau khi đặt lịch); hết hạn backend tự hủy lịch
@@ -98,20 +72,10 @@ export default function PaymentSheet({ lichHen, onClose, onPaid }) {
       .post(`/payos/tao-link/${lichHen.id}`)
       .then((res) => conMo && setPay(res.data))
       .catch((e) => conMo && setLoi(e));
-    taiApps().then((ds) => conMo && setApps(ds));
     return () => {
       conMo = false;
     };
   }, [lichHen?.id]);
-
-  useEffect(() => {
-    if (!pay?.bin) return;
-    let conMo = true;
-    taiBanks().then((m) => conMo && setMaNganHang(m.get(String(pay.bin)) || null));
-    return () => {
-      conMo = false;
-    };
-  }, [pay?.bin]);
 
   // Tự kiểm tra trạng thái thanh toán (webhook PayOS cũng tự xác nhận phía backend)
   useEffect(() => {
@@ -132,30 +96,44 @@ export default function PaymentSheet({ lichHen, onClose, onPaid }) {
     return () => clearInterval(t);
   }, [lichHen?.id, pay, daThanhToan, hetHan]);
 
-  // Deeplink VietQR (dl.vietqr.io) mở app ngân hàng với STK, số tiền, nội dung điền sẵn.
-  // Trong Zalo: thử mở ra ngoài Zalo (openOutApp), không được thì mở trong webview của Zalo; cả hai lỗi thì báo rõ.
-  const moAppNganHang = async (app) => {
-    const params = new URLSearchParams({
-      ba: `${pay.accountNumber}@${maNganHang}`,
-      am: String(pay.amount),
-      tn: pay.description,
-      ...(pay.accountName ? { bn: pay.accountName } : {}),
-    });
-    const url = `${app.deeplink}&${params}`;
+  // Zalo chặn Mini App mở app ngân hàng (deeplink), nên lưu ảnh QR để bệnh nhân quét từ thư viện ảnh trong app ngân hàng
+  const luuAnhQr = async () => {
+    const qr = qrRef.current;
+    if (!qr) return;
+    setDangLuu(true);
     try {
-      await openOutApp({ url });
-      return;
-    } catch (e1) {
+      const c = document.createElement("canvas");
+      c.width = 640;
+      c.height = 820;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(qr, 60, 40, 520, 520);
+      ctx.fillStyle = "#111827";
+      ctx.textAlign = "center";
+      ctx.font = "bold 40px sans-serif";
+      ctx.fillText(tien(pay.amount), 320, 630);
+      ctx.font = "28px sans-serif";
+      ctx.fillText(`Nội dung: ${pay.description}`, 320, 682);
+      ctx.fillStyle = "#6b7280";
+      ctx.font = "24px sans-serif";
+      ctx.fillText(`${pay.accountName || ""} · ${pay.accountNumber}`, 320, 728);
+      ctx.fillText("Phòng Khám Đa Khoa · Tiền cọc lịch khám", 320, 770);
+      const dataUrl = c.toDataURL("image/png");
       try {
-        await openWebview({ url, config: { style: "normal", leftButton: "back" } });
-        return;
-      } catch (e2) {
-        openSnackbar({
-          text: `Không mở được ${app.appName}. Hãy quét mã QR hoặc sao chép số tài khoản. (${e1?.code ?? e1?.message ?? ""} / ${e2?.code ?? e2?.message ?? ""})`,
-          type: "error",
-          duration: 6000,
-        });
+        await saveImageToGallery({ imageBase64Data: dataUrl });
+        openSnackbar({ text: "Đã lưu mã QR vào thư viện ảnh. Mở app ngân hàng → Quét QR → chọn ảnh vừa lưu.", type: "success", duration: 6000 });
+      } catch {
+        // Chạy thử trên trình duyệt (ngoài Zalo): tải ảnh xuống
+        const a = document.createElement("a");
+        a.href = dataUrl;
+        a.download = `QR-${pay.description}.png`;
+        a.click();
       }
+    } catch (e) {
+      openSnackbar({ text: `Không lưu được ảnh QR (${e?.message || "lỗi"}). Bạn có thể chụp màn hình mã QR.`, type: "error", duration: 6000 });
+    } finally {
+      setDangLuu(false);
     }
   };
 
@@ -200,31 +178,20 @@ export default function PaymentSheet({ lichHen, onClose, onPaid }) {
               </div>
             )}
             <div className="pay-qr">
-              <QRCodeSVG value={pay.qrCode} size={200} level="M" includeMargin />
+              <QRCodeCanvas ref={qrRef} value={pay.qrCode} size={220} level="M" marginSize={2} />
               <Text size="xSmall" className="muted">
                 Quét bằng app ngân hàng bất kỳ
               </Text>
             </div>
 
-            {maNganHang && apps.length > 0 && (
-              <>
-                <Text size="small" bold style={{ margin: "14px 0 8px" }}>
-                  Hoặc chuyển khoản ngay bằng app ngân hàng
-                </Text>
-                <div className="bank-grid">
-                  {apps.map((a) => (
-                    <button key={a.appId} type="button" className="bank-item" onClick={() => moAppNganHang(a)}>
-                      {a.autofill === 1 && <span className="bank-auto">⚡</span>}
-                      <img src={a.appLogo} alt={a.appName} loading="lazy" />
-                      <span>{a.appName.replace(/ (SmartBanking|Mobile Banking|Digital|iPay).*$/i, "")}</span>
-                    </button>
-                  ))}
-                </div>
-                <Text size="xxSmall" className="muted" style={{ marginTop: 4 }}>
-                  ⚡ app tự điền sẵn số tài khoản, số tiền và nội dung.
-                </Text>
-              </>
-            )}
+            <Button fullWidth loading={dangLuu} onClick={luuAnhQr} style={{ marginTop: 12 }}>
+              Lưu mã QR vào máy
+            </Button>
+            <div className="pay-steps">
+              <div><b>1.</b> Bấm "Lưu mã QR vào máy"</div>
+              <div><b>2.</b> Mở app ngân hàng → <b>Quét QR</b> → chọn <b>ảnh vừa lưu</b> trong thư viện</div>
+              <div><b>3.</b> Quay lại đây, hệ thống tự xác nhận khi tiền vào</div>
+            </div>
 
             <div className="pay-info">
               <div className="pay-row">
