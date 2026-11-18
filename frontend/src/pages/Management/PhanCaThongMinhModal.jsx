@@ -18,7 +18,8 @@ export default function PhanCaThongMinhModal({ weekStart, weekDays, onClose }) {
   const [deXuat, setDeXuat] = useState(null);
 
   const deXuatMutation = useMutation({
-    mutationFn: () => apiPost('/quan-ly/phan-ca-tu-dong/de-xuat', { weekStart, ...thamSo }),
+    // Backend có thể phải chờ python-ml khởi động (Render ngủ) nên cho phép lâu hơn mặc định 15s
+    mutationFn: () => apiPost('/quan-ly/phan-ca-tu-dong/de-xuat', { weekStart, ...thamSo }, { timeout: 45000 }),
     onSuccess: (res) => setDeXuat(res?.data?.data || res?.data),
     onError: (err) => alert(`⚠️ Không thể đề xuất lịch:\n${loiApi(err)}`),
   });

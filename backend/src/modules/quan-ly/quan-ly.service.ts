@@ -2536,27 +2536,50 @@ export class QuanLyService implements OnModuleInit {
     return nghi;
   }
 
-  /** Dự báo BN theo khoa từ python-ml (Holt-Winters); lỗi / chưa đủ dữ liệu → map rỗng */
+  /** Request dự báo đang chạy theo horizon — giữ lại khi quá hạn chờ để lần đề xuất sau dùng kết quả */
+  private readonly duBaoDangChay = new Map<number, Promise<any>>();
+
+  /**
+   * Dự báo BN theo khoa từ python-ml (Holt-Winters). Chỉ chờ tối đa 8s (python-ml trên Render có thể đang ngủ):
+   * quá hạn thì dùng trung bình lịch sử, request vẫn chạy nền và được cache 1 giờ cho lần đề xuất sau.
+   */
   private async duBaoTheoKhoaML(ngay: string[]): Promise<Map<string, Map<string, number>>> {
     const ketQua = new Map<string, Map<string, number>>();
     const homNay = toDateOnly(new Date());
     const horizon = Math.round((new Date(ngay[6]).getTime() - new Date(homNay).getTime()) / 86_400_000);
     if (horizon < 1 || horizon > 30) return ketQua;
-    try {
-      const res = await firstValueFrom(this.httpService.post(
-        `${PYTHON_ML_URL}/forecast`,
-        { horizon, history_days: 90 },
-        { timeout: 20_000, headers: { 'x-internal-key': process.env.AI_INTERNAL_KEY || '' } },
-      ));
-      for (const khoa of res.data?.theo_chuyen_khoa || []) {
-        for (const f of khoa.forecast || []) {
-          if (!ngay.includes(f.ngay)) continue;
-          if (!ketQua.has(f.ngay)) ketQua.set(f.ngay, new Map());
-          ketQua.get(f.ngay)!.set(khoa.chuyen_khoa, Math.max(0, Number(f.du_bao) || 0));
-        }
+
+    const cacheKey = `phan_ca:du_bao_ml:${homNay}:${horizon}`;
+    let data = this.cache.get<any>(cacheKey);
+    if (!data) {
+      let req = this.duBaoDangChay.get(horizon);
+      if (!req) {
+        req = firstValueFrom(this.httpService.post(
+          `${PYTHON_ML_URL}/forecast`,
+          { horizon, history_days: 90 },
+          { timeout: 90_000, headers: { 'x-internal-key': process.env.AI_INTERNAL_KEY || '' } },
+        ))
+          .then((res) => {
+            this.cache.set(cacheKey, res.data, 60 * 60 * 1000);
+            return res.data;
+          })
+          .catch((err) => {
+            this.logger.warn(`[phan-ca] python-ml /forecast lỗi: ${err?.message}`);
+            return null;
+          })
+          .finally(() => this.duBaoDangChay.delete(horizon));
+        this.duBaoDangChay.set(horizon, req);
       }
-    } catch (err: any) {
-      this.logger.warn(`[phan-ca] python-ml /forecast lỗi, dùng trung bình lịch sử: ${err?.message}`);
+      data = await Promise.race([req, new Promise((r) => setTimeout(() => r(null), 8_000))]);
+      if (!data) this.logger.warn('[phan-ca] python-ml chưa phản hồi trong 8s, dùng trung bình lịch sử');
+    }
+
+    for (const khoa of data?.theo_chuyen_khoa || []) {
+      for (const f of khoa.forecast || []) {
+        if (!ngay.includes(f.ngay)) continue;
+        if (!ketQua.has(f.ngay)) ketQua.set(f.ngay, new Map());
+        ketQua.get(f.ngay)!.set(khoa.chuyen_khoa, Math.max(0, Number(f.du_bao) || 0));
+      }
     }
     return ketQua;
   }
