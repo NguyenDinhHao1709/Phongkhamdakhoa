@@ -340,7 +340,13 @@ export class AuthService {
   private async layHoSoZalo(accessToken: string): Promise<{ id: string; name: string }> {
     const data = await this.goiGraphZalo('me', { access_token: accessToken }, { fields: 'id,name,picture' });
     if (!data?.id || (data.error && data.error !== 0)) {
-      throw new UnauthorizedException({ code: 'ZALO_TOKEN_KHONG_HOP_LE', message: 'Phiên Zalo không hợp lệ hoặc đã hết hạn, vui lòng mở lại Mini App.' });
+      // Ghi mã lỗi Zalo trả về (không chứa token) để biết vì sao Zalo từ chối: token hết hạn hay app chưa có quyền
+      const loiZalo = JSON.stringify({ error: data?.error, message: data?.message, hasId: Boolean(data?.id) }).slice(0, 200);
+      console.warn(`[ZaloLogin] Graph /me từ chối token: ${loiZalo}`);
+      throw new UnauthorizedException({
+        code: 'ZALO_TOKEN_KHONG_HOP_LE',
+        message: `Phiên Zalo không hợp lệ hoặc đã hết hạn, vui lòng mở lại Mini App. (Zalo: ${data?.error ?? '?'} ${data?.message ?? ''})`.trim(),
+      });
     }
     return { id: String(data.id), name: String(data.name || '').trim() };
   }
