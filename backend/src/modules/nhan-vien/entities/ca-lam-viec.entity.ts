@@ -13,5 +13,9 @@ export class CaLamViec {
 
   @Column({ name: 'gio_ket_thuc', type: 'time' })
   gioKetThuc: string;
+
+  /** Thời lượng mỗi lượt khám (phút) — sinh khung giờ đặt lịch trong ca */
+  @Column({ name: 'thoi_luong_phut', type: 'smallint', default: 60 })
+  thoiLuongPhut: number;
 }
 

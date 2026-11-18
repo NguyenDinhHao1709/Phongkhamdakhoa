@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { apiGet, apiPatch } from '../../services/api';
 import { formatDate, getLocalDateString } from '../../utils/formatDate';
+import { nhomSlotTheoCa } from '../../utils/caLamViec';
 
 export default function RescheduleAppointmentModal({
   isOpen,
@@ -445,15 +446,13 @@ export default function RescheduleAppointmentModal({
                 </div>
               ) : (
                 <div className="rounded-2xl border border-blue-200 bg-white p-4 space-y-3">
-                  {/* Ca Sáng */}
-                  <div>
+                  {nhomSlotTheoCa(selectedDoctor.slots).map((nhom) => (
+                  <div key={nhom.ca}>
                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">
-                      Ca Sáng (08:00 - 11:00)
+                      {nhom.tenCa}
                     </span>
                     <div className="grid grid-cols-4 gap-2">
-                      {selectedDoctor.slots
-                        .filter((s) => s.ca === 'sang')
-                        .map((slot) => {
+                      {nhom.slots.map((slot) => {
                           const isSelected = selectedSlot === slot.gio;
                           const isAvailable = slot.conTrong;
                           return (
@@ -477,39 +476,7 @@ export default function RescheduleAppointmentModal({
                         })}
                     </div>
                   </div>
-
-                  {/* Ca Chiều */}
-                  <div>
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">
-                      Ca Chiều (13:30 - 16:30)
-                    </span>
-                    <div className="grid grid-cols-4 gap-2">
-                      {selectedDoctor.slots
-                        .filter((s) => s.ca === 'chieu')
-                        .map((slot) => {
-                          const isSelected = selectedSlot === slot.gio;
-                          const isAvailable = slot.conTrong;
-                          return (
-                            <button
-                              key={slot.gio}
-                              type="button"
-                              disabled={!isAvailable}
-                              onClick={() => handleSelectSlot(slot)}
-                              title={!isAvailable && slot.inShift && slot.khacHinhThuc ? (hinhThuc === 'truc_tuyen' ? 'Khung giờ dành cho khám trực tiếp' : 'Khung giờ dành cho tư vấn online') : undefined}
-                              className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center ${
-                                isSelected
-                                  ? 'bg-blue-600 text-white shadow-xs scale-105'
-                                  : isAvailable
-                                  ? 'bg-blue-50/60 text-blue-700 hover:bg-blue-100 border border-blue-200'
-                                  : 'bg-slate-100 text-slate-400 line-through opacity-50 cursor-not-allowed'
-                              }`}
-                            >
-                              {slot.gio}
-                            </button>
-                          );
-                        })}
-                    </div>
-                  </div>
+                  ))}
                 </div>
               )}
             </div>

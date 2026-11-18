@@ -48,6 +48,9 @@ export const apiGetPatientById = (id) =>
 export const apiGetDoctors = () =>
   apiClient.get('/nhan-vien/bac-si-public');
 
+export const apiGetCaKham = () =>
+  apiClient.get('/lich-hen/ca-kham');
+
 export const apiBookAppointment = (data) =>
   apiClient.post('/lich-hen', data);
 

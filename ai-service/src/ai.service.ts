@@ -706,12 +706,16 @@ QUY TẮC GIAO TIẾP:
     }
 
     try {
-      const [thuocList, dichVuList, bacSiList, tienCocList] = await Promise.all([
+      const [thuocList, dichVuList, bacSiList, tienCocList, caList] = await Promise.all([
         this.thuocRepo.find({ take: 1000 }).catch(() => []),
         this.dichVuRepo.find({ where: { trangThai: 'hoat_dong' }, take: 500 }).catch(() => []),
         this.bacSiRepo.find({ relations: ['nhanVien'], take: 30 }).catch(() => []),
         this.tienCocRepo.find().catch(() => []),
+        this.tienCocRepo
+          .query(`SELECT ten_ca AS tenCa, TIME_FORMAT(gio_bat_dau, '%H:%i') AS tu, TIME_FORMAT(gio_ket_thuc, '%H:%i') AS den FROM ca_lam_viec ORDER BY gio_bat_dau`)
+          .catch(() => []),
       ]);
+      const gioLamViec: string[] = caList.map((ca: any) => `${ca.tenCa}: ${ca.tu} – ${ca.den}`);
       const bieuPhi: BieuPhi = {
         trucTiep: tienCocList.find((c) => c.loaiHinhThuc === 'truc_tiep'),
         trucTuyen: tienCocList.find((c) => c.loaiHinhThuc === 'truc_tuyen'),
@@ -729,7 +733,7 @@ QUY TẮC GIAO TIẾP:
 - Hình thức 1 - Khám trực tiếp tại phòng khám: ${moTaPhiTrucTiep(bieuPhi.trucTiep)}.
 - Hình thức 2 - Khám & Tư vấn trực tuyến từ xa (Khám Online / Telemedicine / Telehealth): ${moTaPhiTrucTuyen(bieuPhi.trucTuyen)}.
   + Quyền lợi: Gọi Video Call 1-1 trực tiếp với Bác sĩ chuyên khoa qua hệ thống WebRTC của phòng khám (không cần đến phòng khám), được Bác sĩ chẩn đoán và KÊ ĐƠN THUỐC ĐIỆN TỬ gửi trực tiếp vào hồ sơ bệnh nhân.
-- Giờ làm việc: Sáng 07:30 – 11:30 | Chiều 13:30 – 17:00 | Hotline: 1900 6868.
+- Giờ làm việc: ${gioLamViec.join(' | ') || 'Liên hệ hotline'} | Hotline: 1900 6868.
 
 [3. ĐỘI NGŨ BÁC SĨ CHUYÊN KHOA]:
 ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
@@ -741,11 +745,12 @@ ${bacSiLines || 'Đầy đủ các chuyên khoa.'}
         dichVuList,
         bacSiList,
         bieuPhi,
+        gioLamViec,
         expiresAt: now + 5 * 60 * 1000,
       };
       return this.cachedClinicContext;
     } catch (err) {
-      return { fixedText: '', thuocList: [], dichVuList: [], bacSiList: [], bieuPhi: {}, expiresAt: now + 60000 };
+      return { fixedText: '', thuocList: [], dichVuList: [], bacSiList: [], bieuPhi: {}, gioLamViec: [], expiresAt: now + 60000 };
     }
   }
 

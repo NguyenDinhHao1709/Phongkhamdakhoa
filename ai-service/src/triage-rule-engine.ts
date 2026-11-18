@@ -30,6 +30,12 @@ export function traLoiTheoLuat(
     const dichVuList = clinicContext.dichVuList || [];
     const bacSiList = clinicContext.bacSiList || [];
     const { trucTiep, trucTuyen } = clinicContext.bieuPhi || {};
+    const dongGioLamViec = (clinicContext.gioLamViec || []).length
+      ? clinicContext.gioLamViec.map((dong) => {
+          const [ten, gio] = dong.split(': ');
+          return `• **${ten}:** ${gio}`;
+        }).join('\n')
+      : '• Vui lòng liên hệ Hotline để biết giờ khám.';
 
     const hasChildInCurrent = hasWord(text, CHILD_WORDS);
     const hasAdultSelfInCurrent = hasWord(text, 'tôi|mình|em|bản thân');
@@ -135,8 +141,7 @@ export function traLoiTheoLuat(
       khoa = 'Nội tổng quát'; maKhoa = 'NOI';
       cauTraLoi = `⏰ **THỜI GIAN LÀM VIỆC & THÔNG TIN LIÊN HỆ PHÒNG KHÁM ĐA KHOA MEDICARE:**\n\n` +
         `**1. Thời gian khám bệnh (Phục vụ tất cả các ngày trong tuần từ Thứ Hai đến Chủ Nhật):**\n` +
-        `• **Ca Sáng:** 07:30 – 11:30\n` +
-        `• **Ca Chiều:** 13:30 – 17:00\n` +
+        `${dongGioLamViec}\n` +
         `• *(Khoa Cấp cứu & Tiếp nhận bệnh nhân hoạt động liên tục hỗ trợ người bệnh)*.\n\n` +
         `**2. Hệ thống dịch vụ hoàn chỉnh tại chỗ:**\n` +
         `• Đầy đủ 10 Chuyên khoa lâm sàng (Nội tổng quát, Nhi, Tim mạch, Hô hấp - TMH, Tiêu hóa, Cơ xương khớp, Da liễu, Mắt, Sản phụ khoa, Ngoại khoa).\n` +
@@ -210,8 +215,7 @@ export function traLoiTheoLuat(
         : 'Đội ngũ Bác sĩ Chuyên khoa I, Chuyên khoa II, Thạc sĩ giàu kinh nghiệm trực thuộc 10 chuyên khoa.';
       cauTraLoi = `👨‍⚕️ **ĐỘI NGŨ BÁC SĨ CHUYÊN KHOA TẠI PHÒNG KHÁM:**\n\n${bsLines}\n\n` +
         `**Thời gian làm việc:**\n` +
-        `• **Ca Sáng:** 07:30 – 11:30\n` +
-        `• **Ca Chiều:** 13:30 – 17:00`;
+        dongGioLamViec;
       loiKhuyen = `Bạn có thể chọn chuyên khoa phù hợp để đặt lịch khám trực tiếp${trucTiep ? ` (${vnd(trucTiep.phiKhamMacDinh)})` : ''} hoặc tư vấn trực tuyến qua Video Call${trucTuyen ? ` (${vnd(trucTuyen.phiKhamMacDinh)})` : ''} cùng Bác sĩ.`;
     }
 

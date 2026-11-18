@@ -7,6 +7,8 @@ import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge
 import { apiGet, apiPost, apiPatch } from '../../../services/api';
 import { formatDateTime, formatDate, normalizeDateOnly, checkTelehealthAccess, getLocalDateString } from '../../../utils/formatDate';
 import useTelehealthStore from '../../../store/telehealthStore';
+import useCaKham from '../../../hooks/useCaKham';
+import { gioThuocCa } from '../../../utils/caLamViec';
 import {
   Video, Calendar, Clock, User,
   FileText, Pill, CheckCircle2, ShieldCheck, AlertCircle, Search, SlidersHorizontal,
@@ -41,7 +43,8 @@ export default function KhamTrucTuyenPage() {
   const [timeFilter, setTimeFilter] = useState('all'); // 'all', 'today', 'tomorrow', '7days', 'thisWeek', 'custom'
   const [selectedDate, setSelectedDate] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'can_join', 'dang_kham', 'da_xac_nhan', 'cho_xac_nhan', 'hoan_thanh', 'da_huy'
-  const [shiftFilter, setShiftFilter] = useState('all'); // 'all', 'sang', 'chieu'
+  const [shiftFilter, setShiftFilter] = useState('all'); // 'all' hoặc id ca
+  const dsCa = useCaKham();
 
   // Lấy danh sách lịch tư vấn online
   const { data, isLoading } = useQuery({
@@ -238,13 +241,7 @@ export default function KhamTrucTuyenPage() {
       }
 
       // 3. Lọc theo ca khám
-      if (shiftFilter === 'sang') {
-        const hour = parseInt(gioKham.slice(0, 2), 10);
-        if (!isNaN(hour) && hour >= 12) return false;
-      } else if (shiftFilter === 'chieu') {
-        const hour = parseInt(gioKham.slice(0, 2), 10);
-        if (!isNaN(hour) && hour < 12) return false;
-      }
+      if (shiftFilter !== 'all' && !gioThuocCa(gioKham, shiftFilter, dsCa)) return false;
 
       // 4. Tìm kiếm từ khóa
       if (keyword) {
@@ -261,7 +258,7 @@ export default function KhamTrucTuyenPage() {
 
       return true;
     });
-  }, [items, searchTerm, statusFilter, timeFilter, selectedDate, shiftFilter]);
+  }, [items, searchTerm, statusFilter, timeFilter, selectedDate, shiftFilter, dsCa]);
 
   const activeLich = filteredItems.find((item) => item.id === selectedLich?.id) || filteredItems[0];
   const isDaHuy = activeLich?.trangThai === 'da_huy';
@@ -409,8 +406,7 @@ export default function KhamTrucTuyenPage() {
                   className="w-full appearance-none rounded-lg border border-gray-300 bg-white py-1.5 pl-2 pr-6 text-[11px] font-medium text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 >
                   <option value="all">Tất cả ca khám</option>
-                  <option value="sang">Ca Sáng (08h-11h)</option>
-                  <option value="chieu">Ca Chiều (13h-16h)</option>
+                  {dsCa.map((ca) => <option key={ca.id} value={ca.id}>{ca.nhan}</option>)}
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2 top-2 h-3 w-3 text-gray-400" />
               </div>

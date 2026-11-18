@@ -19,6 +19,7 @@ import {
   apiBookAppointment,
   apiCancelAppointment,
   apiGetDoctors,
+  apiGetCaKham,
 } from '../../api/apiClient';
 import PatientTelehealthModal from '../../components/PatientTelehealthModal';
 import useAuthStore from '../../store/authStore';
@@ -34,18 +35,15 @@ const CHUYEN_KHOA = [
   { id: 'rang_ham_mat', name: 'Răng Hàm Mặt', icon: 'medkit-outline', desc: 'Khám nha khoa, nhổ răng, lấy cao răng, niềng răng' },
 ];
 
-const TIME_SLOTS = [
-  '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00',
-  '13:30', '14:00', '14:30', '15:00', '15:30', '16:00'
-];
-
 export default function BookingScreen({ navigation }) {
   const user = useAuthStore((state) => state.user);
   const [mainTab, setMainTab] = useState('dat_lich'); // 'dat_lich' | 'lich_hen_cua_toi'
   const [hinhThuc, setHinhThuc] = useState('truc_tiep'); // 'truc_tiep' | 'truc_tuyen'
   const [selectedKhoa, setSelectedKhoa] = useState('noi');
   const [selectedDate, setSelectedDate] = useState('2026-09-18');
-  const [selectedTime, setSelectedTime] = useState('08:30');
+  const [selectedTime, setSelectedTime] = useState('');
+  // Ca làm việc & giờ khám do giám đốc cấu hình: [{ id, nhan, slots }]
+  const [caKham, setCaKham] = useState([]);
   const [trieuChung, setTrieuChung] = useState('');
   const [submitting, setSubmitting] = useState(false);
   
@@ -57,6 +55,13 @@ export default function BookingScreen({ navigation }) {
 
   useEffect(() => {
     fetchAppointments();
+    apiGetCaKham()
+      .then((res) => {
+        const ds = Array.isArray(res?.data) ? res.data : [];
+        setCaKham(ds);
+        setSelectedTime((cu) => cu || ds.find((ca) => ca.slots?.length)?.slots[0] || '');
+      })
+      .catch((err) => console.warn('Lỗi tải ca khám:', err));
   }, []);
 
   const fetchAppointments = async () => {
@@ -96,6 +101,13 @@ export default function BookingScreen({ navigation }) {
   const handleConfirmBooking = async () => {
     if (!trieuChung.trim()) {
       const msg = 'Vui lòng mô tả sơ bộ lý do khám hoặc triệu chứng để bác sĩ chuẩn bị chu đáo.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Thông báo', msg);
+      return;
+    }
+
+    if (!selectedTime) {
+      const msg = 'Vui lòng chọn khung giờ khám.';
       if (Platform.OS === 'web') window.alert(msg);
       else Alert.alert('Thông báo', msg);
       return;
@@ -331,23 +343,28 @@ export default function BookingScreen({ navigation }) {
             </ScrollView>
 
             {/* 3. Chọn Khung Giờ */}
-            <Text style={styles.sectionLabel}>3. Khung Giờ Trực Khám (15-30 phút/lượt)</Text>
-            <View style={styles.timeGrid}>
-              {TIME_SLOTS.map((time) => {
-                const isSelected = selectedTime === time;
-                return (
-                  <TouchableOpacity
-                    key={time}
-                    style={[styles.timeChip, isSelected && styles.timeChipActive]}
-                    onPress={() => setSelectedTime(time)}
-                  >
-                    <Text style={[styles.timeText, isSelected && styles.timeTextActive]}>
-                      {time}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <Text style={styles.sectionLabel}>3. Khung Giờ Trực Khám</Text>
+            {caKham.map((ca) => (
+              <View key={ca.id} style={{ marginBottom: 12 }}>
+                <Text style={styles.caLabel}>{ca.nhan}</Text>
+                <View style={styles.timeGrid}>
+                  {(ca.slots || []).map((time) => {
+                    const isSelected = selectedTime === time;
+                    return (
+                      <TouchableOpacity
+                        key={time}
+                        style={[styles.timeChip, isSelected && styles.timeChipActive]}
+                        onPress={() => setSelectedTime(time)}
+                      >
+                        <Text style={[styles.timeText, isSelected && styles.timeTextActive]}>
+                          {time}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
 
             {/* 4. Mô Tả Triệu Chứng */}
             <Text style={styles.sectionLabel}>4. Lý Do Khám & Triệu Chứng Ban Đầu</Text>
@@ -732,6 +749,12 @@ const styles = StyleSheet.create({
   },
 
   // Time slots
+  caLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+    marginBottom: 6,
+  },
   timeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

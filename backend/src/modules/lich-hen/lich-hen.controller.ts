@@ -71,6 +71,13 @@ export class LichHenController {
   }
 
   @Public()
+  @Get('ca-kham')
+  @ApiOperation({ summary: 'Danh sách ca làm việc và các giờ khám trong mỗi ca (Public)' })
+  layCaKham() {
+    return this.service.layCaKham();
+  }
+
+  @Public()
   @Get('slot-trong')
   @ApiOperation({ summary: 'Lấy danh sách slot giờ còn trống của bác sĩ (Public)' })
   laySlotTrong(@Query() dto: LaySlotTrongDto) {

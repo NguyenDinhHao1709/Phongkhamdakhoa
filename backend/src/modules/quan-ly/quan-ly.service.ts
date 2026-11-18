@@ -32,6 +32,7 @@ import { BaoCaoBoPhan } from './entities/bao-cao-bo-phan.entity';
 import { CauHinhTienCoc } from './entities/cau-hinh-tien-coc.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { MemoryCacheService } from '../../common/cache/memory-cache.service';
+import { CACHE_DS_CA, THOI_LUONG_MAC_DINH, gioTrongCa, nhanCa, sinhSlotCa, timCaCuaGio } from '../../common/utils/ca-lam-viec.util';
 import { QUYEN_CACHE_PREFIX } from '../../common/guards/roles.guard';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -47,6 +48,7 @@ function toDateOnly(value: string | Date): string {
 import { v2 as cloudinary } from 'cloudinary';
 import { DEFAULT_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, NHOM_CHUC_NANG_ORDER } from '../auth/rbac-defaults';
 import { NhaThuocService } from '../nha-thuoc/nha-thuoc.service';
+import { CaCoDinh, CaXep, NhanSuXep, NhomNhanSu, chuanHoaKhoa, tinhNhuCau, xepLich } from './phan-ca-tu-dong';
 
 // Kênh tiếp nhận: alias ltn = luot_tiep_nhan, lh = lich_hen (LEFT JOIN)
 const KENH_SQL = {
@@ -67,6 +69,8 @@ function tinhKenhTiepNhan(raw: any) {
 
 @Injectable()
 export class QuanLyService implements OnModuleInit {
+  private readonly logger = new Logger(QuanLyService.name);
+
   constructor(
     @InjectRepository(NhanVien) private nhanVienRepo: Repository<NhanVien>,
     @InjectRepository(NguoiDung) private nguoiDungRepo: Repository<NguoiDung>,
@@ -2160,13 +2164,13 @@ export class QuanLyService implements OnModuleInit {
     if (caList.length === 0) {
       // Seed initial shifts if not present
       await this.caLamViecRepo.save([
-        { tenCa: 'Ca Sáng', gioBatDau: '07:30:00', gioKetThuc: '11:30:00' },
-        { tenCa: 'Ca Chiều', gioBatDau: '13:00:00', gioKetThuc: '17:00:00' },
+        { tenCa: 'Ca Sáng', gioBatDau: '08:00:00', gioKetThuc: '12:00:00' },
+        { tenCa: 'Ca Chiều', gioBatDau: '13:30:00', gioKetThuc: '17:30:00' },
         { tenCa: 'Ca Tối / Trực cấp cứu', gioBatDau: '17:30:00', gioKetThuc: '21:30:00' },
       ]);
     }
 
-    const allCa = await this.caLamViecRepo.find();
+    const allCa = await this.caLamViecRepo.find({ order: { gioBatDau: 'ASC' } });
     const allNhanVien = await this.nhanVienRepo.find({
       relations: ['nguoiDung', 'nguoiDung.vaiTro'],
       order: { chucVu: 'ASC', hoTen: 'ASC' },
@@ -2213,6 +2217,90 @@ export class QuanLyService implements OnModuleInit {
         onlineDen: l.onlineDen,
       })),
     };
+  }
+
+  /** Thêm / sửa ca làm việc dùng chung (giờ ca + thời lượng mỗi lượt khám sinh ra khung đặt lịch) */
+  async luuCaLamViec(body: { tenCa?: string; gioBatDau?: string; gioKetThuc?: string; thoiLuongPhut?: number }, id?: number) {
+    const tenCa = String(body?.tenCa || '').trim();
+    const tu = String(body?.gioBatDau || '').slice(0, 5);
+    const den = String(body?.gioKetThuc || '').slice(0, 5);
+    const thoiLuong = Number(body?.thoiLuongPhut) || THOI_LUONG_MAC_DINH;
+    const gioHopLe = /^([01]\d|2[0-3]):[0-5]\d$/;
+    if (!tenCa || tenCa.length > 50) throw new BadRequestException('Tên ca bắt buộc, tối đa 50 ký tự');
+    if (!gioHopLe.test(tu) || !gioHopLe.test(den) || tu >= den) {
+      throw new BadRequestException({ code: 'GIO_CA_KHONG_HOP_LE', message: 'Giờ bắt đầu ca phải trước giờ kết thúc (định dạng HH:mm).' });
+    }
+    if (!Number.isInteger(thoiLuong) || thoiLuong < 10 || thoiLuong > 240) {
+      throw new BadRequestException('Thời lượng mỗi lượt khám phải từ 10 đến 240 phút');
+    }
+    const caMoi = { id: id ?? 0, tenCa, gioBatDau: tu, gioKetThuc: den, thoiLuongPhut: thoiLuong };
+    if (!sinhSlotCa(caMoi).length) {
+      throw new BadRequestException('Ca quá ngắn so với thời lượng mỗi lượt khám — không có lượt khám nào.');
+    }
+
+    const dsCa = await this.caLamViecRepo.find();
+    const caCu = id ? dsCa.find((c) => c.id === id) : undefined;
+    if (id && !caCu) throw new NotFoundException('Không tìm thấy ca làm việc');
+    const chongGio = dsCa.find((c) => c.id !== id && c.gioBatDau.slice(0, 5) < den && tu < c.gioKetThuc.slice(0, 5));
+    if (chongGio) {
+      throw new ConflictException({ code: 'CA_CHONG_GIO', message: `Ca bị chồng giờ với ${nhanCa(chongGio)}.` });
+    }
+
+    if (caCu) {
+      // Lịch hẹn / khung online sắp tới đang nằm trong ca cũ phải vẫn nằm trong giờ mới — không tự dời lịch bệnh nhân
+      const lichHen: { ma: string; ngay: string; gio: string }[] = await this.lichHenRepo.query(
+        `SELECT lh.ma_lich_hen AS ma, DATE_FORMAT(lh.ngay_hen, '%Y-%m-%d') AS ngay, TIME_FORMAT(lh.gio_hen, '%H:%i') AS gio
+           FROM lich_hen lh
+           JOIN bac_si bs ON bs.id = lh.bac_si_id
+           JOIN lich_lam_viec llv ON llv.nhan_vien_id = bs.nhan_vien_id AND llv.ngay_lam = lh.ngay_hen AND llv.ca_lam_viec_id = ?
+          WHERE lh.ngay_hen >= CURDATE() AND lh.trang_thai NOT IN (?, ?)
+            AND lh.gio_hen >= ? AND lh.gio_hen < ?`,
+        [id, TrangThaiLichHen.DA_HUY, TrangThaiLichHen.HOAN_THANH, caCu.gioBatDau, caCu.gioKetThuc],
+      );
+      const ngoaiGio = lichHen.filter((lh) => !gioTrongCa(lh.gio, caMoi));
+      if (ngoaiGio.length) {
+        const ds = ngoaiGio.slice(0, 10).map((lh) => `${lh.ma} (${lh.ngay} ${lh.gio})`).join(', ');
+        throw new ConflictException({
+          code: 'CA_CO_LICH_HEN_NGOAI_GIO',
+          message: `Có ${ngoaiGio.length} lịch hẹn sẽ nằm ngoài giờ ca mới: ${ds}${ngoaiGio.length > 10 ? '…' : ''}. Vui lòng đổi lịch các ca này trước.`,
+        });
+      }
+      const khungOnlineLech = await this.lichLamViecRepo
+        .createQueryBuilder('llv')
+        .where('llv.caLamViecId = :id AND llv.ngayLam >= CURDATE() AND llv.onlineTu IS NOT NULL', { id })
+        .andWhere('(llv.onlineTu < :tu OR llv.onlineDen > :den)', { tu: `${tu}:00`, den: `${den}:00` })
+        .getCount();
+      if (khungOnlineLech) {
+        throw new ConflictException({
+          code: 'CA_CO_KHUNG_ONLINE_NGOAI_GIO',
+          message: `${khungOnlineLech} ca trực sắp tới có khung tư vấn online nằm ngoài giờ ca mới. Vui lòng chỉnh khung online trước.`,
+        });
+      }
+    }
+
+    const saved = await this.caLamViecRepo.save({ ...(caCu || {}), tenCa, gioBatDau: `${tu}:00`, gioKetThuc: `${den}:00`, thoiLuongPhut: thoiLuong });
+    this.cache.invalidatePrefix(CACHE_DS_CA);
+    this.cache.invalidatePrefix('lich_hen:bac_si_ca_trong:');
+    return { success: true, data: saved, message: `Đã lưu ${nhanCa(caMoi)}, mỗi lượt ${thoiLuong} phút.` };
+  }
+
+  async xoaCaLamViec(id: number) {
+    const ca = await this.caLamViecRepo.findOne({ where: { id } });
+    if (!ca) throw new NotFoundException('Không tìm thấy ca làm việc');
+    const daDung = await this.lichLamViecRepo.count({ where: { caLamViecId: id } });
+    const [{ n: daChamCong }] = await this.caLamViecRepo.query(
+      'SELECT COUNT(*) AS n FROM cham_cong WHERE ca_lam_viec_id = ?', [id],
+    );
+    if (daDung || daChamCong) {
+      throw new ConflictException({
+        code: 'CA_DANG_SU_DUNG',
+        message: `${nhanCa(ca)} đã được dùng trong ${daDung} lịch trực / ${daChamCong} bản chấm công nên không thể xóa. Có thể chỉnh giờ thay vì xóa.`,
+      });
+    }
+    await this.caLamViecRepo.delete(id);
+    this.cache.invalidatePrefix(CACHE_DS_CA);
+    this.cache.invalidatePrefix('lich_hen:bac_si_ca_trong:');
+    return { success: true, message: `Đã xóa ${ca.tenCa}.` };
   }
 
   async xepLichLamViec(body: { nhanVienId: number; caLamViecId: number; ngayLam: string; ghiChu?: string }[]) {
@@ -2420,263 +2508,271 @@ export class QuanLyService implements OnModuleInit {
   }
 
   // ─── GIÁM ĐỐC: TỰ ĐỘNG PHÂN CA THÔNG MINH (AI & ĐỊNH MỨC Y TẾ) ──────────────
-  async phanCaTuDongThongMinh(body: { weekStart: string; overwrite?: boolean }) {
-    const { weekStart, overwrite = true } = body;
-    if (!weekStart) {
-      throw new BadRequestException('Ngày bắt đầu tuần (weekStart) là bắt buộc (định dạng YYYY-MM-DD)');
-    }
-
-    const parts = weekStart.split('-').map(Number);
+  /** 7 ngày (YYYY-MM-DD) của tuần bắt đầu từ weekStart */
+  private ngayTrongTuan(weekStart: string): string[] {
+    const parts = String(weekStart || '').split('-').map(Number);
     if (parts.length !== 3 || parts.some(isNaN)) {
-      throw new BadRequestException('Định dạng weekStart không hợp lệ (cần YYYY-MM-DD)');
+      throw new BadRequestException('Ngày bắt đầu tuần (weekStart) không hợp lệ (cần YYYY-MM-DD)');
     }
     const [y, m, d] = parts;
+    return Array.from({ length: 7 }, (_, i) => toDateOnly(new Date(y, m - 1, d + i)));
+  }
 
-    // 1. Tạo danh sách 7 ngày trong tuần theo ngày cục bộ
-    const weekDays: string[] = [];
-    for (let i = 0; i < 7; i++) {
-      const cur = new Date(y, m - 1, d + i);
-      const year = cur.getFullYear();
-      const month = String(cur.getMonth() + 1).padStart(2, '0');
-      const day = String(cur.getDate()).padStart(2, '0');
-      weekDays.push(`${year}-${month}-${day}`);
+  /** Ngày nghỉ phép đã duyệt trong tuần: đọc các ngày (YYYY-MM-DD hoặc DD/MM/YYYY) trong nội dung đơn; 2 ngày = khoảng */
+  private async layNgayNghi(ngay: string[]): Promise<Set<string>> {
+    const dsDon = await this.donGuiRepo.find({ where: { trangThai: TrangThaiDonGui.DA_XU_LY } });
+    const nghi = new Set<string>();
+    for (const don of dsDon) {
+      const loai = (don.loaiDon || '').toLowerCase();
+      if (!loai.includes('nghi') && !loai.includes('nghỉ') && !loai.includes('phep') && !loai.includes('phép')) continue;
+      const cacNgay = [...(don.noiDung || '').matchAll(/(\d{4})-(\d{2})-(\d{2})|(\d{1,2})\/(\d{1,2})\/(\d{4})/g)]
+        .map((m) => (m[1] ? `${m[1]}-${m[2]}-${m[3]}` : `${m[6]}-${m[5].padStart(2, '0')}-${m[4].padStart(2, '0')}`))
+        .sort();
+      if (!cacNgay.length) continue;
+      const tu = cacNgay[0];
+      const den = cacNgay.length >= 2 ? cacNgay[cacNgay.length - 1] : tu;
+      ngay.filter((d) => d >= tu && d <= den).forEach((d) => nghi.add(`${don.nguoiGuiId}_${d}`));
     }
-    const weekEnd = weekDays[6];
+    return nghi;
+  }
 
-    // 2. Tra cứu đơn xin nghỉ phép đã được Giám Đốc duyệt trong tuần (loại trừ người nghỉ)
-    const approvedLeaves = await this.donGuiRepo.find({
-      where: { trangThai: TrangThaiDonGui.DA_XU_LY },
-    });
-
-    const leaveSet = new Set<string>(); // key: `${nhanVienId}_${dateStr}`
-    for (const don of approvedLeaves) {
-      const isLeave = (don.loaiDon || '').toLowerCase().includes('nghi') || (don.loaiDon || '').toLowerCase().includes('phep');
-      if (!isLeave) continue;
-
-      const dateMatches = (don.noiDung || '').match(/\d{4}-\d{2}-\d{2}/g);
-      if (dateMatches && dateMatches.length >= 2) {
-        const fromD = new Date(dateMatches[0] + 'T00:00:00');
-        const toD = new Date(dateMatches[1] + 'T23:59:59');
-        for (const dayStr of weekDays) {
-          const curr = new Date(dayStr + 'T12:00:00');
-          if (curr >= fromD && curr <= toD) {
-            leaveSet.add(`${don.nguoiGuiId}_${dayStr}`);
-          }
+  /** Dự báo BN theo khoa từ python-ml (Holt-Winters); lỗi / chưa đủ dữ liệu → map rỗng */
+  private async duBaoTheoKhoaML(ngay: string[]): Promise<Map<string, Map<string, number>>> {
+    const ketQua = new Map<string, Map<string, number>>();
+    const homNay = toDateOnly(new Date());
+    const horizon = Math.round((new Date(ngay[6]).getTime() - new Date(homNay).getTime()) / 86_400_000);
+    if (horizon < 1 || horizon > 30) return ketQua;
+    try {
+      const res = await firstValueFrom(this.httpService.post(
+        `${PYTHON_ML_URL}/forecast`,
+        { horizon, history_days: 90 },
+        { timeout: 20_000, headers: { 'x-internal-key': process.env.AI_INTERNAL_KEY || '' } },
+      ));
+      for (const khoa of res.data?.theo_chuyen_khoa || []) {
+        for (const f of khoa.forecast || []) {
+          if (!ngay.includes(f.ngay)) continue;
+          if (!ketQua.has(f.ngay)) ketQua.set(f.ngay, new Map());
+          ketQua.get(f.ngay)!.set(khoa.chuyen_khoa, Math.max(0, Number(f.du_bao) || 0));
         }
-      } else if (dateMatches && dateMatches.length === 1) {
-        leaveSet.add(`${don.nguoiGuiId}_${dateMatches[0]}`);
       }
+    } catch (err: any) {
+      this.logger.warn(`[phan-ca] python-ml /forecast lỗi, dùng trung bình lịch sử: ${err?.message}`);
     }
+    return ketQua;
+  }
 
-    // 3. Lấy toàn bộ nhân sự hoạt động chuyên môn
-    const allNhanVien = await this.nhanVienRepo.find({
-      relations: ['nguoiDung', 'nguoiDung.vaiTro'],
-    });
+  /**
+   * Đề xuất lịch trực tuần theo nhu cầu bệnh nhân (chưa lưu) — giám đốc xem chỉ số rồi bấm áp dụng.
+   * overwrite = false: giữ các ca đã xếp trong tuần, chỉ bổ sung phần còn thiếu.
+   */
+  async deXuatPhanCa(body: {
+    weekStart: string; overwrite?: boolean; soBnMoiGioBs?: number; soBnMoiNguoiHoTro?: number;
+    gioToiDaTuan?: number; gioNghiToiThieu?: number;
+  }) {
+    const ngay = this.ngayTrongTuan(body.weekStart);
+    const ghiDe = body.overwrite !== false;
+    const soTrongKhoang = (v: any, macDinh: number, min: number, max: number, ten: string) => {
+      const n = v === undefined || v === null || v === '' ? macDinh : Number(v);
+      if (!Number.isFinite(n) || n < min || n > max) throw new BadRequestException(`${ten} phải từ ${min} đến ${max}`);
+      return n;
+    };
+    const soBnMoiGioBs = soTrongKhoang(body.soBnMoiGioBs, 4, 1, 20, 'Số bệnh nhân 1 bác sĩ khám mỗi giờ');
+    const soBnMoiNguoiHoTro = soTrongKhoang(body.soBnMoiNguoiHoTro, 40, 5, 200, 'Số bệnh nhân 1 nhân viên hỗ trợ phục vụ mỗi ca');
+    const thamSo = {
+      gioToiDaTuan: soTrongKhoang(body.gioToiDaTuan, 48, 8, 72, 'Số giờ tối đa mỗi tuần'),
+      gioNghiToiThieu: soTrongKhoang(body.gioNghiToiThieu, 12, 0, 24, 'Số giờ nghỉ tối thiểu giữa hai ngày'),
+      soNgayLamToiDa: 6,
+      soCaToiDaNgay: 3,
+    };
 
-    const bacSiList = await this.bacSiRepo.find({ relations: ['nhanVien'] });
-    const bacSiNhanVienIds = new Set(bacSiList.map((b) => b.nhanVienId));
+    const caDb = await this.caLamViecRepo.find({ order: { gioBatDau: 'ASC' } });
+    if (!caDb.length) throw new BadRequestException('Chưa cấu hình ca làm việc nào. Vui lòng thêm ca trước khi phân ca.');
+    const phut = (g: string) => Number(g.slice(0, 2)) * 60 + Number(g.slice(3, 5));
+    const dsCa: CaXep[] = caDb.map((c) => ({ id: c.id, tenCa: c.tenCa, batDau: phut(c.gioBatDau), ketThuc: phut(c.gioKetThuc) }));
+    const caThemIds = dsCa.slice(2).map((c) => c.id);
 
-    const nhanVienYTe = allNhanVien.filter((n) => {
+    // Nhân sự chuyên môn (loại Ban Giám Đốc / quản trị)
+    const [allNhanVien, bacSiList] = await Promise.all([
+      this.nhanVienRepo.find({ relations: ['nguoiDung', 'nguoiDung.vaiTro'] }),
+      this.bacSiRepo.find(),
+    ]);
+    const bacSiTheoNv = new Map(bacSiList.map((b) => [b.nhanVienId, b]));
+    const nhomCua = (n: NhanVien): NhomNhanSu | null => {
       const ma = n.nguoiDung?.vaiTro?.maVaiTro;
       const cv = (n.chucVu || '').toLowerCase();
-      return (
-        ma !== 'ban_giam_doc' &&
-        ma !== 'quan_tri_vien' &&
-        ma !== 'quan_tri_vien_cap_cao' &&
-        !cv.includes('giám đốc')
-      );
+      if (['ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao'].includes(ma) || cv.includes('giám đốc')) return null;
+      if (bacSiTheoNv.has(n.id) || ma === 'bac_si') return 'bac_si';
+      if (ma === 'tiep_tan' || cv.includes('tiếp tân') || cv.includes('lễ tân')) return 'tiep_tan';
+      if (ma === 'thu_ngan' || cv.includes('thu ngân')) return 'thu_ngan';
+      if (ma === 'nhan_vien_nha_thuoc' || cv.includes('thuốc')) return 'nha_thuoc';
+      if (ma === 'ky_thuat_vien' || cv.includes('kỹ thuật viên') || cv.includes('xét nghiệm')) return 'ky_thuat_vien';
+      return null;
+    };
+
+    const tuanTruoc = toDateOnly(new Date(new Date(ngay[0]).getTime() - 28 * 86_400_000));
+    const khoaSql = `COALESCE(NULLIF(TRIM(ltn.chuyen_khoa), ''), NULLIF(TRIM(pk.chuyen_khoa), ''), NULLIF(TRIM(bs.chuyen_khoa), ''), 'Chưa phân khoa')`;
+    const [nghi, duBaoML, lichSuKhoa, denTheoGio, henRows, caKhoRows, caDangCo] = await Promise.all([
+      this.layNgayNghi(ngay),
+      this.duBaoTheoKhoaML(ngay),
+      // Trung bình lượt khám theo thứ trong tuần × khoa (8 tuần gần nhất)
+      this.lichHenRepo.query(
+        `SELECT ${khoaSql} AS khoa, WEEKDAY(ltn.thoi_gian_den) AS thu, COUNT(*) / 8 AS tb
+           FROM luot_tiep_nhan ltn
+           LEFT JOIN phong_kham pk ON pk.id = ltn.phong_kham_id
+           LEFT JOIN bac_si bs ON bs.id = ltn.bac_si_id
+          WHERE ltn.thoi_gian_den >= DATE_SUB(CURDATE(), INTERVAL 56 DAY) AND ltn.thoi_gian_den < CURDATE()
+            AND ltn.trang_thai != 'da_huy'
+          GROUP BY khoa, thu`,
+      ),
+      // Phân bố giờ đến để chia BN của ngày cho từng ca
+      this.lichHenRepo.query(
+        `SELECT TIME_FORMAT(thoi_gian_den, '%H:%i') AS gio, COUNT(*) AS n FROM luot_tiep_nhan
+          WHERE thoi_gian_den >= DATE_SUB(CURDATE(), INTERVAL 56 DAY) AND trang_thai != 'da_huy'
+          GROUP BY gio`,
+      ),
+      this.lichHenRepo.query(
+        `SELECT DATE_FORMAT(lh.ngay_hen, '%Y-%m-%d') AS ngay, TIME_FORMAT(lh.gio_hen, '%H:%i') AS gio,
+                bs.nhan_vien_id AS nhanVienId, bs.chuyen_khoa AS chuyenKhoa, lh.ly_do_kham AS lyDo
+           FROM lich_hen lh LEFT JOIN bac_si bs ON bs.id = lh.bac_si_id
+          WHERE lh.ngay_hen >= ? AND lh.ngay_hen <= ?
+            AND lh.trang_thai IN ('cho_thanh_toan', 'cho_xac_nhan', 'da_xac_nhan', 'da_den')`,
+        [ngay[0], ngay[6]],
+      ),
+      // Số ca tối / Chủ nhật mỗi người đã làm 4 tuần trước → xoay vòng công bằng
+      this.lichHenRepo.query(
+        `SELECT nhan_vien_id AS id, COUNT(*) AS n FROM lich_lam_viec
+          WHERE ngay_lam >= ? AND ngay_lam < ? AND (WEEKDAY(ngay_lam) = 6 ${caThemIds.length ? `OR ca_lam_viec_id IN (${caThemIds.join(',')})` : ''})
+          GROUP BY nhan_vien_id`,
+        [tuanTruoc, ngay[0]],
+      ),
+      ghiDe ? Promise.resolve([] as LichLamViec[]) : this.lichLamViecRepo.find({ where: { ngayLam: In(ngay) } }),
+    ]);
+
+    const caKhoLichSu = new Map<number, number>(caKhoRows.map((r: any) => [Number(r.id), Number(r.n)]));
+    const nhanSu: NhanSuXep[] = allNhanVien
+      .map((n) => ({ n, nhom: nhomCua(n) }))
+      .filter((x) => x.nhom)
+      .map(({ n, nhom }) => ({
+        id: n.id,
+        hoTen: n.hoTen,
+        nhom: nhom!,
+        chuyenKhoa: bacSiTheoNv.get(n.id)?.chuyenKhoa || undefined,
+        caKhoLichSu: caKhoLichSu.get(n.id) || 0,
+      }));
+    const dsKhoaBs = [...new Map(
+      nhanSu.filter((n) => n.nhom === 'bac_si' && n.chuyenKhoa).map((n) => [chuanHoaKhoa(n.chuyenKhoa), n.chuyenKhoa!]),
+    ).values()];
+
+    // Dự báo BN theo ngày × khoa: python-ml nếu có, còn lại trung bình cùng thứ 8 tuần trước
+    const bnNgayKhoa = new Map<string, Map<string, number>>();
+    const nguonDuBao = new Map<string, string>();
+    ngay.forEach((d, i) => {
+      const m = new Map<string, number>();
+      lichSuKhoa.filter((r: any) => Number(r.thu) === i).forEach((r: any) => m.set(r.khoa, Number(r.tb) || 0));
+      const ml = duBaoML.get(d);
+      if (ml?.size) ml.forEach((v, k) => m.set(k, v));
+      bnNgayKhoa.set(d, m);
+      nguonDuBao.set(d, ml?.size ? 'Holt-Winters' : m.size ? 'TB 8 tuần' : 'chưa có dữ liệu');
     });
 
-    // Phân nhóm theo vị trí nghiệp vụ
-    const doctors = nhanVienYTe.filter((n) => bacSiNhanVienIds.has(n.id) || n.nguoiDung?.vaiTro?.maVaiTro === 'bac_si');
-    const receptionists = nhanVienYTe.filter(
-      (n) => n.nguoiDung?.vaiTro?.maVaiTro === 'tiep_tan' || (n.chucVu || '').toLowerCase().includes('tiếp tân') || (n.chucVu || '').toLowerCase().includes('lễ tân')
-    );
-    const cashiers = nhanVienYTe.filter((n) => n.nguoiDung?.vaiTro?.maVaiTro === 'thu_ngan' || (n.chucVu || '').toLowerCase().includes('thu ngân'));
-    const pharmacists = nhanVienYTe.filter((n) => n.nguoiDung?.vaiTro?.maVaiTro === 'nhan_vien_nha_thuoc' || (n.chucVu || '').toLowerCase().includes('thuốc'));
-    const technicians = nhanVienYTe.filter(
-      (n) => n.nguoiDung?.vaiTro?.maVaiTro === 'ky_thuat_vien' || (n.chucVu || '').toLowerCase().includes('kỹ thuật viên') || (n.chucVu || '').toLowerCase().includes('xét nghiệm')
-    );
-
-    const CA_SANG = 1;
-    const CA_CHIEU = 2;
-    const newShifts: { nhanVienId: number; caLamViecId: number; ngayLam: string; ghiChu: string }[] = [];
-
-    // Duyệt qua 7 ngày trong tuần
-    for (let dayIdx = 0; dayIdx < weekDays.length; dayIdx++) {
-      const dayStr = weekDays[dayIdx];
-      const isSunday = dayIdx === 6;
-
-      // ── A. BÁC SĨ (Đảm bảo phủ kín các chuyên khoa để bệnh nhân đặt lịch) ──
-      if (!isSunday) {
-        doctors.forEach((doc) => {
-          if (leaveSet.has(`${doc.id}_${dayStr}`)) return;
-          // Thứ 2 đến Thứ 6: Trực cả Sáng và Chiều để phục vụ bệnh nhân
-          if (dayIdx < 5) {
-            newShifts.push({
-              nhanVienId: doc.id,
-              caLamViecId: CA_SANG,
-              ngayLam: dayStr,
-              ghiChu: 'Trực khám chuyên khoa - Ca Sáng',
-            });
-            newShifts.push({
-              nhanVienId: doc.id,
-              caLamViecId: CA_CHIEU,
-              ngayLam: dayStr,
-              ghiChu: 'Trực khám chuyên khoa - Ca Chiều',
-            });
-          } else if (dayIdx === 5) {
-            // Thứ 7: Trực ca sáng
-            newShifts.push({
-              nhanVienId: doc.id,
-              caLamViecId: CA_SANG,
-              ngayLam: dayStr,
-              ghiChu: 'Khám chuyên khoa Thứ Bảy',
-            });
-          }
-        });
-      } else {
-        // Chủ nhật: Xoay vòng 1 bác sĩ trực Ca Sáng
-        if (doctors.length > 0) {
-          const dutyDoctor = doctors[0];
-          if (!leaveSet.has(`${dutyDoctor.id}_${dayStr}`)) {
-            newShifts.push({
-              nhanVienId: dutyDoctor.id,
-              caLamViecId: CA_SANG,
-              ngayLam: dayStr,
-              ghiChu: 'Trực phòng khám sáng Chủ Nhật',
-            });
-          }
-        }
-      }
-
-      // ── B. LỄ TÂN (Tiếp đón & Kiosk) ──
-      receptionists.forEach((rec) => {
-        if (leaveSet.has(`${rec.id}_${dayStr}`)) return;
-        if (!isSunday) {
-          newShifts.push({ nhanVienId: rec.id, caLamViecId: CA_SANG, ngayLam: dayStr, ghiChu: 'Quầy tiếp đón & Tiếp nhận' });
-          if (dayIdx < 5) {
-            newShifts.push({ nhanVienId: rec.id, caLamViecId: CA_CHIEU, ngayLam: dayStr, ghiChu: 'Quầy tiếp đón & Tiếp nhận' });
-          }
-        } else {
-          newShifts.push({ nhanVienId: rec.id, caLamViecId: CA_SANG, ngayLam: dayStr, ghiChu: 'Trực tiếp đón sáng CN' });
-        }
-      });
-
-      // ── C. THU NGÂN (Viện phí & BHYT) ──
-      if (cashiers.length >= 2) {
-        const firstCashier = dayIdx % 2 === 0 ? cashiers[0] : cashiers[1];
-        const secondCashier = dayIdx % 2 === 0 ? cashiers[1] : cashiers[0];
-        if (!isSunday) {
-          if (!leaveSet.has(`${firstCashier.id}_${dayStr}`)) {
-            newShifts.push({ nhanVienId: firstCashier.id, caLamViecId: CA_SANG, ngayLam: dayStr, ghiChu: 'Quầy thu ngân & BHYT' });
-          }
-          if (dayIdx < 5 && !leaveSet.has(`${secondCashier.id}_${dayStr}`)) {
-            newShifts.push({ nhanVienId: secondCashier.id, caLamViecId: CA_CHIEU, ngayLam: dayStr, ghiChu: 'Quầy thu ngân & BHYT' });
-          }
-        } else if (!leaveSet.has(`${firstCashier.id}_${dayStr}`)) {
-          newShifts.push({ nhanVienId: firstCashier.id, caLamViecId: CA_SANG, ngayLam: dayStr, ghiChu: 'Thu ngân sáng CN' });
-        }
-      } else {
-        cashiers.forEach((c) => {
-          if (leaveSet.has(`${c.id}_${dayStr}`)) return;
-          newShifts.push({ nhanVienId: c.id, caLamViecId: CA_SANG, ngayLam: dayStr, ghiChu: 'Quầy thu ngân' });
-          if (!isSunday && dayIdx < 5) {
-            newShifts.push({ nhanVienId: c.id, caLamViecId: CA_CHIEU, ngayLam: dayStr, ghiChu: 'Quầy thu ngân' });
-          }
-        });
-      }
-
-      // ── D. KỸ THUẬT VIÊN XÉT NGHIỆM / CẬN LÂM SÀNG ──
-      if (technicians.length >= 2) {
-        const ktv1 = dayIdx % 2 === 0 ? technicians[0] : technicians[1];
-        const ktv2 = dayIdx % 2 === 0 ? technicians[1] : technicians[0];
-        if (!isSunday) {
-          if (!leaveSet.has(`${ktv1.id}_${dayStr}`)) {
-            newShifts.push({ nhanVienId: ktv1.id, caLamViecId: CA_SANG, ngayLam: dayStr, ghiChu: 'Phòng Xét nghiệm & CLS' });
-          }
-          if (dayIdx < 5 && !leaveSet.has(`${ktv2.id}_${dayStr}`)) {
-            newShifts.push({ nhanVienId: ktv2.id, caLamViecId: CA_CHIEU, ngayLam: dayStr, ghiChu: 'Phòng Xét nghiệm & CLS' });
-          }
-        } else if (!leaveSet.has(`${ktv1.id}_${dayStr}`)) {
-          newShifts.push({ nhanVienId: ktv1.id, caLamViecId: CA_SANG, ngayLam: dayStr, ghiChu: 'Trực CLS sáng CN' });
-        }
-      } else {
-        technicians.forEach((t) => {
-          if (leaveSet.has(`${t.id}_${dayStr}`)) return;
-          newShifts.push({ nhanVienId: t.id, caLamViecId: CA_SANG, ngayLam: dayStr, ghiChu: 'Phòng Xét nghiệm' });
-          if (!isSunday && dayIdx < 5) {
-            newShifts.push({ nhanVienId: t.id, caLamViecId: CA_CHIEU, ngayLam: dayStr, ghiChu: 'Phòng Xét nghiệm' });
-          }
-        });
-      }
-
-      // ── E. NHÀ THUỐC (Cấp phát đơn thuốc) ──
-      pharmacists.forEach((p) => {
-        if (leaveSet.has(`${p.id}_${dayStr}`)) return;
-        newShifts.push({ nhanVienId: p.id, caLamViecId: CA_SANG, ngayLam: dayStr, ghiChu: 'Quầy Dược & Cấp phát thuốc' });
-        if (!isSunday && dayIdx < 5) {
-          newShifts.push({ nhanVienId: p.id, caLamViecId: CA_CHIEU, ngayLam: dayStr, ghiChu: 'Quầy Dược & Cấp phát thuốc' });
-        }
-      });
+    const tyLeCa = new Map<number, number>();
+    const tongDen = denTheoGio.reduce((s: number, r: any) => s + Number(r.n), 0);
+    for (const ca of dsCa) {
+      const n = denTheoGio
+        .filter((r: any) => phut(r.gio) >= ca.batDau && phut(r.gio) < ca.ketThuc)
+        .reduce((s: number, r: any) => s + Number(r.n), 0);
+      tyLeCa.set(ca.id, tongDen ? n / tongDen : dsCa.indexOf(ca) < 2 ? 0.5 : 0);
     }
 
-    // 4. Bảo toàn các ca trực của bác sĩ đã có bệnh nhân đặt lịch hẹn trước trong tuần này (Chốt chặn ERP Y Tế)
-    const bookedDoctorShifts: any[] = await this.lichHenRepo.query(
-      `SELECT DISTINCT bs.nhan_vien_id AS nhanVienId,
-              DATE_FORMAT(lh.ngay_hen, '%Y-%m-%d') AS ngayLam,
-              CASE WHEN lh.gio_hen < '12:30:00' THEN 1 ELSE 2 END AS caLamViecId
-       FROM lich_hen lh
-       JOIN bac_si bs ON bs.id = lh.bac_si_id
-       WHERE DATE(lh.ngay_hen) >= ? AND DATE(lh.ngay_hen) <= ?
-         AND lh.trang_thai IN ('cho_thanh_toan', 'cho_xac_nhan', 'da_xac_nhan', 'da_den')`,
-      [weekDays[0], weekEnd],
-    );
-    for (const bShift of bookedDoctorShifts) {
-      newShifts.push({
-        nhanVienId: Number(bShift.nhanVienId),
-        caLamViecId: Number(bShift.caLamViecId),
-        ngayLam: String(bShift.ngayLam),
-        ghiChu: 'Bảo toàn ca trực đã có bệnh nhân đặt lịch hẹn',
-      });
-    }
+    const henDaDat = henRows
+      .map((h: any) => ({
+        ngay: h.ngay,
+        caId: timCaCuaGio(h.gio, caDb)?.id,
+        khoa: h.chuyenKhoa || (String(h.lyDo || '').match(/^\[Chuyên khoa:\s*([^\]]+)\]/)?.[1] ?? null),
+        nhanVienId: h.nhanVienId ? Number(h.nhanVienId) : null,
+      }))
+      .filter((h: any) => h.caId);
 
-    if (overwrite) {
-      await this.lichLamViecRepo
-        .createQueryBuilder()
-        .delete()
-        .from(LichLamViec)
-        .where('ngayLam >= :ws AND ngayLam <= :we', { ws: weekDays[0], we: weekEnd })
-        .execute();
-    }
+    // Ca cố định: bác sĩ đã có bệnh nhân đặt lịch + ca đang có khi không ghi đè
+    const coDinh: CaCoDinh[] = [
+      ...henDaDat.filter((h: any) => h.nhanVienId).map((h: any) => ({
+        nhanVienId: h.nhanVienId, caId: h.caId, ngay: h.ngay, ghiChu: 'Giữ ca: đã có bệnh nhân đặt lịch',
+      })),
+      ...caDangCo.map((c) => ({ nhanVienId: c.nhanVienId, caId: c.caLamViecId, ngay: toDateOnly(c.ngayLam), ghiChu: c.ghiChu || 'Ca đã xếp trước' })),
+    ];
 
-    // 5. Loại bỏ trùng lặp nếu có trong newShifts và lưu
-    const shiftKeySet = new Set<string>();
-    const uniqueShifts = newShifts.filter((s) => {
-      const key = `${s.nhanVienId}_${s.caLamViecId}_${s.ngayLam}`;
-      if (shiftKeySet.has(key)) return false;
-      shiftKeySet.add(key);
-      return true;
+    const { nhuCau, canhBao } = tinhNhuCau({
+      ngay, dsCa, dsKhoaBs, bnNgayKhoa, nguonDuBao, tyLeCa, henDaDat, soBnMoiGioBs, soBnMoiNguoiHoTro,
+      nhomCoNguoi: new Set(nhanSu.map((n) => n.nhom)),
     });
+    const kq = xepLich({ ngay, dsCa, nhanSu, nghi, coDinh, nhuCau, thamSo });
 
-    const entities = uniqueShifts.map((s) => this.lichLamViecRepo.create(s));
-    await this.lichLamViecRepo.save(entities);
-
+    const tenNv = new Map(nhanSu.map((n) => [n.id, n.hoTen]));
+    const tenCa = new Map(dsCa.map((c) => [c.id, c.tenCa]));
     return {
       success: true,
-      message: `Đã phân ca thông minh thành công cho tuần (${weekStart} đến ${weekEnd})! Tổng cộng ${entities.length} ca trực đã được thiết lập tự động.`,
-      totalShifts: entities.length,
-      weekStart,
-      weekEnd,
-      stats: {
-        doctorsAssigned: doctors.length,
-        receptionistsAssigned: receptionists.length,
-        cashiersAssigned: cashiers.length,
-        techniciansAssigned: technicians.length,
-        pharmacistsAssigned: pharmacists.length,
-        leavesRespected: leaveSet.size,
+      data: {
+        weekStart: ngay[0],
+        weekEnd: ngay[6],
+        overwrite: ghiDe,
+        thamSo: { soBnMoiGioBs, soBnMoiNguoiHoTro, ...thamSo },
+        nguonDuBao: Object.fromEntries(nguonDuBao),
+        caDeXuat: kq.caDeXuat.map((c) => ({ ...c, hoTen: tenNv.get(c.nhanVienId) || `NV #${c.nhanVienId}`, tenCa: tenCa.get(c.caLamViecId) })),
+        phuNhuCau: kq.phuNhuCau,
+        gioTheoNguoi: kq.gioTheoNguoi,
+        chenhLech: kq.chenhLech,
+        thieu: kq.thieu,
+        canhBao,
+        soNgayNghiPhep: nghi.size,
       },
+      message: `Đề xuất ${kq.caDeXuat.length} ca trực${kq.thieu.length ? `, còn ${kq.thieu.length} vị trí thiếu người` : ''}.`,
     };
+  }
+
+  /** Lưu lịch đề xuất (giám đốc đã xem); overwrite = true xóa lịch cũ của tuần trước khi lưu */
+  async apDungPhanCa(
+    body: { weekStart: string; overwrite?: boolean; caDeXuat: { nhanVienId: number; caLamViecId: number; ngayLam: string; ghiChu?: string }[] },
+  ) {
+    const ngay = this.ngayTrongTuan(body.weekStart);
+    const ds = Array.isArray(body.caDeXuat) ? body.caDeXuat : [];
+    if (!ds.length) throw new BadRequestException('Không có ca nào để áp dụng');
+    const [caIds, nvIds] = await Promise.all([
+      this.caLamViecRepo.find({ select: ['id'] }).then((r) => new Set(r.map((c) => c.id))),
+      this.nhanVienRepo.find({ select: ['id', 'nguoiDungId'] }),
+    ]);
+    const nguoiDungCua = new Map(nvIds.map((n) => [n.id, n.nguoiDungId]));
+    const loi = ds.find((c) => !ngay.includes(c.ngayLam) || !caIds.has(Number(c.caLamViecId)) || !nguoiDungCua.has(Number(c.nhanVienId)));
+    if (loi) throw new BadRequestException(`Ca không hợp lệ: nhân viên #${loi.nhanVienId}, ca #${loi.caLamViecId}, ngày ${loi.ngayLam}`);
+
+    const daCo = body.overwrite === false
+      ? new Set((await this.lichLamViecRepo.find({ where: { ngayLam: In(ngay) } })).map((l) => `${l.nhanVienId}_${l.caLamViecId}_${toDateOnly(l.ngayLam)}`))
+      : new Set<string>();
+    const moi = [...new Map(ds.map((c) => [`${c.nhanVienId}_${c.caLamViecId}_${c.ngayLam}`, c])).entries()]
+      .filter(([k]) => !daCo.has(k))
+      .map(([, c]) => this.lichLamViecRepo.create({
+        nhanVienId: Number(c.nhanVienId), caLamViecId: Number(c.caLamViecId), ngayLam: c.ngayLam, ghiChu: c.ghiChu || null,
+      }));
+
+    await this.lichLamViecRepo.manager.transaction(async (em) => {
+      if (body.overwrite !== false) await em.delete(LichLamViec, { ngayLam: In(ngay) });
+      await em.save(moi);
+    });
+
+    const soCaMoiNguoi = new Map<number, number>();
+    moi.forEach((c) => soCaMoiNguoi.set(c.nhanVienId, (soCaMoiNguoi.get(c.nhanVienId) || 0) + 1));
+    for (const [nvId, soCa] of soCaMoiNguoi) {
+      const nguoiNhanId = nguoiDungCua.get(nvId);
+      if (!nguoiNhanId) continue;
+      this.thongBaoService.taoThongBao({
+        nguoiNhanId,
+        tieuDe: 'Lịch trực tuần mới',
+        noiDung: `Ban Giám Đốc đã xếp ${soCa} ca trực cho bạn trong tuần ${ngay[0]} – ${ngay[6]}.`,
+        loai: 'phan_ca',
+        doiTuongBang: 'lich_lam_viec',
+        doiTuongId: moi.find((c) => c.nhanVienId === nvId)?.id,
+      }).catch(() => {});
+    }
+    return { success: true, message: `Đã áp dụng ${moi.length} ca trực cho tuần ${ngay[0]} – ${ngay[6]}.` };
   }
 
   // ─── ADMIN: TỔNG QUAN HỆ THỐNG KỸ THUẬT ─────────────────────

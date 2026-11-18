@@ -5,6 +5,8 @@ import { StatusBadge } from '../../../design-system/components/Badge/StatusBadge
 import { MedButton } from '../../../design-system/components/Button/MedButton';
 import { apiGet, apiPost } from '../../../services/api';
 import { formatDate, normalizeDateOnly } from '../../../utils/formatDate';
+import useCaKham from '../../../hooks/useCaKham';
+import { gioThuocCa } from '../../../utils/caLamViec';
 import {
   Calendar, Clock, Phone, Search,
   AlertTriangle, X, CheckCircle2,
@@ -28,6 +30,7 @@ export default function LichHenBacSiPage() {
   const [selectedDate, setSelectedDate] = useState(getTodayKey());
   const [filterLoai, setFilterLoai] = useState('tat_ca');
   const [shiftFilter, setShiftFilter] = useState('tat_ca');
+  const dsCa = useCaKham();
   const [filterTrangThai, setFilterTrangThai] = useState('tat_ca');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -191,13 +194,7 @@ export default function LichHenBacSiPage() {
       if (filterLoai === 'truc_tiep' && isOnline) return false;
 
       // 3. Lọc theo ca khám (Shift)
-      if (shiftFilter === 'sang') {
-        const hour = parseInt(gioKham.slice(0, 2), 10);
-        if (!isNaN(hour) && hour >= 12) return false;
-      } else if (shiftFilter === 'chieu') {
-        const hour = parseInt(gioKham.slice(0, 2), 10);
-        if (!isNaN(hour) && hour < 12) return false;
-      }
+      if (shiftFilter !== 'tat_ca' && !gioThuocCa(gioKham, shiftFilter, dsCa)) return false;
 
       // 4. Lọc theo trạng thái
       if (filterTrangThai !== 'tat_ca') {
@@ -219,7 +216,7 @@ export default function LichHenBacSiPage() {
 
       return true;
     });
-  }, [rawItems, timeFilter, selectedDate, filterLoai, shiftFilter, filterTrangThai, searchTerm]);
+  }, [rawItems, timeFilter, selectedDate, filterLoai, shiftFilter, dsCa, filterTrangThai, searchTerm]);
 
   // Chế độ hiển thị: 'grid' (thẻ gọn) hoặc 'table' (bảng danh sách)
   const [viewMode, setViewMode] = useState('grid');
@@ -543,8 +540,7 @@ export default function LichHenBacSiPage() {
               className="w-full appearance-none rounded-lg border border-gray-300 bg-gray-50/50 hover:bg-white py-1.5 pl-2.5 pr-7 text-xs font-medium text-gray-700 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 cursor-pointer transition"
             >
               <option value="tat_ca">Tất cả ca khám trong ngày</option>
-              <option value="sang">🌅 Ca Sáng (08:00 - 11:30)</option>
-              <option value="chieu">🌇 Ca Chiều (13:30 - 17:00)</option>
+              {dsCa.map((ca) => <option key={ca.id} value={ca.id}>{ca.nhan}</option>)}
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
           </div>

@@ -64,7 +64,8 @@ export function moTaPhiTrucTuyen(p?: CauHinhTienCoc): string {
 }
 
 /** Dữ liệu phòng khám (thuốc, dịch vụ, bác sĩ, biểu phí) đã nạp sẵn cho chat */
-export type NguCanhPhongKham = { fixedText: string; thuocList: Thuoc[]; dichVuList: DichVuXetNghiem[]; bacSiList: BacSi[]; bieuPhi: BieuPhi; expiresAt: number };
+/** gioLamViec: các dòng "Ca Sáng: 08:00 – 12:00" lấy từ bảng ca_lam_viec (giám đốc cấu hình) */
+export type NguCanhPhongKham = { fixedText: string; thuocList: Thuoc[]; dichVuList: DichVuXetNghiem[]; bacSiList: BacSi[]; bieuPhi: BieuPhi; gioLamViec: string[]; expiresAt: number };
 
 export const KHOA_THEO_MA: Record<string, string> = {
   NHI: 'Nhi khoa', HH_TMH: 'Hô hấp / Tai Mũi Họng', CAP_CUU: 'Cấp cứu', TIM: 'Tim mạch', TH: 'Tiêu hóa',

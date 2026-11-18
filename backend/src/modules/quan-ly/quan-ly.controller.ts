@@ -345,6 +345,30 @@ export class QuanLyController {
     return this.quanLyService.getLichLamViec(weekStart);
   }
 
+  @Post('ca-lam-viec')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Thêm ca làm việc (giờ ca, thời lượng mỗi lượt khám)' })
+  @Quyen('lich_truc.phan_ca')
+  themCaLamViec(@Body() body: any) {
+    return this.quanLyService.luuCaLamViec(body);
+  }
+
+  @Put('ca-lam-viec/:id')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Sửa giờ / thời lượng lượt khám của ca làm việc' })
+  @Quyen('lich_truc.phan_ca')
+  suaCaLamViec(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+    return this.quanLyService.luuCaLamViec(body, id);
+  }
+
+  @Delete('ca-lam-viec/:id')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Xóa ca làm việc chưa được sử dụng' })
+  @Quyen('lich_truc.phan_ca')
+  xoaCaLamViec(@Param('id', ParseIntPipe) id: number) {
+    return this.quanLyService.xoaCaLamViec(id);
+  }
+
   @Post('lich-lam-viec')
   @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Lưu phân ca làm việc cho nhân viên' })
@@ -370,12 +394,20 @@ export class QuanLyController {
     return this.quanLyService.xoaLichPhanCa(id);
   }
 
-  @Post('phan-ca-tu-dong')
+  @Post('phan-ca-tu-dong/de-xuat')
   @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
-  @ApiOperation({ summary: 'Phân ca làm việc tự động thông minh bằng thuật toán tối ưu (Ban Giám Đốc)' })
+  @ApiOperation({ summary: 'Đề xuất lịch trực tuần theo dự báo bệnh nhân, ràng buộc lao động và công bằng (chưa lưu)' })
   @Quyen('lich_truc.phan_ca')
-  phanCaTuDong(@Body() body: { weekStart: string; overwrite?: boolean }) {
-    return this.quanLyService.phanCaTuDongThongMinh(body);
+  deXuatPhanCa(@Body() body: any) {
+    return this.quanLyService.deXuatPhanCa(body);
+  }
+
+  @Post('phan-ca-tu-dong/ap-dung')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Lưu lịch trực tuần đã đề xuất' })
+  @Quyen('lich_truc.phan_ca')
+  apDungPhanCa(@Body() body: any) {
+    return this.quanLyService.apDungPhanCa(body);
   }
 
   // ─── QUẢN LÝ NHÂN SỰ & TÀI KHOẢN (CŨ) ────────────────────

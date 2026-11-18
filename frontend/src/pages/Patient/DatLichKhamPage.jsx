@@ -12,6 +12,7 @@ import AppointmentTicketModal from '../../components/Appointment/AppointmentTick
 import PaymentCountdownModal from '../../components/Appointment/PaymentCountdownModal';
 import { toBackendUrl } from '../../utils/backendUrl';
 import { getLocalDateString } from '../../utils/formatDate';
+import { nhomSlotTheoCa } from '../../utils/caLamViec';
 
 const CHUYEN_KHOA_LIST = [
   'Nội tổng quát & Tim mạch',
@@ -797,15 +798,13 @@ export default function DatLichKhamPage() {
                   )}
                 </div>
 
-                {/* Ca Sáng */}
-                <div>
+                {nhomSlotTheoCa(selectedDoctor.slots).map((nhom) => (
+                <div key={nhom.ca}>
                   <span className="text-[10px] sm:text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">
-                    Ca Sáng (08:00 - 11:00)
+                    {nhom.tenCa}
                   </span>
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-2.5">
-                    {selectedDoctor.slots
-                      .filter((s) => s.ca === 'sang')
-                      .map((slot) => {
+                    {nhom.slots.map((slot) => {
                         const isSelected = selectedSlot === slot.gio;
                         const isAvailable = slot.conTrong;
 
@@ -839,49 +838,7 @@ export default function DatLichKhamPage() {
                       })}
                   </div>
                 </div>
-
-                {/* Ca Chiều */}
-                <div>
-                  <span className="text-[10px] sm:text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">
-                    Ca Chiều (13:30 - 16:30)
-                  </span>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-2.5">
-                    {selectedDoctor.slots
-                      .filter((s) => s.ca === 'chieu')
-                      .map((slot) => {
-                        const isSelected = selectedSlot === slot.gio;
-                        const isAvailable = slot.conTrong;
-
-                        return (
-                          <button
-                            key={slot.gio}
-                            type="button"
-                            disabled={!isAvailable}
-                            onClick={() => handleSelectSlot(slot)}
-                            className={`py-2 px-1.5 sm:py-2.5 sm:px-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
-                              isSelected
-                                ? 'bg-blue-600 text-white border-2 border-blue-600 shadow-sm ring-2 ring-blue-300 cursor-pointer'
-                                : isAvailable
-                                ? 'bg-white text-blue-700 border border-blue-300 hover:border-blue-600 hover:bg-blue-50 shadow-2xs cursor-pointer'
-                                : 'bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-45 cursor-not-allowed'
-                            }`}
-                            title={isAvailable ? `Chọn ca khám lúc ${slot.gio}` : slot.daQuaGio ? 'Khung giờ khám này đã qua so với thời điểm hiện tại' : slot.daDat || slot.hetSuat ? 'Đã kín lịch' : slot.inShift && slot.khacHinhThuc ? (hinhThuc === 'truc_tuyen' ? 'Khung giờ dành cho khám trực tiếp' : 'Khung giờ dành cho tư vấn online') : 'Ngoài ca trực'}
-                          >
-                            <span className="text-xs sm:text-sm font-extrabold">{slot.gio}</span>
-                            {isAvailable ? (
-                              <span className={`text-[9px] font-semibold ${isSelected ? 'text-blue-100' : 'text-blue-600'}`}>
-                                {isSelected ? '✓ Đang chọn' : 'Còn trống'}
-                              </span>
-                            ) : (
-                              <span className="text-[9px] text-slate-400 font-normal">
-                                {slot.daQuaGio ? 'Đã qua giờ' : slot.daDat || slot.hetSuat ? 'Đã kín' : slot.inShift && slot.khacHinhThuc ? (hinhThuc === 'truc_tuyen' ? 'Trực tiếp' : 'Khung online') : 'Ngoài ca'}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                  </div>
-                </div>
+                ))}
               </div>
             )}
           </div>

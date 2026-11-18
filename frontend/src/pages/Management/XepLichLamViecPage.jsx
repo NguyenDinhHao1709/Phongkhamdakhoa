@@ -2,6 +2,9 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { xuatExcel } from '../../utils/xuatFile';
+import { sinhSlotCa } from '../../utils/caLamViec';
+import CauHinhCaModal from './CauHinhCaModal';
+import PhanCaThongMinhModal from './PhanCaThongMinhModal';
 import { apiGet, apiPost, apiDelete, apiPatch } from '../../services/api';
 import {
   Calendar as CalendarIcon, Clock, Plus, Trash2, RefreshCw,
@@ -10,8 +13,6 @@ import {
 } from 'lucide-react';
 
 const DAYS_OF_WEEK = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
-// Giờ bắt đầu các slot khám (khớp ALL_SLOTS ở backend lich-hen.service)
-const SLOT_GIO = ['08:00', '09:00', '10:00', '11:00', '13:30', '14:30', '15:30', '16:30'];
 
 // Lấy ngày Thứ 2 đầu tuần của ngày hiện tại
 function getMonday(d) {
@@ -45,6 +46,7 @@ export default function XepLichLamViecPage() {
   const [currentMonday, setCurrentMonday] = useState(() => getMonday(new Date()));
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [autoModalOpen, setAutoModalOpen] = useState(false);
+  const [cauHinhCaOpen, setCauHinhCaOpen] = useState(false);
 
   // Form phân ca hỗ trợ chọn NHIỀU CA và NHIỀU NGÀY cùng lúc
   const [form, setForm] = useState({
@@ -127,10 +129,7 @@ export default function XepLichLamViecPage() {
     const ca = caList.find((c) => Number(c.id) === Number(caId));
     return { batDau: formatTimeShort(ca?.gioBatDau), ketThuc: formatTimeShort(ca?.gioKetThuc) };
   };
-  const slotTrongCa = (caId) => {
-    const { batDau, ketThuc } = gioCa(caId);
-    return SLOT_GIO.filter((g) => g >= batDau && g < ketThuc);
-  };
+  const slotTrongCa = (caId) => sinhSlotCa(caList.find((c) => Number(c.id) === Number(caId)));
   const moKhungOnline = (shift, nv) => {
     const slots = slotTrongCa(shift.caLamViecId);
     setKhungOnline({
@@ -159,19 +158,6 @@ export default function XepLichLamViecPage() {
     },
     onError: (err) => {
       alert(`⚠️ KHÔNG THỂ CẬP NHẬT KHUNG ONLINE:\n${err?.error?.message || err?.response?.data?.error?.message || err?.response?.data?.message || err?.message}`);
-    },
-  });
-
-  // Mutation phân ca thông minh tự động (Phương án 3)
-  const autoScheduleMutation = useMutation({
-    mutationFn: () => apiPost('/quan-ly/phan-ca-tu-dong', { weekStart: weekStartStr, overwrite: true }),
-    onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['quan-ly-lich-lam-viec'] });
-      setAutoModalOpen(false);
-      alert(res?.data?.message || res?.message || 'Đã phân ca thông minh thành công cho tuần!');
-    },
-    onError: (err) => {
-      alert(`⚠️ Lỗi phân ca tự động:\n${err?.response?.data?.message || err?.message || 'Không thể tự động phân ca'}`);
     },
   });
 
@@ -432,6 +418,15 @@ export default function XepLichLamViecPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer whitespace-nowrap"
           >
             <Sparkles className="h-4 w-4" /> Phân ca thông minh (AI)
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCauHinhCaOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-lg text-xs font-bold shadow-2xs transition-colors cursor-pointer whitespace-nowrap"
+            title="Thêm ca, chỉnh giờ ca và thời lượng mỗi lượt khám"
+          >
+            <Clock className="h-3.5 w-3.5" /> Cấu hình ca
           </button>
 
           <button
@@ -768,6 +763,8 @@ export default function XepLichLamViecPage() {
         </div>
       )}
 
+      {cauHinhCaOpen && <CauHinhCaModal caList={caList} onClose={() => setCauHinhCaOpen(false)} />}
+
       {/* ─── MODAL KHUNG TƯ VẤN ONLINE ─────────────── */}
       {khungOnline && (() => {
         const { shift, nv, tu, den, apDungTuan } = khungOnline;
@@ -855,84 +852,8 @@ export default function XepLichLamViecPage() {
         );
       })()}
 
-      {/* ─── MODAL PHÂN CA THÔNG MINH (AI & ĐỊNH MỨC) ─────────────── */}
       {autoModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 w-full max-w-lg overflow-hidden animate-fade-in my-6">
-            <div className="p-4 sm:p-5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-purple-600 text-white rounded-xl shadow-xs">
-                  <Sparkles className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 text-sm sm:text-base">
-                    Phân ca làm việc tự động thông minh
-                  </h3>
-                  <p className="text-[11px] text-purple-700 font-semibold">
-                    Áp dụng cho tuần: {weekDays[0].fullDate} – {weekDays[6].fullDate}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAutoModalOpen(false)}
-                className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4 text-xs text-gray-700">
-              <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-3.5 space-y-2">
-                <h4 className="font-bold text-purple-900 flex items-center gap-1.5 text-xs">
-                  <CheckSquare className="h-4 w-4 text-purple-600" />
-                  Quy tắc thuật toán AI & Định mức y tế:
-                </h4>
-                <ul className="space-y-1.5 text-purple-950 pl-1">
-                  <li className="flex items-start gap-1.5">
-                    <span className="text-purple-600 font-bold">•</span>
-                    <span><strong>Bác sĩ chuyên khoa:</strong> Bố trí ca trực Sáng & Chiều cho toàn bộ các khoa (Nội, Ngoại, Nhi,...), đảm bảo bệnh nhân đặt lịch luôn có bác sĩ tiếp nhận.</span>
-                  </li>
-                  <li className="flex items-start gap-1.5">
-                    <span className="text-purple-600 font-bold">•</span>
-                    <span><strong>Vận hành đồng bộ:</strong> Luôn có đủ nhân lực trực tại Quầy Tiếp đón (Lễ tân), Quầy Thu ngân (Viện phí), Phòng Xét nghiệm (KTV) và Nhà thuốc (Dược sĩ).</span>
-                  </li>
-                  <li className="flex items-start gap-1.5">
-                    <span className="text-purple-600 font-bold">•</span>
-                    <span><strong>Tôn trọng nghỉ phép:</strong> Tự động đối soát bảng đơn từ và loại trừ những ngày nhân viên đã được Giám Đốc phê duyệt nghỉ phép.</span>
-                  </li>
-                  <li className="flex items-start gap-1.5">
-                    <span className="text-purple-600 font-bold">•</span>
-                    <span><strong>Chỉnh sửa thủ công:</strong> Sau khi phân ca tự động, Giám Đốc hoàn toàn có thể click vào từng ca trên lưới để xóa hoặc bấm thêm ca để điều chỉnh theo nhu cầu thực tế.</span>
-                  </li>
-                </ul>
-              </div>
-
-              <p className="text-[11px] text-gray-500 italic">
-                * Lưu ý: Thao tác này sẽ thiết lập lại ca trực cho tuần đang chọn ({weekDays[0].display} – {weekDays[6].display}). Các tuần khác giữ nguyên không ảnh hưởng.
-              </p>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setAutoModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-xl font-bold text-gray-600 hover:bg-gray-50 transition cursor-pointer"
-                >
-                  Đóng
-                </button>
-                <button
-                  type="button"
-                  disabled={autoScheduleMutation.isPending}
-                  onClick={() => autoScheduleMutation.mutate()}
-                  className="px-5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5"
-                >
-                  <Sparkles className={`h-4 w-4 ${autoScheduleMutation.isPending ? 'animate-spin' : ''}`} />
-                  {autoScheduleMutation.isPending ? 'Đang phân tích & xếp ca...' : 'Xác nhận tự động xếp ca'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PhanCaThongMinhModal weekStart={weekStartStr} weekDays={weekDays} onClose={() => setAutoModalOpen(false)} />
       )}
     </div>
   );

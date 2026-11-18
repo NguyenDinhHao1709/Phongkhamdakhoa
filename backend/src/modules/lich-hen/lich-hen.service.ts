@@ -21,11 +21,7 @@ import { MemoryCacheService } from '../../common/cache/memory-cache.service';
 import { soTiepTheo, voiKhoaDb, maBenhNhanTiepTheo, maHoSoTiepTheo } from '../../common/utils/db-sequence.util';
 import { slotHopHinhThuc, moKhungOnlineChoTrucTiep, layMinNgayDatOnline } from '../../common/utils/khung-online.util';
 
-// Các slot giờ khám trong ngày (mỗi ca khám cách nhau 1 tiếng)
-const ALL_SLOTS = [
-  '08:00', '09:00', '10:00', '11:00',
-  '13:30', '14:30', '15:30', '16:30',
-];
+import { CACHE_DS_CA, sinhSlotCa, timCaCuaGio, gioTrongCa, nhanCa } from '../../common/utils/ca-lam-viec.util';
 
 // Lịch hẹn chiếm suất khám của bác sĩ trong buổi
 const TRANG_THAI_GIU_SUAT = [
@@ -35,7 +31,6 @@ const TRANG_THAI_GIU_SUAT = [
   TrangThaiLichHen.DANG_KHAM,
   TrangThaiLichHen.HOAN_THANH,
 ];
-const laCaSang = (gio: string) => (gio || '') < '12:00';
 
 function getLocalDateString(d: Date = new Date()): string {
   const year = d.getFullYear();
@@ -646,9 +641,10 @@ export class LichHenService implements OnModuleInit {
           select: ['bacSiId', 'gioHen'],
         }),
       ]);
-      const [toiDaMoiBuoi, minNgayDatOnline] = await Promise.all([
-        this.laySoLichHenToiDaMoiBuoi(),
+      const [toiDaMoiCa, minNgayDatOnline, dsCa] = await Promise.all([
+        this.laySoLichHenToiDaMoiCa(),
         layMinNgayDatOnline(this.dataSource),
+        this.layDsCa(),
       ]);
       const moKhungOnline = moKhungOnlineChoTrucTiep(ngayKham, minNgayDatOnline);
 
@@ -666,17 +662,6 @@ export class LichHenService implements OnModuleInit {
         activeAppointments.map((a) => `${a.bacSiId}_${(a.gioHen || '').substring(0, 5)}`),
       );
 
-      const STANDARD_SLOTS = [
-        { slot: '08:00', ca: 'sang' },
-        { slot: '09:00', ca: 'sang' },
-        { slot: '10:00', ca: 'sang' },
-        { slot: '11:00', ca: 'sang' },
-        { slot: '13:30', ca: 'chieu' },
-        { slot: '14:30', ca: 'chieu' },
-        { slot: '15:30', ca: 'chieu' },
-        { slot: '16:30', ca: 'chieu' },
-      ];
-
       const isToday = ngayKham === getLocalDateString();
       const now = new Date();
       const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -693,38 +678,31 @@ export class LichHenService implements OnModuleInit {
           ) || allRooms[0];
 
         const docShifts = shiftsOnDate.filter((s) => s.nhanVienId === doc.nhanVienId);
-        const hasDeclaredShifts = docShifts.length > 0;
-        const worksMorning =
-          hasDeclaredShifts &&
-          docShifts.some(
-            (s) => s.caLamViec?.tenCa?.toLowerCase().includes('sáng') || s.caLamViecId === 1,
-          );
-        const worksAfternoon =
-          hasDeclaredShifts &&
-          docShifts.some(
-            (s) => s.caLamViec?.tenCa?.toLowerCase().includes('chiều') || s.caLamViecId === 2,
-          );
-
-        const soDaDat = (ca: string) =>
-          activeAppointments.filter((a) => a.bacSiId === doc.id && laCaSang(a.gioHen) === (ca === 'sang')).length;
-        const slots = STANDARD_SLOTS.map(({ slot, ca }) => {
-          const inShift = (ca === 'sang' && worksMorning) || (ca === 'chieu' && worksAfternoon);
-          const daDat = appointmentSet.has(`${doc.id}_${slot}`);
-          const daQuaGio = isToday && slot <= currentTimeStr;
-          // Đủ số lịch hẹn tối đa của buổi → khung còn lại để bác sĩ bù giờ
-          const hetSuat = !daDat && toiDaMoiBuoi !== null && soDaDat(ca) >= toiDaMoiBuoi;
-          // Slot dành cho hình thức khác theo khung online giám đốc cấu hình trên ca trực
-          const khacHinhThuc = !slotHopHinhThuc(slot, docShifts, hinhThuc, moKhungOnline);
-          return {
-            gio: slot,
-            ca,
-            inShift,
-            daDat,
-            daQuaGio,
-            hetSuat,
-            khacHinhThuc,
-            conTrong: inShift && !khacHinhThuc && !daDat && !daQuaGio && !hetSuat,
-          };
+        const caTruc = new Set(docShifts.map((s) => s.caLamViecId));
+        const soDaDat = (caId: number) =>
+          activeAppointments.filter((a) => a.bacSiId === doc.id && timCaCuaGio(a.gioHen, dsCa)?.id === caId).length;
+        // Chỉ hiện các lượt khám thuộc ca bác sĩ trực trong ngày
+        const slots = dsCa.filter((ca) => caTruc.has(ca.id)).flatMap((ca) => {
+          // Đủ số lịch hẹn tối đa của ca → khung còn lại để bác sĩ bù giờ
+          const daDuSuat = toiDaMoiCa !== null && soDaDat(ca.id) >= toiDaMoiCa;
+          return sinhSlotCa(ca).map((slot) => {
+            const daDat = appointmentSet.has(`${doc.id}_${slot}`);
+            const daQuaGio = isToday && slot <= currentTimeStr;
+            const hetSuat = !daDat && daDuSuat;
+            // Slot dành cho hình thức khác theo khung online giám đốc cấu hình trên ca trực
+            const khacHinhThuc = !slotHopHinhThuc(slot, docShifts, hinhThuc, moKhungOnline);
+            return {
+              gio: slot,
+              ca: ca.id,
+              tenCa: nhanCa(ca),
+              inShift: true,
+              daDat,
+              daQuaGio,
+              hetSuat,
+              khacHinhThuc,
+              conTrong: !khacHinhThuc && !daDat && !daQuaGio && !hetSuat,
+            };
+          });
         });
 
         const soSlotTrong = slots.filter((s) => s.conTrong).length;
@@ -738,7 +716,7 @@ export class LichHenService implements OnModuleInit {
           bangCap: doc.bangCap,
           soChungChiHanhNghe: doc.soChungChiHanhNghe,
           anhDaiDien: doc.nhanVien?.anhDaiDien,
-          dangTruc: (worksMorning || worksAfternoon) && nhanHinhThuc,
+          dangTruc: nhanHinhThuc,
           phongKham: matchedRoom
             ? {
                 id: matchedRoom.id,
@@ -766,22 +744,24 @@ export class LichHenService implements OnModuleInit {
   // ─── SLOT TRỐNG CỦA BÁC SĨ ────────────────────────────────────
   async laySlotTrong(dto: LaySlotTrongDto) {
     const hinhThuc = dto.hinhThuc || 'truc_tiep';
-    const [daDat, toiDa, caTruc, minNgayDatOnline] = await Promise.all([
+    const [daDat, toiDa, caTruc, minNgayDatOnline, dsCa] = await Promise.all([
       this.repo.find({
         where: { bacSiId: dto.bacSiId, ngayHen: dto.ngay, trangThai: In(TRANG_THAI_GIU_SUAT) },
         select: ['gioHen'],
       }),
-      this.laySoLichHenToiDaMoiBuoi(),
+      this.laySoLichHenToiDaMoiCa(),
       this.layCaTrucBacSi(dto.bacSiId, dto.ngay),
       layMinNgayDatOnline(this.dataSource),
+      this.layDsCa(),
     ]);
     const moKhungOnline = moKhungOnlineChoTrucTiep(dto.ngay, minNgayDatOnline);
     const daDatSet = new Set(daDat.map((lh) => lh.gioHen.substring(0, 5)));
-    const hetSuat = (gio: string) =>
-      toiDa !== null && daDat.filter((lh) => laCaSang(lh.gioHen) === laCaSang(gio)).length >= toiDa;
-    const slotsTrong = ALL_SLOTS.filter(
-      (s) => !daDatSet.has(s) && !hetSuat(s) && slotHopHinhThuc(s, caTruc, hinhThuc, moKhungOnline),
-    );
+    const caTrucIds = new Set(caTruc.map((s) => s.caLamViecId));
+    const slotsTrong = dsCa
+      .filter((ca) => caTrucIds.has(ca.id))
+      .filter((ca) => toiDa === null || daDat.filter((lh) => gioTrongCa(lh.gioHen, ca)).length < toiDa)
+      .flatMap((ca) => sinhSlotCa(ca))
+      .filter((s) => !daDatSet.has(s) && slotHopHinhThuc(s, caTruc, hinhThuc, moKhungOnline));
     return { data: { bacSiId: dto.bacSiId, ngay: dto.ngay, hinhThuc, slotsTrong }, message: 'OK' };
   }
 
@@ -805,8 +785,45 @@ export class LichHenService implements OnModuleInit {
     );
   }
 
-  /** Số lịch hẹn tối đa của 1 bác sĩ mỗi buổi do giám đốc cấu hình (dòng truc_tiep); null = không giới hạn */
-  private async laySoLichHenToiDaMoiBuoi(): Promise<number | null> {
+  async layCaKham() {
+    const dsCa = await this.layDsCa();
+    return {
+      data: dsCa.map((ca) => ({
+        id: ca.id,
+        tenCa: ca.tenCa,
+        gioBatDau: ca.gioBatDau.slice(0, 5),
+        gioKetThuc: ca.gioKetThuc.slice(0, 5),
+        thoiLuongPhut: ca.thoiLuongPhut,
+        nhan: nhanCa(ca),
+        slots: sinhSlotCa(ca),
+      })),
+      message: 'OK',
+    };
+  }
+
+  /** Ca làm việc dùng chung, sắp theo giờ bắt đầu (giám đốc cấu hình ở trang xếp lịch) */
+  private layDsCa(): Promise<CaLamViec[]> {
+    return this.cache.getOrSet(CACHE_DS_CA, 30_000, () => this.caLamViecRepo.find({ order: { gioBatDau: 'ASC' } }));
+  }
+
+  /**
+   * Giờ hẹn phải nằm trong một ca bác sĩ trực ngày đó; trả về ca đó.
+   * Bác sĩ chưa xếp lịch trực ngày đó → báo lỗi.
+   */
+  private async kiemTraCaTrucBacSi(bacSiId: number, ngay: string, gioHen: string, hanhDong: 'chưa có' | 'không có') {
+    const bacSi = await this.bacSiRepo.findOne({ where: { id: bacSiId }, relations: ['nhanVien'] });
+    if (!bacSi) return;
+    const shifts = await this.lichLamViecRepo.find({ where: { nhanVienId: bacSi.nhanVienId, ngayLam: ngay }, relations: ['caLamViec'] });
+    if (shifts.some((s) => s.caLamViec && gioTrongCa(gioHen, s.caLamViec))) return;
+    const caCuaGio = timCaCuaGio(gioHen, await this.layDsCa());
+    throw new BadRequestException({
+      code: 'BAC_SI_KHONG_CO_LICH_TRUC',
+      message: `${bacSi.nhanVien?.hoTen || 'Bác sĩ'} ${hanhDong} lịch trực vào ${nhanCa(caCuaGio)} ngày ${ngay}. Vui lòng chọn bác sĩ đang có ca trực hoặc chọn ngày khác.`,
+    });
+  }
+
+  /** Số lịch hẹn tối đa của 1 bác sĩ mỗi ca do giám đốc cấu hình (dòng truc_tiep); null = không giới hạn */
+  private async laySoLichHenToiDaMoiCa(): Promise<number | null> {
     const rows: any[] = await this.dataSource.query(
       `SELECT so_lich_hen_toi_da_moi_buoi AS n FROM cau_hinh_tien_coc WHERE loai_hinh_thuc = 'truc_tiep' LIMIT 1`,
     );
@@ -814,21 +831,27 @@ export class LichHenService implements OnModuleInit {
     return n > 0 ? n : null;
   }
 
-  /** Bác sĩ đã nhận đủ số lịch hẹn của buổi (khung còn lại chừa để bù giờ) → từ chối đặt thêm */
+  /** Bác sĩ đã nhận đủ số lịch hẹn của ca (khung còn lại chừa để bù giờ) → từ chối đặt thêm */
   private async kiemTraSuatBuoi(bacSiId: number, ngayHen: string, gioHen: string, boQuaId?: number) {
-    const toiDa = await this.laySoLichHenToiDaMoiBuoi();
-    if (toiDa === null) return;
+    const [toiDa, dsCa] = await Promise.all([this.laySoLichHenToiDaMoiCa(), this.layDsCa()]);
+    const ca = timCaCuaGio(gioHen, dsCa);
+    if (toiDa === null || !ca) return;
     const ds = await this.repo.find({
       where: { bacSiId, ngayHen, trangThai: In(TRANG_THAI_GIU_SUAT) },
       select: ['id', 'gioHen'],
     });
-    const caSang = laCaSang(gioHen);
-    if (ds.filter((l) => l.id !== boQuaId && laCaSang(l.gioHen) === caSang).length >= toiDa) {
+    if (ds.filter((l) => l.id !== boQuaId && gioTrongCa(l.gioHen, ca)).length >= toiDa) {
       throw new ConflictException({
         code: 'BAC_SI_HET_SUAT_BUOI',
-        message: `Bác sĩ đã nhận đủ ${toiDa} lịch hẹn ${caSang ? 'buổi sáng' : 'buổi chiều'} ngày ${ngayHen} (phòng khám chừa khung trống để bác sĩ bù giờ). Vui lòng chọn buổi hoặc bác sĩ khác.`,
+        message: `Bác sĩ đã nhận đủ ${toiDa} lịch hẹn ${nhanCa(ca)} ngày ${ngayHen} (phòng khám chừa khung trống để bác sĩ bù giờ). Vui lòng chọn ca hoặc bác sĩ khác.`,
       });
     }
+  }
+
+  /** Khóa theo ca của bác sĩ: chặn đặt đồng thời vượt suất của ca */
+  private async khoaCaBacSi(bacSiId: number, ngay: string, gioHen: string) {
+    const ca = timCaCuaGio(gioHen, await this.layDsCa());
+    return `ca:${bacSiId}:${ngay}:${ca?.id ?? (gioHen || '').slice(0, 5)}`;
   }
 
   // ─── TẠO LỊCH HẸN (Optimistic Lock tại DB) ────────────────────
@@ -968,43 +991,12 @@ export class LichHenService implements OnModuleInit {
     }
 
     const gioHenShort = (dto.gioHen || '').substring(0, 5);
-    const isCaSang = (dto.gioHen || '') < '12:00';
+    const dsCa = await this.layDsCa();
+    const caMoi = timCaCuaGio(dto.gioHen, dsCa);
 
     // Kiểm tra ca trực của Bác sĩ trước khi vào khóa Slot
     if (dto.bacSiId && dto.gioHen && dto.ngayHen) {
-      const bacSi = await this.bacSiRepo.findOne({
-        where: { id: dto.bacSiId },
-        relations: ['nhanVien'],
-      });
-
-      if (bacSi) {
-        const shifts = await this.lichLamViecRepo.find({
-          where: {
-            nhanVienId: bacSi.nhanVienId,
-            ngayLam: dto.ngayHen,
-          },
-          relations: ['caLamViec'],
-        });
-
-        const isMorning = dto.gioHen < '12:00';
-        const hasValidShift = shifts.some((s) => {
-          const tenCa = s.caLamViec?.tenCa?.toLowerCase() || '';
-          if (isMorning) {
-            return tenCa.includes('sáng') || s.caLamViecId === 1;
-          } else {
-            return tenCa.includes('chiều') || s.caLamViecId === 2;
-          }
-        });
-
-        if (!hasValidShift) {
-          const caName = isMorning ? 'Ca Sáng' : 'Ca Chiều';
-          const docName = bacSi.nhanVien?.hoTen || 'Bác sĩ';
-          throw new BadRequestException({
-            code: 'BAC_SI_KHONG_CO_LICH_TRUC',
-            message: `${docName} chưa có lịch làm việc vào ${caName} ngày ${dto.ngayHen}. Vui lòng chọn bác sĩ đang có ca trực hoặc chọn ngày khác.`,
-          });
-        }
-      }
+      await this.kiemTraCaTrucBacSi(dto.bacSiId, dto.ngayHen, dto.gioHen, 'chưa có');
     }
 
     const nguonDat = nguoiDatVaiTro === 'benh_nhan' ? 'benh_nhan_tu_dat'
@@ -1038,7 +1030,7 @@ export class LichHenService implements OnModuleInit {
     // - Người đầu tiên vào lock sẽ lưu trạng thái CHO_THANH_TOAN (giữ chỗ 15p)
     // - 49 người tiếp theo sẽ đọc thấy bản ghi vừa lưu và nhận ngay HTTP 409 LICH_HEN_TRUNG_GIO
     const lockKey = dto.bacSiId
-      ? `buoi:${dto.bacSiId}:${dto.ngayHen}:${laCaSang(dto.gioHen) ? 'sang' : 'chieu'}`
+      ? await this.khoaCaBacSi(dto.bacSiId, dto.ngayHen, dto.gioHen)
       : `patient:${finalBenhNhanId}:${dto.ngayHen}`;
 
     const saved = await voiKhoaDb(this.dataSource, lockKey, async () => {
@@ -1056,8 +1048,7 @@ export class LichHenService implements OnModuleInit {
 
       for (const lhItem of lichHenActive) {
         const lhGioShort = (lhItem.gioHen || '').substring(0, 5);
-        const lhIsCaSang = (lhItem.gioHen || '') < '12:00';
-        const tenCaCu = lhIsCaSang ? 'Ca Sáng' : 'Ca Chiều';
+        const caCu = timCaCuaGio(lhItem.gioHen, dsCa);
 
         if (lhGioShort === gioHenShort) {
           throw new ConflictException({
@@ -1066,10 +1057,10 @@ export class LichHenService implements OnModuleInit {
           });
         }
 
-        if (lhIsCaSang === isCaSang) {
+        if (caMoi && caCu?.id === caMoi.id) {
           throw new ConflictException({
             code: 'TRUNG_CA_KHAM_TRONG_NGAY',
-            message: `Bạn đã có lịch hẹn ${lhItem.maLichHen} ở ${tenCaCu} (lúc ${lhGioShort}) ngày ${dto.ngayHen}. Theo quy định, bệnh nhân không được đặt trùng với ca đã đặt trong cùng một ngày. Vui lòng chọn ca khám khác hoặc ngày khác.`,
+            message: `Bạn đã có lịch hẹn ${lhItem.maLichHen} ở ${caCu.tenCa} (lúc ${lhGioShort}) ngày ${dto.ngayHen}. Theo quy định, bệnh nhân không được đặt trùng với ca đã đặt trong cùng một ngày. Vui lòng chọn ca khám khác hoặc ngày khác.`,
           });
         }
       }
@@ -1618,8 +1609,8 @@ export class LichHenService implements OnModuleInit {
 
     // 3. Kiểm tra trùng ca/giờ của chính bệnh nhân trong ngày mới (loại trừ chính lịch hẹn này)
     const gioHenShort = (dto.gioHen || '').substring(0, 5);
-    const isCaSang = (dto.gioHen || '') < '12:00';
-    const tenCaMoi = isCaSang ? 'Ca Sáng (08:00 - 11:00)' : 'Ca Chiều (13:30 - 16:30)';
+    const dsCa = await this.layDsCa();
+    const caMoi = timCaCuaGio(dto.gioHen, dsCa);
 
     const dsLichHenKhac = await this.repo.find({
       where: {
@@ -1634,8 +1625,7 @@ export class LichHenService implements OnModuleInit {
 
     for (const item of activeKhac) {
       const itemGioShort = (item.gioHen || '').substring(0, 5);
-      const itemIsCaSang = (item.gioHen || '') < '12:00';
-      const tenCaCu = itemIsCaSang ? 'Ca Sáng' : 'Ca Chiều';
+      const caCu = timCaCuaGio(item.gioHen, dsCa);
 
       if (itemGioShort === gioHenShort) {
         throw new ConflictException({
@@ -1644,10 +1634,10 @@ export class LichHenService implements OnModuleInit {
         });
       }
 
-      if (itemIsCaSang === isCaSang) {
+      if (caMoi && caCu?.id === caMoi.id) {
         throw new ConflictException({
           code: 'TRUNG_CA_KHAM_TRONG_NGAY',
-          message: `Bạn đã có lịch hẹn ${item.maLichHen} ở ${tenCaCu} ngày ${dto.ngayHen}. Bệnh nhân không được đặt trùng ca trong cùng ngày.`,
+          message: `Bạn đã có lịch hẹn ${item.maLichHen} ở ${caCu.tenCa} ngày ${dto.ngayHen}. Bệnh nhân không được đặt trùng ca trong cùng ngày.`,
         });
       }
     }
@@ -1655,44 +1645,12 @@ export class LichHenService implements OnModuleInit {
     // 4. Kiểm tra ca trực và slot của Bác sĩ được chọn
     const targetBacSiId = dto.bacSiId || lh.bacSiId;
     if (targetBacSiId) {
-      const bacSi = await this.bacSiRepo.findOne({
-        where: { id: targetBacSiId },
-        relations: ['nhanVien'],
-      });
-
-      if (bacSi) {
-        const shifts = await this.lichLamViecRepo.find({
-          where: {
-            nhanVienId: bacSi.nhanVienId,
-            ngayLam: dto.ngayHen,
-          },
-          relations: ['caLamViec'],
-        });
-
-        const isMorning = dto.gioHen < '12:00';
-        const hasValidShift = shifts.some((s) => {
-          const tenCa = s.caLamViec?.tenCa?.toLowerCase() || '';
-          if (isMorning) {
-            return tenCa.includes('sáng') || s.caLamViecId === 1;
-          } else {
-            return tenCa.includes('chiều') || s.caLamViecId === 2;
-          }
-        });
-
-        if (!hasValidShift) {
-          const caName = isMorning ? 'Ca Sáng' : 'Ca Chiều';
-          const docName = bacSi.nhanVien?.hoTen || 'Bác sĩ';
-          throw new BadRequestException({
-            code: 'BAC_SI_KHONG_CO_LICH_TRUC',
-            message: `${docName} không có lịch trực vào ${caName} ngày ${dto.ngayHen}. Vui lòng chọn bác sĩ hoặc ngày khác.`,
-          });
-        }
-      }
+      await this.kiemTraCaTrucBacSi(targetBacSiId, dto.ngayHen, dto.gioHen, 'không có');
     }
 
     // 5. Khóa nguyên tử theo slot mới và cập nhật lịch hẹn
     const rescheduleLockKey = targetBacSiId
-      ? `buoi:${targetBacSiId}:${dto.ngayHen}:${laCaSang(dto.gioHen) ? 'sang' : 'chieu'}`
+      ? await this.khoaCaBacSi(targetBacSiId, dto.ngayHen, dto.gioHen)
       : `patient:${lh.benhNhanId}:${dto.ngayHen}`;
 
     const saved = await voiKhoaDb(this.dataSource, rescheduleLockKey, async () => {
