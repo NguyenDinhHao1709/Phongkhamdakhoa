@@ -28,6 +28,9 @@ import { JwtPayload } from './strategies/jwt.strategy';
 import { MemoryCacheService } from '../../common/cache/memory-cache.service';
 import * as bcrypt from 'bcryptjs';
 
+const SAI_MK_TOI_DA = 5;
+const KHOA_DANG_NHAP_MS = 15 * 60_000;
+
 @Injectable()
 export class AuthService {
   private mailer: nodemailer.Transporter;
@@ -215,10 +218,22 @@ export class AuthService {
       throw new UnauthorizedException({ code: 'CHUA_XAC_THUC_EMAIL', message: 'Vui lòng xác thực email trước khi đăng nhập' });
     }
 
+    // Chống dò mật khẩu: sai 5 lần trong 15 phút → tạm khóa 15 phút; kiểm tra trước bcrypt để lượt bị chặn không tốn CPU
+    const saiMkKey = `saiMk:${nguoiDung.id}`;
+    const saiMk = this.cache.get<{ soLan: number; hetHan: number }>(saiMkKey);
+    if (saiMk && saiMk.soLan >= SAI_MK_TOI_DA) {
+      const phut = Math.ceil((saiMk.hetHan - Date.now()) / 60_000);
+      throw new UnauthorizedException({ code: 'DANG_NHAP_TAM_KHOA', message: `Nhập sai mật khẩu quá nhiều lần. Vui lòng thử lại sau ${phut} phút.` });
+    }
+
     const matKhauDung = await comparePassword(dto.matKhau, nguoiDung.matKhauHash);
     if (!matKhauDung) {
+      const soLan = (saiMk?.soLan ?? 0) + 1;
+      const hetHan = soLan >= SAI_MK_TOI_DA || !saiMk ? Date.now() + KHOA_DANG_NHAP_MS : saiMk.hetHan;
+      this.cache.set(saiMkKey, { soLan, hetHan }, hetHan - Date.now());
       throw new UnauthorizedException({ code: 'DANG_NHAP_THAT_BAI', message: 'Tên đăng nhập hoặc mật khẩu không đúng' });
     }
+    this.cache.del(saiMkKey);
 
     // Cập nhật lần đăng nhập cuối
     await this.nguoiDungRepo.update(nguoiDung.id, { lanDangNhapCuoi: new Date() });

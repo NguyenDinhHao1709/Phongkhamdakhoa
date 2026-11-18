@@ -32,10 +32,12 @@ const AI_REQUEST_TIMEOUT_MS = 100_000; // chat AI: backend chờ AI service tố
 
 // Ngưỡng Rate Limit cao cho môi trường Phòng khám (nhiều máy dùng chung mạng LAN/Wi-Fi bệnh viện)
 const GENERAL_LIMIT_PER_MINUTE = 6000; // 6.000 req/phút/IP (~100 req/giây/IP cho mạng nội bộ bệnh viện)
-const AUTH_LIMIT_PER_MINUTE = 120;     // 120 req/phút/IP cho đăng nhập / đăng ký (chống brute-force)
+// Đăng nhập tốn ~0,6s CPU (bcrypt) trên Render: 120/phút từ 1 IP đủ chiếm hết CPU (đo tải 18/11/2026)
+const AUTH_LIMIT_PER_MINUTE = 30;
+// /auth/refresh không băm mật khẩu nên tính vào ngưỡng chung, tránh chặn nhầm nhiều máy chung mạng LAN
 const AUTH_SENSITIVE_ROUTES = [
   '/api/auth/login', '/api/auth/register', '/api/auth/send-otp', '/api/auth/verify-otp',
-  '/api/auth/forgot-password-otp', '/api/auth/reset-password', '/api/auth/refresh',
+  '/api/auth/forgot-password-otp', '/api/auth/reset-password',
 ];
 
 
