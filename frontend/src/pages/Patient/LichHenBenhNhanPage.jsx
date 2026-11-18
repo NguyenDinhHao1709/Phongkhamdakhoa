@@ -38,6 +38,12 @@ const cleanGhiChu = (note) => {
     .trim();
 };
 
+// Đã thật sự nhận tiền tạm ứng/phí: backend đánh dấu khi PayOS/thu ngân xác nhận; lịch hủy khi chưa trả có marker riêng
+const daTraTien = (lh) =>
+  Boolean(lh.ghiChu?.includes('[ĐÃ_THANH_TOÁN_THÀNH_CÔNG]')) ||
+  (!lh.ghiChu?.includes('[Đã hủy khi chưa thanh toán tạm ứng]') &&
+    ['da_xac_nhan', 'dang_kham', 'hoan_thanh', 'vang_mat'].includes(lh.trangThai));
+
 export default function LichHenBenhNhanPage() {
   // Thông tin phòng khám lấy từ cài đặt "Thông tin bệnh viện" (trước đây ghi cứng, mỗi bản in một địa chỉ)
   const ttPk = useHospitalStore((s) => s.hospitalInfo) || {};
@@ -306,7 +312,11 @@ export default function LichHenBenhNhanPage() {
                         <Users className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-600" /> Đặt giùm {lh.benhNhan?.hoTen ? `(${lh.benhNhan.hoTen})` : ''}
                       </span>
                     )}
-                    {lh.hinhThuc === 'truc_tuyen' ? (
+                    {lh.trangThai === 'da_huy' && !daTraTien(lh) ? (
+                      <span className="text-[11px] sm:text-xs font-bold text-gray-600 bg-gray-100 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-gray-200 flex items-center gap-1 shrink-0 whitespace-nowrap">
+                        Chưa thanh toán
+                      </span>
+                    ) : lh.hinhThuc === 'truc_tuyen' ? (
                       lh.trangThai === 'cho_thanh_toan' ? (
                         <span className="text-[11px] sm:text-xs font-bold text-amber-700 bg-amber-50 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-amber-200 flex items-center gap-1 shrink-0 whitespace-nowrap">
                           <CreditCard className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-amber-600" /> Cần thanh toán ({soTienLhStr})
