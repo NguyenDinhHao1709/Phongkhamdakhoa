@@ -1,9 +1,9 @@
-import React, { useState } from "react";
-import { Page, Box, Text, Button, Input, Sheet, useSnackbar } from "zmp-ui";
+import React, { useEffect, useRef, useState } from "react";
+import { Page, Box, Text, Button, Input, Sheet, useLocation, useSnackbar } from "zmp-ui";
 import { api } from "../lib/api";
 import { useTaiDuLieu, useTieuDe } from "../lib/hooks";
 import { LICH_CON_HIEU_LUC, gio, ngayISO, ngayVN, thuTrongTuan, tien } from "../lib/format";
-import { kiemTraThanhToan, thanhToanCoc } from "../lib/thanh-toan";
+import PaymentSheet from "../components/payment-sheet";
 import { Badge, BadgeTrangThai, Card, Chip, DangTai, DongThongTin, LoiTai, TrongRong } from "../components/ui";
 
 const CO_THE_HUY = ["cho_thanh_toan", "cho_xac_nhan", "da_xac_nhan"];
@@ -73,7 +73,7 @@ function SheetHuyLich({ lich, onClose, onDone }) {
   );
 }
 
-function TheLichHen({ lh, onThanhToan, onKiemTra, onHuy }) {
+function TheLichHen({ lh, onThanhToan, onHuy }) {
   const online = lh.hinhThuc === "truc_tuyen";
   const choThanhToan = lh.trangThai === "cho_thanh_toan";
   const coTheHuy = CO_THE_HUY.includes(lh.trangThai);
@@ -105,14 +105,9 @@ function TheLichHen({ lh, onThanhToan, onKiemTra, onHuy }) {
       {(choThanhToan || coTheHuy) && (
         <div className="row-gap" style={{ marginTop: 12 }}>
           {choThanhToan && (
-            <>
-              <Button size="small" onClick={() => onThanhToan(lh)}>
-                Thanh toán cọc
-              </Button>
-              <Button size="small" variant="secondary" onClick={() => onKiemTra(lh)}>
-                Đã thanh toán?
-              </Button>
-            </>
+            <Button size="small" onClick={() => onThanhToan(lh)}>
+              Thanh toán cọc
+            </Button>
           )}
           {coTheHuy && (
             <Button size="small" variant="tertiary" type="danger" onClick={() => onHuy(lh)}>
@@ -130,6 +125,8 @@ export default function AppointmentsPage() {
   const { openSnackbar } = useSnackbar();
   const [tab, setTab] = useState("sap_toi");
   const [lichHuy, setLichHuy] = useState(null);
+  const [lichThanhToan, setLichThanhToan] = useState(null);
+  const location = useLocation();
 
   const { data, loading, error, reload } = useTaiDuLieu(async () => (await api.get("/lich-hen/cua-toi")).data || [], []);
 
@@ -140,17 +137,15 @@ export default function AppointmentsPage() {
   const daQua = (data || []).filter((lh) => !sapToi.includes(lh));
   const ds = tab === "sap_toi" ? sapToi : daQua;
 
-  const thanhToan = (lh) => thanhToanCoc(lh.id).catch((e) => openSnackbar({ text: e.message, type: "error" }));
-
-  const kiemTra = async (lh) => {
-    try {
-      const res = await kiemTraThanhToan(lh.id);
-      openSnackbar({ text: res.message || "Đã cập nhật trạng thái thanh toán", type: "success" });
-    } catch (e) {
-      openSnackbar({ text: e.message, type: "error" });
-    }
-    reload();
-  };
+  // Vừa đặt lịch xong (trang Đặt lịch chuyển sang kèm id) → mở bảng thanh toán của lịch đó
+  const thanhToanId = location.state?.thanhToanId;
+  const daMoTuDong = useRef(null);
+  useEffect(() => {
+    if (!thanhToanId || !data || daMoTuDong.current === thanhToanId) return;
+    daMoTuDong.current = thanhToanId;
+    const lh = data.find((x) => x.id === thanhToanId && x.trangThai === "cho_thanh_toan");
+    if (lh) setLichThanhToan(lh);
+  }, [thanhToanId, data]);
 
   return (
     <Page className="page page-with-nav">
@@ -174,8 +169,21 @@ export default function AppointmentsPage() {
         )}
         {!loading &&
           !error &&
-          ds.map((lh) => <TheLichHen key={lh.id} lh={lh} onThanhToan={thanhToan} onKiemTra={kiemTra} onHuy={setLichHuy} />)}
+          ds.map((lh) => <TheLichHen key={lh.id} lh={lh} onThanhToan={setLichThanhToan} onHuy={setLichHuy} />)}
       </Box>
+
+      <PaymentSheet
+        key={lichThanhToan ? `pay-${lichThanhToan.id}` : "pay-none"}
+        lichHen={lichThanhToan}
+        onClose={() => {
+          setLichThanhToan(null);
+          reload();
+        }}
+        onPaid={() => {
+          setLichThanhToan(null);
+          reload();
+        }}
+      />
 
       <SheetHuyLich
         key={lichHuy?.id || "none"}

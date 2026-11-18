@@ -4,7 +4,6 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useTaiDuLieu, useTieuDe } from "../lib/hooks";
 import { cacNgayToi, ngayVN, thuTrongTuan } from "../lib/format";
-import { thanhToanCoc } from "../lib/thanh-toan";
 import { Card, Chip, DangTai, LoiTai, TieuDeMuc, TrongRong } from "../components/ui";
 
 const HINH_THUC = [
@@ -62,10 +61,11 @@ export default function BookingPage() {
       const lh = res.data;
       openSnackbar({ text: `Đặt lịch thành công! Mã lịch hẹn ${lh?.maLichHen || ""}`, type: "success" });
       setLyDo("");
-      if (lh?.trangThai === "cho_thanh_toan" && lh?.id) {
-        await thanhToanCoc(lh.id).catch((e) => openSnackbar({ text: e.message, type: "error" }));
-      }
-      navigate("/lich-hen", { animate: false });
+      // Chờ cọc → sang trang Lịch hẹn và mở ngay bảng thanh toán (QR + app ngân hàng)
+      navigate("/lich-hen", {
+        animate: false,
+        state: lh?.trangThai === "cho_thanh_toan" ? { thanhToanId: lh.id } : undefined,
+      });
     } catch (err) {
       openSnackbar({ text: err.message, type: "error" });
       if (["SLOT_DA_DUOC_DAT", "NGOAI_KHUNG_ONLINE", "SLOT_DANH_CHO_ONLINE"].includes(err.code)) reload();
