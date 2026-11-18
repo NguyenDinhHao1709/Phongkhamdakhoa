@@ -44,14 +44,43 @@ export async function maHoSoTiepTheo(manager: EntityManager): Promise<string> {
  */
 export async function voiKhoaDb<T>(dataSource: DataSource, ten: string, fn: () => Promise<T>, choToiDaGiay = 15): Promise<T> {
   const key = ten.slice(0, 64);
-  const qr = dataSource.createQueryRunner();
-  const theo = { key, tu: Date.now() };
-  khoaDangGiu.add(theo);
+  // Xếp hàng trong RAM trước khi lấy kết nối: người chờ GET_LOCK không giữ kết nối pool,
+  // tránh N request cùng khóa chiếm hết pool khiến người giữ khóa không còn kết nối để chạy fn
+  const truoc = hangDoiKhoa.get(key);
+  if (truoc && choToiDaGiay === 0) return undefined as T;
+  let moCua!: () => void;
+  const cua = new Promise<void>((r) => (moCua = r));
+  const duoi = (truoc ?? Promise.resolve()).then(() => cua);
+  hangDoiKhoa.set(key, duoi);
+  // Chỉ dọn khi cả chuỗi phía trước đã xong (người chờ hết giờ thoát sớm không được xóa hàng đợi)
+  duoi.then(() => { if (hangDoiKhoa.get(key) === duoi) hangDoiKhoa.delete(key); });
   try {
-    await qr.connect();
-    return await chayTrongKhoa(qr, key, fn, choToiDaGiay);
+    if (truoc) await choLuot(truoc, choToiDaGiay);
+    const qr = dataSource.createQueryRunner();
+    const theo = { key, tu: Date.now() };
+    khoaDangGiu.add(theo);
+    try {
+      await qr.connect();
+      return await chayTrongKhoa(qr, key, fn, choToiDaGiay);
+    } finally {
+      khoaDangGiu.delete(theo);
+    }
   } finally {
-    khoaDangGiu.delete(theo);
+    moCua();
+  }
+}
+
+const hangDoiKhoa = new Map<string, Promise<void>>();
+
+async function choLuot(truoc: Promise<void>, giay: number) {
+  let timer: NodeJS.Timeout | undefined;
+  const hetGio = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new ServiceUnavailableException('Hệ thống đang bận, vui lòng thử lại.')), giay * 1000);
+  });
+  try {
+    await Promise.race([truoc, hetGio]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
