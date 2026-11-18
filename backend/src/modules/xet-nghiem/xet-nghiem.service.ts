@@ -16,6 +16,7 @@ import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { LuotTiepNhan, TrangThaiTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
+import { ZaloZnsService } from '../thong-bao/zalo-zns.service';
 import { MemoryCacheService } from '../../common/cache/memory-cache.service';
 import {
   IsInt, IsPositive, IsOptional, IsString, IsEnum, IsArray, ArrayMinSize,
@@ -80,6 +81,7 @@ export class XetNghiemService {
     @InjectRepository(KetQuaXetNghiem)    private kqRepo: Repository<KetQuaXetNghiem>,
     @InjectRepository(LichSuHieuChinhKetQua) private hieuChinhRepo: Repository<LichSuHieuChinhKetQua>,
     private readonly thongBaoService: ThongBaoService,
+    private readonly zaloZns: ZaloZnsService,
   ) {}
 
   // ─── DANH MỤC DỊCH VỤ ─────────────────────────────────────
@@ -371,6 +373,7 @@ export class XetNghiemService {
     });
 
     // Kiểm tra nếu tất cả chỉ định của phiếu khám này đã có kết quả -> cập nhật lượt khám sang da_co_kq_cls
+    let duKetQua = false;
     try {
       const allOrders = await this.cdRepo.find({
         where: { benhAnKhamId: cd.benhAnKhamId, trangThai: Not(TrangThaiChiDinh.HUY) },
@@ -379,6 +382,7 @@ export class XetNghiemService {
         (o) => o.id === chiDinhId || o.trangThai === TrangThaiChiDinh.CO_KET_QUA,
       );
       if (allDone && allOrders.length > 0) {
+        duKetQua = true;
         const bak = await this.cdRepo.manager.getRepository(BenhAnKham).findOne({
           where: { id: cd.benhAnKhamId },
         });
@@ -401,6 +405,23 @@ export class XetNghiemService {
       const bacSiUserId = cdFull?.benhAnKham?.bacSi?.nhanVien?.nguoiDungId;
       const bnTen = cdFull?.benhAnKham?.hoSoBenhAn?.benhNhan?.hoTen || 'BN';
       const tenDichVu = cdFull?.dichVu?.tenDichVu || 'xét nghiệm';
+
+      // Đủ kết quả mọi chỉ định của lượt khám → báo bệnh nhân qua Zalo 1 lần (không chặn phản hồi)
+      const benhNhan = cdFull?.benhAnKham?.hoSoBenhAn?.benhNhan;
+      if (duKetQua && benhNhan) {
+        const nk = cdFull.benhAnKham.ngayKham ? new Date(cdFull.benhAnKham.ngayKham) : new Date();
+        this.zaloZns.gui({
+          loai: 'co_ket_qua',
+          soDienThoai: benhNhan.soDienThoai,
+          benhNhanId: benhNhan.id,
+          khoaChongTrung: `co_ket_qua:${cd.benhAnKhamId}`,
+          thamSo: {
+            ten_benh_nhan: benhNhan.hoTen,
+            ngay_kham: `${String(nk.getDate()).padStart(2, '0')}/${String(nk.getMonth() + 1).padStart(2, '0')}/${nk.getFullYear()}`,
+            dich_vu: tenDichVu,
+          },
+        }).catch(() => {});
+      }
 
       if (bacSiUserId) {
         await this.thongBaoService.taoThongBao({

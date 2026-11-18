@@ -14,6 +14,7 @@ import { LichLamViec } from '../nhan-vien/entities/lich-lam-viec.entity';
 import { CaLamViec } from '../nhan-vien/entities/ca-lam-viec.entity';
 import { CauHinhTienCoc } from '../quan-ly/entities/cau-hinh-tien-coc.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
+import { ZaloZnsService } from '../thong-bao/zalo-zns.service';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 import { TaoLichHenDto, CapNhatTrangThaiLichHenDto, TimKiemLichHenDto, LaySlotTrongDto, ChinhSuaLichHenDto } from './dto/lich-hen.dto';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
@@ -65,6 +66,7 @@ export class LichHenService implements OnModuleInit {
     private config: ConfigService,
     private thongBaoService: ThongBaoService,
     private cache: MemoryCacheService,
+    private zaloZns: ZaloZnsService,
   ) {
     this.mailer = nodemailer.createTransport({
       pool: true,
@@ -1845,7 +1847,7 @@ export class LichHenService implements OnModuleInit {
     return { data: updated, message: 'Cập nhật trạng thái lịch hẹn thành công' };
   }
 
-  // ─── NHẮC LỊCH KHÁM TỰ ĐỘNG QUA EMAIL TRƯỚC 24H ─────────────
+  // ─── NHẮC LỊCH KHÁM TỰ ĐỘNG QUA ZALO (ZNS) / EMAIL TRƯỚC 24H ─────
   async guiNhacLichTuDong() {
     const todayStr = getLocalDateString();
     const tomorrow = new Date();
@@ -1875,7 +1877,10 @@ export class LichHenService implements OnModuleInit {
       }
       const bacSiTen = lh.bacSi?.nhanVien?.hoTen || 'Bác sĩ trực phòng khám';
 
-      if (email) {
+      // Ưu tiên Zalo ZNS (tới thẳng số điện thoại); gửi Zalo lỗi / chưa cấu hình thì gửi email như cũ
+      const zalo = await this.zaloZns.guiTheoLichHen('nhac_lich', lh).catch(() => null);
+
+      if (email && !zalo?.ok) {
         try {
           await this.mailer.sendMail({
             from: this.config.get('MAIL_FROM', 'Phong Kham <no-reply@phongkham.vn>'),
@@ -1930,6 +1935,7 @@ export class LichHenService implements OnModuleInit {
         maLichHen: lh.maLichHen,
         benhNhan: bn?.hoTen,
         email: email || 'Không có email',
+        zalo: zalo?.ok ? 'Đã gửi' : zalo?.boQua || zalo?.loi || 'Không gửi',
         ngayHen: lh.ngayHen,
         gioHen: lh.gioHen,
       });
@@ -1959,6 +1965,11 @@ export class LichHenService implements OnModuleInit {
         relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
       });
       if (!lh) return;
+
+      // Xác nhận lịch qua Zalo ZNS song song với email (chống trùng theo lịch hẹn trong ZaloZnsService)
+      if (loaiEmail === 'da_xac_nhan') {
+        this.zaloZns.guiTheoLichHen('xac_nhan_lich', lh).catch(() => {});
+      }
 
       // 1. Phân giải email người nhận
       let email = fallbackEmail?.trim() || null;
