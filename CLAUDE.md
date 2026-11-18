@@ -21,6 +21,8 @@ Outpatient clinic management system (graduation thesis). Workflow follows QĐ 13
 | `mobile-patient/` (Expo) | `npm start` | — |
 
 - There is no JS unit-test suite. Verify Node changes with `npm run build` (that is what CI runs, [.github/workflows/ci.yml](.github/workflows/ci.yml)); API test cases are in `scripts/*.postman_collection.json`.
+- Frontend `npm run build` runs `prebuild` = eslint with `--max-warnings 0` first, so any lint warning fails the build.
+- backend/ai-service/office-service are separate npm projects (no root workspace); ai/office `start:dev` does not watch — rebuild after each edit.
 - python-ml cannot run in the local Windows venv (Application Control blocks scikit-learn/statsmodels DLLs) — run/test it in Docker.
 
 ## Architecture
@@ -30,6 +32,7 @@ Outpatient clinic management system (graduation thesis). Workflow follows QĐ 13
 - **Auth:** JWT access + refresh tokens with a per-user token version (revocation). Guards are applied per controller: `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(...)`; `@Public()` opts out. Patient endpoints must check ownership (`common/utils/benh-nhan-so-huu.util.ts`) to avoid IDOR.
 - **Sensitive columns** are encrypted with `Aes256Transformer` (`APP_ENCRYPTION_KEY`); ai-service has its own copy of the transformer — keep them in sync.
 - **Multi-instance safety:** generated codes (BN…, queue numbers, receipts) come from the `bo_dem_ma` counter table locked with `FOR UPDATE` (`common/utils/db-sequence.util.ts`, `ma-generator.util.ts`). Never generate codes with `MAX()+1` or random numbers.
+- **DB pool:** `DB_POOL_LIMIT` (default 10, `app.module.ts`) must not be set to 2 on Render — together with `GET_LOCK` usage it deadlocks the pool; check pool stats at `/api/health`.
 - **Timezone:** everything runs in Asia/Ho_Chi_Minh; the DB session timezone is set in `vn-session-timezone.util.ts`.
 - **Real-time queue:** `modules/tiep-nhan/queue.gateway.ts` pushes queue changes to reception, doctor, kiosk and TV screens.
 - **Frontend:** routes per role in `src/App.jsx` (lazy pages under `src/pages/<Role>`); axios instance in `src/services/api.js` handles token refresh; state in Zustand (`src/store`) + TanStack Query.
