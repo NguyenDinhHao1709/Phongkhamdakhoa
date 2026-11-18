@@ -88,6 +88,24 @@ async function goi(method, path, { body, params, auth = true } = {}, daThuLai = 
   return json;
 }
 
+/**
+ * POST tới dịch vụ có thể đang ngủ (AI service trên Render free thức dậy mất 20s–2 phút):
+ * mất kết nối / lỗi 5xx thì gọi onCho rồi tự gửi lại mỗi 10 giây, tối đa 3 phút.
+ */
+export async function postChoThucDay(path, body, onCho) {
+  const batDau = Date.now();
+  for (;;) {
+    try {
+      return await goi("POST", path, { body });
+    } catch (err) {
+      const dangNgu = err.status === 0 || err.status >= 500;
+      if (!dangNgu || Date.now() - batDau + 10_000 > 180_000) throw err;
+      onCho?.();
+      await new Promise((r) => setTimeout(r, 10_000));
+    }
+  }
+}
+
 export const api = {
   get: (path, params, opts) => goi("GET", path, { params, ...opts }),
   post: (path, body, opts) => goi("POST", path, { body, ...opts }),

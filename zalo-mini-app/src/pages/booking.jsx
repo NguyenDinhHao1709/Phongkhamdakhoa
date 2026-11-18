@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Page, Box, Text, Button, Input, useNavigate, useSnackbar } from "zmp-ui";
+import { Page, Box, Text, Button, Input, useLocation, useNavigate, useSnackbar } from "zmp-ui";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useTaiDuLieu, useTieuDe } from "../lib/hooks";
@@ -20,7 +20,9 @@ export default function BookingPage() {
 
   const [hinhThuc, setHinhThuc] = useState("truc_tiep");
   const [ngay, setNgay] = useState(ngays[0]);
-  const [chuyenKhoa, setChuyenKhoa] = useState("");
+  const location = useLocation();
+  // Mở từ nút "Đặt lịch tái khám": lọc sẵn chuyên khoa của bác sĩ điều trị
+  const [chuyenKhoa, setChuyenKhoa] = useState(location.state?.chuyenKhoa || "");
   const [chon, setChon] = useState(null); // { bacSi, gio }
   const [lyDo, setLyDo] = useState("");
   const [dangGui, setDangGui] = useState(false);

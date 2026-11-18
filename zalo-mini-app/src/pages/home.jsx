@@ -9,7 +9,7 @@ import { BadgeTrangThai, Card, DongThongTin, TieuDeMuc } from "../components/ui"
 
 const LOI_TAT = [
   { path: "/dat-lich", icon: "zi-plus-circle", nhan: "Đặt lịch khám" },
-  { path: "/lich-hen", icon: "zi-calendar", nhan: "Lịch hẹn của tôi" },
+  { path: "/bac-si-ai", icon: "zi-chat", nhan: "Hỏi Bác sĩ AI" },
   { path: "/ho-so", icon: "zi-note", nhan: "Kết quả & đơn thuốc" },
 ];
 

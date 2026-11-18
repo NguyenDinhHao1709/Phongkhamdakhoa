@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Page, Box, Text, Button, Input, Sheet, useLocation, useSnackbar } from "zmp-ui";
+import { Page, Box, Text, Button, Input, Sheet, useLocation, useNavigate, useSnackbar } from "zmp-ui";
 import { api } from "../lib/api";
 import { useTaiDuLieu, useTieuDe } from "../lib/hooks";
 import { LICH_CON_HIEU_LUC, gio, ngayISO, ngayVN, thuTrongTuan, tien } from "../lib/format";
@@ -127,6 +127,7 @@ export default function AppointmentsPage() {
   const [lichHuy, setLichHuy] = useState(null);
   const [lichThanhToan, setLichThanhToan] = useState(null);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const { data, loading, error, reload } = useTaiDuLieu(async () => (await api.get("/lich-hen/cua-toi")).data || [], []);
 
@@ -159,6 +160,11 @@ export default function AppointmentsPage() {
           </Chip>
           <Button size="small" variant="tertiary" onClick={reload} style={{ marginLeft: "auto" }}>
             Làm mới
+          </Button>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <Button fullWidth size="small" onClick={() => navigate("/dat-lich", { animate: false })}>
+            + Đặt lịch khám mới
           </Button>
         </div>
 

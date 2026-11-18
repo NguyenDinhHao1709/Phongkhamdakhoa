@@ -45,3 +45,17 @@ export function luuPhien(phien) {
 export function xoaPhien() {
   kho.remove(KEY_PHIEN);
 }
+
+/** Lưu / đọc giá trị JSON bất kỳ (vd: đánh dấu đã uống thuốc trong ngày) */
+export function docJson(key, macDinh = null) {
+  try {
+    const raw = kho.get(key);
+    return raw ? JSON.parse(raw) : macDinh;
+  } catch {
+    return macDinh;
+  }
+}
+
+export function ghiJson(key, value) {
+  kho.set(key, JSON.stringify(value));
+}
