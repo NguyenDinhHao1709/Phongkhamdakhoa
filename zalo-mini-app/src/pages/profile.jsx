@@ -1,10 +1,10 @@
 import React from "react";
-import { Page, Box, Text, Button, Icon, Avatar, useSnackbar } from "zmp-ui";
+import { Page, Box, Text, Button, Icon, Avatar, useNavigate, useSnackbar } from "zmp-ui";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useTaiDuLieu, useTieuDe } from "../lib/hooks";
 import { ngayVN } from "../lib/format";
-import { batThongBaoZalo, goiHotline, nhanTinPhongKham } from "../lib/zalo";
+import { goiHotline, nhanTinPhongKham } from "../lib/zalo";
 import { Card, DongThongTin, TieuDeMuc } from "../components/ui";
 
 const GIOI_TINH = { nam: "Nam", nu: "Nữ", khac: "Khác" };
@@ -13,20 +13,12 @@ export default function ProfilePage() {
   useTieuDe("Cá nhân");
   const { user, dangXuat } = useAuth();
   const { openSnackbar } = useSnackbar();
+  const navigate = useNavigate();
 
   const { data: bn } = useTaiDuLieu(
     async () => (user?.benhNhanId ? (await api.get(`/benh-nhan/${user.benhNhanId}`)).data : null),
     [user?.benhNhanId],
   );
-
-  const bat = async () => {
-    try {
-      await batThongBaoZalo();
-      openSnackbar({ text: "Đã bật nhận thông báo qua Zalo", type: "success" });
-    } catch {
-      openSnackbar({ text: "Bạn chưa cho phép nhận thông báo", type: "warning" });
-    }
-  };
 
   const ten = bn?.hoTen || user?.hoTen || "Bệnh nhân";
 
@@ -59,8 +51,8 @@ export default function ProfilePage() {
 
         <TieuDeMuc>Tiện ích</TieuDeMuc>
         <div className="stack-12">
-          <Button fullWidth variant="secondary" prefixIcon={<Icon icon="zi-notif" />} onClick={bat}>
-            Nhận thông báo lịch khám qua Zalo
+          <Button fullWidth variant="secondary" prefixIcon={<Icon icon="zi-notif" />} onClick={() => navigate("/thong-bao", { animate: false })}>
+            Thông báo của tôi
           </Button>
           <Button
             fullWidth

@@ -3,7 +3,7 @@ import { Page, Box, Text, Button, Icon, useNavigate, useSnackbar } from "zmp-ui"
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { useTaiDuLieu, useTieuDe } from "../lib/hooks";
-import { batThongBaoZalo, goiHotline, nhanTinPhongKham } from "../lib/zalo";
+import { goiHotline, nhanTinPhongKham } from "../lib/zalo";
 import { LICH_CON_HIEU_LUC, gio, ngayISO, ngayVN, thuTrongTuan } from "../lib/format";
 import { BadgeTrangThai, Card, DongThongTin, TieuDeMuc } from "../components/ui";
 
@@ -33,15 +33,6 @@ export default function HomePage() {
     const t = setInterval(taiLaiThongBao, 60000);
     return () => clearInterval(t);
   }, [taiLaiThongBao]);
-
-  const bat = async () => {
-    try {
-      await batThongBaoZalo();
-      openSnackbar({ text: "Đã bật nhận thông báo lịch khám qua Zalo", type: "success" });
-    } catch {
-      openSnackbar({ text: "Bạn chưa cho phép nhận thông báo", type: "warning" });
-    }
-  };
 
   return (
     <Page className="page page-with-nav">
@@ -98,13 +89,18 @@ export default function HomePage() {
           </Card>
         )}
 
-        <TieuDeMuc>Nhận thông báo qua Zalo</TieuDeMuc>
-        <Card>
+        <TieuDeMuc>Thông báo lịch khám</TieuDeMuc>
+        <Card onClick={() => navigate("/thong-bao", { animate: false })}>
           <Text size="small">
-            Nhận nhắc lịch trước giờ khám, thông báo có kết quả xét nghiệm và xác nhận thanh toán ngay trong Zalo.
+            {thongBao?.unreadCount > 0 ? (
+              <>
+                Bạn có <b>{thongBao.unreadCount} thông báo chưa đọc</b>.{" "}
+              </>
+            ) : null}
+            Nhắc lịch khám, xác nhận lịch, kết quả xét nghiệm và hoàn cọc đều có ở chuông 🔔 góc trên.
           </Text>
-          <Button size="small" variant="secondary" style={{ marginTop: 12 }} prefixIcon={<Icon icon="zi-notif" />} onClick={bat}>
-            Bật thông báo
+          <Button size="small" variant="secondary" style={{ marginTop: 12 }} prefixIcon={<Icon icon="zi-notif" />}>
+            Xem thông báo
           </Button>
         </Card>
 
