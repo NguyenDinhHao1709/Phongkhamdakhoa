@@ -10,5 +10,5 @@ export default () =>
     envDir: "..",
     base: "",
     plugins: [zaloMiniApp(), react()],
-    build: { assetsInlineLimit: 0 },
+    build: { assetsInlineLimit: 0, outDir: "../www", emptyOutDir: true },
   });

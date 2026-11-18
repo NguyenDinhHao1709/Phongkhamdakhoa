@@ -39,7 +39,7 @@ Số điện thoại do Zalo xác thực nên backend không cần gửi OTP.
 ### 1. Backend
 - Chạy migration [database/20261122_dang_nhap_zalo.sql](../database/20261122_dang_nhap_zalo.sql) (thêm cột `nguoi_dung.zalo_id`).
 - Thêm biến môi trường `ZALO_APP_SECRET` (lấy ở developers.zalo.me → app của bạn → Secret key).
-- Thêm domain của Mini App vào `CLIENT_URL` (CORS), ví dụ `https://h5.zdn.vn,https://h5.zadn.vn`. Domain thật được ghi trong trang quản lý Mini App.
+- Backend mặc định cho phép CORS từ `https://h5.zdn.vn` và `https://h5.zadn.vn` (domain Zalo chạy Mini App). Đổi bằng biến `ZALO_MINI_APP_ORIGINS` nếu cần.
 
 ### 2. Đăng ký Mini App
 1. Vào https://mini.zalo.me, tạo Mini App (cần một Zalo Official Account làm chủ sở hữu).

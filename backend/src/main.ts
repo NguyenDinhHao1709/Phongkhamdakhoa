@@ -57,9 +57,15 @@ async function bootstrap() {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
-  const allowedOrigins = new Set(
-    isProd ? configuredOrigins : [...configuredOrigins, 'http://localhost:3000', 'http://localhost:8081', 'http://localhost:19006'],
-  );
+  // Zalo Mini App chạy trong Zalo và gọi API từ domain h5.zdn.vn / h5.zadn.vn (API dùng Bearer token, không dùng cookie)
+  const zaloOrigins = (process.env.ZALO_MINI_APP_ORIGINS ?? 'https://h5.zdn.vn,https://h5.zadn.vn')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const allowedOrigins = new Set([
+    ...zaloOrigins,
+    ...(isProd ? configuredOrigins : [...configuredOrigins, 'http://localhost:3000', 'http://localhost:8081', 'http://localhost:19006']),
+  ]);
   const devOrigin = /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/;
   app.enableCors({
     origin: (origin, callback) => {
