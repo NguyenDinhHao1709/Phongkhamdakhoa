@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, ConflictException, BadRequestException, OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, Between, In, Not, LessThan } from 'typeorm';
+import { Repository, DataSource, Between, In, Not } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import axios from 'axios';
@@ -35,6 +35,24 @@ const TRANG_THAI_GIU_SUAT = [
   TrangThaiLichHen.HOAN_THANH,
 ];
 const laCaSang = (gio: string) => (gio || '') < '12:00';
+
+type DoanCoMat = { vao: number; ra: number; dangCo: boolean };
+
+/** Tổng số phút có mặt (gộp các đoạn chồng nhau) trong khoảng [tu, den] (ms) */
+function phutCoMat(doan: DoanCoMat[], tu: number, den: number): number {
+  const ds = doan
+    .map((d) => [Math.max(d.vao, tu), Math.min(d.ra, den)])
+    .filter(([a, b]) => b > a)
+    .sort((x, y) => x[0] - y[0]);
+  let tong = 0;
+  let cuoi = -Infinity;
+  for (const [a, b] of ds) {
+    if (b <= cuoi) continue;
+    tong += b - Math.max(a, cuoi);
+    cuoi = b;
+  }
+  return tong / 60000;
+}
 
 function getLocalDateString(d: Date = new Date()): string {
   const year = d.getFullYear();
@@ -378,35 +396,141 @@ export class LichHenService implements OnModuleInit {
         console.log(`[LichHen] Đã tự động hủy ${result.affected} ca khám trực tiếp quá thời gian hẹn.`);
       }
 
-      // 2. Ca TRỰC TUYẾN quá ngày hẹn mà chưa diễn ra, căn cứ ai đã vào phòng gọi (ca đã đóng phí):
-      //    - bác sĩ đã vào, bệnh nhân không vào → bệnh nhân vắng mặt, không hoàn phí;
-      //    - bác sĩ không vào → hoàn phí; cả hai đã vào mà chưa kết luận → chờ thu ngân xác minh.
-      const todayStr = getLocalDateString();
-      const quaHanOnline = await this.repo.find({
-        where: {
-          hinhThuc: 'truc_tuyen',
-          ngayHen: LessThan(todayStr),
-          trangThai: Not(In([TrangThaiLichHen.HOAN_THANH, TrangThaiLichHen.DA_HUY, TrangThaiLichHen.DANG_KHAM])),
-        },
-        relations: ['benhNhan'],
-      });
-      for (const lh of quaHanOnline) {
-        const daDongPhi = lh.trangThai === TrangThaiLichHen.DA_XAC_NHAN;
-        const bnVang = daDongPhi && !!lh.bacSiVaoLuc && !lh.benhNhanVaoLuc;
-        lh.trangThai = bnVang ? TrangThaiLichHen.VANG_MAT : TrangThaiLichHen.DA_HUY;
-        lh.ghiChu = `${lh.ghiChu || ''} ${bnVang
-          ? '[Bệnh nhân không vào phòng tư vấn trực tuyến - không hoàn phí]'
-          : '[Tự động hủy do hết hạn ngày tư vấn trực tuyến]'}`.trim();
-        const saved = await this.repo.save(lh);
-        if (daDongPhi && !bnVang) {
-          await this.yeuCauHoanCocHoaDonTamUng(saved, lh.bacSiVaoLuc
-            ? 'Hai bên đã vào phòng tư vấn nhưng ca chưa được kết luận - chờ xác minh'
-            : 'Bác sĩ không vào phòng tư vấn trực tuyến - hoàn phí cho bệnh nhân')
-            .catch((e) => console.warn('[LichHen] Lỗi yêu cầu hoàn phí tư vấn:', e?.message));
-        }
-      }
+      // 2. Ca TRỰC TUYẾN: nhắc vào phòng trong khung giờ, hết khung thì chốt (chỉ 1 instance xử lý mỗi lượt)
+      await voiKhoaDb(this.dataSource, 'quet:tu_van_online', () => this.xuLyCaTuVanOnline(), 0);
     } catch (err: any) {
       console.warn('[LichHen] Lỗi tự động hủy lịch quá giờ:', err.message);
+    }
+  }
+
+  /**
+   * Ca tư vấn trực tuyến đã qua giờ hẹn 5 phút, chưa kết thúc. Căn cứ: phong_goi_co_mat (từng lần có mặt trong phòng).
+   * - Trong khung (giờ hẹn → +60'): +5' nhắc bên chưa vào khi bên kia đang chờ; +15' bác sĩ chưa vào → báo lễ tân.
+   * - Hết khung, chốt theo thứ tự: đã gặp nhau → không hủy, nhắc bác sĩ kết luận;
+   *   bên "giữ hẹn" = có mặt ≥ 10 phút trong 15 phút đầu kể từ giờ hẹn:
+   *   chỉ bệnh nhân giữ → lỗi bác sĩ, hoàn 100%; cả hai giữ mà không gặp → chờ xác minh;
+   *   còn lại (kể cả cả hai không vào) → bệnh nhân vắng mặt, không hoàn phí.
+   */
+  private async xuLyCaTuVanOnline() {
+    const cas: any[] = await this.dataSource.query(
+      `SELECT lh.id, lh.trang_thai AS trangThai, TIME_FORMAT(lh.gio_hen, '%H:%i') AS gio,
+              TIMESTAMP(lh.ngay_hen, lh.gio_hen) AS hen, NOW() AS bayGio,
+              bn.nguoi_dung_id AS bnUserId, bn.ho_ten AS bnTen, nv.nguoi_dung_id AS bsUserId, nv.ho_ten AS bsTen
+       FROM lich_hen lh
+       LEFT JOIN benh_nhan bn ON bn.id = lh.benh_nhan_id
+       LEFT JOIN bac_si bs ON bs.id = lh.bac_si_id
+       LEFT JOIN nhan_vien nv ON nv.id = bs.nhan_vien_id
+       WHERE lh.hinh_thuc = 'truc_tuyen' AND lh.trang_thai NOT IN (?)
+         AND TIMESTAMP(lh.ngay_hen, lh.gio_hen) <= NOW() - INTERVAL 5 MINUTE`,
+      [[TrangThaiLichHen.HOAN_THANH, TrangThaiLichHen.DA_HUY, TrangThaiLichHen.DANG_KHAM, TrangThaiLichHen.VANG_MAT]],
+    );
+    if (!cas.length) return;
+
+    // Dòng chưa đóng: còn được đánh dấu trong 2 phút gần nhất thì coi là đang có mặt, không thì server đã sập → ra lúc đánh dấu cuối
+    const coMat: any[] = await this.dataSource.query(
+      `SELECT lich_hen_id AS id, vai_tro AS vaiTro, vao_luc AS vao,
+              COALESCE(ra_luc, IF(cap_nhat_luc >= NOW() - INTERVAL 2 MINUTE, NOW(), cap_nhat_luc)) AS ra,
+              (ra_luc IS NULL AND cap_nhat_luc >= NOW() - INTERVAL 2 MINUTE) AS dangCo
+       FROM phong_goi_co_mat WHERE lich_hen_id IN (?)`,
+      [cas.map((c) => c.id)],
+    );
+
+    for (const c of cas) {
+      const doan = (vaiTro: string) => coMat
+        .filter((r) => r.id === c.id && r.vaiTro === vaiTro)
+        .map((r) => ({ vao: new Date(r.vao).getTime(), ra: new Date(r.ra).getTime(), dangCo: !!Number(r.dangCo) }));
+      const bs = doan('bac_si');
+      const bn = doan('benh_nhan');
+      const gapNhau = bs.some((x) => bn.some((y) => Math.min(x.ra, y.ra) > Math.max(x.vao, y.vao)));
+      const hen = new Date(c.hen).getTime();
+      const phutQua = (new Date(c.bayGio).getTime() - hen) / 60000;
+      try {
+        if (phutQua < 60) {
+          if (!gapNhau && c.trangThai === TrangThaiLichHen.DA_XAC_NHAN) await this.nhacVaoPhongTuVan(c, bs, bn, phutQua);
+        } else {
+          await this.chotCaTuVan(c, gapNhau, phutCoMat(bs, hen, hen + 15 * 60000) >= 10, phutCoMat(bn, hen, hen + 15 * 60000) >= 10);
+        }
+      } catch (e: any) {
+        console.warn(`[LichHen] Lỗi xử lý ca tư vấn trực tuyến #${c.id}:`, e?.message);
+      }
+    }
+  }
+
+  /** Đã gửi thông báo loại này cho lịch hẹn (và người nhận) chưa — mỗi mốc chỉ báo 1 lần */
+  private async daBao(lichHenId: number, loai: string, nguoiNhanId?: number) {
+    const rows: any[] = await this.dataSource.query(
+      `SELECT 1 FROM thong_bao WHERE doi_tuong_bang = 'lich_hen' AND doi_tuong_id = ? AND loai = ?${nguoiNhanId ? ' AND nguoi_nhan_id = ?' : ''} LIMIT 1`,
+      nguoiNhanId ? [lichHenId, loai, nguoiNhanId] : [lichHenId, loai],
+    );
+    return rows.length > 0;
+  }
+
+  private async baoMotLan(c: any, loai: string, tieuDe: string, noiDung: string, nguoiNhan: number | string) {
+    const laRole = typeof nguoiNhan === 'string';
+    if (await this.daBao(c.id, loai, laRole ? undefined : nguoiNhan)) return;
+    const data = { tieuDe, noiDung, loai, doiTuongBang: 'lich_hen', doiTuongId: c.id };
+    if (laRole) await this.thongBaoService.taoThongBaoTheoRole(nguoiNhan, data);
+    else await this.thongBaoService.taoThongBao({ nguoiNhanId: nguoiNhan, ...data });
+  }
+
+  private async nhacVaoPhongTuVan(c: any, bs: DoanCoMat[], bn: DoanCoMat[], phutQua: number) {
+    const bsDangCho = bs.some((d) => d.dangCo);
+    const bnDangCho = bn.some((d) => d.dangCo);
+    if (bsDangCho && !bnDangCho && c.bnUserId) {
+      await this.baoMotLan(c, 'tu_van_nhac_vao_phong', 'Bác sĩ đang chờ bạn trong phòng tư vấn',
+        `BS. ${c.bsTen || ''} đang chờ trong phòng tư vấn trực tuyến (hẹn ${c.gio}). Bạn cần có mặt trong 15 phút kể từ giờ hẹn, nếu không ca được ghi vắng mặt và không hoàn phí.`,
+        Number(c.bnUserId));
+    }
+    if (bnDangCho && !bsDangCho && c.bsUserId) {
+      await this.baoMotLan(c, 'tu_van_nhac_vao_phong', 'Bệnh nhân đang chờ trong phòng tư vấn',
+        `${c.bnTen || 'Bệnh nhân'} đang chờ trong phòng tư vấn trực tuyến (hẹn ${c.gio}). Vui lòng vào phòng ngay.`,
+        Number(c.bsUserId));
+    }
+    if (phutQua >= 15 && !bs.length) {
+      await this.baoMotLan(c, 'tu_van_bs_chua_vao', `Bác sĩ chưa vào phòng tư vấn: ${c.bnTen || 'Bệnh nhân'}`,
+        `Ca tư vấn trực tuyến ${c.gio} của ${c.bnTen || 'bệnh nhân'} với BS. ${c.bsTen || ''} đã quá 15 phút mà bác sĩ chưa vào phòng. Vui lòng liên hệ bác sĩ hoặc đề nghị bệnh nhân đổi giờ / đổi bác sĩ.`,
+        'tiep_tan');
+    }
+  }
+
+  private async chotCaTuVan(c: any, gapNhau: boolean, bsGiuHen: boolean, bnGiuHen: boolean) {
+    if (gapNhau) {
+      // Đã tư vấn: không hủy. Nhắc bác sĩ kết luận; qua ngày vẫn chưa kết luận thì báo ban giám đốc
+      if (c.bsUserId) {
+        await this.baoMotLan(c, 'tu_van_chua_ket_luan', 'Ca tư vấn trực tuyến chưa kết luận',
+          `Ca tư vấn ${c.gio} với ${c.bnTen || 'bệnh nhân'} đã diễn ra nhưng chưa được hoàn tất. Vui lòng nhập kết luận.`, Number(c.bsUserId));
+      }
+      if (getLocalDateString(new Date(c.bayGio)) !== getLocalDateString(new Date(c.hen))) {
+        await this.baoMotLan(c, 'tu_van_chua_ket_luan_bgd', `Ca tư vấn chưa kết luận: ${c.bnTen || 'Bệnh nhân'}`,
+          `Ca tư vấn trực tuyến ${getLocalDateString(new Date(c.hen))} ${c.gio} của BS. ${c.bsTen || ''} đã diễn ra nhưng bác sĩ chưa hoàn tất.`, 'ban_giam_doc');
+      }
+      return;
+    }
+
+    const lh = await this.repo.findOne({ where: { id: c.id } });
+    if (!lh || lh.trangThai !== c.trangThai) return; // trạng thái vừa đổi ở nơi khác
+    const daDongPhi = lh.trangThai === TrangThaiLichHen.DA_XAC_NHAN;
+    const loiBacSi = daDongPhi && bnGiuHen && !bsGiuHen;
+    const xacMinh = daDongPhi && bnGiuHen && bsGiuHen;
+    const [trangThai, ghiChu] = !daDongPhi
+      ? [TrangThaiLichHen.DA_HUY, '[Tự động hủy do hết khung giờ tư vấn trực tuyến]']
+      : loiBacSi
+        ? [TrangThaiLichHen.DA_HUY, '[Bác sĩ không vào phòng tư vấn trực tuyến - hoàn 100% phí]']
+        : xacMinh
+          ? [TrangThaiLichHen.DA_HUY, '[Hai bên đều có mặt nhưng không gặp được nhau - chờ xác minh]']
+          : [TrangThaiLichHen.VANG_MAT, '[Bệnh nhân không giữ hẹn tư vấn trực tuyến - không hoàn phí]'];
+    lh.trangThai = trangThai;
+    lh.ghiChu = `${lh.ghiChu || ''} ${ghiChu}`.trim();
+    const saved = await this.repo.save(lh);
+
+    if (loiBacSi || xacMinh) {
+      await this.yeuCauHoanCocHoaDonTamUng(saved, loiBacSi
+        ? 'Bác sĩ không vào phòng tư vấn trực tuyến - hoàn phí cho bệnh nhân'
+        : 'Hai bên đều có mặt nhưng không gặp được nhau - chờ xác minh');
+    }
+    if (loiBacSi) {
+      await this.baoMotLan(c, 'tu_van_bs_vang', `Bác sĩ vắng ca tư vấn: BS. ${c.bsTen || ''}`,
+        `BS. ${c.bsTen || ''} không vào ca tư vấn trực tuyến ${getLocalDateString(new Date(c.hen))} ${c.gio} của ${c.bnTen || 'bệnh nhân'}. Đã hoàn 100% phí.`, 'ban_giam_doc');
     }
   }
 

@@ -1440,6 +1440,11 @@ export default function TelehealthVideoModal({
                   <p className="text-xs text-gray-400 mt-1">
                     Đang đợi {role === 'doctor' ? 'bệnh nhân' : 'bác sĩ'} tham gia vào phòng khám video...
                   </p>
+                  <p className="text-[11px] text-amber-300 mt-2 max-w-xs mx-auto">
+                    {role === 'doctor'
+                      ? 'Vui lòng ở lại phòng ít nhất 15 phút kể từ giờ hẹn. Bệnh nhân không vào thì ca được ghi vắng mặt, không hoàn phí.'
+                      : 'Vui lòng ở lại phòng ít nhất 15 phút kể từ giờ hẹn. Nếu bác sĩ không vào, bạn được hoàn 100% phí.'}
+                  </p>
                   <p className="text-[11px] text-primary-400 mt-2 bg-primary-950/60 py-1 px-3 rounded-full border border-primary-800/40 inline-flex items-center gap-1.5">
                     <Radio className="h-3.5 w-3.5 animate-pulse" /> Sẵn sàng kết nối âm thanh & hình ảnh WebRTC
                   </p>

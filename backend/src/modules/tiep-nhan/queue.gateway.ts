@@ -3,7 +3,7 @@ import {
   OnGatewayConnection, OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -14,7 +14,7 @@ import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity'
   namespace: '/',
   maxHttpBufferSize: 8e6, // cho phép gửi ảnh/tệp (≤5MB, base64) trong chat cuộc gọi
 })
-export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit {
   @WebSocketServer() server: Server;
   private logger = new Logger('QueueGateway');
 
@@ -26,6 +26,9 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Mốc bắt đầu ca khám chung cho cả 2 bên (thoát ra vào lại không reset đồng hồ 60 phút)
   private callStartedAt = new Map<string, number>();
   private static readonly CALL_DURATION_MS = 60 * 60 * 1000;
+
+  // Socket của instance này đang có dòng có mặt mở trong phong_goi_co_mat
+  private socketCoMat = new Set<string>();
 
   // Vào sớm trước giờ hẹn thì không tính: mốc = muộn hơn giữa giờ hẹn và lúc người đầu tiên vào phòng
   private getCallStartedAt(roomId: string, apptStartMs?: number): number {
@@ -55,6 +58,17 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   handleDisconnect(client: Socket) {
     this.logger.log(`Client ngắt kết nối: ${client.id}`);
+    this.dongCoMat(client.id);
+  }
+
+  /** Mỗi phút đánh dấu các socket còn trong phòng gọi (server sập thì lần đánh dấu cuối là giờ ra) */
+  onModuleInit() {
+    setInterval(() => {
+      if (!this.socketCoMat.size) return;
+      this.lichHenRepo
+        .query(`UPDATE phong_goi_co_mat SET cap_nhat_luc = NOW() WHERE ra_luc IS NULL AND socket_id IN (?)`, [[...this.socketCoMat]])
+        .catch((err) => this.logger.warn(`Không cập nhật được có mặt phòng gọi: ${err?.message}`));
+    }, 60 * 1000);
   }
 
   // Client đăng ký theo dõi phòng khám cụ thể
@@ -199,27 +213,47 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly jwt = new JwtService({ secret: process.env.JWT_SECRET });
 
-  /** Ghi lần đầu bác sĩ phụ trách / bệnh nhân của lịch hẹn vào phòng (token gửi kèm khi kết nối socket) */
+  /**
+   * Bác sĩ phụ trách / bệnh nhân của lịch hẹn vào phòng (token gửi kèm khi kết nối socket):
+   * ghi lần vào đầu tiên và mở 1 dòng có mặt trong phong_goi_co_mat (căn cứ chốt ca tư vấn).
+   */
   private async ghiNhanVaoPhong(client: Socket, roomKey: string) {
     try {
       const token = client.handshake?.auth?.token;
       if (!token) return;
       const { sub, maVaiTro } = this.jwt.verify(token);
+      if (maVaiTro !== 'bac_si' && maVaiTro !== 'benh_nhan') return;
       const laSo = /^\d+$/.test(roomKey);
       const dieuKien = laSo ? '(lh.id = ? OR lh.ma_lich_hen = ?)' : 'lh.ma_lich_hen = ?';
       const ts = laSo ? [Number(roomKey), roomKey] : [roomKey];
-      if (maVaiTro === 'bac_si') {
-        await this.lichHenRepo.query(
-          `UPDATE lich_hen lh JOIN bac_si bs ON bs.id = lh.bac_si_id JOIN nhan_vien nv ON nv.id = bs.nhan_vien_id
-           SET lh.bac_si_vao_luc = NOW() WHERE ${dieuKien} AND nv.nguoi_dung_id = ? AND lh.bac_si_vao_luc IS NULL`, [...ts, sub]);
-      } else if (maVaiTro === 'benh_nhan') {
-        await this.lichHenRepo.query(
-          `UPDATE lich_hen lh JOIN benh_nhan bn ON bn.id = lh.benh_nhan_id
-           SET lh.benh_nhan_vao_luc = NOW() WHERE ${dieuKien} AND bn.nguoi_dung_id = ? AND lh.benh_nhan_vao_luc IS NULL`, [...ts, sub]);
-      }
+      const [lh] = await this.lichHenRepo.query(
+        maVaiTro === 'bac_si'
+          ? `SELECT lh.id FROM lich_hen lh JOIN bac_si bs ON bs.id = lh.bac_si_id JOIN nhan_vien nv ON nv.id = bs.nhan_vien_id
+             WHERE ${dieuKien} AND nv.nguoi_dung_id = ? LIMIT 1`
+          : `SELECT lh.id FROM lich_hen lh JOIN benh_nhan bn ON bn.id = lh.benh_nhan_id
+             WHERE ${dieuKien} AND bn.nguoi_dung_id = ? LIMIT 1`,
+        [...ts, sub],
+      );
+      if (!lh) return;
+      const cot = maVaiTro === 'bac_si' ? 'bac_si_vao_luc' : 'benh_nhan_vao_luc';
+      await this.lichHenRepo.query(`UPDATE lich_hen SET ${cot} = COALESCE(${cot}, NOW()) WHERE id = ?`, [lh.id]);
+      await this.dongCoMat(client.id); // cùng socket vào lại thì đóng dòng cũ
+      await this.lichHenRepo.query(
+        `INSERT INTO phong_goi_co_mat (lich_hen_id, vai_tro, socket_id, vao_luc, cap_nhat_luc) VALUES (?, ?, ?, NOW(), NOW())`,
+        [lh.id, maVaiTro, client.id],
+      );
+      this.socketCoMat.add(client.id);
     } catch (err: any) {
       this.logger.warn(`Không ghi nhận được người vào phòng ${roomKey}: ${err?.message}`);
     }
+  }
+
+  /** Rời phòng / mất kết nối → đóng dòng có mặt */
+  private async dongCoMat(socketId: string) {
+    if (!this.socketCoMat.delete(socketId)) return;
+    await this.lichHenRepo
+      .query(`UPDATE phong_goi_co_mat SET ra_luc = NOW() WHERE socket_id = ? AND ra_luc IS NULL`, [socketId])
+      .catch((err) => this.logger.warn(`Không đóng được dòng có mặt ${socketId}: ${err?.message}`));
   }
 
   @SubscribeMessage('call:signal')
@@ -245,6 +279,7 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const room = `call:${payload.roomId}`;
     client.leave(room);
     client.to(room).emit('call:peer_left', { peerId: client.id });
+    this.dongCoMat(client.id);
   }
 
   // ─── CÁC SỰ KIỆN PHÁT RA (gọi từ Service) ────────────────────
