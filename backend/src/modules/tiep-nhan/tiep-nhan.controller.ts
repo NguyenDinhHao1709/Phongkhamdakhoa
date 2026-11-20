@@ -49,8 +49,13 @@ export class TiepNhanController {
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Đổi đối tượng ưu tiên của lượt khám (vd. chuyển cấp cứu)' })
   @Quyen('tiep_nhan.goi_so', 'kham_benh.kham')
-  capNhatUuTien(@Param('id', ParseIntPipe) id: number, @Body('doiTuongUuTien') doiTuongUuTien: string | null) {
-    return this.service.capNhatUuTien(id, doiTuongUuTien);
+  capNhatUuTien(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('doiTuongUuTien') doiTuongUuTien: string | null,
+    @Body('lyDo') lyDo: string | undefined,
+    @CurrentUser() user: any,
+  ) {
+    return this.service.capNhatUuTien(id, doiTuongUuTien, lyDo, user);
   }
 
   @Post(':id/qua-luot')

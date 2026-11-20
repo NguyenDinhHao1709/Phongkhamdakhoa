@@ -73,10 +73,13 @@ Các con số (15 phút, 3 lần, 24 giờ…) là giá trị trong mã nguồn 
 
 Bệnh nhân phải đóng đủ phần phí khám mình chi trả **trước khi xuất hiện trên màn hình bác sĩ**.
 
-- Hệ thống lập **phiếu tạm ứng `TU<mã lượt>`**:
-  - Có lịch hẹn: `số phải thu = phí khám × (1 − tỷ lệ BHYT) − tiền cọc đã đóng`. Nếu ≤ 0 → không lập phiếu, đưa thẳng vào hàng đợi.
-  - Khách vãng lai: thu ngân nhập số tiền tạm ứng.
+- Hệ thống lập **phiếu tạm ứng `TU<mã lượt>`** cho mọi lượt (trừ cấp cứu):
+  - `số phải thu = phí khám × (1 − tỷ lệ BHYT) − tiền cọc đã đóng` (khách vãng lai: cọc = 0). Nếu ≤ 0 → phiếu 0 đ ghi "đã thu" luôn, bệnh nhân vào thẳng hàng đợi.
+  - Không lập được phiếu thì lượt bị hủy và báo lễ tân tiếp nhận lại.
+- Bác sĩ chỉ thấy và chỉ gọi được lượt có phiếu `TU` **đã thu** hoặc ca cấp cứu (kiểm tra cả khi gọi qua API).
 - **Cấp cứu:** không thu trước, vào thẳng đầu hàng đợi, quyết toán sau.
+  - Lễ tân hoặc bác sĩ chuyển cấp cứu khi bệnh nhân đang chờ; **bắt buộc ghi lý do**, quản trị được thông báo.
+  - Chỉ bác sĩ (hoặc quản trị) được bỏ cấp cứu, cũng phải ghi lý do; bệnh nhân phải đóng lại tạm ứng mới được gọi khám.
 - Thu ngân bấm **Thu tạm ứng** (phải thu ít nhất số phải thu; hai quầy cùng thu một phiếu thì chỉ một lần thành công).
 - Bệnh nhân có lịch hẹn **quá giờ hẹn 15 phút** mà chưa đóng → hủy lượt, lịch hẹn `vang_mat`, phòng khám tiếp tục ca khác.
 
@@ -97,6 +100,7 @@ Thứ tự gọi trong hàng đợi của một bác sĩ:
   - màn hình tiến độ của bệnh nhân hiển thị số người phía trước và thời gian chờ ước tính theo nhịp khám thực tế trong ngày.
 - **Gọi không có mặt → qua lượt:** xếp xuống cuối hàng (tính từ lúc qua lượt). **Lần thứ 3** → hủy lượt vắng mặt; tạm ứng đã đóng được chuyển sang "chờ hoàn".
 - Lượt còn `cho_kham` từ các ngày trước được hệ thống tự dọn.
+- Nhân viên hủy lượt: tạm ứng đã thu chuyển "chờ hoàn", lịch hẹn của lượt hủy theo, chỉ định cận lâm sàng chưa có kết quả bị hủy. Không hủy được lượt đã quyết toán hoặc đã cấp phát thuốc.
 
 ### 3.4 Khám, cận lâm sàng, kê đơn
 

@@ -495,7 +495,12 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
   const handleBatDauKham = async () => {
     try {
       if (luot.trangThai !== 'dang_kham') {
-        await apiPatch(`/tiep-nhan/${luot.id}/trang-thai`, { trangThai: 'dang_kham' }).catch(() => {});
+        try {
+          await apiPatch(`/tiep-nhan/${luot.id}/trang-thai`, { trangThai: 'dang_kham' });
+        } catch (err) {
+          alert(err?.error?.message || err?.message || 'Không bắt đầu khám được');
+          return undefined;
+        }
         onUpdateLuot({ ...luot, trangThai: 'dang_kham' });
       }
       const res = await createMut.mutateAsync();

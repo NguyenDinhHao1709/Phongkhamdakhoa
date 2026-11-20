@@ -6,7 +6,6 @@ import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
 import { LichHen } from '../lich-hen/entities/lich-hen.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
-import { ThanhToanModule } from '../thanh-toan/thanh-toan.module';
 import { TiepNhanModule } from '../tiep-nhan/tiep-nhan.module';
 
 @Module({
@@ -17,7 +16,6 @@ import { TiepNhanModule } from '../tiep-nhan/tiep-nhan.module';
       BenhNhan,
       BacSi,
     ]),
-    ThanhToanModule,
     TiepNhanModule,
   ],
   controllers: [KioskController],

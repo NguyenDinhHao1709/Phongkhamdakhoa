@@ -5,7 +5,6 @@ import { LuotTiepNhan, TrangThaiTiepNhan } from '../tiep-nhan/entities/tiep-nhan
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
-import { ThanhToanService } from '../thanh-toan/thanh-toan.service';
 import { TiepNhanService } from '../tiep-nhan/tiep-nhan.service';
 import { voiKhoaDb, maBenhNhanTiepTheo } from '../../common/utils/db-sequence.util';
 
@@ -34,7 +33,6 @@ export class KioskService {
     private readonly benhNhanRepo: Repository<BenhNhan>,
     @InjectRepository(BacSi)
     private readonly bacSiRepo: Repository<BacSi>,
-    private readonly thanhToanService: ThanhToanService,
     private readonly tiepNhanService: TiepNhanService,
   ) {}
 
@@ -237,7 +235,7 @@ export class KioskService {
 
       const savedLuot = await this.luotRepo.save(newLuot);
       // Đóng đủ phí khám (trừ cọc) tại quầy thu ngân rồi mới vào hàng đợi bác sĩ
-      await this.thanhToanService.taoPhieuTamUngTaiQuay(savedLuot, lh.benhNhan?.hoTen);
+      await this.tiepNhanService.lapPhieuTamUng(savedLuot, lh.benhNhan?.hoTen);
 
       // Ghi nhận mã checkin vào ghi chú của lịch hẹn
       await this.lichHenRepo.update(lh.id, {
@@ -382,7 +380,7 @@ export class KioskService {
 
       const savedLuot = await this.luotRepo.save(newLuot);
       // Đóng tạm ứng tại quầy thu ngân rồi mới vào hàng đợi bác sĩ
-      await this.thanhToanService.taoPhieuTamUngTaiQuay(savedLuot, benhNhan.hoTen);
+      await this.tiepNhanService.lapPhieuTamUng(savedLuot, benhNhan.hoTen);
 
       // Đếm số người đang chờ trong phòng
       const soNguoiDangDoi = await this.tiepNhanService.soNguoiPhiaTruoc(savedLuot.id, phongKhamInfo.id);

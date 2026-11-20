@@ -1,32 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Wallet, X, CheckCircle } from 'lucide-react';
-import { apiGet, apiPatch } from '../../services/api';
+import { apiPatch } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { formatCurrency } from '../../utils/formatCurrency';
 
 // Thu tạm ứng cho bệnh nhân tiếp nhận tại quầy; thu xong bệnh nhân mới vào hàng đợi bác sĩ
 export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
-  const [soTien, setSoTien] = useState('');
+  // Phiếu đã có số phải thu (phí khám × (1 − BHYT) − cọc); thu ngân được thu nhiều hơn
+  const [soTien, setSoTien] = useState(() => String(Math.round(Number(hoaDon?.tongTien) || 0) || ''));
   const [phuongThuc, setPhuongThuc] = useState('tien_mat');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-
-  // Có lịch hẹn: phiếu đã có số cần thu (phí khám trừ cọc). Không thì gợi ý theo cấu hình tiền cọc (thu ngân sửa được)
-  useEffect(() => {
-    const canThu = Math.round(Number(hoaDon?.tongTien) || 0);
-    if (canThu > 0) {
-      setSoTien(String(canThu));
-      return;
-    }
-    apiGet('/quan-ly/cau-hinh-tien-coc')
-      .then((res) => {
-        const raw = res?.data?.data || res?.data || res;
-        const items = Array.isArray(raw) ? raw : [];
-        const cfg = items.find((x) => x.loaiHinhThuc === 'truc_tiep');
-        if (cfg?.soTienCoc) setSoTien((prev) => prev || String(Math.round(Number(cfg.soTienCoc))));
-      })
-      .catch(() => {});
-  }, []);
 
   const handleSubmit = async () => {
     if (!(Number(soTien) > 0)) {

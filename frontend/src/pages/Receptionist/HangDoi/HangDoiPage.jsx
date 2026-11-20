@@ -41,9 +41,18 @@ export default function HangDoiPage() {
   };
 
   const handleDoiUuTien = async (luot, doiTuongUuTien) => {
-    if (doiTuongUuTien === 'cap_cuu' && !window.confirm(`Chuyển ${luot.benhNhan?.hoTen || 'bệnh nhân'} thành CẤP CỨU? Bệnh nhân lên đầu hàng chờ và được khám trước, thu tiền sau.`)) return;
+    // Bật / bỏ cấp cứu phải ghi lý do (cấp cứu được khám trước, thu tiền sau)
+    const doiCapCuu = (doiTuongUuTien === 'cap_cuu') !== (luot.doiTuongUuTien === 'cap_cuu');
+    let lyDo;
+    if (doiCapCuu) {
+      lyDo = window.prompt(doiTuongUuTien === 'cap_cuu'
+        ? `Chuyển ${luot.benhNhan?.hoTen || 'bệnh nhân'} thành CẤP CỨU (lên đầu hàng chờ, thu tiền sau). Lý do:`
+        : `Bỏ cấp cứu của ${luot.benhNhan?.hoTen || 'bệnh nhân'} (bệnh nhân phải đóng tạm ứng trước khi khám). Lý do:`);
+      if (!lyDo?.trim()) return;
+    }
     try {
-      await apiPatch(`/tiep-nhan/${luot.id}/uu-tien`, { doiTuongUuTien: doiTuongUuTien || null });
+      const res = await apiPatch(`/tiep-nhan/${luot.id}/uu-tien`, { doiTuongUuTien: doiTuongUuTien || null, lyDo });
+      if (doiCapCuu && res?.message) alert(res.message);
       refetch();
     } catch (err) {
       alert(err?.error?.message || err?.message || 'Không đổi được đối tượng ưu tiên');

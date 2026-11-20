@@ -126,9 +126,10 @@ import { QueueGateway } from './queue.gateway';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { ThanhToanService, MA_TAM_UNG_QUAY } from '../thanh-toan/thanh-toan.service';
 
-// Lượt khám không còn phiếu tạm ứng tại quầy chờ thu (dùng với tham số :maTu)
+// Lượt được vào hàng đợi bác sĩ: ca cấp cứu hoặc phiếu tạm ứng tại quầy đã thu (dùng với tham số :maTu).
+// Thiếu phiếu thì KHÔNG cho vào (lỗi lập phiếu không được biến thành khám miễn phí)
 const DA_DONG_TAM_UNG =
-  `NOT EXISTS (SELECT 1 FROM hoa_don tu WHERE tu.ma_hoa_don = CONCAT(:maTu, ltn.id) AND tu.trang_thai = 'cho_thanh_toan')`;
+  `(ltn.doi_tuong_uu_tien = 'cap_cuu' OR EXISTS (SELECT 1 FROM hoa_don tu WHERE tu.ma_hoa_don = CONCAT(:maTu, ltn.id) AND tu.trang_thai = 'da_thanh_toan'))`;
 
 @Injectable()
 export class TiepNhanService implements OnModuleInit {
@@ -841,15 +842,36 @@ export class TiepNhanService implements OnModuleInit {
     });
 
     // Bệnh nhân đến quầy phải đóng tạm ứng (trừ cấp cứu); bác sĩ được báo khi thu ngân thu xong
-    const phieuTu = await this.thanhToanService.taoPhieuTamUngTaiQuay(saved, withRelations?.benhNhan?.hoTen);
+    const phieuTu = await this.lapPhieuTamUng(saved, withRelations?.benhNhan?.hoTen);
     this.baoHangDoiThayDoi();
 
     return {
       data: withRelations,
       message: `Đã tiếp nhận trực tiếp. ${withRelations?.maSoThuTu} — ${withRelations?.bacSi?.nhanVien?.hoTen || 'Bác sĩ phụ trách'}.${phieuTu
         ? ' Mời bệnh nhân sang quầy thu ngân đóng tạm ứng.'
-        : ' Bệnh nhân cấp cứu được vào khám ngay, thanh toán sau.'}`,
+        : saved.doiTuongUuTien === 'cap_cuu'
+          ? ' Bệnh nhân cấp cứu được vào khám ngay, thanh toán sau.'
+          : ' Bệnh nhân đã vào hàng đợi khám.'}`,
     };
+  }
+
+  /**
+   * Lập phiếu tạm ứng cho lượt vừa tạo; lỗi thì hủy lượt và báo lỗi để tiếp nhận lại,
+   * tránh lượt "mồ côi" không có phiếu (không vào được hàng đợi, cũng không ai thu được).
+   */
+  async lapPhieuTamUng(luot: LuotTiepNhan, hoTen?: string) {
+    try {
+      return await this.thanhToanService.taoPhieuTamUngTaiQuay(luot, hoTen);
+    } catch (err) {
+      await this.luotRepo.update(luot.id, {
+        trangThai: TrangThaiTiepNhan.DA_HUY,
+        ghiChu: `${luot.ghiChu || ''} [Hủy: không lập được phiếu tạm ứng]`.trim(),
+      });
+      throw new BadRequestException({
+        code: 'KHONG_LAP_DUOC_TAM_UNG',
+        message: `Không lập được phiếu tạm ứng (${(err as any)?.message || 'lỗi hệ thống'}). Vui lòng tiếp nhận lại.`,
+      });
+    }
   }
 
   private async chonBacSiItTaiNhat(doctors: BacSi[]) {
@@ -945,7 +967,7 @@ export class TiepNhanService implements OnModuleInit {
     });
 
     // Phải đóng tạm ứng (có lịch hẹn: đủ phí khám trừ cọc) trước khi vào hàng đợi bác sĩ
-    const phieuTu = await this.thanhToanService.taoPhieuTamUngTaiQuay(saved, withRelations?.benhNhan?.hoTen);
+    const phieuTu = await this.lapPhieuTamUng(saved, withRelations?.benhNhan?.hoTen);
     return {
       data: withRelations,
       message: `Tiếp nhận thành công. Số thứ tự: ${maSoThuTu}.${phieuTu ? ' Mời bệnh nhân đóng tạm ứng tại quầy thu ngân.' : ''}`,
@@ -1041,7 +1063,7 @@ export class TiepNhanService implements OnModuleInit {
     }
 
     const allowedTransitions: Record<string, string[]> = {
-      [TrangThaiTiepNhan.CHO_KHAM]: [TrangThaiTiepNhan.DANG_KHAM, TrangThaiTiepNhan.DANG_CLS, TrangThaiTiepNhan.DA_HUY],
+      [TrangThaiTiepNhan.CHO_KHAM]: [TrangThaiTiepNhan.DANG_KHAM, TrangThaiTiepNhan.DA_HUY],
       [TrangThaiTiepNhan.DANG_KHAM]: [TrangThaiTiepNhan.DANG_CLS, TrangThaiTiepNhan.CHO_THANH_TOAN, TrangThaiTiepNhan.DA_HUY],
       [TrangThaiTiepNhan.DANG_CLS]: [TrangThaiTiepNhan.DA_CO_KQ_CLS, TrangThaiTiepNhan.DANG_KHAM, TrangThaiTiepNhan.DA_HUY],
       [TrangThaiTiepNhan.DA_CO_KQ_CLS]: [TrangThaiTiepNhan.DANG_KHAM, TrangThaiTiepNhan.CHO_THANH_TOAN, TrangThaiTiepNhan.DA_HUY],
@@ -1054,6 +1076,10 @@ export class TiepNhanService implements OnModuleInit {
         code: 'CHUYEN_TRANG_THAI_KHONG_HOP_LE',
         message: `Không thể chuyển lượt khám từ "${luot.trangThai}" sang "${dto.trangThai}".`,
       });
+    }
+
+    if (dto.trangThai === TrangThaiTiepNhan.DANG_KHAM && luot.trangThai === TrangThaiTiepNhan.CHO_KHAM) {
+      await this.kiemTraDaDongTamUng(luot);
     }
 
     // Chốt chặn ERP Y Tế khi hủy lượt khám: Giải phóng giữ chỗ kho thuốc, hủy CLS nháp & chặn nếu đã thu tiền/xuất thuốc
@@ -1091,9 +1117,9 @@ export class TiepNhanService implements OnModuleInit {
           `UPDATE don_thuoc SET trang_thai = 'da_huy' WHERE benh_an_kham_id = ? AND trang_thai = 'cho_duyet'`,
           [bakId],
         );
-        // Tự động hủy các chỉ định CLS đang chờ lấy mẫu
+        // Hủy mọi chỉ định CLS chưa có kết quả
         await this.luotRepo.manager.query(
-          `UPDATE chi_dinh_can_lam_sang SET trang_thai = 'huy' WHERE benh_an_kham_id = ? AND trang_thai = 'cho_lay_mau'`,
+          `UPDATE chi_dinh_can_lam_sang SET trang_thai = 'huy' WHERE benh_an_kham_id = ? AND trang_thai NOT IN ('co_ket_qua', 'huy')`,
           [bakId],
         );
       }
@@ -1109,6 +1135,16 @@ export class TiepNhanService implements OnModuleInit {
     luot.trangThai = dto.trangThai as TrangThaiTiepNhan;
     await this.luotRepo.save(luot);
     if (tuChoKham && dto.trangThai === TrangThaiTiepNhan.DANG_KHAM) await this.lichHenDangKham(luot);
+    if (dto.trangThai === TrangThaiTiepNhan.DA_HUY) {
+      // Tạm ứng đã thu → chờ hoàn; lịch hẹn của lượt cũng hủy
+      await this.thanhToanService.xuLyTamUngKhiHuyLuot(luot, 'nhân viên hủy lượt khám');
+      if (luot.lichHenId) {
+        await this.lichHenRepo.update(
+          { id: luot.lichHenId, trangThai: In([TrangThaiLichHen.DA_XAC_NHAN, TrangThaiLichHen.DANG_KHAM]) },
+          { trangThai: TrangThaiLichHen.DA_HUY },
+        );
+      }
+    }
 
     let callEvent = null;
     if (dto.trangThai === 'dang_kham') {
@@ -1201,23 +1237,54 @@ export class TiepNhanService implements OnModuleInit {
     return callEvent;
   }
 
-  /** Đổi đối tượng ưu tiên sau khi tiếp nhận (vd. bệnh nhân trở nặng khi đang chờ → cấp cứu) */
-  async capNhatUuTien(luotId: number, doiTuongUuTien: string | null) {
-    const luot = await this.luotRepo.findOne({ where: { id: luotId } });
+  /**
+   * Đổi đối tượng ưu tiên khi bệnh nhân còn chờ khám (vd. trở nặng → cấp cứu).
+   * Cấp cứu được khám trước và thu tiền sau nên: bật/bỏ phải ghi lý do, chỉ bác sĩ (hoặc quản trị) được bỏ,
+   * bỏ cấp cứu thì lập lại phiếu tạm ứng và bệnh nhân rời hàng đợi đến khi đóng tiền.
+   */
+  async capNhatUuTien(luotId: number, doiTuongUuTien: string | null, lyDo: string | undefined, user: any) {
+    const luot = await this.luotRepo.findOne({ where: { id: luotId }, relations: ['benhNhan'] });
     if (!luot) throw new NotFoundException({ code: 'KHONG_TIM_THAY', message: 'Không tìm thấy lượt tiếp nhận' });
     if (doiTuongUuTien && !DOI_TUONG_UU_TIEN.includes(doiTuongUuTien)) {
       throw new BadRequestException({ code: 'UU_TIEN_KHONG_HOP_LE', message: 'Đối tượng ưu tiên không hợp lệ' });
     }
-    if (![TrangThaiTiepNhan.CHO_KHAM, TrangThaiTiepNhan.DANG_KHAM].includes(luot.trangThai)) {
-      throw new BadRequestException({ code: 'LUOT_DA_KET_THUC', message: 'Lượt khám đã kết thúc, không đổi ưu tiên được.' });
+    if (luot.trangThai !== TrangThaiTiepNhan.CHO_KHAM) {
+      throw new BadRequestException({ code: 'LUOT_KHONG_CON_CHO', message: 'Chỉ đổi ưu tiên khi bệnh nhân còn đang chờ khám.' });
     }
-    await this.luotRepo.update(luotId, { doiTuongUuTien: doiTuongUuTien || null });
-    if (doiTuongUuTien === 'cap_cuu' && luot.doiTuongUuTien !== 'cap_cuu') await this.thanhToanService.chuyenCapCuu(luotId);
+    const batCapCuu = doiTuongUuTien === 'cap_cuu' && luot.doiTuongUuTien !== 'cap_cuu';
+    const boCapCuu = luot.doiTuongUuTien === 'cap_cuu' && doiTuongUuTien !== 'cap_cuu';
+    const lyDoText = (lyDo || '').trim();
+    if ((batCapCuu || boCapCuu) && !lyDoText) {
+      throw new BadRequestException({ code: 'THIEU_LY_DO', message: 'Phải ghi lý do khi chuyển hoặc bỏ cấp cứu.' });
+    }
+    if (boCapCuu && !['bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao'].includes(user?.vai_tro)) {
+      throw new BadRequestException({ code: 'KHONG_DUOC_BO_CAP_CUU', message: 'Chỉ bác sĩ được bỏ phân loại cấp cứu.' });
+    }
+
+    const nguoiThucHien = user?.tenDangNhap || user?.vai_tro || 'không rõ';
+    await this.luotRepo.update(luotId, {
+      doiTuongUuTien: doiTuongUuTien || null,
+      ...(batCapCuu || boCapCuu
+        ? { ghiChu: `${luot.ghiChu || ''} [${batCapCuu ? 'Chuyển cấp cứu' : 'Bỏ cấp cứu'}: ${lyDoText} - ${nguoiThucHien}]`.trim() }
+        : {}),
+    });
+    let message = doiTuongUuTien ? `Đã đặt ${luot.maSoThuTu} là đối tượng ưu tiên.` : `Đã bỏ ưu tiên của ${luot.maSoThuTu}.`;
+    if (batCapCuu) await this.thanhToanService.chuyenCapCuu(luotId);
+    if (boCapCuu) {
+      const phieu = await this.thanhToanService.taoPhieuTamUngTaiQuay({ ...luot, doiTuongUuTien: doiTuongUuTien || null }, luot.benhNhan?.hoTen);
+      if (phieu) message += ' Bệnh nhân cần đóng tạm ứng trước khi được gọi khám.';
+    }
+    if (batCapCuu || boCapCuu) {
+      await this.thongBaoService.taoThongBaoTheoRole('quan_tri_vien', {
+        tieuDe: `${batCapCuu ? 'Chuyển' : 'Bỏ'} cấp cứu: ${luot.benhNhan?.hoTen || ''} (${luot.maSoThuTu})`,
+        noiDung: `Lý do: ${lyDoText}. Người thực hiện: ${nguoiThucHien}.`,
+        loai: 'phe_duyet',
+        doiTuongBang: 'luot_tiep_nhan',
+        doiTuongId: luotId,
+      }).catch((e) => console.warn('Lỗi báo đổi cấp cứu:', e?.message));
+    }
     this.queueGateway.emitQueueUpdate();
-    return {
-      data: { id: luotId, doiTuongUuTien: doiTuongUuTien || null },
-      message: doiTuongUuTien ? `Đã đặt ${luot.maSoThuTu} là đối tượng ưu tiên.` : `Đã bỏ ưu tiên của ${luot.maSoThuTu}.`,
-    };
+    return { data: { id: luotId, doiTuongUuTien: doiTuongUuTien || null }, message };
   }
 
   /** Gọi mà bệnh nhân không có mặt: trả về hàng chờ, xếp cuối hàng tính từ lúc này; quay lại thì gọi lại bình thường */
@@ -1246,6 +1313,16 @@ export class TiepNhanService implements OnModuleInit {
     return { data: { id: luotId, soLanQuaLuot: soLan }, message };
   }
 
+  /** Chưa đóng tạm ứng (và không phải cấp cứu) thì không được gọi vào khám */
+  private async kiemTraDaDongTamUng(luot: LuotTiepNhan) {
+    if (!(await this.thanhToanService.daDuDieuKienKham(luot))) {
+      throw new BadRequestException({
+        code: 'CHUA_DONG_TAM_UNG',
+        message: `${luot.maSoThuTu} chưa đóng tạm ứng phí khám, chưa thể gọi vào khám.`,
+      });
+    }
+  }
+
   /** Bệnh nhân có lịch hẹn được gọi vào khám → lịch hẹn "đang khám" */
   private async lichHenDangKham(luot: LuotTiepNhan) {
     if (!luot.lichHenId) return;
@@ -1269,6 +1346,8 @@ export class TiepNhanService implements OnModuleInit {
             : 'Lượt khám đã kết thúc hoặc bị hủy, không thể gọi.',
       });
     }
+
+    if (luot.trangThai === TrangThaiTiepNhan.CHO_KHAM) await this.kiemTraDaDongTamUng(luot);
 
     const lanGoi = await this.lichSuGoiRepo.count({ where: { luotTiepNhanId: luotId } }) + 1;
     const loaiGoi = luot.trangThai === TrangThaiTiepNhan.CHO_KHAM ? 'goi_lan_dau' : 'goi_lai';
