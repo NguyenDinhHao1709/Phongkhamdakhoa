@@ -1022,6 +1022,9 @@ export default function XetNghiemListPage() {
                           {/* Trạng thái */}
                           <td className="py-3 px-3.5">
                             <StatusBadge status={cd.trangThai} size="sm" />
+                            {cd.trangThaiThuPhi === 'chua_thu' && cd.trangThai === 'cho_lay_mau' && (
+                              <div className="mt-1 text-[10px] font-semibold text-amber-700">Chưa đóng phí</div>
+                            )}
                           </td>
 
                           {/* Thời gian */}
@@ -1267,6 +1270,7 @@ function ChiDinhDetailPanel({ id }) {
   };
 
   const nextStep = STATUS_FLOW[cd.trangThai];
+  const chuaDongPhi = cd.trangThai === 'cho_lay_mau' && cd.trangThaiThuPhi === 'chua_thu';
   const isCdha = cd.dichVu?.loai === 'cdha';
   const isUltrasound = isCdha && (
     /^CD00[2-7]$/i.test(String(cd.dichVu?.maDichVu || '')) ||
@@ -1369,12 +1373,18 @@ function ChiDinhDetailPanel({ id }) {
           )}
         </div>
 
+        {chuaDongPhi && (
+          <p className="text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+            Bệnh nhân chưa đóng phí cận lâm sàng. Mời bệnh nhân ra quầy thu ngân trước khi lấy mẫu / thực hiện.
+          </p>
+        )}
+
         {/* Nút chuyển trạng thái nhanh */}
         {nextStep && (
           <button
             onClick={() => statusMut.mutate(nextStep.next)}
-            disabled={statusMut.isLoading}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 shadow-xs shadow-primary-600/20 transition-all active:scale-95 cursor-pointer"
+            disabled={statusMut.isLoading || chuaDongPhi}
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 shadow-xs shadow-primary-600/20 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span>{nextStep.label}</span>
             <ChevronRight className="h-4 w-4" />

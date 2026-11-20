@@ -7,7 +7,7 @@ import { CauHinhTienCoc } from '../quan-ly/entities/cau-hinh-tien-coc.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
-import { ThanhToanService, MA_TAM_UNG_QUAY } from '../thanh-toan/thanh-toan.service';
+import { ThanhToanService, laPhieuThuTruoc, soTienPhaiThu, MA_PHI_CLS } from '../thanh-toan/thanh-toan.service';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 
 /**
@@ -333,8 +333,8 @@ export class PayosService implements OnModuleInit {
   private readonly daBaoLechTien = new Set<number>();
 
   /**
-   * Tạo mã VietQR PayOS cho hóa đơn viện phí đang chờ thanh toán.
-   * Khi tiền vào, webhook / polling / worker đối soát sẽ tự xác nhận hóa đơn (không cần thu ngân bấm tay).
+   * Tạo mã VietQR PayOS cho hóa đơn viện phí, phiếu tạm ứng phí khám (TU…) hoặc phiếu phí cận lâm sàng (CLS…) đang chờ thu.
+   * Khi tiền vào, webhook / polling / worker đối soát sẽ tự xác nhận (không cần ra quầy thu ngân).
    */
   async taoLinkThanhToanHoaDon(hoaDonId: number) {
     if (!this.payOS) {
@@ -343,10 +343,13 @@ export class PayosService implements OnModuleInit {
     const hd = await this.hoaDonRepo.findOne({ where: { id: hoaDonId } });
     if (!hd) throw new NotFoundException('Không tìm thấy hóa đơn');
     if (hd.trangThai === 'da_thanh_toan') return { daThanhToan: true };
-    if (hd.trangThai !== 'cho_thanh_toan' || hd.maHoaDon?.startsWith(MA_TAM_UNG_QUAY)) {
+    if (hd.trangThai !== 'cho_thanh_toan') {
       throw new BadRequestException('Hóa đơn này không thanh toán chuyển khoản trực tuyến được');
     }
-    const amount = Math.round(Number(hd.thucThu || 0));
+    const amount = soTienPhaiThu(hd);
+    const tenKhoan = !laPhieuThuTruoc(hd.maHoaDon)
+      ? 'Vien phi kham chua benh'
+      : hd.maHoaDon.startsWith(MA_PHI_CLS) ? 'Phi can lam sang' : 'Tam ung phi kham';
     if (amount <= 0) {
       throw new BadRequestException('Hóa đơn không còn số tiền phải thu, vui lòng liên hệ Quầy Thu ngân');
     }
@@ -377,7 +380,7 @@ export class PayosService implements OnModuleInit {
           orderCode,
           amount,
           description,
-          items: [{ name: 'Vien phi kham chua benh', quantity: 1, price: amount }],
+          items: [{ name: tenKhoan, quantity: 1, price: amount }],
           returnUrl: `${clientUrl}/benh-nhan?payment=success`,
           cancelUrl: `${clientUrl}/benh-nhan?payment=cancelled`,
         });
@@ -468,8 +471,22 @@ export class PayosService implements OnModuleInit {
       return false;
     }
     if (hd.trangThai === 'da_thanh_toan') return true;
+    // Tiền vào khi phiếu đã hủy (lượt khám bị hủy sau khi tạo QR): không tự ghi nhận, báo thu ngân hoàn lại
+    if (hd.trangThai === 'huy') {
+      if (!this.daBaoLechTien.has(orderCode)) {
+        this.daBaoLechTien.add(orderCode);
+        await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+          tieuDe: `Nhận chuyển khoản cho phiếu đã hủy: ${hd.maHoaDon}`,
+          noiDung: `Bệnh nhân ${hd.benhNhan?.hoTen || ''} đã chuyển khoản ${soTienNhan.toLocaleString('vi-VN')} đ (order ${orderCode}) nhưng ${hd.maHoaDon} đã bị hủy. Vui lòng kiểm tra và hoàn tiền cho bệnh nhân.`,
+          loai: 'thanh_toan',
+          doiTuongBang: 'hoa_don',
+          doiTuongId: hd.id,
+        }).catch(() => {});
+      }
+      return false;
+    }
 
-    const canThu = Math.round(Number(hd.thucThu || 0));
+    const canThu = soTienPhaiThu(hd);
     if (soTienNhan < canThu) {
       if (!this.daBaoLechTien.has(orderCode)) {
         this.daBaoLechTien.add(orderCode);
@@ -485,11 +502,18 @@ export class PayosService implements OnModuleInit {
       return false;
     }
 
+    const ghiChuCk = `[CK PayOS tự động: ${soTienNhan.toLocaleString('vi-VN')} đ${maGiaoDich ? `, mã GD ${maGiaoDich}` : ''}]`;
     try {
-      await this.thanhToanService.xacNhanThanhToan(hd.id, 0, {
-        phuongThucThanhToan: 'chuyen_khoan',
-        ghiChu: `${hd.ghiChu || ''} [CK PayOS tự động: ${soTienNhan.toLocaleString('vi-VN')} đ${maGiaoDich ? `, mã GD ${maGiaoDich}` : ''}]`.trim(),
-      });
+      if (laPhieuThuTruoc(hd.maHoaDon)) {
+        // Như thu ngân bấm "Thu tạm ứng / Thu phí CLS": bệnh nhân vào hàng đợi bác sĩ / kỹ thuật viên được thực hiện
+        await this.thanhToanService.thuTamUng(hd.id, 0, { soTien: soTienNhan, phuongThucThanhToan: 'chuyen_khoan' });
+        await this.hoaDonRepo.query(`UPDATE hoa_don SET ghi_chu = TRIM(CONCAT(COALESCE(ghi_chu, ''), ' ', ?)) WHERE id = ?`, [ghiChuCk, hd.id]);
+      } else {
+        await this.thanhToanService.xacNhanThanhToan(hd.id, 0, {
+          phuongThucThanhToan: 'chuyen_khoan',
+          ghiChu: `${hd.ghiChu || ''} ${ghiChuCk}`.trim(),
+        });
+      }
     } catch (err: any) {
       // Webhook, polling và worker có thể chạy đồng thời — bên chậm hơn gặp "đã được thanh toán" là bình thường
       const lai = await this.hoaDonRepo.findOne({ where: { id: hd.id } });

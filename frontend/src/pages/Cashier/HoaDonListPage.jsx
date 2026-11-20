@@ -675,7 +675,7 @@ export default function HoaDonListPage() {
                     hd.maHoaDon?.startsWith('HDT') ||
                     hd.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]');
                   // Phiếu tạm ứng tại quầy (TU + id lượt) → hóa đơn quyết toán của cùng lượt khám
-                  const hoaDonQuyetToan = isTamUngQuay
+                  const hoaDonQuyetToan = isTamUngQuay && !hd.laPhiCls
                     ? list.find((x) => x.luotTiepNhanId === Number(hd.maHoaDon.slice(2)) && x.trangThai !== 'huy')
                     : null;
 
@@ -698,7 +698,7 @@ export default function HoaDonListPage() {
                           </span>
                           {isTamUng && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 border border-violet-200">
-                              📌 {isTamUngQuay ? 'Tạm ứng tại quầy' : `Tạm ứng đặt lịch${hd.maLichHen ? ` • ${hd.maLichHen}` : ''}`}
+                              📌 {hd.laPhiCls ? 'Phí cận lâm sàng (thu trước)' : isTamUngQuay ? 'Tạm ứng tại quầy' : `Tạm ứng đặt lịch${hd.maLichHen ? ` • ${hd.maLichHen}` : ''}`}
                             </span>
                           )}
                           {hd.khauTruTamUng && (
@@ -749,6 +749,9 @@ export default function HoaDonListPage() {
                         <span className="font-semibold text-gray-600">
                           {formatCurrency(hd.tongTien)}
                         </span>
+                        {hd.laPhiCls && hd.soTienGiam > 0 && (
+                          <p className="text-[11px] font-semibold text-teal-700 mt-0.5">Cấn trừ tạm ứng {formatCurrency(hd.soTienGiam)}</p>
+                        )}
                       </td>
 
                       {/* Thực thu */}
@@ -897,7 +900,7 @@ export default function HoaDonListPage() {
                               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-xs transition-all active:scale-95 cursor-pointer"
                             >
                               <Wallet className="h-3.5 w-3.5" />
-                              <span>Thu tạm ứng</span>
+                              <span>{hd.laPhiCls ? 'Thu phí CLS' : 'Thu tạm ứng'}</span>
                             </button>
                           ) : (
                             <button

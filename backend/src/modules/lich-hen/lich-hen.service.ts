@@ -421,40 +421,38 @@ export class LichHenService implements OnModuleInit {
         console.log(`[LichHen] Đã tự động hủy ${hetHanCoc.affected} lịch hẹn quá hạn thanh toán cọc.`);
       }
 
-      // Bệnh nhân không check-in (không có lượt khám) sau giờ hẹn 15 phút → hủy (no-show, không hoàn cọc)
+      // Mốc 15 phút sau giờ hẹn: dùng cho ca bác sĩ xin hủy chưa được duyệt (1b)
       const threshold = new Date(Date.now() - 15 * 60 * 1000);
-      const thresholdDateStr = getLocalDateString(threshold);
-      const thresholdTimeStr = `${String(threshold.getHours()).padStart(2, '0')}:${String(threshold.getMinutes()).padStart(2, '0')}:${String(threshold.getSeconds()).padStart(2, '0')}`;
 
-      // 1. CHỈ tự động hủy các ca khám TRỰC TIẾP quá 15 phút mà bệnh nhân không đến check-in
-      // Tuyệt đối KHÔNG tự động hủy ca trực tuyến (truc_tuyen / Telehealth) trong ngày hẹn
-      const result = await this.repo.createQueryBuilder()
-        .update(LichHen)
-        .set({
-          trangThai: TrangThaiLichHen.DA_HUY,
-          ghiChu: () => `COALESCE(CONCAT(COALESCE(ghi_chu, ''), ' [Tự động hủy do quá thời gian hẹn khám]'), '[Tự động hủy do quá thời gian hẹn khám]')`
+      // 1. Ca TRỰC TIẾP bệnh nhân không đến check-in (không có lượt còn hiệu lực) trong cả ngày hẹn → hết ngày mới hủy
+      //    (no-show, không hoàn cọc). Trong ngày hẹn, đến trễ vẫn check-in được, xếp hàng theo giờ đến.
+      //    Không đụng ca trực tuyến (xử lý ở bước 2).
+      const homNay = getLocalDateString();
+      const vangMat = await this.repo.createQueryBuilder('lh')
+        .leftJoinAndSelect('lh.benhNhan', 'bn')
+        .where('lh.trangThai IN (:...conHieuLuc)', {
+          conHieuLuc: [TrangThaiLichHen.CHO_THANH_TOAN, TrangThaiLichHen.CHO_XAC_NHAN, TrangThaiLichHen.DA_XAC_NHAN],
         })
-        .where('trang_thai NOT IN (:...doneStates)', {
-          doneStates: [
-            TrangThaiLichHen.HOAN_THANH, TrangThaiLichHen.DA_HUY, TrangThaiLichHen.DANG_KHAM,
-            TrangThaiLichHen.VANG_MAT, TrangThaiLichHen.CHO_DUYET_HUY,
-          ],
-        })
-        .andWhere('(hinh_thuc IS NULL OR hinh_thuc != :trucTuyen)', {
-          trucTuyen: 'truc_tuyen',
-        })
-        .andWhere('(ngay_hen < :thresholdDateStr OR (ngay_hen = :thresholdDateStr AND gio_hen <= :thresholdTimeStr))', {
-          thresholdDateStr,
-          thresholdTimeStr,
-        })
-        // Lượt đã hủy chỉ giữ lịch trong ngày đó (lễ tân còn check-in lại được); sang ngày sau thì lịch được dọn
-        .andWhere(`id NOT IN (SELECT ltn.lich_hen_id FROM luot_tiep_nhan ltn WHERE ltn.lich_hen_id IS NOT NULL
-                   AND (ltn.trang_thai != 'da_huy' OR DATE(ltn.thoi_gian_den) = CURDATE()))`)
-        .execute();
-
-      if (result.affected && result.affected > 0) {
-        console.log(`[LichHen] Đã tự động hủy ${result.affected} ca khám trực tiếp quá thời gian hẹn.`);
+        .andWhere('(lh.hinhThuc IS NULL OR lh.hinhThuc != :trucTuyen)', { trucTuyen: 'truc_tuyen' })
+        .andWhere('lh.ngayHen < :homNay', { homNay })
+        .andWhere(`lh.id NOT IN (SELECT ltn.lich_hen_id FROM luot_tiep_nhan ltn WHERE ltn.lich_hen_id IS NOT NULL AND ltn.trang_thai != 'da_huy')`)
+        .getMany();
+      for (const lh of vangMat) {
+        const kq = await this.repo.update(
+          { id: lh.id, trangThai: lh.trangThai },
+          { trangThai: TrangThaiLichHen.DA_HUY, ghiChu: `${lh.ghiChu || ''} [Tự động hủy: không đến khám trong ngày hẹn]`.trim() },
+        );
+        if (!kq.affected || !lh.benhNhan?.nguoiDungId || lh.trangThai !== TrangThaiLichHen.DA_XAC_NHAN) continue;
+        await this.thongBaoService.taoThongBao({
+          nguoiNhanId: lh.benhNhan.nguoiDungId,
+          tieuDe: `Lịch hẹn ${lh.maLichHen} đã hủy do không đến khám`,
+          noiDung: `Bạn không đến khám theo lịch hẹn ${lh.maLichHen} ngày ${String(lh.ngayHen).slice(0, 10)} lúc ${String(lh.gioHen).slice(0, 5)} nên lịch đã tự động hủy; tiền cọc không được hoàn. Nếu thông tin không đúng, vui lòng liên hệ phòng khám.`,
+          loai: 'lich_hen',
+          doiTuongBang: 'lich_hen',
+          doiTuongId: lh.id,
+        }).catch(() => {});
       }
+      if (vangMat.length) console.log(`[LichHen] Đã tự động hủy ${vangMat.length} ca khám trực tiếp không đến trong ngày hẹn.`);
 
       // 1b. Ca TRỰC TIẾP bác sĩ xin hủy mà chưa được duyệt trước giờ hẹn: ca không diễn ra do phía phòng khám → hoàn cọc
       const caXinHuy = (await this.repo.find({ where: { trangThai: TrangThaiLichHen.CHO_DUYET_HUY } }))

@@ -208,19 +208,21 @@ export class KioskService {
         qrCode: `KIOSK_WALKIN:${luot.maSoThuTu}:${benhNhan.id}`,
       });
 
-      // Chống bấm đúp: đã có lượt đang chờ hôm nay cùng chuyên khoa thì in lại phiếu
+      // Chống bấm đúp / lấy số trùng: đã có lượt còn hoạt động hôm nay cùng chuyên khoa thì in lại phiếu (như ở quầy)
       const daCo = await this.luotRepo
         .createQueryBuilder('ltn')
         .where('ltn.benhNhanId = :bnId', { bnId: benhNhan.id })
         .andWhere('ltn.chuyenKhoa = :ck', { ck: chuyenKhoa })
-        .andWhere('ltn.trangThai = :st', { st: TrangThaiTiepNhan.CHO_KHAM })
+        .andWhere('ltn.trangThai IN (:...st)', {
+          st: [TrangThaiTiepNhan.CHO_KHAM, TrangThaiTiepNhan.DANG_KHAM, TrangThaiTiepNhan.DANG_CLS, TrangThaiTiepNhan.DA_CO_KQ_CLS],
+        })
         .andWhere('DATE(ltn.thoiGianDen) = CURDATE()')
         .orderBy('ltn.id', 'DESC')
         .getOne();
       if (daCo) {
         return {
           success: true,
-          message: 'Bệnh nhân đã có số thứ tự chờ khám hôm nay. Đang in lại phiếu tiếp nhận.',
+          message: 'Bệnh nhân đã có lượt khám hôm nay ở chuyên khoa này. Đang in lại phiếu tiếp nhận.',
           ticket: await this.taoVe(daCo, thongTinVe(daCo)),
         };
       }

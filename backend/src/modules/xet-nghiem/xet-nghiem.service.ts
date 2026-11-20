@@ -4,7 +4,7 @@ import {
   Injectable, NotFoundException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { Repository, Not, In } from 'typeorm';
 import {
   DichVuXetNghiem, ChiDinhCanLamSang, KetQuaXetNghiem,
   TrangThaiChiDinh,
@@ -18,6 +18,7 @@ import { LuotTiepNhan, TrangThaiTiepNhan } from '../tiep-nhan/entities/tiep-nhan
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { ZaloZnsService } from '../thong-bao/zalo-zns.service';
 import { MemoryCacheService } from '../../common/cache/memory-cache.service';
+import { ThanhToanService } from '../thanh-toan/thanh-toan.service';
 import {
   IsInt, IsPositive, IsOptional, IsString, IsEnum, IsArray, ArrayMinSize,
   ValidateNested, IsNumber, Min,
@@ -82,6 +83,7 @@ export class XetNghiemService {
     @InjectRepository(LichSuHieuChinhKetQua) private hieuChinhRepo: Repository<LichSuHieuChinhKetQua>,
     private readonly thongBaoService: ThongBaoService,
     private readonly zaloZns: ZaloZnsService,
+    private readonly thanhToanService: ThanhToanService,
   ) {}
 
   // ─── DANH MỤC DỊCH VỤ ─────────────────────────────────────
@@ -190,6 +192,13 @@ export class XetNghiemService {
       );
       const saved = await this.cdRepo.save(entities);
 
+      // Thu phí trước khi thực hiện: lập phiếu thu CLS<id> cho từng chỉ định (cấp cứu thì thu khi quyết toán)
+      const dichVu = await this.dvRepo.findBy({ id: In(saved.map((c) => c.dichVuXetNghiemId)) });
+      const canThu = await this.thanhToanService.taoPhieuThuCls(bak.luotTiepNhanId, saved.map((c) => {
+        const dv = dichVu.find((d) => d.id === c.dichVuXetNghiemId);
+        return { id: c.id, gia: Number(dv?.gia || 0), tenDichVu: dv?.tenDichVu || 'Cận lâm sàng' };
+      }));
+
       // 3. Tự động chuyển trạng thái của lượt tiếp nhận liên quan sang "dang_cls"
       try {
         if (bak?.luotTiepNhanId) {
@@ -210,15 +219,10 @@ export class XetNghiemService {
         const bnTen = bakFull?.hoSoBenhAn?.benhNhan?.hoTen || 'Bệnh nhân';
         await this.thongBaoService.taoThongBaoTheoRole('ky_thuat_vien', {
           tieuDe: `Chỉ định cận lâm sàng mới: ${bnTen}`,
-          noiDung: `Bác sĩ vừa chỉ định ${saved.length} dịch vụ cận lâm sàng cho bệnh nhân ${bnTen}. Kỹ thuật viên vui lòng tiếp nhận lấy mẫu & xử lý!`,
+          noiDung: canThu > 0
+            ? `Bác sĩ vừa chỉ định ${saved.length} dịch vụ cận lâm sàng cho bệnh nhân ${bnTen}. Chờ bệnh nhân đóng phí tại quầy thu ngân rồi mới thực hiện.`
+            : `Bác sĩ vừa chỉ định ${saved.length} dịch vụ cận lâm sàng cho bệnh nhân ${bnTen}. Kỹ thuật viên vui lòng tiếp nhận lấy mẫu & xử lý!`,
           loai: 'xet_nghiem',
-          doiTuongBang: 'chi_dinh_can_lam_sang',
-          doiTuongId: saved[0]?.id,
-        });
-        await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
-          tieuDe: `Phí cận lâm sàng mới: ${bnTen}`,
-          noiDung: `Bệnh nhân ${bnTen} vừa được bác sĩ chỉ định ${saved.length} dịch vụ cận lâm sàng. Vui lòng kiểm tra thu viện phí.`,
-          loai: 'can_thanh_toan',
           doiTuongBang: 'chi_dinh_can_lam_sang',
           doiTuongId: saved[0]?.id,
         });
@@ -226,7 +230,10 @@ export class XetNghiemService {
         console.warn('Lỗi gửi thông báo taoChiDinh:', err?.message);
       }
 
-      return { data: saved, message: `Đã chỉ định ${saved.length} xét nghiệm thành công` };
+      return {
+        data: saved,
+        message: `Đã chỉ định ${saved.length} xét nghiệm thành công.${canThu > 0 ? ` Mời bệnh nhân đóng ${canThu.toLocaleString('vi-VN')} đ phí cận lâm sàng tại quầy thu ngân trước khi thực hiện.` : ''}`,
+      };
     });
   }
 
@@ -267,8 +274,9 @@ export class XetNghiemService {
     }
 
     const [items, total] = await qb.getManyAndCount();
+    const phi = await this.thanhToanService.trangThaiPhiCls(items.map((c) => c.id));
     return {
-      data: items,
+      data: items.map((c) => Object.assign(c, { trangThaiThuPhi: phi.get(c.id) ?? null })),
       message: 'OK',
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
@@ -282,7 +290,8 @@ export class XetNghiemService {
     });
     if (!cd) throw new NotFoundException({ code: 'CHI_DINH_KHONG_TON_TAI', message: 'Không tìm thấy chỉ định' });
     const kq = await this.kqRepo.findOne({ where: { chiDinhId: id } });
-    return { data: { chiDinh: cd, ketQua: kq }, message: 'OK' };
+    const trangThaiThuPhi = (await this.thanhToanService.trangThaiPhiCls([id])).get(id) ?? null;
+    return { data: { chiDinh: Object.assign(cd, { trangThaiThuPhi }), ketQua: kq }, message: 'OK' };
   }
 
   // ─── CẬP NHẬT TRẠNG THÁI CHỈ ĐỊNH ─────────────────────────
@@ -315,6 +324,13 @@ export class XetNghiemService {
       }
     }
 
+    if (dto.trangThai === TrangThaiChiDinh.DANG_LAY_MAU && !(await this.thanhToanService.daThuPhiCls(id))) {
+      throw new BadRequestException({
+        code: 'CHUA_THU_PHI_CLS',
+        message: 'Bệnh nhân chưa đóng phí cận lâm sàng cho chỉ định này. Mời bệnh nhân ra quầy thu ngân trước khi thực hiện.',
+      });
+    }
+
     const updates: any = { trangThai: dto.trangThai };
 
     if (dto.trangThai === 'dang_lay_mau') {
@@ -326,6 +342,10 @@ export class XetNghiemService {
     }
 
     await this.cdRepo.update(id, updates);
+    // Hủy trước khi thực hiện: phiếu chưa thu thì hủy, đã thu thì trừ vào viện phí khi quyết toán
+    if (dto.trangThai === TrangThaiChiDinh.HUY) {
+      await this.thanhToanService.huyPhieuThuCls([id], 'Hủy chỉ định cận lâm sàng', false);
+    }
     const updated = await this.cdRepo.findOne({
       where: { id },
       relations: ['dichVu', 'benhAnKham', 'benhAnKham.hoSoBenhAn', 'benhAnKham.hoSoBenhAn.benhNhan'],
@@ -479,11 +499,12 @@ export class XetNghiemService {
       }
     }
 
-    // 1. Xóa kết quả xét nghiệm liên quan nếu có
+    // Phí đã thu thì giữ chỉ định ở trạng thái hủy (để quyết toán còn trừ được tiền đã thu); chưa thu thì xóa hẳn
+    const phi = (await this.thanhToanService.trangThaiPhiCls([id])).get(id);
+    await this.thanhToanService.huyPhieuThuCls([id], 'Bác sĩ hủy chỉ định cận lâm sàng', false);
     await this.kqRepo.delete({ chiDinhId: id });
-
-    // 2. Xóa bản ghi chỉ định để biến mất hoàn toàn khỏi danh sách
-    await this.cdRepo.delete(id);
+    if (phi === 'da_thu') await this.cdRepo.update(id, { trangThai: TrangThaiChiDinh.HUY });
+    else await this.cdRepo.delete(id);
 
     // Đồng bộ lại trạng thái lượt tiếp nhận nếu đã hủy hết hoặc đã hoàn tất các xét nghiệm còn lại
     try {

@@ -1,6 +1,6 @@
 # Quy trình khám bệnh của hệ thống
 
-Tài liệu mô tả luồng nghiệp vụ **đúng như hệ thống đang vận hành** (đối chiếu mã nguồn ngày 12/11/2026), kèm sơ đồ BPMN 2.0.
+Tài liệu mô tả luồng nghiệp vụ **đúng như hệ thống đang vận hành** (đối chiếu mã nguồn ngày 20/11/2026), kèm sơ đồ BPMN 2.0.
 Các con số (15 phút, 3 lần, 24 giờ…) là giá trị trong mã nguồn hoặc cấu hình mặc định; mục [7](#7-tham-số-cấu-hình) liệt kê tham số giám đốc chỉnh được.
 
 | Sơ đồ | File BPMN (mở bằng [bpmn.io](https://demo.bpmn.io) / Camunda Modeler) | Ảnh |
@@ -56,7 +56,7 @@ Các con số (15 phút, 3 lần, 24 giờ…) là giá trị trong mã nguồn 
 | Lỗi bên nào | Lịch hẹn | Tiền cọc | Tạm ứng TU đã đóng |
 |---|---|---|---|
 | Phía phòng khám (bác sĩ vắng, sự cố, quá tải…) | `da_huy` | **Hoàn 100%**, nhưng phải **chờ Ban Giám Đốc duyệt** (đơn "Duyệt hoàn cọc hủy lịch"); trước khi duyệt thu ngân không chi được. Từ chối → không hoàn | Chờ hoàn |
-| Phía bệnh nhân (xin hủy, không đến, bỏ về) | `da_huy` (chưa check-in) / `vang_mat` (đã check-in) | **Theo quy định hủy của giám đốc**, giống bệnh nhân tự hủy online: chưa check-in và còn cách giờ hẹn ≥ thời hạn hủy → hoàn % cấu hình; sát giờ hơn hoặc đã check-in → không hoàn | Chờ hoàn |
+| Phía bệnh nhân (xin hủy, không đến, bỏ về) | `da_huy` (chưa check-in) / `vang_mat` (đã check-in) | **Theo quy định hủy của giám đốc**, giống bệnh nhân tự hủy online: chưa check-in và còn cách giờ hẹn ≥ thời hạn hủy → hoàn % cấu hình; sát giờ hơn hoặc đã check-in → không hoàn | Chờ hoàn **chỉ khi chưa khám** (bác sĩ chưa lập phiếu khám); đã khám → không hoàn |
 | Tiếp nhận nhầm (chỉ khi đã check-in) | Giữ nguyên `da_xac_nhan`, check-in lại được | Giữ nguyên | Chờ hoàn (lượt mới lập phiếu mới) |
 
 - **Chống tự ý hủy:** bệnh nhân luôn được thông báo (trong app + email) kèm lý do, tên người hủy và số tiền hoàn, để khiếu nại nếu bị ghi sai. Mọi lần hủy ghi vào nhật ký `nhat_ky_huy_lich`; Ban Giám Đốc xem ở **Lịch hủy tại quầy** (tổng hợp theo nhân viên và lỗi bên nào).
@@ -76,7 +76,8 @@ Các con số (15 phút, 3 lần, 24 giờ…) là giá trị trong mã nguồn 
 | Khách tự lấy số ở kiosk | Tự khai họ tên, SĐT, **năm sinh (bắt buộc)**, triệu chứng; chỉ được tự khai ưu tiên *phụ nữ có thai, khuyết tật nặng, người có công*. Phân luồng theo triệu chứng (tim mạch, nhi, ngoại), dưới 16 tuổi → Nhi khoa, còn lại Nội tổng quát; chỉ xếp cho bác sĩ **đang trực**, không có thì mời ra quầy. |
 
 - Vé hẹn điện tử (email, web, Zalo) **không có số thứ tự**: chỉ có mã lịch hẹn và mã QR chứa mã lịch hẹn (quét ở kiosk để tra cứu). Số thứ tự được cấp khi check-in và hiện lại trên vé sau đó.
-- Số thứ tự **reset mỗi ngày**: `A001…` (quầy, check-in), `B001…` (kiosk vãng lai). Sinh từ bộ đếm trong CSDL nên không trùng khi nhiều máy cùng cấp số.
+- Số thứ tự **reset mỗi ngày**, hai dãy đếm riêng: `A001…` (quầy, check-in), `B001…` (kiosk vãng lai). Sinh từ bộ đếm trong CSDL nên không trùng khi nhiều máy cùng cấp số.
+- Lễ tân chọn sẵn bác sĩ cho khách vãng lai thì bác sĩ phải thuộc chuyên khoa đã chọn. Kiosk và quầy cùng chống tạo trùng: đã có lượt còn hoạt động cùng chuyên khoa trong ngày thì in lại vé.
 - **Đối tượng ưu tiên:** cấp cứu, trẻ dưới 6 tuổi, người từ 75 tuổi, phụ nữ có thai, khuyết tật nặng, người có công. Trẻ dưới 6 tuổi và người từ 75 tuổi **tự nhận theo ngày sinh**; còn lại lễ tân chọn (có thể đổi sau trên màn hình hàng đợi).
 
 ### 3.2 Thu phí khám trước khi khám
@@ -90,8 +91,9 @@ Bệnh nhân phải đóng đủ phần phí khám mình chi trả **trước kh
 - **Cấp cứu:** không thu trước, vào thẳng đầu hàng đợi, quyết toán sau.
   - Lễ tân hoặc bác sĩ chuyển cấp cứu khi bệnh nhân đang chờ; **bắt buộc ghi lý do**, quản trị được thông báo.
   - Chỉ bác sĩ (hoặc quản trị) được bỏ cấp cứu, cũng phải ghi lý do; bệnh nhân phải đóng lại tạm ứng mới được gọi khám.
-- Thu ngân bấm **Thu tạm ứng** (phải thu ít nhất số phải thu; hai quầy cùng thu một phiếu thì chỉ một lần thành công).
+- Bệnh nhân **chuyển khoản QR (PayOS)** ngay trên trang Tiến độ khám, hoặc đóng tại quầy: thu ngân bấm **Thu tạm ứng** (phải thu ít nhất số phải thu; hai quầy cùng thu một phiếu thì chỉ một lần thành công). Tiền chuyển khoản vào là hệ thống tự ghi nhận như thu ngân thu (webhook + đối soát 60 giây/lần); áp dụng cả cho phiếu phí cận lâm sàng `CLS…`. Chuyển thiếu tiền hoặc chuyển vào phiếu đã hủy → báo thu ngân xử lý.
 - Lượt chưa đóng tạm ứng **không bị hủy trong ngày** (bệnh nhân có thể đang xếp hàng ở quầy thu ngân), chỉ không hiện với bác sĩ. Hết ngày vẫn chưa khám thì hệ thống hủy lượt, lịch hẹn `vang_mat`.
+- **Hoàn tạm ứng khi hủy lượt:** chỉ hoàn khi bệnh nhân **chưa được khám** (bác sĩ chưa lập phiếu khám). Đã khám rồi bỏ về / bị hủy vì lỗi bệnh nhân thì giữ tạm ứng; lỗi phía phòng khám hoặc tiếp nhận nhầm thì vẫn hoàn.
 
 ### 3.3 Hàng đợi và gọi khám
 
@@ -108,23 +110,28 @@ Thứ tự gọi trong hàng đợi của một bác sĩ:
   - báo lễ tân và bệnh nhân khi lịch hẹn bị trễ **15 phút**;
   - trễ **30 phút**: gợi ý chuyển sang bác sĩ cùng chuyên khoa đang trực, ít người chờ nhất (lễ tân bấm chuyển);
   - màn hình tiến độ của bệnh nhân hiển thị số người phía trước và thời gian chờ ước tính theo nhịp khám thực tế trong ngày.
-- **Gọi không có mặt → qua lượt:** xếp xuống cuối hàng (tính từ lúc qua lượt), lịch hẹn trở lại `da_xac_nhan` cho tới khi được gọi lại. **Lần thứ 3** → hủy lượt vắng mặt, lịch hẹn `vang_mat` (không hoàn cọc); tạm ứng đã đóng được chuyển sang "chờ hoàn".
+- **Gọi vào khám** (nút gọi loa hay đổi trạng thái sang đang khám) đi chung một đường: kiểm tra tạm ứng, chuyển lịch hẹn `dang_kham`, ghi lịch sử gọi.
+- **Gọi không có mặt → qua lượt:** xếp xuống cuối hàng (tính từ lúc qua lượt), lịch hẹn trở lại `da_xac_nhan` cho tới khi được gọi lại. **Lần thứ 3** → hủy lượt vắng mặt, lịch hẹn `vang_mat` (không hoàn cọc); tạm ứng đã đóng được chuyển sang "chờ hoàn" (chưa khám).
 - **Chuyển bác sĩ / phòng:** chỉ khi bệnh nhân còn `cho_kham`; bác sĩ mới phải cùng chuyên khoa (không trong ca trực thì chỉ cảnh báo).
 - Bác sĩ chỉ gọi số, qua lượt, đổi trạng thái, lập / sửa / kết thúc phiếu khám **của lượt mình phụ trách**; lễ tân và quản trị không bị giới hạn.
-- Lượt còn `cho_kham` từ các ngày trước được hệ thống tự dọn.
+- Lượt còn dở từ các ngày trước được hệ thống tự dọn: `cho_kham` → hủy vắng mặt; `dang_kham` / `dang_cls` / `da_co_kq_cls` (bác sĩ chưa kết thúc, bệnh nhân bỏ về) → hủy, lịch hẹn `da_huy`, tạm ứng giữ lại, CLS chưa thực hiện được hoàn phí.
 - Màn hình TV sảnh chờ (công khai) che họ tên người đang chờ (`Nguyễn V. A.`); chỉ người đang được gọi mới đọc tên đầy đủ. Giọng đọc chỉ nhận câu gọi số. Kiosk và giọng đọc có giới hạn số lần gọi mỗi phút theo IP.
-- Nhân viên hủy lượt: bắt buộc chọn lỗi bên nào và ghi lý do; lịch hẹn và tiền cọc xử lý theo bảng ở mục 2.7. Tạm ứng đã thu chuyển "chờ hoàn"; đơn thuốc chờ duyệt, chỉ định cận lâm sàng chưa có kết quả và hóa đơn nháp bị hủy. Không hủy được lượt đã kết thúc khám, đã quyết toán hoặc đã cấp phát thuốc.
+- Nhân viên hủy lượt: bắt buộc chọn lỗi bên nào và ghi lý do; lịch hẹn, tiền cọc và tạm ứng xử lý theo bảng ở mục 2.7. Đơn thuốc chờ duyệt, chỉ định cận lâm sàng chưa có kết quả và hóa đơn nháp bị hủy; phí CLS đã thu mà chưa lấy mẫu được hoàn, đã lấy mẫu / đang chạy thì giữ. Không hủy được lượt đã kết thúc khám, đã quyết toán hoặc đã cấp phát thuốc. Hủy hai lần liên tiếp chỉ có tác dụng một lần.
 
 ### 3.4 Khám, cận lâm sàng, kê đơn
 
 1. Bác sĩ khám: sinh hiệu, triệu chứng, chẩn đoán sơ bộ. Phiếu khám chỉ lập được khi lượt đã được gọi vào khám, và luôn gắn vào hồ sơ của đúng bệnh nhân của lượt.
-2. Cần cận lâm sàng → chỉ định xét nghiệm / chẩn đoán hình ảnh (lượt `dang_cls`). Kỹ thuật viên lấy mẫu, thực hiện, nhập kết quả, tải ảnh → lượt `da_co_kq_cls`, bác sĩ nhận kết quả. Sau khi hóa đơn đã thanh toán thì không chỉ định thêm hoặc xóa chỉ định đã thu tiền.
+2. Cần cận lâm sàng → chỉ định xét nghiệm / chẩn đoán hình ảnh (lượt `dang_cls`).
+   - **Thu trước rồi mới làm:** mỗi chỉ định có phiếu thu `CLS<mã chỉ định>` = giá dịch vụ × (1 − tỷ lệ BHYT). Tạm ứng (cọc + `TU`) còn dư sau phí khám được **tự cấn trừ** vào phiếu: dư đủ thì phiếu ghi đã thu, bệnh nhân không nộp thêm; dư thiếu thì chỉ thu phần còn lại. Chỉ định bị hủy thì trả lại phần đã cấn trừ. Thu ngân thu bằng nút "Thu phí CLS" (cùng màn hình thu tạm ứng); kỹ thuật viên **chỉ bắt đầu lấy mẫu khi phiếu đã thu** (kiểm tra cả qua API). Ca cấp cứu không thu trước, quyết toán sau.
+   - Kỹ thuật viên lấy mẫu, thực hiện, nhập kết quả, tải ảnh → lượt `da_co_kq_cls`, bác sĩ nhận kết quả.
+   - Hủy chỉ định chưa thực hiện: phiếu chưa thu thì hủy; đã thu thì khoản đó được trừ vào viện phí khi quyết toán (dư thì hoàn). Sau khi hóa đơn quyết toán đã thanh toán thì không chỉ định thêm.
 3. Bác sĩ chẩn đoán xác định (ICD-10), kê đơn, hẹn tái khám, **kết thúc khám** → hệ thống lập hóa đơn trước; lập được thì lượt mới chuyển `cho_thanh_toan` (lỗi thì báo bác sĩ, ca khám giữ nguyên). Chỉ kết thúc được lượt đang khám, và mỗi phiếu khám chỉ kết thúc một lần.
 - Bác sĩ gọi bệnh nhân có lịch hẹn vào khám → lịch hẹn `dang_kham`.
 
 ### 3.5 Quyết toán viện phí
 
-- Hóa đơn gộp: phí khám + cận lâm sàng + thuốc, trừ BHYT, trừ tạm ứng/cọc đã đóng.
+- Hóa đơn gộp: phí khám + cận lâm sàng + thuốc, trừ BHYT, trừ cọc + tạm ứng `TU` + phí CLS `CLS…` đã thu trước.
+- Không phải thu thêm cũng không phải hoàn (0 đ) → hệ thống **tự quyết toán** ngay khi bác sĩ kết thúc khám: lượt `hoan_thanh`, lịch hẹn `hoan_thanh`, nhà thuốc cấp phát được.
 - **Tỷ lệ BHYT:**
 
 | Điều kiện | Tỷ lệ chi trả |
@@ -171,8 +178,8 @@ Dược sĩ chỉ cấp phát khi hóa đơn của lượt đã `da_thanh_toan`;
 
 | Tác vụ | Chu kỳ | Nội dung |
 |---|---|---|
-| Quét hàng đợi | Khi có truy vấn hàng đợi, tối đa 1 lần / 5 giây | Báo trễ hẹn 15/30 phút, dọn lượt ngày cũ |
-| Hủy lịch quá giờ | Định kỳ | Lịch trực tiếp quá giờ hẹn 15 phút chưa check-in → hủy, không hoàn cọc (lượt đã hủy trong ngày vẫn giữ lịch đến hết ngày để check-in lại); lịch trực tiếp bác sĩ xin hủy chưa được duyệt → hủy, hoàn cọc; lịch trực tuyến hết giờ phòng / quá ngày → xử lý theo mục 4 |
+| Quét hàng đợi | 30 giây / lần và khi có truy vấn hàng đợi, tối đa 1 lần / 5 giây | Báo trễ hẹn 15/30 phút, dọn lượt dở của ngày cũ, tự quyết toán hóa đơn 0 đ còn treo |
+| Hủy lịch quá giờ | Định kỳ | Lịch trực tiếp **hết ngày hẹn** mà không check-in → hủy, không hoàn cọc, báo bệnh nhân (trong ngày hẹn, đến trễ vẫn check-in được, xếp theo giờ đến); lịch trực tiếp bác sĩ xin hủy chưa được duyệt quá giờ hẹn 15 phút → hủy, hoàn cọc; lịch trực tuyến hết giờ phòng / quá ngày → xử lý theo mục 4 |
 | Hết hạn thanh toán cọc | Định kỳ / đối soát PayOS | Quá 15 phút chưa thanh toán → hủy lịch |
 | Nhắc lịch | 30 phút / lần | Email nhắc lịch hẹn trong 24 giờ tới |
 
@@ -186,6 +193,7 @@ Các tác vụ định kỳ dùng khóa MySQL (`GET_LOCK`) nên khi chạy nhi�
 |---|---|
 | `HDT…` | Hóa đơn cọc đặt lịch (thanh toán qua PayOS) |
 | `TU<mã lượt>` | Phiếu tạm ứng phí khám tại quầy |
+| `CLS<mã chỉ định>` | Phiếu thu phí cận lâm sàng trước khi thực hiện |
 | `HD<năm>…` | Hóa đơn quyết toán viện phí |
 | `[CHỜ HOÀN CỌC …]` | Ghi chú đánh dấu khoản đã thu cần hoàn cho bệnh nhân |
 

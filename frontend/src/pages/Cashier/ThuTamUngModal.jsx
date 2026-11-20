@@ -6,15 +6,18 @@ import { formatCurrency } from '../../utils/formatCurrency';
 
 // Thu tạm ứng cho bệnh nhân tiếp nhận tại quầy; thu xong bệnh nhân mới vào hàng đợi bác sĩ
 export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
+  const laCls = Boolean(hoaDon?.laPhiCls);
+  // Phiếu CLS: phần đã cấn trừ từ tạm ứng dư (soTienGiam) không phải thu lại
+  const canThu = Math.max(0, Math.round(Number(hoaDon?.tongTien) || 0) - (laCls ? Math.round(Number(hoaDon?.soTienGiam) || 0) : 0));
   // Phiếu đã có số phải thu (phí khám × (1 − BHYT) − cọc); thu ngân được thu nhiều hơn
-  const [soTien, setSoTien] = useState(() => String(Math.round(Number(hoaDon?.tongTien) || 0) || ''));
+  const [soTien, setSoTien] = useState(() => String(canThu || ''));
   const [phuongThuc, setPhuongThuc] = useState('tien_mat');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleSubmit = async () => {
     if (!(Number(soTien) > 0)) {
-      setErrorMsg('Vui lòng nhập số tiền tạm ứng lớn hơn 0');
+      setErrorMsg('Vui lòng nhập số tiền lớn hơn 0');
       return;
     }
     setSubmitting(true);
@@ -42,7 +45,7 @@ export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
               <Wallet className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="font-bold text-gray-900">Thu tạm ứng viện phí</h3>
+              <h3 className="font-bold text-gray-900">{laCls ? 'Thu phí cận lâm sàng' : 'Thu tạm ứng viện phí'}</h3>
               <p className="text-xs text-gray-500">
                 {hoaDon.maHoaDon} • {hoaDon.benhNhan?.hoTen}
               </p>
@@ -55,11 +58,13 @@ export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
 
         <div className="p-5 space-y-4">
           <p className="text-xs text-gray-600 bg-violet-50 border border-violet-200 rounded-lg p-2.5">
-            Bệnh nhân chỉ vào hàng đợi bác sĩ sau khi đóng tạm ứng. Khám xong, hệ thống tự trừ tạm ứng vào viện phí: thiếu thì thu thêm, dư thì hoàn trả.
+            {laCls
+              ? 'Kỹ thuật viên chỉ thực hiện cận lâm sàng sau khi bệnh nhân đóng phí. Khám xong, hệ thống tự trừ khoản này vào viện phí.'
+              : 'Bệnh nhân chỉ vào hàng đợi bác sĩ sau khi đóng tạm ứng. Khám xong, hệ thống tự trừ tạm ứng vào viện phí: thiếu thì thu thêm, dư thì hoàn trả.'}
           </p>
 
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">Số tiền tạm ứng (đ)</label>
+            <label className="block text-xs font-bold text-gray-700 mb-1">{laCls ? 'Số tiền (đ)' : 'Số tiền tạm ứng (đ)'}</label>
             <input
               type="number"
               min="0"
@@ -72,9 +77,16 @@ export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
             {Number(soTien) > 0 && (
               <p className="text-right text-xs text-gray-500 mt-1">{formatCurrency(Number(soTien))}</p>
             )}
-            {Number(hoaDon?.tongTien) > 0 && (
+            {laCls && Number(hoaDon?.soTienGiam) > 0 && (
+              <p className="text-xs text-teal-700 mt-1">
+                Đã cấn trừ {formatCurrency(Number(hoaDon.soTienGiam))} từ tạm ứng còn dư.
+              </p>
+            )}
+            {canThu > 0 && (
               <p className="text-xs text-amber-700 mt-1">
-                Có lịch hẹn: phải thu đủ {formatCurrency(Number(hoaDon.tongTien))} (phí khám trừ tiền cọc đã đóng).
+                {laCls
+                  ? `Phải thu đủ ${formatCurrency(canThu)} (phần bệnh nhân tự chi trả còn lại).`
+                  : `Phải thu đủ ${formatCurrency(canThu)} (phí khám trừ BHYT và tiền cọc đã đóng).`}
               </p>
             )}
           </div>

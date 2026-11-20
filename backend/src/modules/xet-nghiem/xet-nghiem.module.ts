@@ -6,11 +6,13 @@ import { DichVuXetNghiem, ChiDinhCanLamSang, KetQuaXetNghiem } from './entities/
 import { LichSuHieuChinhKetQua } from './entities/lich-su-hieu-chinh-ket-qua.entity';
 import { DanhGiaCaKham } from '../danh-gia/entities/danh-gia.entity';
 import { ThongBaoModule } from '../thong-bao/thong-bao.module';
+import { ThanhToanModule } from '../thanh-toan/thanh-toan.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([DichVuXetNghiem, ChiDinhCanLamSang, KetQuaXetNghiem, LichSuHieuChinhKetQua, DanhGiaCaKham]),
     ThongBaoModule,
+    ThanhToanModule,
   ],
   controllers: [XetNghiemController],
   providers: [XetNghiemService],

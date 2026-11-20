@@ -756,6 +756,12 @@ export class HoSoBenhAnService {
         { id: bak.luotTiepNhanId, trangThai: In(LUOT_DANG_KHAM) },
         { trangThai: TrangThaiTiepNhan.CHO_THANH_TOAN },
       );
+      // Tạm ứng / BHYT đã đủ, không thu thêm cũng không hoàn: tự quyết toán để lượt và lịch hẹn hoàn thành
+      const daQuyetToan = await this.thanhToanService.tuQuyetToanNeuKhongPhaiThu(bak.luotTiepNhanId)
+        .catch((e) => { console.warn('Lỗi tự quyết toán hóa đơn 0 đ:', e?.message); return false; });
+      if (daQuyetToan) {
+        return { data: saved, message: 'Kết thúc khám thành công. Tạm ứng đã đủ viện phí nên lượt khám đã được quyết toán, bệnh nhân không phải đóng thêm.' };
+      }
     }
 
     return { data: saved, message: 'Kết thúc khám thành công. Hóa đơn viện phí và đơn thuốc đã được tổng hợp cho quầy thu ngân và bệnh nhân.' };

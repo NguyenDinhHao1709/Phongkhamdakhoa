@@ -28,6 +28,7 @@ import { apiGet } from '../../services/api';
 import { formatCurrency } from '../../utils/formatCurrency';
 import DanhGiaCaKhamModal from '../../components/Appointment/DanhGiaCaKhamModal';
 import ThanhToanVienPhiModal from '../../components/Payment/ThanhToanVienPhiModal';
+import ChuyenKhoanPhieuThuModal from '../../components/Payment/ChuyenKhoanPhieuThuModal';
 
 export default function TienDoKhamPage() {
   const navigate = useNavigate();
@@ -41,6 +42,7 @@ export default function TienDoKhamPage() {
   const [completedVisit, setCompletedVisit] = useState(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [payModalData, setPayModalData] = useState({ isOpen: false, hoaDon: null, benhNhan: null });
+  const [phieuChuyenKhoan, setPhieuChuyenKhoan] = useState(null);
 
   // Thông tin phiếu khám STT
   const [ticketData, setTicketData] = useState({
@@ -95,6 +97,7 @@ export default function TienDoKhamPage() {
           hoaDon: t.hoaDon || null,
           chanDoanXacDinh: t.chanDoanXacDinh || null,
           tamUng: t.tamUng || null,
+          phieuChoThu: t.phieuChoThu || [],
         });
         if (res.data.progress) {
           setProgressSteps(res.data.progress);
@@ -612,9 +615,28 @@ export default function TienDoKhamPage() {
                     </div>
                   </div>
 
-                  {ticketData.tamUng?.trangThai === 'cho_thanh_toan' && (
-                    <div className="p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-xs font-semibold">
-                      Vui lòng đóng tiền tạm ứng tại quầy thu ngân để được xếp vào hàng đợi khám. Khám xong, tạm ứng được trừ vào viện phí (thiếu thu thêm, dư hoàn lại).
+                  {ticketData.phieuChoThu?.length > 0 && (
+                    <div className="p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-xs space-y-2">
+                      <p className="font-semibold">
+                        Cần thanh toán: chuyển khoản ngay tại đây (hệ thống tự xác nhận) hoặc đóng tại quầy thu ngân.
+                        Tạm ứng phí khám đóng xong mới được xếp vào hàng đợi; phí cận lâm sàng đóng xong mới được thực hiện.
+                        Khám xong, các khoản này được trừ vào viện phí (thiếu thu thêm, dư hoàn lại).
+                      </p>
+                      {ticketData.phieuChoThu.map((p) => (
+                        <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg bg-white border border-amber-200 px-3 py-2">
+                          <div>
+                            <p className="font-semibold text-gray-900">{p.moTa}</p>
+                            <p className="text-amber-800 font-bold">{formatCurrency(p.soTien)}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setPhieuChuyenKhoan(p)}
+                            className="shrink-0 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer"
+                          >
+                            Chuyển khoản
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
 
@@ -1172,6 +1194,14 @@ export default function TienDoKhamPage() {
         onClose={() => setReviewModalOpen(false)}
         onSuccess={fetchQueueData}
       />
+
+      {phieuChuyenKhoan && (
+        <ChuyenKhoanPhieuThuModal
+          phieu={phieuChuyenKhoan}
+          onClose={() => setPhieuChuyenKhoan(null)}
+          onSuccess={fetchQueueData}
+        />
+      )}
 
       {/* Modal Thanh Toán Viện Phí Đa Phương Thức (VietQR / Tiền mặt) */}
       <ThanhToanVienPhiModal
