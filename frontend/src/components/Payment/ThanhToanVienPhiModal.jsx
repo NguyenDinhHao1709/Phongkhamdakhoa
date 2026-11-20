@@ -20,6 +20,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDateTime } from '../../utils/formatDate';
+import { STK_PHONG_KHAM } from '../../utils/constants';
 import { apiGet, apiPatch, apiPost } from '../../services/api';
 import BankAppLinks from './BankAppLinks';
 
@@ -133,7 +134,7 @@ export default function ThanhToanVienPhiModal({
   const BANK_INFO = {
     bankId: 'MB',
     bankName: 'Ngân hàng TMCP Quân Đội (MB Bank)',
-    accountNo: '2729999996789',
+    accountNo: STK_PHONG_KHAM,
     accountName: 'PHONG KHAM DA KHOA',
   };
 
@@ -439,11 +440,11 @@ export default function ThanhToanVienPhiModal({
                   <div className="p-2.5 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-between">
                     <div>
                       <span className="text-[10px] uppercase font-bold text-gray-500 block">Số tài khoản:</span>
-                      <span className="font-mono font-black text-sm text-emerald-800">{soTaiKhoan}</span>
+                      <span className="font-mono font-black text-sm text-emerald-800">{STK_PHONG_KHAM}</span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleCopy(soTaiKhoan, 'stk')}
+                      onClick={() => handleCopy(STK_PHONG_KHAM, 'stk')}
                       className="px-2 py-1 rounded bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 flex items-center gap-1 text-[11px] font-medium transition cursor-pointer"
                     >
                       {copiedField === 'stk' ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}

@@ -85,3 +85,9 @@ export const GIOI_TINH = {
 
 export const NHOM_MAU = ['A', 'B', 'AB', 'O'];
 
+
+/**
+ * Số tài khoản ngân hàng (MB Bank) của phòng khám hiển thị cho bệnh nhân. Mã QR và nút mở app ngân hàng vẫn dùng
+ * tài khoản ảo PayOS cấp (VQR…) để tiền vào được hệ thống tự xác nhận.
+ */
+export const STK_PHONG_KHAM = '2729999996789';

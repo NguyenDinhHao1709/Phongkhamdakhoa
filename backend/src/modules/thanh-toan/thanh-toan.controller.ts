@@ -218,12 +218,12 @@ export class ThanhToanController {
 
   @Patch('hoa-don/:id/thu-tam-ung')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
-  @ApiOperation({ summary: 'Thu tiền tạm ứng tại quầy (thu ngân tự nhập số tiền)' })
+  @ApiOperation({ summary: 'Thu tạm ứng / phí CLS tại quầy (số tiền lấy theo phiếu, không nhập tay)' })
   @Quyen('hoa_don.thanh_toan')
   thuTamUng(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('id') userId: number,
-    @Body() dto: { soTien: number; phuongThucThanhToan?: string },
+    @Body() dto: { soTien?: number; phuongThucThanhToan?: string },
   ) {
     return this.thanhToanService.thuTamUng(id, userId, dto);
   }

@@ -211,6 +211,8 @@ export default function TienDoKhamPage() {
     !ticketData?.hoaDon ||
     ticketData.hoaDon.trangThai === 'da_thanh_toan' ||
     (Number(ticketData.hoaDon.thucThu || 0) === 0 && !(ticketData.hoaDon.tienHoanTra > 0));
+  // Bác sĩ đã kê đơn nhưng chưa bấm kết thúc khám (lượt chưa sang chờ thanh toán)
+  const daKeDon = !isCompleted && ticketData?.donThuoc?.chiTiet?.length > 0;
   const isMedDispensed = !ticketData?.donThuoc || ticketData.donThuoc.trangThai === 'da_cap_phat' || (ticketData.donThuoc.chiTiet && ticketData.donThuoc.chiTiet.length === 0) || ticketData.donThuoc.soLuongMon === 0;
   const isFullyFinished = isAllCompleted || (hasActiveTicket && isCompleted && isPaid && isMedDispensed);
 
@@ -843,7 +845,7 @@ export default function TienDoKhamPage() {
                         <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${
                           isCompleted
                             ? 'text-green-700 bg-white border-green-300'
-                            : isDaCoKqCls
+                            : isDaCoKqCls || daKeDon
                             ? 'text-emerald-800 bg-emerald-100 border-emerald-300'
                             : 'text-gray-400 bg-white border-gray-200'
                         }`}>
@@ -853,6 +855,8 @@ export default function TienDoKhamPage() {
                               : !isMedDispensed
                               ? 'Chờ nhận thuốc'
                               : 'Đã hoàn thành'
+                            : daKeDon
+                            ? 'Bác sĩ đã kê đơn'
                             : isDaCoKqCls
                             ? 'Sẵn sàng vào gặp bác sĩ'
                             : 'Chưa bắt đầu'}
@@ -861,10 +865,33 @@ export default function TienDoKhamPage() {
                       <p className="text-xs text-gray-600 leading-relaxed">
                         {isCompleted
                           ? 'Bác sĩ đã hoàn tất kết luận bệnh án, kê đơn thuốc điều trị và gửi hóa đơn viện phí sang quầy thu ngân.'
+                          : daKeDon
+                          ? 'Bác sĩ đã kê đơn thuốc cho bạn. Khi bác sĩ kết thúc khám, hóa đơn viện phí sẽ được gửi sang quầy thu ngân để bạn thanh toán và nhận thuốc.'
                           : isDaCoKqCls
                           ? `Bác sĩ đang tiếp nhận kết quả cận lâm sàng của bạn. Quý khách vui lòng có mặt tại ${ticketData.phongKham} khi được gọi tên.`
                           : 'Bác sĩ đưa ra kết luận bệnh án, tư vấn phác đồ và cấp đơn thuốc điện tử.'}
                       </p>
+
+                      {/* Bác sĩ đã kê đơn nhưng chưa kết thúc khám: cho bệnh nhân xem trước đơn thuốc */}
+                      {daKeDon && (
+                        <div className="p-3 rounded-lg bg-white border border-emerald-200 shadow-2xs space-y-2">
+                          <span className="font-bold text-xs text-gray-900 flex items-center gap-1.5">
+                            <Pill className="h-4 w-4 text-blue-600" />
+                            Đơn thuốc điện tử {ticketData.donThuoc.maDonThuoc ? `(#${ticketData.donThuoc.maDonThuoc})` : ''}
+                          </span>
+                          <div className="space-y-1.5 pt-1">
+                            {ticketData.donThuoc.chiTiet.map((ct, idx) => (
+                              <div key={idx} className="text-xs flex justify-between border-b border-gray-50 pb-1">
+                                <div>
+                                  <span className="font-semibold text-gray-800">{ct.tenThuoc}</span>
+                                  <div className="text-[11px] text-gray-500">{ct.lieuDung || 'Theo chỉ định'}</div>
+                                </div>
+                                <span className="font-bold text-blue-600 shrink-0">x{ct.soLuong} {ct.donViTinh}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Khi đã hoàn thành ca khám, hiển thị chi tiết Đơn thuốc & Viện phí */}
                       {isCompleted && (

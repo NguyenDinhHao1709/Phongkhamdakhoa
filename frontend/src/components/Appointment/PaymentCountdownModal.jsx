@@ -13,6 +13,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { apiGet, apiPost, apiPatch } from '../../services/api';
 import BankAppLinks from '../Payment/BankAppLinks';
+import { STK_PHONG_KHAM } from '../../utils/constants';
 
 export default function PaymentCountdownModal({
   lichHenId,
@@ -47,7 +48,7 @@ export default function PaymentCountdownModal({
   // Thông tin ngân hàng phòng khám chính thức liên kết cổng thanh toán PayOS
   const cleanMa = (maLichHen || `LH${lichHenId}`).replace(/[^a-zA-Z0-9]/g, '');
   const displayAccountName = payData?.accountName || 'NGUYEN DINH HAO';
-  const displayAccountNumber = '2729999996789';
+  const displayAccountNumber = STK_PHONG_KHAM;
   const vaAccountNumber = payData?.accountNumber || 'VQRQAMVOG0606';
   const displayBin = payData?.bin || '970422';
   const displayAmount = Number(payData?.amount || soTien || 40000);

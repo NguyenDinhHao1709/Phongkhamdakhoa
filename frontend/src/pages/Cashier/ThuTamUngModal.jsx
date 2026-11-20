@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Wallet, X, CheckCircle } from 'lucide-react';
-import { apiPatch } from '../../services/api';
+import { apiGet, apiPatch } from '../../services/api';
 import { MedButton } from '../../design-system/components/Button/MedButton';
 import { formatCurrency } from '../../utils/formatCurrency';
 
@@ -9,22 +9,29 @@ export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
   const laCls = Boolean(hoaDon?.laPhiCls);
   // Phiếu CLS: phần đã cấn trừ từ tạm ứng dư (soTienGiam) không phải thu lại
   const canThu = Math.max(0, Math.round(Number(hoaDon?.tongTien) || 0) - (laCls ? Math.round(Number(hoaDon?.soTienGiam) || 0) : 0));
-  // Phiếu đã có số phải thu (phí khám × (1 − BHYT) − cọc); thu ngân được thu nhiều hơn
-  const [soTien, setSoTien] = useState(() => String(canThu || ''));
+  // Số thu lấy đúng theo phiếu (giá dịch vụ / phí khám đã cấu hình, trừ BHYT và cọc), thu ngân không tự nhập
+  const [bangKe, setBangKe] = useState(null);
   const [phuongThuc, setPhuongThuc] = useState('tien_mat');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  useEffect(() => {
+    if (!hoaDon?.id) return;
+    apiGet(`/thanh-toan/${hoaDon.id}`)
+      .then((res) => setBangKe(res?.data?.chiTiet || []))
+      .catch(() => setBangKe([]));
+  }, [hoaDon?.id]);
+
   const handleSubmit = async () => {
-    if (!(Number(soTien) > 0)) {
-      setErrorMsg('Vui lòng nhập số tiền lớn hơn 0');
+    if (!(canThu > 0)) {
+      setErrorMsg('Phiếu này không còn khoản nào phải thu');
       return;
     }
     setSubmitting(true);
     setErrorMsg('');
     try {
       await apiPatch(`/thanh-toan/hoa-don/${hoaDon.id}/thu-tam-ung`, {
-        soTien: Number(soTien),
+        soTien: canThu,
         phuongThucThanhToan: phuongThuc,
       });
       onSuccess?.();
@@ -64,31 +71,36 @@ export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
           </p>
 
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">{laCls ? 'Số tiền (đ)' : 'Số tiền tạm ứng (đ)'}</label>
-            <input
-              type="number"
-              min="0"
-              step="10000"
-              value={soTien}
-              onChange={(e) => setSoTien(e.target.value)}
-              autoFocus
-              className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-lg font-bold text-right focus:outline-none focus:ring-2 focus:ring-violet-500"
-            />
-            {Number(soTien) > 0 && (
-              <p className="text-right text-xs text-gray-500 mt-1">{formatCurrency(Number(soTien))}</p>
-            )}
-            {laCls && Number(hoaDon?.soTienGiam) > 0 && (
-              <p className="text-xs text-teal-700 mt-1">
-                Đã cấn trừ {formatCurrency(Number(hoaDon.soTienGiam))} từ tạm ứng còn dư.
-              </p>
-            )}
-            {canThu > 0 && (
-              <p className="text-xs text-amber-700 mt-1">
-                {laCls
-                  ? `Phải thu đủ ${formatCurrency(canThu)} (phần bệnh nhân tự chi trả còn lại).`
-                  : `Phải thu đủ ${formatCurrency(canThu)} (phí khám trừ BHYT và tiền cọc đã đóng).`}
-              </p>
-            )}
+            <p className="text-xs font-bold text-gray-700 mb-1">Bảng kê</p>
+            <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 text-sm">
+              {bangKe === null ? (
+                <p className="px-3 py-2.5 text-xs text-gray-400">Đang tải...</p>
+              ) : bangKe.length === 0 ? (
+                <p className="px-3 py-2.5 text-xs text-gray-400">{laCls ? 'Phí cận lâm sàng' : 'Tạm ứng phí khám'}</p>
+              ) : bangKe.map((ct, i) => (
+                <div key={i} className="flex items-center justify-between gap-3 px-3 py-2">
+                  <span className={Number(ct.thanhTien) < 0 ? 'text-teal-700' : 'text-gray-800'}>{ct.moTa}</span>
+                  <span className={`font-semibold whitespace-nowrap ${Number(ct.thanhTien) < 0 ? 'text-teal-700' : 'text-gray-900'}`}>
+                    {formatCurrency(Number(ct.thanhTien))}
+                  </span>
+                </div>
+              ))}
+              {laCls && Number(hoaDon?.soTienGiam) > 0 && (
+                <div className="flex items-center justify-between gap-3 px-3 py-2 text-teal-700">
+                  <span>Cấn trừ tạm ứng còn dư</span>
+                  <span className="font-semibold whitespace-nowrap">{formatCurrency(-Number(hoaDon.soTienGiam))}</span>
+                </div>
+              )}
+            </div>
+            <div className="mt-3 flex items-center justify-between rounded-xl bg-violet-50 border border-violet-200 px-3.5 py-3">
+              <span className="text-sm font-bold text-gray-700">Số tiền phải thu</span>
+              <span className="text-xl font-black text-violet-700">{formatCurrency(canThu)}</span>
+            </div>
+            <p className="text-[11px] text-gray-500 mt-1">
+              {laCls
+                ? 'Theo giá dịch vụ đã cấu hình, đã trừ BHYT và tạm ứng còn dư.'
+                : 'Theo phí khám đã cấu hình, đã trừ BHYT và tiền cọc đặt lịch.'}
+            </p>
           </div>
 
           <div>

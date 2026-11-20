@@ -283,11 +283,13 @@ export class ThanhToanService {
         tienHoanTra: Number(hd.tienHoanTra || 0),
         tienCocDaThu,
         maLichHenCoc,
-        chiTiet: (hd.chiTiet || []).map((ct) => ({
-          ...ct,
-          donGia: Number(ct.donGia),
-          thanhTien: Number(ct.thanhTien),
-        })),
+        chiTiet: hd.chiTiet?.length
+          ? hd.chiTiet.map((ct) => ({
+            ...ct,
+            donGia: Number(ct.donGia),
+            thanhTien: Number(ct.thanhTien),
+          }))
+          : laPhieuThuTruoc(hd.maHoaDon) ? await this.bangKePhieuThuTruoc(hd) : [],
         donThuoc: donThuoc.map((dt) => ({
           id: dt.id,
           maDonThuoc: dt.maDonThuoc,
@@ -687,6 +689,48 @@ export class ThanhToanService {
   }
 
   /** Tạm ứng đã thu thực tế của lượt khám: cọc đặt lịch (HDT…) + tạm ứng tại quầy (TU…) */
+  /**
+   * Bảng kê cho phiếu thu trước (CLS… / TU…), vốn không lưu chi tiết: dịch vụ theo giá niêm yết rồi trừ phần BHYT / tiền cọc,
+   * các dòng cộng lại đúng tổng tiền phiếu. Không khớp được (giá đã đổi sau khi lập phiếu) thì ghi một dòng theo tổng tiền.
+   */
+  private async bangKePhieuThuTruoc(hd: HoaDon) {
+    const tong = Number(hd.tongTien);
+    const dong = (loaiPhi: string, moTa: string, soTien: number) =>
+      this.hoaDonChiTietRepo.create({ hoaDonId: hd.id, loaiPhi, moTa, soLuong: 1, donGia: soTien, thanhTien: soTien });
+    const kemTru = (dichVu: ReturnType<typeof dong>, cacKhoanTru: ReturnType<typeof dong>[]) => {
+      const tru = cacKhoanTru.filter((d) => d.thanhTien < 0);
+      return dichVu.thanhTien + tru.reduce((s, d) => s + d.thanhTien, 0) === tong ? [dichVu, ...tru] : null;
+    };
+
+    if (hd.maHoaDon.startsWith(MA_PHI_CLS)) {
+      const [cd]: any[] = await this.hoaDonRepo.manager.query(
+        `SELECT dv.ten_dich_vu AS ten, dv.gia, dv.loai FROM chi_dinh_can_lam_sang cd
+           JOIN dich_vu_xet_nghiem dv ON dv.id = cd.dich_vu_xet_nghiem_id WHERE cd.id = ? LIMIT 1`,
+        [Number(hd.maHoaDon.slice(MA_PHI_CLS.length))],
+      );
+      const ten = cd?.ten || hd.ghiChu?.match(/\[PHÍ CẬN LÂM SÀNG\]\s*(.+?)\s+-\s+lượt khám/)?.[1] || 'Dịch vụ cận lâm sàng';
+      const gia = Number(cd?.gia || 0);
+      const loai = cd?.loai === 'cdha' ? 'cdha' : 'xet_nghiem';
+      return kemTru(dong(loai, ten, gia), [dong('bhyt', 'BHYT chi trả', tong - gia)])
+        ?? [dong(loai, ten, tong)];
+    }
+
+    // TU<id lượt>: phí khám, trừ tiền cọc đặt lịch (nếu có) và phần BHYT chi trả
+    const luot = await this.tiepNhanRepo.findOne({ where: { id: Number(hd.maHoaDon.slice(MA_TAM_UNG_QUAY.length)) } });
+    const phiKham = await this.layPhiKham();
+    let coc = 0;
+    let maCoc = '';
+    if (luot?.lichHenId) {
+      const [lh]: any[] = await this.hoaDonRepo.manager.query(`SELECT ma_lich_hen FROM lich_hen WHERE id = ? LIMIT 1`, [luot.lichHenId]);
+      maCoc = lh ? `HDT${String(lh.ma_lich_hen || '').replace(/^LH/i, '')}` : '';
+      const hdCoc = maCoc ? await this.hoaDonRepo.findOne({ where: { maHoaDon: maCoc, trangThai: 'da_thanh_toan' } }) : null;
+      coc = Number(hdCoc?.thucThu || 0);
+    }
+    const truCoc = dong('tam_ung', `Trừ tiền cọc đặt lịch (${maCoc})`, -coc);
+    return kemTru(dong('kham_benh', 'Phí khám bệnh', phiKham), [truCoc, dong('bhyt', 'BHYT chi trả', tong - phiKham + coc)])
+      ?? [dong('kham_benh', 'Tạm ứng phí khám bệnh', tong)];
+  }
+
   private async layTamUngCuaLuot(luot: { id: number; lichHenId?: number }) {
     const phieu = [{ ma: `${MA_TAM_UNG_QUAY}${luot.id}`, moTa: 'tạm ứng tại quầy' }];
     if (luot.lichHenId) {
@@ -967,15 +1011,17 @@ export class ThanhToanService {
    * Thu ngân thu phiếu thu trước tại quầy (phải thu đủ số cần thu): tạm ứng phí khám TU… → bệnh nhân vào hàng đợi bác sĩ;
    * phí cận lâm sàng CLS… → kỹ thuật viên được thực hiện.
    */
-  async thuTamUng(id: number, userId: number, dto: { soTien: number; phuongThucThanhToan?: string }) {
+  async thuTamUng(id: number, userId: number, dto: { soTien?: number; phuongThucThanhToan?: string }) {
     return this.withLock(`invoice:pay:${id}`, async () => {
       const hd = await this.hoaDonRepo.findOne({ where: { id } });
       if (!hd || !laPhieuThuTruoc(hd.maHoaDon)) throw new NotFoundException('Không tìm thấy phiếu tạm ứng');
       if (hd.trangThai !== 'cho_thanh_toan') throw new BadRequestException('Phiếu tạm ứng đã được xử lý');
       const laCls = hd.maHoaDon.startsWith(MA_PHI_CLS);
-      const soTien = Math.round(Number(dto.soTien));
-      if (!(soTien > 0)) throw new BadRequestException('Số tiền tạm ứng phải lớn hơn 0');
       const canThu = soTienPhaiThu(hd);
+      // Thu ngân thu đúng số trên phiếu (giá dịch vụ / phí khám đã cấu hình), không tự nhập;
+      // PayOS (userId 0) ghi đúng số tiền thực nhận từ ngân hàng
+      const soTien = userId ? canThu : Math.round(Number(dto.soTien));
+      if (!(soTien > 0)) throw new BadRequestException('Phiếu này không còn khoản nào phải thu');
       if (soTien < canThu) {
         throw new BadRequestException(laCls
           ? `Phải thu đủ ${canThu.toLocaleString('vi-VN')} đ phí cận lâm sàng thì kỹ thuật viên mới thực hiện`

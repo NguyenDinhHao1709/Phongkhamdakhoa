@@ -6,6 +6,9 @@ import { api } from "../lib/api";
 import { tien } from "../lib/format";
 import { moTrangWeb } from "../lib/zalo";
 
+// Số tài khoản MB Bank của phòng khám hiển thị cho bệnh nhân; mã QR vẫn dùng tài khoản ảo PayOS để tự xác nhận khi tiền vào
+const STK_PHONG_KHAM = "2729999996789";
+
 async function saoChep(text) {
   try {
     await navigator.clipboard.writeText(text);
@@ -117,7 +120,7 @@ export default function PaymentSheet({ lichHen, onClose, onPaid }) {
       ctx.fillText(`Nội dung: ${pay.description}`, 320, 682);
       ctx.fillStyle = "#6b7280";
       ctx.font = "24px sans-serif";
-      ctx.fillText(`${pay.accountName || ""} · ${pay.accountNumber}`, 320, 728);
+      ctx.fillText(`${pay.accountName || ""} · ${STK_PHONG_KHAM}`, 320, 728);
       ctx.fillText("Phòng Khám Đa Khoa · Tiền cọc lịch khám", 320, 770);
       const dataUrl = c.toDataURL("image/png");
       try {
@@ -200,7 +203,7 @@ export default function PaymentSheet({ lichHen, onClose, onPaid }) {
                   <div className="pay-value">{pay.accountName}</div>
                 </div>
               </div>
-              <DongSaoChep nhan="Số tài khoản" giaTri={pay.accountNumber} />
+              <DongSaoChep nhan="Số tài khoản" giaTri={STK_PHONG_KHAM} />
               <DongSaoChep nhan="Số tiền" giaTri={pay.amount} hienThi={tien(pay.amount)} />
               <DongSaoChep nhan="Nội dung" giaTri={pay.description} />
             </div>

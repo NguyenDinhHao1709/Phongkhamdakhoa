@@ -4,6 +4,7 @@ import { X, CheckCircle2, QrCode, Copy, Check } from 'lucide-react';
 import { apiGet, apiPost } from '../../services/api';
 import { formatCurrency } from '../../utils/formatCurrency';
 import BankAppLinks from './BankAppLinks';
+import { STK_PHONG_KHAM } from '../../utils/constants';
 
 /**
  * Chuyển khoản VietQR (PayOS) cho phiếu tạm ứng phí khám / phí cận lâm sàng. Tiền vào là hệ thống tự ghi nhận
@@ -122,7 +123,7 @@ export default function ChuyenKhoanPhieuThuModal({ phieu, onClose, onSuccess }) 
                 accountName={payData.accountName}
               />
               <div className="space-y-2">
-                {dong('Số tài khoản', payData.accountNumber, 'stk')}
+                {dong('Số tài khoản', STK_PHONG_KHAM, 'stk')}
                 {dong('Chủ tài khoản', payData.accountName, 'ten')}
                 {dong('Nội dung (giữ nguyên)', payData.description, 'nd')}
               </div>
