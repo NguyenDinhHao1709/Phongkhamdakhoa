@@ -509,7 +509,21 @@ export class LichHenService implements OnModuleInit {
     const defaultCocTT = Number(cocConfigsAll.find((c) => c.loai_hinh_thuc === 'truc_tiep')?.so_tien_coc || 40000);
     const defaultCocOnline = Number(cocConfigsAll.find((c) => c.loai_hinh_thuc === 'truc_tuyen')?.so_tien_coc || 200000);
 
+    // Lịch hẹn đã check-in (quầy hoặc kiosk) = có lượt tiếp nhận chưa hủy; lịch hẹn vẫn ở "da_xac_nhan"
+    // cho tới khi bác sĩ gọi, nên tiếp tân cần cờ này để biết bệnh nhân đã đến.
+    const lichHenIds = items.map((i) => i.id);
+    const luotCheckIn: any[] = lichHenIds.length
+      ? await this.dataSource.query(
+          `SELECT lich_hen_id AS lichHenId, ma_so_thu_tu AS maSoThuTu, thoi_gian_den AS thoiGianDen, trang_thai AS trangThai
+             FROM luot_tiep_nhan
+            WHERE lich_hen_id IN (?) AND trang_thai != 'da_huy'`,
+          [lichHenIds],
+        ).catch(() => [])
+      : [];
+    const checkInTheoLichHen = new Map(luotCheckIn.map((l) => [Number(l.lichHenId), l]));
+
     const enrichedItems = items.map((item) => {
+      const luot = checkInTheoLichHen.get(item.id);
       const maHdTamUng = `HDT${(item.maLichHen || '').replace(/^LH/i, '')}`.slice(0, 20);
       const hdCoc = depositInvoicesAll.find((h) => h.ma_hoa_don === maHdTamUng);
       const defaultCoc = item.hinhThuc === 'truc_tuyen' ? defaultCocOnline : defaultCocTT;
@@ -518,6 +532,10 @@ export class LichHenService implements OnModuleInit {
         ...item,
         soTienThanhToan,
         soTienCoc: soTienThanhToan,
+        daCheckIn: !!luot,
+        checkIn: luot
+          ? { maSoThuTu: luot.maSoThuTu, thoiGianDen: luot.thoiGianDen, trangThaiLuot: luot.trangThai }
+          : null,
       };
     });
 

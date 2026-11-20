@@ -321,6 +321,17 @@ export default function LichHenQuanLyPage() {
     setActionLoadingId(lh.id);
     try {
       const res = await apiPost('/tiep-nhan', { benhNhanId: lh.benhNhanId, lichHenId: lh.id });
+      // Cập nhật ngay trên bảng để tiếp tân thấy "Đã check-in" mà không phải chờ tải lại
+      const luot = res?.data?.luot || res?.data;
+      const checkIn = {
+        maSoThuTu: luot?.maSoThuTu,
+        thoiGianDen: luot?.thoiGianDen || new Date().toISOString(),
+        trangThaiLuot: luot?.trangThai,
+      };
+      setList((prev) => prev.map((x) => (x.id === lh.id ? { ...x, daCheckIn: true, checkIn } : x)));
+      if (selectedLichHen?.id === lh.id) {
+        setSelectedLichHen((prev) => (prev ? { ...prev, daCheckIn: true, checkIn } : null));
+      }
       alert(res?.message || 'Đã check-in bệnh nhân');
       await fetchData();
     } catch (err) {
@@ -1035,6 +1046,14 @@ export default function LichHenQuanLyPage() {
                       {/* Trạng Thái */}
                       <td className="py-3 px-4">
                         <StatusBadge status={lh.trangThai} />
+                        {lh.daCheckIn && lh.trangThai === 'da_xac_nhan' && (
+                          <p className="mt-1 text-[10px] font-semibold text-emerald-700">
+                            Đã check-in
+                            {lh.checkIn?.thoiGianDen
+                              ? ` lúc ${new Date(lh.checkIn.thoiGianDen).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`
+                              : ''}
+                          </p>
+                        )}
                       </td>
 
                       {/* Thao Tác Nhanh */}
@@ -1101,7 +1120,16 @@ export default function LichHenQuanLyPage() {
                             )}
 
                           {/* Check-in tại quầy (lịch khám trực tiếp đã xác nhận, đúng ngày hẹn) */}
-                          {isToday && lh.trangThai === 'da_xac_nhan' && lh.hinhThuc !== 'truc_tuyen' && (
+                          {isToday && lh.trangThai === 'da_xac_nhan' && lh.hinhThuc !== 'truc_tuyen' && lh.daCheckIn && (
+                            <span
+                              title={`Bệnh nhân đã check-in${lh.checkIn?.thoiGianDen ? ` lúc ${new Date(lh.checkIn.thoiGianDen).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}` : ''}`}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg"
+                            >
+                              <Check className="h-3 w-3" />
+                              <span>Đã check-in{lh.checkIn?.maSoThuTu ? ` · ${lh.checkIn.maSoThuTu}` : ''}</span>
+                            </span>
+                          )}
+                          {isToday && lh.trangThai === 'da_xac_nhan' && lh.hinhThuc !== 'truc_tuyen' && !lh.daCheckIn && (
                             <button
                               onClick={() => handleCheckIn(lh)}
                               disabled={actionLoadingId === lh.id}
