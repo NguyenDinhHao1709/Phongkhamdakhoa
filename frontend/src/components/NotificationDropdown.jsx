@@ -225,6 +225,8 @@ export function NotificationDropdown() {
         return <Wallet className="w-4 h-4 text-purple-600" />;
       case 'can_thanh_toan':
         return <CreditCard className="w-4 h-4 text-amber-600" />;
+      case 'thanh_toan':
+        return <CreditCard className="w-4 h-4 text-emerald-600" />;
       case 'cap_phat_thuoc':
         return <Pill className="w-4 h-4 text-emerald-600" />;
       default:
@@ -248,6 +250,8 @@ export function NotificationDropdown() {
         return 'bg-purple-100';
       case 'can_thanh_toan':
         return 'bg-amber-100';
+      case 'thanh_toan':
+        return 'bg-emerald-100';
       case 'cap_phat_thuoc':
         return 'bg-emerald-100';
       default:

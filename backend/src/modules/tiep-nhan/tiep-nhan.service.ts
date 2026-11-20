@@ -1027,8 +1027,9 @@ export class TiepNhanService implements OnModuleInit {
    * tránh lượt "mồ côi" không có phiếu (không vào được hàng đợi, cũng không ai thu được).
    */
   async lapPhieuTamUng(luot: LuotTiepNhan, hoTen?: string) {
+    let phieu: Awaited<ReturnType<ThanhToanService['taoPhieuTamUngTaiQuay']>>;
     try {
-      return await this.thanhToanService.taoPhieuTamUngTaiQuay(luot, hoTen);
+      phieu = await this.thanhToanService.taoPhieuTamUngTaiQuay(luot, hoTen);
     } catch (err) {
       await this.luotRepo.update(luot.id, {
         trangThai: TrangThaiTiepNhan.DA_HUY,
@@ -1038,6 +1039,36 @@ export class TiepNhanService implements OnModuleInit {
         code: 'KHONG_LAP_DUOC_TAM_UNG',
         message: `Không lập được phiếu tạm ứng (${(err as any)?.message || 'lỗi hệ thống'}). Vui lòng tiếp nhận lại.`,
       });
+    }
+    await this.baoBenhNhanDaTiepNhan(luot.id, phieu);
+    return phieu;
+  }
+
+  /** Bệnh nhân có tài khoản (đặt lịch / đăng ký online): báo số thứ tự, bác sĩ, phòng và khoản tạm ứng cần đóng */
+  private async baoBenhNhanDaTiepNhan(luotId: number, phieuTu: Awaited<ReturnType<ThanhToanService['taoPhieuTamUngTaiQuay']>>) {
+    try {
+      const luot = await this.luotRepo.findOne({ where: { id: luotId }, relations: ['bacSi', 'bacSi.nhanVien'] });
+      if (!luot) return;
+      const phong: any[] = luot.phongKhamId
+        ? await this.luotRepo.manager.query('SELECT ten_phong FROM phong_kham WHERE id = ? LIMIT 1', [luot.phongKhamId])
+        : [];
+      const tenBs = luot.bacSi?.nhanVien?.hoTen;
+      const noiKham = [tenBs && `BS. ${tenBs}`, phong[0]?.ten_phong].filter(Boolean).join(' – ');
+      const canThu = phieuTu ? soTienPhaiThu(phieuTu) : 0;
+      const tiepTheo = luot.doiTuongUuTien === 'cap_cuu'
+        ? 'Bạn là ca cấp cứu, được ưu tiên khám ngay; chi phí thanh toán sau.'
+        : canThu > 0
+          ? `Vui lòng đóng tạm ứng phí khám ${canThu.toLocaleString('vi-VN')} đ (${phieuTu!.maHoaDon}) tại quầy thu ngân để vào hàng chờ khám.`
+          : 'Bạn không phải đóng thêm phí khám (đã có tiền cọc / BHYT), đã vào hàng chờ khám.';
+      await this.thanhToanService.baoBenhNhan(luot.benhNhanId, {
+        tieuDe: `Đã tiếp nhận lượt khám – số thứ tự ${luot.maSoThuTu}`,
+        noiDung: `Bạn đã được tiếp nhận lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}${noiKham ? `, khám với ${noiKham}` : ''}. ${tiepTheo}`,
+        loai: canThu > 0 ? 'can_thanh_toan' : 'lich_kham',
+        doiTuongBang: 'luot_tiep_nhan',
+        doiTuongId: luot.id,
+      });
+    } catch (e: any) {
+      console.warn('Lỗi báo bệnh nhân đã tiếp nhận:', e?.message);
     }
   }
 

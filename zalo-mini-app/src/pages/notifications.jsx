@@ -16,7 +16,8 @@ function thoiGianTruoc(iso) {
 // Bấm vào thông báo: lịch hẹn → trang Lịch hẹn, kết quả xét nghiệm → trang Hồ sơ
 function duongDan(tb) {
   if (tb.loai === "xet_nghiem") return "/ho-so";
-  if (tb.loai === "lich_hen") return "/lich-hen";
+  // Tiếp nhận tại quầy, các khoản cần đóng / đã đóng → Lịch hẹn (theo dõi lượt khám hôm nay)
+  if (["lich_hen", "lich_kham", "can_thanh_toan", "thanh_toan"].includes(tb.loai)) return "/lich-hen";
   return null;
 }
 

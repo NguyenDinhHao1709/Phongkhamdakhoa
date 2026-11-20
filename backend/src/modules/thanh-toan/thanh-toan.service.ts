@@ -481,6 +481,20 @@ export class ThanhToanService {
       } catch (e) {
         console.warn('Lỗi gửi thông báo thu_ngan taoHoacCapNhatTuLuotKham:', e?.message);
       }
+      // Hóa đơn tính lại nhiều lần (đổi thuốc / BHYT): tiêu đề có số tiền nên chỉ báo lại khi số tiền đổi
+      if (Number(saved.thucThu) > 0 || tienHoanTra > 0) {
+        await this.baoBenhNhan(luot.benhNhanId, tienHoanTra > 0
+          ? {
+            tieuDe: `Bạn được hoàn ${tienHoanTra.toLocaleString('vi-VN')} đ tạm ứng dư`,
+            noiDung: `Hóa đơn viện phí ${saved.maHoaDon}: tổng chi phí thấp hơn số tạm ứng đã đóng. Mời bạn đến quầy thu ngân nhận lại ${tienHoanTra.toLocaleString('vi-VN')} đ.`,
+            loai: 'thanh_toan', doiTuongBang: 'hoa_don', doiTuongId: saved.id,
+          }
+          : {
+            tieuDe: `Cần thanh toán viện phí ${Number(saved.thucThu).toLocaleString('vi-VN')} đ`,
+            noiDung: `Hóa đơn viện phí ${saved.maHoaDon}: tổng chi phí ${tongTienDichVu.toLocaleString('vi-VN')} đ${giamBhyt > 0 ? `, BHYT chi trả ${giamBhyt.toLocaleString('vi-VN')} đ` : ''}${tienCocDaThu > 0 ? `, đã trừ ${tienCocDaThu.toLocaleString('vi-VN')} đ tạm ứng` : ''}. Vui lòng thanh toán ${Number(saved.thucThu).toLocaleString('vi-VN')} đ tại quầy thu ngân.`,
+            loai: 'can_thanh_toan', doiTuongBang: 'hoa_don', doiTuongId: saved.id,
+          });
+      }
 
       return this.getChiTietHoaDon(saved.id);
     });
@@ -617,6 +631,18 @@ export class ThanhToanService {
             tieuDe: `Đơn thuốc đã thanh toán: ${hd.maHoaDon}`,
             noiDung: `Bệnh nhân ${hd.benhNhan?.hoTen || 'BN'} đã thanh toán tiền thuốc. Nhà thuốc sẵn sàng chuẩn bị và cấp phát!`,
             loai: 'cap_phat_thuoc',
+            doiTuongBang: 'hoa_don',
+            doiTuongId: hd.id,
+          });
+        }
+
+        if (thucThu > 0 || tienHoanTra > 0) {
+          await this.baoBenhNhan(hd.benhNhanId, {
+            tieuDe: tienHoanTra > 0
+              ? `Đã nhận hoàn ${tienHoanTra.toLocaleString('vi-VN')} đ tạm ứng dư`
+              : `Đã thanh toán viện phí ${thucThu.toLocaleString('vi-VN')} đ`,
+            noiDung: `Hóa đơn ${hd.maHoaDon} đã quyết toán xong.${hasThuoc ? ' Mời bạn đến quầy nhà thuốc nhận thuốc.' : ''} Cảm ơn bạn đã sử dụng dịch vụ của phòng khám.`,
+            loai: 'thanh_toan',
             doiTuongBang: 'hoa_don',
             doiTuongId: hd.id,
           });
@@ -828,6 +854,13 @@ export class ThanhToanService {
       tong += conPhaiThu;
     }
     if (tong > 0) {
+      await this.baoBenhNhan(luot.benhNhanId, {
+        tieuDe: `Cần đóng phí cận lâm sàng ${tong.toLocaleString('vi-VN')} đ`,
+        noiDung: `Bác sĩ vừa chỉ định ${chiDinh.map((c) => c.tenDichVu).join(', ')}. Vui lòng đóng ${tong.toLocaleString('vi-VN')} đ tại quầy thu ngân; kỹ thuật viên sẽ thực hiện ngay sau khi bạn đóng phí.`,
+        loai: 'can_thanh_toan',
+        doiTuongBang: 'chi_dinh_can_lam_sang',
+        doiTuongId: chiDinh[0].id,
+      });
       await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
         tieuDe: `Cần thu phí cận lâm sàng: ${luot.benhNhan?.hoTen || 'Bệnh nhân'} (${luot.maSoThuTu || ''})`,
         noiDung: `Bác sĩ vừa chỉ định ${chiDinh.length} dịch vụ cận lâm sàng. Vui lòng thu ${tong.toLocaleString('vi-VN')} đ; kỹ thuật viên chỉ thực hiện sau khi đã thu.`,
@@ -897,6 +930,20 @@ export class ThanhToanService {
     await this.xacNhanThanhToan(hd.id, 0, { phuongThucThanhToan: 'tien_mat', ghiChu: `${hd.ghiChu || ''} [Tự quyết toán: không phải thu thêm]`.trim() });
     return true;
   }
+  /**
+   * Báo vào tài khoản của bệnh nhân (chuông thông báo trên web / Zalo Mini App) nếu bệnh nhân có tài khoản.
+   * Chống trùng theo tiêu đề + đối tượng; lỗi không làm hỏng luồng thu tiền / tiếp nhận.
+   */
+  async baoBenhNhan(benhNhanId: number | null | undefined, data: { tieuDe: string; noiDung: string; loai: string; doiTuongBang: string; doiTuongId: number }) {
+    if (!benhNhanId) return;
+    try {
+      const bn = await this.hoaDonRepo.manager.findOne(BenhNhan, { where: { id: benhNhanId } });
+      await this.thongBaoService.taoNeuChuaCo({ ...data, nguoiNhanId: bn?.nguoiDungId });
+    } catch (e: any) {
+      console.warn('Lỗi gửi thông báo bệnh nhân:', e?.message);
+    }
+  }
+
   /** Báo bác sĩ phụ trách: bệnh nhân đã vào hàng đợi khám */
   private async baoBacSiVaoHangDoi(luotId: number, lyDo: string) {
     const luot = await this.tiepNhanRepo.findOne({
@@ -964,6 +1011,15 @@ export class ThanhToanService {
           'đã đóng tạm ứng và vào danh sách khám của bạn',
         );
       }
+      await this.baoBenhNhan(hd.benhNhanId, {
+        tieuDe: `Đã thanh toán ${soTien.toLocaleString('vi-VN')} đ ${laCls ? 'phí cận lâm sàng' : 'tạm ứng phí khám'}`,
+        noiDung: laCls
+          ? `Phòng khám đã nhận ${soTien.toLocaleString('vi-VN')} đ (${hd.maHoaDon}). Mời bạn đến phòng cận lâm sàng để thực hiện.`
+          : `Phòng khám đã nhận ${soTien.toLocaleString('vi-VN')} đ (${hd.maHoaDon}). Bạn đã vào hàng chờ khám, vui lòng chú ý loa / màn hình gọi số.`,
+        loai: 'thanh_toan',
+        doiTuongBang: 'hoa_don',
+        doiTuongId: hd.id,
+      });
 
       return { message: `Đã thu ${laCls ? 'phí cận lâm sàng' : 'tạm ứng'} ${soTien.toLocaleString('vi-VN')} đ`, data: saved };
     });
