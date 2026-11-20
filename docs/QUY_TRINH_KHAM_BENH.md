@@ -130,16 +130,19 @@ Dược sĩ chỉ cấp phát khi hóa đơn của lượt đã `da_thanh_toan`;
 ![Tư vấn trực tuyến](bpmn/03_tu_van_truc_tuyen.png)
 
 1. Lịch trực tuyến đã đóng 100% phí (`da_xac_nhan`).
-2. Phòng gọi (WebRTC qua Socket.IO) mở từ **15 phút trước giờ hẹn**, đóng sau **60 phút** tính từ giờ hẹn hoặc từ lúc phiên thực sự bắt đầu.
-3. Bác sĩ và bệnh nhân vào phòng kèm **token đăng nhập**; hệ thống ghi lần đầu vào phòng của **bác sĩ phụ trách** (`bac_si_vao_luc`) và **bệnh nhân của lịch** (`benh_nhan_vao_luc`). Kết nối không có token vẫn gọi được nhưng không được ghi nhận.
-4. Bác sĩ tư vấn, nhập chẩn đoán và lời khuyên → hệ thống tạo hồ sơ bệnh án (mã `HSxxxxxx`), lịch `hoan_thanh`.
-5. Hết ngày hẹn mà ca chưa được kết luận:
+2. Phòng gọi (WebRTC qua Socket.IO) mở từ **15 phút trước giờ hẹn**, đóng sau **60 phút** tính từ giờ hẹn, hoặc từ lúc hai bên gặp nhau nếu gặp muộn hơn.
+3. Chỉ **bác sĩ phụ trách** và **bệnh nhân của lịch** (đăng nhập, gửi token) được vào phòng, và chỉ khi lịch đang `da_xac_nhan`. Hệ thống ghi:
+   - lần đầu bác sĩ vào (`bac_si_vao_luc`) và lần đầu bệnh nhân vào (`benh_nhan_vao_luc`);
+   - lần đầu **hai bên cùng có mặt** trong phòng (`gap_nhau_luc`). Đây là căn cứ duy nhất để coi ca đã diễn ra.
+4. Chỉ bác sĩ phụ trách được hoàn tất ca, khi đã có `gap_nhau_luc`, đã nhập chẩn đoán và **chưa hết ngày hẹn**. Hệ thống tạo hồ sơ bệnh án (mã `HSxxxxxx`), lịch chuyển `hoan_thanh`.
+5. Ca chưa kết luận được xử lý tự động (5 phút/lần):
 
-| Bác sĩ vào phòng | Bệnh nhân vào phòng | Kết quả |
+| Tình huống | Thời điểm xử lý | Kết quả |
 |---|---|---|
-| Không | — | Hủy ca, yêu cầu **hoàn phí** cho bệnh nhân |
-| Có | Không | Lịch `vang_mat`, **không hoàn phí** |
-| Có | Có | Hủy ca, **chờ thu ngân xác minh** rồi quyết định hoàn |
+| Bác sĩ không vào (bệnh nhân vào hay không) | Khi phòng đóng | Hủy ca, yêu cầu **hoàn phí** |
+| Bác sĩ vào, bệnh nhân không vào | Khi phòng đóng | Lịch `vang_mat`, **không hoàn phí** |
+| Cả hai vào nhưng lệch giờ, không gặp nhau | Khi phòng đóng | Hủy ca, **chờ thu ngân xác minh** |
+| Đã gặp nhau nhưng bác sĩ không kết luận | Hết ngày hẹn | Hủy ca, **chờ thu ngân xác minh** |
 
 ---
 
@@ -148,7 +151,7 @@ Dược sĩ chỉ cấp phát khi hóa đơn của lượt đã `da_thanh_toan`;
 | Tác vụ | Chu kỳ | Nội dung |
 |---|---|---|
 | Quét hàng đợi | Khi có truy vấn hàng đợi, tối đa 1 lần / 5 giây | Báo trễ hẹn 15/30 phút, dọn lượt ngày cũ |
-| Hủy lịch quá giờ | Định kỳ | Lịch trực tiếp quá giờ hẹn 15 phút chưa check-in → hủy; lịch trực tuyến quá ngày → xử lý theo mục 4 |
+| Hủy lịch quá giờ | Định kỳ | Lịch trực tiếp quá giờ hẹn 15 phút chưa check-in → hủy; lịch trực tuyến hết giờ phòng / quá ngày → xử lý theo mục 4 |
 | Hết hạn thanh toán cọc | Định kỳ / đối soát PayOS | Quá 15 phút chưa thanh toán → hủy lịch |
 | Nhắc lịch | 30 phút / lần | Email nhắc lịch hẹn trong 24 giờ tới |
 

@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { io } from 'socket.io-client';
+import { useAuthStore } from '../store/authStore';
 
 const SOCKET_URL = 'http://localhost:5000';
 
@@ -85,13 +86,15 @@ export default function PatientTelehealthModal({ visible, appointment, onClose }
         channelRef.current = channel;
         channel.onmessage = (event) => handleSignal(event.data);
 
-        const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
+        // Máy chủ chỉ cho bệnh nhân của lịch hẹn (đã đăng nhập) vào phòng
+        const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'], auth: { token: useAuthStore.getState().accessToken } });
         socketRef.current = socket;
-        socket.emit('call:join', {
+        socket.on('connect', () => socket.emit('call:join', {
           roomId,
           role: 'patient',
           userName: appointment?.bacSi || 'Bệnh nhân',
-        });
+        }));
+        socket.on('call:error', (err) => setStatus(err?.message || 'Không thể vào phòng tư vấn.'));
         socket.on('call:signal', (data) => handleSignal(data.signal));
         socket.on('call:peer_joined', () => setStatus('Đã vào phòng, đang chờ bác sĩ...'));
         socket.on('call:peer_left', () => setStatus('Bác sĩ đã rời phòng khám.'));

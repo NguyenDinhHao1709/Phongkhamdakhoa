@@ -619,8 +619,9 @@ export default function TelehealthVideoModal({
         };
 
         let socket;
-        // Token để máy chủ ghi nhận bác sĩ / bệnh nhân đã vào phòng (căn cứ hoàn phí khi ca không diễn ra)
-        const auth = { token: useAuthStore.getState().accessToken };
+        // Máy chủ chỉ cho bác sĩ phụ trách / bệnh nhân của lịch vào phòng. Dạng hàm: mỗi lần kết nối lại
+        // (mạng chập chờn, backend khởi động lại khi deploy) đều lấy token mới nhất, tự gửi lại call:join.
+        const auth = (cb) => cb({ token: useAuthStore.getState().accessToken });
         try {
           if (import.meta.env.VITE_WS_URL) {
             socket = io(import.meta.env.VITE_WS_URL, { transports: ['websocket', 'polling'], auth });
@@ -669,13 +670,22 @@ export default function TelehealthVideoModal({
           }
         });
 
-        socket.on('call:error', (err) => {
-          console.warn('[Telehealth] Lỗi bảo mật phòng khám:', err);
-          if (err?.code === 'TOO_EARLY_TO_JOIN' || err?.code === 'UNAUTHORIZED_ROOM') {
-            console.warn('[Telehealth] Bỏ qua cảnh báo lệch múi giờ từ server:', err?.message);
-            return;
+        let daLamMoiToken = false;
+        socket.on('call:error', async (err) => {
+          console.warn('[Telehealth] Máy chủ từ chối vào phòng:', err);
+          // Token hết hạn: gọi 1 API để interceptor tự làm mới token, rồi kết nối lại (thử 1 lần)
+          if (err?.code === 'CHUA_DANG_NHAP' && !daLamMoiToken) {
+            daLamMoiToken = true;
+            try {
+              await api.get('/auth/me');
+              if (isMounted) socket.disconnect().connect();
+              return;
+            } catch {
+              // Hết phiên đăng nhập → báo lỗi bên dưới
+            }
           }
-          alert(`⚠️ BẢO MẬT PHÒNG KHÁM TRỰC TUYẾN:\n\n${err?.message || 'Không thể tham gia phòng gọi.'}`);
+          if (!isMounted) return;
+          alert(`⚠️ PHÒNG TƯ VẤN TRỰC TUYẾN:\n\n${err?.message || 'Không thể tham gia phòng gọi.'}`);
           onClose();
         });
 

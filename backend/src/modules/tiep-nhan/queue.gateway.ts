@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
+import { MO_PHONG_TRUOC_MS, mocGioHen, gioDongPhong } from '../../common/utils/tu-van-truc-tuyen.util';
 
 @WebSocketGateway({
   cors: { origin: true, credentials: true },
@@ -25,7 +26,6 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // Mốc bắt đầu ca khám chung cho cả 2 bên (thoát ra vào lại không reset đồng hồ 60 phút)
   private callStartedAt = new Map<string, number>();
-  private static readonly CALL_DURATION_MS = 60 * 60 * 1000;
 
   // Vào sớm trước giờ hẹn thì không tính: mốc = muộn hơn giữa giờ hẹn và lúc người đầu tiên vào phòng
   private getCallStartedAt(roomId: string, apptStartMs?: number): number {
@@ -83,111 +83,82 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // ─── WebRTC Signaling cho Telehealth Video Call ────────────────────
   @SubscribeMessage('call:join')
   async handleJoinCall(client: Socket, payload: { roomId: string; role: string; userName: string; pcId?: string }) {
-    if (!payload?.roomId) {
-      client.emit('call:error', { code: 'INVALID_ROOM', message: 'Mã phòng gọi không hợp lệ.' });
-      return;
+    const tuChoi = (code: string, message: string) => client.emit('call:error', { code, message });
+    if (!payload?.roomId) return tuChoi('INVALID_ROOM', 'Mã phòng gọi không hợp lệ.');
+    const roomKey = String(payload.roomId);
+
+    // Phòng tư vấn chứa dữ liệu sức khỏe: chỉ bác sĩ phụ trách và bệnh nhân của lịch hẹn (đã đăng nhập) được vào
+    let nguoiDungId: number;
+    try {
+      nguoiDungId = Number(this.jwt.verify(client.handshake?.auth?.token).sub);
+    } catch {
+      return tuChoi('CHUA_DANG_NHAP', 'Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại để vào phòng tư vấn.');
     }
 
-    const roomKey = String(payload.roomId);
-    let apptStartMs: number | undefined;
-
-    // Bảo mật Telemedicine: Bắt buộc kiểm tra lịch hẹn & xác nhận đã thanh toán
+    let lh: any;
     try {
-      const isNumeric = /^\d+$/.test(String(payload.roomId));
-      const appointment = await this.lichHenRepo.findOne({
-        where: isNumeric
-          ? [{ id: Number(payload.roomId) }, { maLichHen: String(payload.roomId) }]
-          : { maLichHen: String(payload.roomId) },
-      });
-
-      if (appointment) {
-        if (appointment.trangThai === TrangThaiLichHen.CHO_THANH_TOAN) {
-          this.logger.warn(`Từ chối kết nối WebRTC: Lịch hẹn ${appointment.maLichHen} chưa thanh toán phí.`);
-          client.emit('call:error', {
-            code: 'UNPAID_TELEHEALTH_APPOINTMENT',
-            message: 'Lịch hẹn trực tuyến chưa hoàn tất thanh toán phí khám. Vui lòng thanh toán trước khi vào phòng gọi!',
-          });
-          return;
-        }
-
-        if (appointment.trangThai === TrangThaiLichHen.DA_HUY) {
-          this.logger.warn(`Từ chối kết nối WebRTC: Lịch hẹn ${appointment.maLichHen} đã bị hủy.`);
-          client.emit('call:error', {
-            code: 'CANCELLED_APPOINTMENT',
-            message: 'Lịch hẹn này đã bị hủy, không thể tham gia phòng gọi trực tuyến.',
-          });
-          return;
-        }
-
-        if (appointment.trangThai === TrangThaiLichHen.HOAN_THANH) {
-          this.logger.warn(`Từ chối kết nối WebRTC: Lịch hẹn ${appointment.maLichHen} đã hoàn thành.`);
-          client.emit('call:error', {
-            code: 'APPOINTMENT_COMPLETED',
-            message: 'Ca tư vấn trực tuyến này đã hoàn tất, không thể vào lại phòng gọi.',
-          });
-          return;
-        }
-
-        // Kiểm tra khung thời gian mở phòng theo múi giờ Việt Nam (GMT+7): trước giờ hẹn 15 phút đến sau giờ hẹn 60 phút
-        const isRoomAlreadyOpened = String(appointment.ghiChu || '').includes('Ca khám trực tuyến Telehealth đang mở phòng');
-        const rawDate: unknown = appointment.ngayHen;
-        const apptDate =
-          rawDate instanceof Date
-            ? rawDate.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })
-            : rawDate
-              ? String(rawDate).substring(0, 10)
-              : '';
-        let apptTime = String(appointment.gioHen || '').trim().split('-')[0].trim();
-        if (apptTime.length === 5) apptTime += ':00';
-        else if (apptTime.length > 8) apptTime = apptTime.slice(0, 8);
-
-        if (apptDate && apptTime) {
-          const ms = new Date(`${apptDate}T${apptTime}+07:00`).getTime();
-          if (!isNaN(ms)) apptStartMs = ms;
-        }
-
-        if (!isRoomAlreadyOpened && apptStartMs) {
-          const openTime = new Date(apptStartMs - 15 * 60 * 1000);
-          // Ca khám bắt đầu muộn vẫn được vào lại cho đến khi đủ 60 phút tính từ mốc bắt đầu thực tế
-          const sessionStart = this.callStartedAt.get(roomKey);
-          const closeTime = new Date(Math.max(
-            apptStartMs + QueueGateway.CALL_DURATION_MS,
-            sessionStart ? sessionStart + QueueGateway.CALL_DURATION_MS : 0,
-          ));
-          const now = new Date();
-          if (now < openTime) {
-            const diffMin = Math.ceil((openTime.getTime() - now.getTime()) / 60000);
-            const openTimeStr = openTime.toLocaleTimeString('vi-VN', {
-              hour: '2-digit',
-              minute: '2-digit',
-              timeZone: 'Asia/Ho_Chi_Minh',
-            });
-            this.logger.warn(`Từ chối kết nối WebRTC: Chưa tới giờ mở phòng cho ${appointment.maLichHen}`);
-            client.emit('call:error', {
-              code: 'TOO_EARLY_TO_JOIN',
-              message: `Phòng khám trực tuyến chỉ mở trước giờ khám 15 phút (lúc ${openTimeStr}). Còn khoảng ${diffMin} phút nữa.`,
-            });
-            return;
-          }
-          if (now > closeTime) {
-            this.logger.warn(`Từ chối kết nối WebRTC: Quá giờ hẹn khám cho ${appointment.maLichHen}`);
-            client.emit('call:error', {
-              code: 'APPOINTMENT_EXPIRED',
-              message: 'Ca khám trực tuyến đã quá khung giờ hẹn (đã kết thúc).',
-            });
-            return;
-          }
-        }
-      }
+      [lh] = await this.lichHenRepo.query(
+        `SELECT lh.id, lh.trang_thai AS trangThai, lh.ngay_hen AS ngayHen, lh.gio_hen AS gioHen,
+                lh.gap_nhau_luc AS gapNhauLuc, lh.bac_si_vao_luc AS bacSiVaoLuc, lh.benh_nhan_vao_luc AS benhNhanVaoLuc,
+                nv.nguoi_dung_id AS bacSiNguoiDungId, bn.nguoi_dung_id AS benhNhanNguoiDungId
+         FROM lich_hen lh
+         LEFT JOIN bac_si bs ON bs.id = lh.bac_si_id LEFT JOIN nhan_vien nv ON nv.id = bs.nhan_vien_id
+         LEFT JOIN benh_nhan bn ON bn.id = lh.benh_nhan_id
+         WHERE lh.hinh_thuc = 'truc_tuyen' AND (lh.ma_lich_hen = ? OR lh.id = ?) LIMIT 1`,
+        [roomKey, /^\d+$/.test(roomKey) ? Number(roomKey) : -1],
+      );
     } catch (err: any) {
       this.logger.error(`Lỗi kiểm tra lịch hẹn khi join call: ${err?.message}`);
+      return tuChoi('LOI_HE_THONG', 'Không kiểm tra được lịch hẹn, vui lòng thử lại.');
+    }
+    if (!lh) return tuChoi('INVALID_ROOM', 'Không tìm thấy ca tư vấn trực tuyến.');
+
+    const vaiTro = nguoiDungId === Number(lh.bacSiNguoiDungId) ? 'bac_si'
+      : nguoiDungId === Number(lh.benhNhanNguoiDungId) ? 'benh_nhan' : null;
+    if (!vaiTro) return tuChoi('KHONG_THUOC_CA', 'Bạn không phải bác sĩ phụ trách hoặc bệnh nhân của ca tư vấn này.');
+
+    const loiTrangThai: Record<string, [string, string]> = {
+      [TrangThaiLichHen.CHO_THANH_TOAN]: ['UNPAID_TELEHEALTH_APPOINTMENT', 'Lịch hẹn trực tuyến chưa hoàn tất thanh toán phí khám. Vui lòng thanh toán trước khi vào phòng gọi!'],
+      [TrangThaiLichHen.DA_HUY]: ['CANCELLED_APPOINTMENT', 'Lịch hẹn này đã bị hủy, không thể tham gia phòng gọi trực tuyến.'],
+      [TrangThaiLichHen.HOAN_THANH]: ['APPOINTMENT_COMPLETED', 'Ca tư vấn trực tuyến này đã hoàn tất, không thể vào lại phòng gọi.'],
+    };
+    if (![TrangThaiLichHen.DA_XAC_NHAN, TrangThaiLichHen.DANG_KHAM].includes(lh.trangThai)) {
+      const [code, message] = loiTrangThai[lh.trangThai] || ['APPOINTMENT_UNAVAILABLE', 'Ca tư vấn không còn ở trạng thái được vào phòng.'];
+      return tuChoi(code, message);
     }
 
-    await this.ghiNhanVaoPhong(client, roomKey);
+    // Khung giờ: mở trước giờ hẹn 15 phút, đóng sau 60 phút tính từ giờ hẹn (hoặc từ lúc hai bên gặp nhau nếu muộn hơn)
+    const apptStartMs = mocGioHen(lh.ngayHen, lh.gioHen);
+    const now = Date.now();
+    if (now < apptStartMs - MO_PHONG_TRUOC_MS) {
+      const openTimeStr = new Date(apptStartMs - MO_PHONG_TRUOC_MS)
+        .toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
+      const diffMin = Math.ceil((apptStartMs - MO_PHONG_TRUOC_MS - now) / 60000);
+      return tuChoi('TOO_EARLY_TO_JOIN', `Phòng khám trực tuyến chỉ mở trước giờ khám 15 phút (lúc ${openTimeStr}). Còn khoảng ${diffMin} phút nữa.`);
+    }
+    if (now > gioDongPhong(apptStartMs, lh)) {
+      return tuChoi('APPOINTMENT_EXPIRED', 'Ca khám trực tuyến đã quá khung giờ hẹn (đã kết thúc).');
+    }
 
+    const cotVaoLuc = vaiTro === 'bac_si' ? 'bac_si_vao_luc' : 'benh_nhan_vao_luc';
+    await this.lichHenRepo.query(`UPDATE lich_hen SET ${cotVaoLuc} = COALESCE(${cotVaoLuc}, NOW()) WHERE id = ?`, [lh.id])
+      .catch((err: any) => this.logger.warn(`Không ghi nhận được người vào phòng ${roomKey}: ${err?.message}`));
+
+    client.data.vaiTroTuVan = vaiTro;
     const room = `call:${payload.roomId}`;
     client.join(room);
-    this.logger.log(`Client ${client.id} (${payload.role} - ${payload.userName}) joined call room ${room}`);
+    this.logger.log(`Client ${client.id} (${vaiTro} - ${payload.userName}) joined call room ${room}`);
+
+    // Hai bên cùng có mặt lần đầu → ghi mốc gặp nhau (căn cứ cho phép hoàn tất ca)
+    if (!lh.gapNhauLuc) {
+      const sockets = await this.server.in(room).fetchSockets();
+      const vaiTroTrongPhong = new Set(sockets.map((s) => s.data?.vaiTroTuVan));
+      if (vaiTroTrongPhong.has('bac_si') && vaiTroTrongPhong.has('benh_nhan')) {
+        await this.lichHenRepo.query(`UPDATE lich_hen SET gap_nhau_luc = NOW() WHERE id = ? AND gap_nhau_luc IS NULL`, [lh.id])
+          .catch((err: any) => this.logger.warn(`Không ghi nhận được mốc gặp nhau ${roomKey}: ${err?.message}`));
+      }
+    }
+
     // pcId: mã kết nối WebRTC của người vừa vào — đổi mã nghĩa là họ vừa tải lại trang, bên kia phải dựng kết nối mới
     client.to(room).emit('call:peer_joined', {
       peerId: client.id,
@@ -214,37 +185,12 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly jwt = new JwtService({ secret: process.env.JWT_SECRET });
 
-  /** Ghi lần đầu bác sĩ phụ trách / bệnh nhân của lịch hẹn vào phòng (token gửi kèm khi kết nối socket) */
-  private async ghiNhanVaoPhong(client: Socket, roomKey: string) {
-    try {
-      const token = client.handshake?.auth?.token;
-      if (!token) return;
-      const { sub, maVaiTro } = this.jwt.verify(token);
-      const laSo = /^\d+$/.test(roomKey);
-      const dieuKien = laSo ? '(lh.id = ? OR lh.ma_lich_hen = ?)' : 'lh.ma_lich_hen = ?';
-      const ts = laSo ? [Number(roomKey), roomKey] : [roomKey];
-      if (maVaiTro === 'bac_si') {
-        await this.lichHenRepo.query(
-          `UPDATE lich_hen lh JOIN bac_si bs ON bs.id = lh.bac_si_id JOIN nhan_vien nv ON nv.id = bs.nhan_vien_id
-           SET lh.bac_si_vao_luc = NOW() WHERE ${dieuKien} AND nv.nguoi_dung_id = ? AND lh.bac_si_vao_luc IS NULL`, [...ts, sub]);
-      } else if (maVaiTro === 'benh_nhan') {
-        await this.lichHenRepo.query(
-          `UPDATE lich_hen lh JOIN benh_nhan bn ON bn.id = lh.benh_nhan_id
-           SET lh.benh_nhan_vao_luc = NOW() WHERE ${dieuKien} AND bn.nguoi_dung_id = ? AND lh.benh_nhan_vao_luc IS NULL`, [...ts, sub]);
-      }
-    } catch (err: any) {
-      this.logger.warn(`Không ghi nhận được người vào phòng ${roomKey}: ${err?.message}`);
-    }
-  }
-
   @SubscribeMessage('call:signal')
   handleCallSignal(client: Socket, payload: { roomId: string; targetPeerId?: string; signal: any; role?: string }) {
     if (!payload?.roomId) return;
     const room = `call:${payload.roomId}`;
-    // Tự động đưa client vào lại room nếu vừa reconnect để không làm đứt luồng WebRTC
-    if (!client.rooms.has(room)) {
-      client.join(room);
-    }
+    // Chỉ người đã qua kiểm tra call:join mới gửi tín hiệu / chat vào phòng (client tự gửi lại call:join khi kết nối lại)
+    if (!client.rooms.has(room)) return;
     if (payload.signal?.type === 'chat_msg' && payload.signal.message) {
       this.saveCallChat(String(payload.roomId), payload.signal.message);
     }

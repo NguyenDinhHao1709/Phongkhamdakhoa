@@ -392,7 +392,7 @@ export default function LichHenBenhNhanPage() {
                             {`Thanh toán phí tư vấn (${soTienLhStr})`}
                           </MedButton>
                         ) : (() => {
-                          const access = checkTelehealthAccess(lh.ngayHen, lh.gioHen, lh.ghiChu);
+                          const access = checkTelehealthAccess(lh.ngayHen, lh.gioHen);
                           if (access.canJoin) {
                             return (
                               <MedButton

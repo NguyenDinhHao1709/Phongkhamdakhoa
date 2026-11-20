@@ -51,6 +51,7 @@ export default function KhamTrucTuyenPage() {
     queryKey: ['lich-tu-van-online', user?.id],
     queryFn: () => apiGet('/lich-hen?loai=online&limit=100'),
     staleTime: 0,
+    refetchInterval: 30_000, // cập nhật ai đã vào phòng / hai bên đã gặp nhau
     enabled: !!user?.id,
   });
 
@@ -97,10 +98,14 @@ export default function KhamTrucTuyenPage() {
       return;
     }
 
-    if (!formAdvise.chanDoan.trim() && !formAdvise.loiKhuyen.trim()) {
-      if (!window.confirm('Bạn chưa nhập chẩn đoán hoặc lời khuyên. Bạn có chắc muốn hoàn tất ca tư vấn này?')) {
-        return;
-      }
+    if (lyDoKhoaHoanTat) {
+      alert(`${lyDoKhoaHoanTat} nên chưa thể hoàn tất ca.`);
+      return;
+    }
+
+    if (!formAdvise.chanDoan.trim()) {
+      alert('Vui lòng nhập chẩn đoán trước khi hoàn tất ca tư vấn.');
+      return;
     }
 
     setSavingAdvise(true);
@@ -263,6 +268,11 @@ export default function KhamTrucTuyenPage() {
   const activeLich = filteredItems.find((item) => item.id === selectedLich?.id) || filteredItems[0];
   const isDaHuy = activeLich?.trangThai === 'da_huy';
   const isDangKham = activeLich?.trangThai === 'dang_kham';
+  // Máy chủ chỉ cho hoàn tất khi bác sĩ và bệnh nhân từng cùng có mặt trong phòng gọi
+  const lyDoKhoaHoanTat = !activeLich || activeLich.gapNhauLuc ? ''
+    : !activeLich.benhNhanVaoLuc ? 'Bệnh nhân chưa vào phòng tư vấn'
+    : !activeLich.bacSiVaoLuc ? 'Bác sĩ chưa vào phòng tư vấn'
+    : 'Bác sĩ và bệnh nhân chưa cùng có mặt trong phòng';
   const activeAccess = activeLich
     ? checkTelehealthAccess(activeLich.ngayHen || activeLich.ngayKham, activeLich.gioHen || activeLich.gioKham)
     : { canJoin: true };
@@ -719,7 +729,7 @@ export default function KhamTrucTuyenPage() {
                       <Clock className="h-5 w-5 text-gray-500 shrink-0" />
                       <div>
                         <p className="font-bold text-sm text-gray-800">Cuộc gọi trực tuyến đã kết thúc (Hết thời gian)</p>
-                        <p className="text-xs text-gray-500">Phòng gọi video đã đóng do hết giờ khám. Bác sĩ vui lòng hoàn tất chẩn đoán và bấm "Hoàn tất tư vấn & Lưu bệnh án" để kết thúc ca khám.</p>
+                        <p className="text-xs text-gray-500">Phòng gọi video đã đóng do hết giờ khám. Nếu đã tư vấn với bệnh nhân, vui lòng nhập kết luận trong ngày hẹn để lưu bệnh án.</p>
                       </div>
                     </div>
                   </div>
@@ -847,13 +857,19 @@ export default function KhamTrucTuyenPage() {
                     variant="primary"
                     size="md"
                     loading={savingAdvise}
-                    disabled={savingAdvise}
+                    disabled={savingAdvise || !!lyDoKhoaHoanTat}
+                    title={lyDoKhoaHoanTat ? `${lyDoKhoaHoanTat} - chưa thể hoàn tất ca` : undefined}
                     leftIcon={<CheckCircle2 className="h-4 w-4" />}
                     onClick={handleHoanTatTuVan}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5"
                   >
                     Hoàn tất tư vấn & Lưu bệnh án
                   </MedButton>
+                )}
+                {lyDoKhoaHoanTat && !isDaHuy && activeLich?.trangThai !== 'hoan_thanh' && (
+                  <p className="w-full text-right text-xs text-amber-700">
+                    {lyDoKhoaHoanTat} - chưa thể hoàn tất ca. Hết giờ mà hai bên không gặp nhau, hệ thống tự xử lý (vắng mặt / hoàn phí).
+                  </p>
                 )}
               </div>
             </div>

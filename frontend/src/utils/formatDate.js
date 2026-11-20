@@ -88,14 +88,9 @@ export const calculateAge = tinhTuoi;
  * Kiểm tra xem lịch khám trực tuyến đã đến thời gian mở phòng khám hay chưa.
  * Quy định: Phòng khám và khung chat mở trước giờ hẹn 15 phút.
  */
-export const checkTelehealthAccess = (ngay, gio, ghiChu = '') => {
+export const checkTelehealthAccess = (ngay, gio) => {
   if (!ngay || !gio) {
     return { canJoin: true, isTooEarly: false, isExpired: false, statusMessage: 'Sẵn sàng' };
-  }
-
-  // Nếu phòng đang mở (bác sĩ đã khởi tạo hoặc hệ thống đánh dấu đang mở phòng)
-  if (typeof ghiChu === 'string' && ghiChu.includes('Ca khám trực tuyến Telehealth đang mở phòng')) {
-    return { canJoin: true, isTooEarly: false, isExpired: false, statusMessage: 'Phòng khám trực tuyến đang mở. Sẵn sàng vào khám!' };
   }
 
   try {

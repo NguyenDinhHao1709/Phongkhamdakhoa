@@ -84,6 +84,10 @@ export class LichHen {
   @Column({ name: 'benh_nhan_vao_luc', type: 'datetime', nullable: true })
   benhNhanVaoLuc: Date | null;
 
+  /** Lần đầu bác sĩ và bệnh nhân cùng có mặt trong phòng — căn cứ duy nhất để coi ca tư vấn đã diễn ra */
+  @Column({ name: 'gap_nhau_luc', type: 'datetime', nullable: true })
+  gapNhauLuc: Date | null;
+
   // Relations
   @ManyToOne(() => BenhNhan)
   @JoinColumn({ name: 'benh_nhan_id' })

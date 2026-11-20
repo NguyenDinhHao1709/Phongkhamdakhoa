@@ -195,9 +195,9 @@ export class LichHenController {
   }
 
   @Post(':id/hoan-tat-tu-van')
-  @Roles('bac_si', 'quan_tri_vien', 'tiep_tan')
-  @ApiOperation({ summary: 'Bác sĩ hoàn tất ca tư vấn trực tuyến (Telehealth) & ghi nhận kết luận bệnh án' })
-  @Quyen('kham_benh.truc_tuyen', 'lich_hen.duyet')
+  @Roles('bac_si')
+  @ApiOperation({ summary: 'Bác sĩ phụ trách hoàn tất ca tư vấn trực tuyến (Telehealth) & ghi nhận kết luận bệnh án' })
+  @Quyen('kham_benh.truc_tuyen')
   hoanTatTuVan(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { chanDoan?: string; loiKhuyen?: string },
