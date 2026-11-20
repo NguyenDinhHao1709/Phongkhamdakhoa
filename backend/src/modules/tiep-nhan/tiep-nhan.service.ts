@@ -21,6 +21,7 @@ import { OnModuleInit } from '@nestjs/common';
 import * as https from 'https';
 import { uploadToCloudinary } from '../../common/utils/cloudinary-upload.util';
 import { Aes256Transformer } from '../../common/transformers/aes-256.transformer';
+import { assertBacSiPhuTrach } from '../../common/utils/bac-si-phu-trach.util';
 
 // Đối tượng ưu tiên khám theo Luật Khám bệnh, chữa bệnh (cấp cứu luôn trước nhất)
 export const DOI_TUONG_UU_TIEN = ['cap_cuu', 'tre_em_duoi_6', 'nguoi_cao_tuoi', 'phu_nu_co_thai', 'khuyet_tat_nang', 'nguoi_co_cong'];
@@ -68,10 +69,23 @@ function doiTuongUuTien(l: LuotTiepNhan): string | null {
   return tuoi < 6 ? 'tre_em_duoi_6' : tuoi >= 75 ? 'nguoi_cao_tuoi' : null;
 }
 
+/**
+ * Bác sĩ thay thế có khám được lượt này không: lượt có ghi chuyên khoa thì bác sĩ phải có đủ chuyên khoa đó,
+ * không thì chỉ cần chung một chuyên khoa thành phần với bác sĩ hiện tại.
+ */
+function cungChuyenKhoa(luot: LuotTiepNhan, bs: BacSi): boolean {
+  const ck = tachChuyenKhoa(bs.chuyenKhoa);
+  const canCo = tachChuyenKhoa(luot.chuyenKhoa);
+  if (canCo.length) return canCo.every((x) => ck.includes(x));
+  const cuaBsHienTai = tachChuyenKhoa(luot.bacSi?.chuyenKhoa);
+  return !cuaBsHienTai.length || ck.some((x) => cuaBsHienTai.includes(x));
+}
+
 // DTO nội tuyến cho module này
+/** Check-in lịch hẹn tại quầy (khách vãng lai đi qua POST /tiep-nhan/tai-quay) */
 export class TaoTiepNhanDto {
-  @ApiProperty() @IsInt() @IsPositive() benhNhanId: number;
-  @ApiPropertyOptional() @IsOptional() @IsInt() lichHenId?: number;
+  @ApiProperty() @IsInt() @IsPositive() lichHenId: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() benhNhanId?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() phongKhamId?: number;
   @ApiPropertyOptional() @IsOptional() @IsInt() bacSiId?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() ghiChu?: string;
@@ -232,14 +246,9 @@ export class TiepNhanService implements OnModuleInit {
    * Lượt có ghi chuyên khoa khám thì bác sĩ thay phải có chuyên khoa đó; không thì chỉ cần chung một chuyên khoa thành phần.
    */
   private async goiYBacSiThayThe(luot: LuotTiepNhan) {
-    const canCo = tachChuyenKhoa(luot.chuyenKhoa);
-    const cuaBsHienTai = tachChuyenKhoa(luot.bacSi?.chuyenKhoa);
-    if (!canCo.length && !cuaBsHienTai.length) return null;
-    const cungKhoa = (await this.bacSiRepo.find({ relations: ['nhanVien'] })).filter((d) => {
-      if (d.id === luot.bacSiId) return false;
-      const ck = tachChuyenKhoa(d.chuyenKhoa);
-      return canCo.length ? canCo.every((x) => ck.includes(x)) : ck.some((x) => cuaBsHienTai.includes(x));
-    });
+    if (!luot.chuyenKhoa && !luot.bacSi?.chuyenKhoa) return null;
+    const cungKhoa = (await this.bacSiRepo.find({ relations: ['nhanVien'] }))
+      .filter((d) => d.id !== luot.bacSiId && cungChuyenKhoa(luot, d));
     const dangTruc = await this.locBacSiDangTruc(cungKhoa);
     const chon = dangTruc.length ? await this.chonBacSiItTaiNhat(dangTruc) : null;
     return chon ? { bacSiId: chon.doctor.id, hoTen: chon.doctor.nhanVien?.hoTen, soNguoiCho: chon.total } : null;
@@ -428,16 +437,13 @@ export class TiepNhanService implements OnModuleInit {
           isDaCoKqCls = false;
         }
 
-        // Tự động đồng bộ trạng thái luot nếu đang bị lệch trên CSDL
+        // Chỉ hiển thị theo tiến độ cận lâm sàng thực tế; không ghi DB trong request đọc (tránh đè thao tác của bác sĩ)
         if (!isCompleted && (luot.trangThai === TrangThaiTiepNhan.DANG_KHAM || (isDaCoKqCls && luot.trangThai !== TrangThaiTiepNhan.DA_CO_KQ_CLS))) {
-          const newStatus = isDaCoKqCls ? TrangThaiTiepNhan.DA_CO_KQ_CLS : TrangThaiTiepNhan.DANG_CLS;
-          await this.luotRepo.update({ id: luot.id }, { trangThai: newStatus });
-          luot.trangThai = newStatus;
+          luot.trangThai = isDaCoKqCls ? TrangThaiTiepNhan.DA_CO_KQ_CLS : TrangThaiTiepNhan.DANG_CLS;
         }
       } else {
         hasCls = false;
         if (!isCompleted && (luot.trangThai === TrangThaiTiepNhan.DANG_CLS || luot.trangThai === TrangThaiTiepNhan.DA_CO_KQ_CLS)) {
-          await this.luotRepo.update({ id: luot.id }, { trangThai: TrangThaiTiepNhan.DANG_KHAM });
           luot.trangThai = TrangThaiTiepNhan.DANG_KHAM;
           isDangKham = true;
           isDangCls = false;
@@ -894,9 +900,7 @@ export class TiepNhanService implements OnModuleInit {
   }
 
   async create(dto: TaoTiepNhanDto, tiepTanId: number) {
-    const kq = !dto.lichHenId
-      ? await this.taoLuot(dto, tiepTanId)
-      : await this.voiKhoaLichHen(dto.lichHenId, () => this.checkInLichHenTaiQuay(dto, tiepTanId));
+    const kq = await this.voiKhoaLichHen(dto.lichHenId, () => this.checkInLichHenTaiQuay(dto, tiepTanId));
     this.baoHangDoiThayDoi();
     return kq;
   }
@@ -1022,39 +1026,49 @@ export class TiepNhanService implements OnModuleInit {
 
   // ─── ĐIỀU PHỐI PHÒNG ─────────────────────────────────────────
   async dieuPhoiPhong(luotId: number, dto: DieuPhoiPhongDto) {
-    const luot = await this.luotRepo.findOne({ where: { id: luotId } });
+    const luot = await this.luotRepo.findOne({ where: { id: luotId }, relations: ['bacSi', 'benhNhan'] });
     if (!luot) throw new NotFoundException({ code: 'LUOT_KHONG_TON_TAI', message: 'Không tìm thấy lượt tiếp nhận' });
+    if (luot.trangThai !== TrangThaiTiepNhan.CHO_KHAM) {
+      throw new BadRequestException({ code: 'LUOT_KHONG_CON_CHO', message: 'Chỉ điều phối khi bệnh nhân còn đang chờ khám.' });
+    }
 
-    Object.assign(luot, { phongKhamId: dto.phongKhamId ?? luot.phongKhamId, bacSiId: dto.bacSiId });
-    const saved = await this.luotRepo.save(luot);
-
-    try {
-      if (dto.bacSiId) {
-        const bs = await this.bacSiRepo.findOne({ where: { id: dto.bacSiId }, relations: ['nhanVien'] });
-        if (bs?.nhanVien?.nguoiDungId) {
-          const bn = await this.benhNhanRepo.findOne({ where: { id: luot.benhNhanId } });
-          await this.thongBaoService.taoThongBao({
-            nguoiNhanId: bs.nhanVien.nguoiDungId,
-            tieuDe: `Điều phối bệnh nhân đến phòng khám: ${bn?.hoTen || 'BN'}`,
-            noiDung: `Bệnh nhân ${bn?.hoTen || 'BN'} (STT: ${luot.maSoThuTu}) vừa được điều phối chuyển sang phòng khám của bạn.`,
-            loai: 'lich_kham',
-            doiTuongBang: 'luot_tiep_nhan',
-            doiTuongId: luot.id,
-          });
-        }
+    let bsMoi: BacSi | null = null;
+    let canhBao = '';
+    if (dto.bacSiId && dto.bacSiId !== luot.bacSiId) {
+      bsMoi = await this.bacSiRepo.findOne({ where: { id: dto.bacSiId }, relations: ['nhanVien'] });
+      if (!bsMoi) throw new BadRequestException({ code: 'BAC_SI_KHONG_TON_TAI', message: 'Không tìm thấy bác sĩ.' });
+      if (!cungChuyenKhoa(luot, bsMoi)) {
+        throw new BadRequestException({ code: 'KHAC_CHUYEN_KHOA', message: `BS. ${bsMoi.nhanVien?.hoTen || ''} không cùng chuyên khoa với lượt khám.` });
       }
-    } catch (err) {
-      console.warn('Lỗi gửi thông báo dieuPhoiPhong:', err?.message);
+      if (!(await this.locBacSiDangTruc([bsMoi])).length) canhBao = ` Lưu ý: BS. ${bsMoi.nhanVien?.hoTen || ''} hiện không trong ca trực.`;
+    }
+
+    await this.luotRepo.update(luotId, {
+      phongKhamId: dto.phongKhamId ?? luot.phongKhamId,
+      bacSiId: bsMoi?.id ?? luot.bacSiId,
+    });
+
+    if (bsMoi?.nhanVien?.nguoiDungId) {
+      await this.thongBaoService.taoThongBao({
+        nguoiNhanId: bsMoi.nhanVien.nguoiDungId,
+        tieuDe: `Điều phối bệnh nhân đến phòng khám: ${luot.benhNhan?.hoTen || 'BN'}`,
+        noiDung: `Bệnh nhân ${luot.benhNhan?.hoTen || 'BN'} (STT: ${luot.maSoThuTu}) vừa được điều phối chuyển sang phòng khám của bạn.`,
+        loai: 'lich_kham',
+        doiTuongBang: 'luot_tiep_nhan',
+        doiTuongId: luot.id,
+      }).catch((err) => console.warn('Lỗi gửi thông báo dieuPhoiPhong:', err?.message));
     }
 
     this.baoHangDoiThayDoi();
-    return { data: saved, message: 'Điều phối phòng thành công' };
+    const saved = await this.luotRepo.findOne({ where: { id: luotId } });
+    return { data: saved, message: `Điều phối thành công.${canhBao}` };
   }
 
   // ─── CẬP NHẬT TRẠNG THÁI ─────────────────────────────────────
-  async capNhatTrangThai(luotId: number, dto: CapNhatTrangThaiTiepNhanDto) {
+  async capNhatTrangThai(luotId: number, dto: CapNhatTrangThaiTiepNhanDto, user: any) {
     const luot = await this.luotRepo.findOne({ where: { id: luotId } });
     if (!luot) throw new NotFoundException({ code: 'LUOT_KHONG_TON_TAI', message: 'Không tìm thấy lượt tiếp nhận' });
+    await assertBacSiPhuTrach(this.luotRepo.manager, user, luot.bacSiId);
 
     // Nếu trạng thái gửi lên trùng với trạng thái hiện tại -> Idempotent thành công
     if (luot.trangThai === dto.trangThai) {
@@ -1288,9 +1302,10 @@ export class TiepNhanService implements OnModuleInit {
   }
 
   /** Gọi mà bệnh nhân không có mặt: trả về hàng chờ, xếp cuối hàng tính từ lúc này; quay lại thì gọi lại bình thường */
-  async quaLuot(luotId: number) {
+  async quaLuot(luotId: number, user: any) {
     const luot = await this.luotRepo.findOne({ where: { id: luotId } });
     if (!luot) throw new NotFoundException({ code: 'KHONG_TIM_THAY', message: 'Không tìm thấy lượt tiếp nhận' });
+    await assertBacSiPhuTrach(this.luotRepo.manager, user, luot.bacSiId);
     if (luot.trangThai !== TrangThaiTiepNhan.DANG_KHAM) {
       throw new BadRequestException({ code: 'KHONG_THE_QUA_LUOT', message: 'Chỉ qua lượt khi bệnh nhân vừa được gọi vào khám mà không có mặt.' });
     }
@@ -1332,9 +1347,11 @@ export class TiepNhanService implements OnModuleInit {
     );
   }
 
-  async goiSoLoa(luotId: number, nguoiThucHienId?: number) {
+  async goiSoLoa(luotId: number, user: any) {
     const luot = await this.luotRepo.findOne({ where: { id: luotId } });
     if (!luot) throw new NotFoundException({ code: 'KHONG_TIM_THAY', message: 'Không tìm thấy lượt tiếp nhận' });
+    await assertBacSiPhuTrach(this.luotRepo.manager, user, luot.bacSiId);
+    const nguoiThucHienId = user?.id || user?.userId;
 
     if (![TrangThaiTiepNhan.CHO_KHAM, TrangThaiTiepNhan.DANG_KHAM].includes(luot.trangThai)) {
       throw new BadRequestException({

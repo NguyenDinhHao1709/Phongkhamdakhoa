@@ -99,12 +99,14 @@ Thứ tự gọi trong hàng đợi của một bác sĩ:
   - trễ **30 phút**: gợi ý chuyển sang bác sĩ cùng chuyên khoa đang trực, ít người chờ nhất (lễ tân bấm chuyển);
   - màn hình tiến độ của bệnh nhân hiển thị số người phía trước và thời gian chờ ước tính theo nhịp khám thực tế trong ngày.
 - **Gọi không có mặt → qua lượt:** xếp xuống cuối hàng (tính từ lúc qua lượt). **Lần thứ 3** → hủy lượt vắng mặt; tạm ứng đã đóng được chuyển sang "chờ hoàn".
+- **Chuyển bác sĩ / phòng:** chỉ khi bệnh nhân còn `cho_kham`; bác sĩ mới phải cùng chuyên khoa (không trong ca trực thì chỉ cảnh báo).
+- Bác sĩ chỉ gọi số, qua lượt, đổi trạng thái, lập / sửa / kết thúc phiếu khám **của lượt mình phụ trách**; lễ tân và quản trị không bị giới hạn.
 - Lượt còn `cho_kham` từ các ngày trước được hệ thống tự dọn.
 - Nhân viên hủy lượt: tạm ứng đã thu chuyển "chờ hoàn", lịch hẹn của lượt hủy theo, chỉ định cận lâm sàng chưa có kết quả bị hủy. Không hủy được lượt đã quyết toán hoặc đã cấp phát thuốc.
 
 ### 3.4 Khám, cận lâm sàng, kê đơn
 
-1. Bác sĩ khám: sinh hiệu, triệu chứng, chẩn đoán sơ bộ.
+1. Bác sĩ khám: sinh hiệu, triệu chứng, chẩn đoán sơ bộ. Phiếu khám chỉ lập được khi lượt đã được gọi vào khám, và luôn gắn vào hồ sơ của đúng bệnh nhân của lượt.
 2. Cần cận lâm sàng → chỉ định xét nghiệm / chẩn đoán hình ảnh (lượt `dang_cls`). Kỹ thuật viên lấy mẫu, thực hiện, nhập kết quả, tải ảnh → lượt `da_co_kq_cls`, bác sĩ nhận kết quả. Sau khi hóa đơn đã thanh toán thì không chỉ định thêm hoặc xóa chỉ định đã thu tiền.
 3. Bác sĩ chẩn đoán xác định (ICD-10), kê đơn, hẹn tái khám, **kết thúc khám** → hệ thống lập hóa đơn trước; lập được thì lượt mới chuyển `cho_thanh_toan` (lỗi thì báo bác sĩ, ca khám giữ nguyên). Chỉ kết thúc được lượt đang khám, và mỗi phiếu khám chỉ kết thúc một lần.
 - Bác sĩ gọi bệnh nhân có lịch hẹn vào khám → lịch hẹn `dang_kham`.

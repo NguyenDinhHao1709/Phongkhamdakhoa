@@ -42,7 +42,7 @@ export class TiepNhanController {
   @ApiOperation({ summary: 'Phát loa gọi số thứ tự bệnh nhân vào phòng khám' })
   @Quyen('tiep_nhan.goi_so', 'kham_benh.kham')
   goiSoLoa(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
-    return this.service.goiSoLoa(id, user?.id || user?.userId);
+    return this.service.goiSoLoa(id, user);
   }
 
   @Patch(':id/uu-tien')
@@ -62,8 +62,8 @@ export class TiepNhanController {
   @Roles('tiep_tan', 'bac_si', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
   @ApiOperation({ summary: 'Gọi mà bệnh nhân vắng mặt: qua lượt, xếp cuối hàng chờ' })
   @Quyen('tiep_nhan.goi_so', 'kham_benh.kham')
-  quaLuot(@Param('id', ParseIntPipe) id: number) {
-    return this.service.quaLuot(id);
+  quaLuot(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.service.quaLuot(id, user);
   }
 
   @Get('hang-doi')
@@ -102,7 +102,7 @@ export class TiepNhanController {
 
   @Post()
   @Roles('tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
-  @ApiOperation({ summary: 'Tạo lượt tiếp nhận mới' })
+  @ApiOperation({ summary: 'Check-in lịch hẹn tại quầy' })
   @Quyen('benh_nhan.them')
   create(@Body() dto: TaoTiepNhanDto, @CurrentUser() user: any) {
     return this.service.create(dto, user.id);
@@ -148,8 +148,8 @@ export class TiepNhanController {
   @Roles('tiep_tan', 'bac_si')
   @ApiOperation({ summary: 'Cập nhật trạng thái lượt tiếp nhận' })
   @Quyen('tiep_nhan.goi_so', 'kham_benh.kham')
-  capNhatTrangThai(@Param('id', ParseIntPipe) id: number, @Body() dto: CapNhatTrangThaiTiepNhanDto) {
-    return this.service.capNhatTrangThai(id, dto);
+  capNhatTrangThai(@Param('id', ParseIntPipe) id: number, @Body() dto: CapNhatTrangThaiTiepNhanDto, @CurrentUser() user: any) {
+    return this.service.capNhatTrangThai(id, dto, user);
   }
 
   // ─── BÁO CÁO & DASHBOARD TIẾP ĐÓN ───────────────────────────

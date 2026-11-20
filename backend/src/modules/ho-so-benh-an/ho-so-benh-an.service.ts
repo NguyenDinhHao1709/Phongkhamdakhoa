@@ -1,6 +1,7 @@
 import {
-  Injectable, NotFoundException, ConflictException, BadRequestException,
+  Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
+import { assertBacSiPhuTrach, bacSiCuaUser } from '../../common/utils/bac-si-phu-trach.util';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, In } from 'typeorm';
 import { HoSoBenhAn, BenhAnKham, TrangThaiBenhAnKham } from './entities/ho-so-benh-an.entity';
@@ -40,6 +41,9 @@ export class CapNhatBenhAnKhamDto {
   @ApiPropertyOptional() @IsOptional() @IsDateString() taiKham?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() ghiChu?: string;
 }
+
+// Lượt đã được gọi vào khám và chưa kết thúc
+const LUOT_DANG_KHAM = [TrangThaiTiepNhan.DANG_KHAM, TrangThaiTiepNhan.DANG_CLS, TrangThaiTiepNhan.DA_CO_KQ_CLS];
 
 export class KetThucKhamDto {
   @ApiPropertyOptional() @IsOptional() @IsString() trieuChung?: string;
@@ -627,37 +631,44 @@ export class HoSoBenhAnService {
   }
 
   // ─── Tạo phiếu khám mới ──────────────────────────────────
-  async taoBenhAnKham(nguoiDungId: number, benhNhanId: number, dto: TaoBenhAnKhamDto) {
+  async taoBenhAnKham(user: any, benhNhanId: number, dto: TaoBenhAnKhamDto) {
+    const luot = await this.tiepNhanRepo.findOne({ where: { id: dto.luotTiepNhanId } });
+    if (!luot) throw new NotFoundException({ code: 'LUOT_KHONG_TON_TAI', message: 'Không tìm thấy lượt tiếp nhận' });
+    // Bệnh án phải vào đúng hồ sơ của bệnh nhân của lượt khám
+    if (luot.benhNhanId !== benhNhanId) {
+      throw new BadRequestException({ code: 'LUOT_KHONG_CUA_BENH_NHAN', message: 'Lượt khám không thuộc bệnh nhân này.' });
+    }
+    await assertBacSiPhuTrach(this.benhAnRepo.manager, user, luot.bacSiId);
+
     return voiKhoaDb(this.hoSoRepo.manager.connection, `bak:visit:${dto.luotTiepNhanId}`, async () => {
-      const hoSo = await this.getOrCreateHoSo(benhNhanId);
-
       // Nếu lượt tiếp nhận đã có phiếu khám thì trả về phiếu hiện tại
-      let bak = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: dto.luotTiepNhanId } });
-      if (bak) {
-        return { data: bak, message: 'Lấy phiếu khám hiện tại thành công' };
-      }
+      const daCo = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: dto.luotTiepNhanId } });
+      if (daCo) return { data: daCo, message: 'Lấy phiếu khám hiện tại thành công' };
 
-      let bacSiTableId: number | null = null;
-      if (nguoiDungId) {
-        const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId } });
-        if (nv) {
-          const bs = await this.bacSiRepo.findOne({ where: { nhanVienId: nv.id } });
-          if (bs) bacSiTableId = bs.id;
-          else bacSiTableId = nv.id;
-        }
+      if (!LUOT_DANG_KHAM.includes(luot.trangThai)) {
+        throw new BadRequestException({ code: 'LUOT_KHONG_DANG_KHAM', message: 'Chỉ lập phiếu khám khi bệnh nhân đã được gọi vào khám.' });
       }
+      const bs = await bacSiCuaUser(this.benhAnRepo.manager, user);
+      if (!bs) throw new ForbiddenException({ code: 'KHONG_PHAI_BAC_SI', message: 'Chỉ bác sĩ được lập phiếu khám.' });
 
-      bak = this.benhAnRepo.create({
+      const hoSo = await this.getOrCreateHoSo(benhNhanId);
+      const saved = await this.benhAnRepo.save(this.benhAnRepo.create({
         hoSoBenhAnId: hoSo.id,
         luotTiepNhanId: dto.luotTiepNhanId,
-        bacSiId: bacSiTableId || nguoiDungId,
+        bacSiId: bs.id,
         trieuChung: dto.trieuChung,
         chanDoanSoBo: dto.chanDoanSoBo,
         hinhThucKham: dto.hinhThucKham || 'truc_tiep',
-      });
-      const saved = await this.benhAnRepo.save(bak);
+      }));
       return { data: saved, message: 'Tạo phiếu khám thành công' };
     });
+  }
+
+  /** Bác sĩ chỉ sửa / kết thúc phiếu khám của lượt mình phụ trách; trả về lượt (nếu có) */
+  private async kiemTraPhuTrach(bak: BenhAnKham, user: any) {
+    const luot = bak.luotTiepNhanId ? await this.tiepNhanRepo.findOne({ where: { id: bak.luotTiepNhanId } }) : null;
+    await assertBacSiPhuTrach(this.benhAnRepo.manager, user, luot ? luot.bacSiId : bak.bacSiId);
+    return luot;
   }
 
   // ─── Lấy phiếu khám theo lượt tiếp nhận ──────────────────
@@ -677,9 +688,10 @@ export class HoSoBenhAnService {
   }
 
   // ─── Cập nhật phiếu khám (đang khám) ─────────────────────
-  async capNhatBenhAnKham(id: number, dto: CapNhatBenhAnKhamDto) {
+  async capNhatBenhAnKham(id: number, dto: CapNhatBenhAnKhamDto, user: any) {
     const bak = await this.benhAnRepo.findOne({ where: { id } });
     if (!bak) throw new NotFoundException({ code: 'BENH_AN_KHONG_TON_TAI', message: 'Không tìm thấy phiếu khám' });
+    await this.kiemTraPhuTrach(bak, user);
     if (bak.trangThai === TrangThaiBenhAnKham.DA_HOAN_THANH) {
       throw new ConflictException({ code: 'DA_HOAN_THANH', message: 'Phiếu khám đã hoàn thành, không thể sửa' });
     }
@@ -689,17 +701,16 @@ export class HoSoBenhAnService {
   }
 
   // ─── Kết thúc khám → trạng thái da_hoan_thanh ────────────
-  async ketThucKham(id: number, dto: KetThucKhamDto) {
+  async ketThucKham(id: number, dto: KetThucKhamDto, user: any) {
     const bak = await this.benhAnRepo.findOne({ where: { id } });
     if (!bak) throw new NotFoundException({ code: 'BENH_AN_KHONG_TON_TAI', message: 'Không tìm thấy phiếu khám' });
     if (bak.trangThai === TrangThaiBenhAnKham.DA_HOAN_THANH) {
       throw new ConflictException({ code: 'DA_HOAN_THANH', message: 'Phiếu khám đã kết thúc trước đó.' });
     }
+    const luot = await this.kiemTraPhuTrach(bak, user);
     // Chỉ kết thúc lượt đang khám (đã được gọi vào, chưa hủy / chưa kết thúc)
-    const DANG_KHAM = [TrangThaiTiepNhan.DANG_KHAM, TrangThaiTiepNhan.DANG_CLS, TrangThaiTiepNhan.DA_CO_KQ_CLS];
     if (bak.luotTiepNhanId) {
-      const luot = await this.tiepNhanRepo.findOne({ where: { id: bak.luotTiepNhanId } });
-      if (!luot || !DANG_KHAM.includes(luot.trangThai)) {
+      if (!luot || !LUOT_DANG_KHAM.includes(luot.trangThai)) {
         throw new BadRequestException({
           code: 'LUOT_KHONG_DANG_KHAM',
           message: `Lượt khám đang ở trạng thái "${luot?.trangThai || 'không tồn tại'}", không thể kết thúc khám.`,
@@ -742,7 +753,7 @@ export class HoSoBenhAnService {
     const saved = await this.benhAnRepo.save(bak);
     if (bak.luotTiepNhanId) {
       await this.tiepNhanRepo.update(
-        { id: bak.luotTiepNhanId, trangThai: In(DANG_KHAM) },
+        { id: bak.luotTiepNhanId, trangThai: In(LUOT_DANG_KHAM) },
         { trangThai: TrangThaiTiepNhan.CHO_THANH_TOAN },
       );
     }

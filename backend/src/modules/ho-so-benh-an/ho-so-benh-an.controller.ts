@@ -49,7 +49,7 @@ export class HoSoBenhAnController {
     @Body() dto: TaoBenhAnKhamDto,
     @CurrentUser() user: any,
   ) {
-    return this.service.taoBenhAnKham(user.id, benhNhanId, dto);
+    return this.service.taoBenhAnKham(user, benhNhanId, dto);
   }
 
   @Get('benh-an-kham/luot/:luotTiepNhanId')
@@ -75,8 +75,9 @@ export class HoSoBenhAnController {
   capNhatBenhAnKham(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CapNhatBenhAnKhamDto,
+    @CurrentUser() user: any,
   ) {
-    return this.service.capNhatBenhAnKham(id, dto);
+    return this.service.capNhatBenhAnKham(id, dto, user);
   }
 
   @Patch('benh-an-kham/:id/ket-thuc')
@@ -86,8 +87,9 @@ export class HoSoBenhAnController {
   ketThucKham(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: KetThucKhamDto,
+    @CurrentUser() user: any,
   ) {
-    return this.service.ketThucKham(id, dto);
+    return this.service.ketThucKham(id, dto, user);
   }
 
   @Get('thong-ke-bac-si')

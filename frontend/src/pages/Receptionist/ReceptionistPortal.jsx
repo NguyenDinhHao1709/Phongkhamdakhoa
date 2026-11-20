@@ -3,7 +3,6 @@ import { lazy, Suspense } from 'react';
 import { DashboardLayout } from '../../layouts/DashboardLayout';
 
 const HangDoiPage          = lazy(() => import('./HangDoi/HangDoiPage'));
-const TiepNhanPage         = lazy(() => import('./TiepNhan/TiepNhanPage'));
 const BenhNhanList         = lazy(() => import('./BenhNhan/BenhNhanListPage'));
 const BenhNhanChiTietPage  = lazy(() => import('./BenhNhan/BenhNhanChiTietPage'));
 const LichHenQuanLyPage    = lazy(() => import('./LichHen/LichHenQuanLyPage'));
