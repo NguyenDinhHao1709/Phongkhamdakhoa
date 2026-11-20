@@ -62,9 +62,9 @@ Các con số (15 phút, 3 lần, 24 giờ…) là giá trị trong mã nguồn 
 
 | Trường hợp | Xử lý |
 |---|---|
-| Có lịch hẹn hôm nay (`da_xac_nhan`, hình thức trực tiếp) | Lễ tân bấm **Check-in** hoặc bệnh nhân tự check-in ở kiosk. Đã có lượt chưa hủy thì dùng lại, không tạo trùng. |
-| Khách vãng lai tại quầy | Tìm hoặc tạo hồ sơ (mã `BNxxxxxx`), chọn chuyên khoa, bác sĩ, phòng. |
-| Khách tự lấy số ở kiosk | Tự khai thông tin; chỉ được tự khai ưu tiên *phụ nữ có thai, khuyết tật nặng, người có công*. |
+| Có lịch hẹn hôm nay (`da_xac_nhan`, hình thức trực tiếp) | Lễ tân bấm **Check-in** hoặc bệnh nhân tự check-in ở kiosk (cùng điều kiện). Đã có lượt chưa hủy thì dùng lại / in lại vé; lượt cũ đã hủy thì lấy số mới. Kiosk chỉ tra cứu được lịch **hôm nay**, họ tên hiển thị dạng che. |
+| Khách vãng lai tại quầy | Chọn hồ sơ có sẵn hoặc nhập họ tên + SĐT; hệ thống chỉ dùng lại hồ sơ khi **trùng cả SĐT và họ tên** (SĐT được dùng chung, vd. trẻ em dùng số cha mẹ), không thì tạo hồ sơ mới (mã `BNxxxxxx`). Chọn chuyên khoa; bác sĩ tự chọn người đang trực ít người chờ nhất, phòng theo chuyên khoa của bác sĩ. |
+| Khách tự lấy số ở kiosk | Tự khai họ tên, SĐT, **năm sinh (bắt buộc)**, triệu chứng; chỉ được tự khai ưu tiên *phụ nữ có thai, khuyết tật nặng, người có công*. Phân luồng theo triệu chứng (tim mạch, nhi, ngoại), dưới 16 tuổi → Nhi khoa, còn lại Nội tổng quát; chỉ xếp cho bác sĩ **đang trực**, không có thì mời ra quầy. |
 
 - Số thứ tự **reset mỗi ngày**: `A001…` (quầy, check-in), `B001…` (kiosk vãng lai). Sinh từ bộ đếm trong CSDL nên không trùng khi nhiều máy cùng cấp số.
 - **Đối tượng ưu tiên:** cấp cứu, trẻ dưới 6 tuổi, người từ 75 tuổi, phụ nữ có thai, khuyết tật nặng, người có công. Trẻ dưới 6 tuổi và người từ 75 tuổi **tự nhận theo ngày sinh**; còn lại lễ tân chọn (có thể đổi sau trên màn hình hàng đợi).
@@ -102,6 +102,7 @@ Thứ tự gọi trong hàng đợi của một bác sĩ:
 - **Chuyển bác sĩ / phòng:** chỉ khi bệnh nhân còn `cho_kham`; bác sĩ mới phải cùng chuyên khoa (không trong ca trực thì chỉ cảnh báo).
 - Bác sĩ chỉ gọi số, qua lượt, đổi trạng thái, lập / sửa / kết thúc phiếu khám **của lượt mình phụ trách**; lễ tân và quản trị không bị giới hạn.
 - Lượt còn `cho_kham` từ các ngày trước được hệ thống tự dọn.
+- Màn hình TV sảnh chờ (công khai) che họ tên người đang chờ (`Nguyễn V. A.`); chỉ người đang được gọi mới đọc tên đầy đủ. Giọng đọc chỉ nhận câu gọi số. Kiosk và giọng đọc có giới hạn số lần gọi mỗi phút theo IP.
 - Nhân viên hủy lượt: tạm ứng đã thu chuyển "chờ hoàn", lịch hẹn của lượt hủy theo, chỉ định cận lâm sàng chưa có kết quả bị hủy. Không hủy được lượt đã quyết toán hoặc đã cấp phát thuốc.
 
 ### 3.4 Khám, cận lâm sàng, kê đơn

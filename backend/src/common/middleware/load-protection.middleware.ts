@@ -10,6 +10,7 @@ interface RateBucket {
 const generalBuckets = new Map<string, RateBucket>();
 const authBuckets = new Map<string, RateBucket>();
 const aiBuckets = new Map<string, RateBucket>();
+const publicBuckets = new Map<string, RateBucket>();
 
 // Dọn dẹp bộ nhớ Rate Limiter mỗi 60s
 setInterval(() => {
@@ -22,6 +23,9 @@ setInterval(() => {
   }
   for (const [k, b] of aiBuckets.entries()) {
     if (b.resetAt <= now) aiBuckets.delete(k);
+  }
+  for (const [k, b] of publicBuckets.entries()) {
+    if (b.resetAt <= now) publicBuckets.delete(k);
   }
 }, 60_000).unref();
 
@@ -58,6 +62,16 @@ function aiRateRules(req: Request, url: string, ip: string): Array<{ key: string
       { key: `gio:${ip}`, limit: 200, windowMs: 3_600_000 },
     ];
   }
+  return [];
+}
+
+// Endpoint công khai không cần đăng nhập: chặn dò SĐT ở kiosk và lạm dụng proxy giọng đọc của màn hình TV
+function publicRateRules(url: string, ip: string): Array<{ key: string; limit: number; windowMs: number }> {
+  if (url.startsWith('/api/kiosk/tra-cuu') || url.startsWith('/api/kiosk/check-in')) {
+    return [{ key: `kiosk-tra-cuu:${ip}`, limit: 20, windowMs: 60_000 }];
+  }
+  if (url.startsWith('/api/kiosk/dang-ky-moi')) return [{ key: `kiosk-dang-ky:${ip}`, limit: 10, windowMs: 60_000 }];
+  if (url.startsWith('/api/tiep-nhan/tts')) return [{ key: `tv-tts:${ip}`, limit: 60, windowMs: 60_000 }];
   return [];
 }
 
@@ -223,6 +237,17 @@ export function loadProtectionMiddleware(req: Request, res: Response, next: Next
           code: 'TOO_MANY_REQUESTS',
           message: `Bạn đang gửi yêu cầu tới trợ lý AI quá nhanh. Vui lòng thử lại sau ${cho}.`,
         },
+      });
+    }
+  }
+
+  for (const rule of publicRateRules(url, ip)) {
+    const check = checkRateLimit(publicBuckets, rule.key, rule.limit, rule.windowMs);
+    if (!check.allowed) {
+      res.setHeader('Retry-After', String(check.resetInSec));
+      return res.status(429).json({
+        success: false,
+        error: { code: 'TOO_MANY_REQUESTS', message: `Thao tác quá nhanh. Vui lòng thử lại sau ${check.resetInSec} giây.` },
       });
     }
   }

@@ -21,7 +21,7 @@ export default function KioskPage() {
   const [formData, setFormData] = useState({
     hoTen: '',
     soDienThoai: '',
-    namSinh: '1990',
+    namSinh: '',
     gioiTinh: 'nam',
     trieuChung: '',
     doiTuongUuTien: '',
@@ -73,7 +73,7 @@ export default function KioskPage() {
     setMode('home');
     setSearchPhoneOrCode('');
     setFoundAppointments([]);
-    setFormData({ hoTen: '', soDienThoai: '', namSinh: '1990', gioiTinh: 'nam', trieuChung: '', doiTuongUuTien: '' });
+    setFormData({ hoTen: '', soDienThoai: '', namSinh: '', gioiTinh: 'nam', trieuChung: '', doiTuongUuTien: '' });
     setErrorMsg('');
     setTicketData(null);
   };
@@ -137,8 +137,13 @@ export default function KioskPage() {
   // 2. Đăng ký mới tại chỗ với Phân luồng tiếp nhận chuyên khoa
   const handleDangKyMoiAI = async (e) => {
     e.preventDefault();
-    if (!formData.hoTen.trim() || !formData.soDienThoai.trim()) {
-      setErrorMsg('Vui lòng điền Họ tên và Số điện thoại.');
+    const namSinh = Number(formData.namSinh);
+    if (!formData.hoTen.trim() || !formData.soDienThoai.trim() || !formData.namSinh) {
+      setErrorMsg('Vui lòng điền Họ tên, Số điện thoại và Năm sinh.');
+      return;
+    }
+    if (!Number.isInteger(namSinh) || namSinh < 1900 || namSinh > new Date().getFullYear()) {
+      setErrorMsg('Năm sinh không hợp lệ.');
       return;
     }
     setErrorMsg('');
@@ -148,7 +153,7 @@ export default function KioskPage() {
       const res = await apiPost('/kiosk/dang-ky-moi', {
         hoTen: formData.hoTen.trim(),
         soDienThoai: formData.soDienThoai.trim(),
-        namSinh: formData.namSinh,
+        namSinh,
         gioiTinh: formData.gioiTinh,
         trieuChung: formData.trieuChung,
         doiTuongUuTien: formData.doiTuongUuTien || undefined,
@@ -482,10 +487,13 @@ export default function KioskPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
-                    Năm sinh
+                    Năm sinh <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
+                    required
+                    min={1900}
+                    max={new Date().getFullYear()}
                     value={formData.namSinh}
                     onChange={(e) => setFormData({ ...formData, namSinh: e.target.value })}
                     placeholder="1990"
