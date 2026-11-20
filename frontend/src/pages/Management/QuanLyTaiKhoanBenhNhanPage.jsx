@@ -323,7 +323,7 @@ export default function QuanLyTaiKhoanBenhNhanPage() {
                               {bn.ngaySinh && (
                                 <>
                                   <span>·</span>
-                                  <span>{tinhTuoi(bn.ngaySinh)} tuổi ({formatDate(bn.ngaySinh)})</span>
+                                  <span>{tinhTuoi(bn.ngaySinh)} ({formatDate(bn.ngaySinh)})</span>
                                 </>
                               )}
                             </div>

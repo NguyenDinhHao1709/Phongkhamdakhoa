@@ -10,7 +10,7 @@ import { apiGet, apiPost, apiPatch } from '../../../services/api';
 import { formatDateTime, tinhTuoi, getLocalDateString } from '../../../utils/formatDate';
 import { GIOI_TINH, DOI_TUONG_UU_TIEN } from '../../../utils/constants';
 import NhanUuTienTre from '../../../components/Queue/NhanUuTienTre';
-import { Clock, AlertTriangle, User2, Tv, Volume2, Loader2, Download } from 'lucide-react';
+import { Clock, AlertTriangle, User2, Tv, Volume2, Loader2, Download, Stethoscope } from 'lucide-react';
 import useHangDoiRealtime, { POLL_DU_PHONG_MS } from '../../../hooks/useHangDoiRealtime';
 
 function useHangDoi() {
@@ -271,16 +271,19 @@ function QueueCard({ luot, onGoiLoa, onQuaLuot, isCalling }) {
       </div>
       <p className="font-semibold text-gray-900">{bn.hoTen}</p>
       <p className="text-sm text-gray-500">
-        {tinhTuoi(bn.ngaySinh) && `${tinhTuoi(bn.ngaySinh)} tuổi`}
+        {tinhTuoi(bn.ngaySinh)}
         {bn.gioiTinh && ` · ${GIOI_TINH[bn.gioiTinh]}`}
       </p>
-      {bs.hoTen && <p className="mt-2 text-xs text-gray-400">BS. {bs.hoTen}</p>}
+      <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary-700">
+        <Stethoscope className="h-3.5 w-3.5" /> {bs.hoTen ? `BS. ${bs.hoTen}` : 'Chưa chỉ định bác sĩ'}
+      </p>
     </MedCard>
   );
 }
 
 function QueueRow({ luot, onGoiLoa, onChuyenBacSi, onDoiUuTien, isCalling }) {
   const bn = luot.benhNhan || {};
+  const bs = luot.bacSi?.nhanVien || {};
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 rounded-xl border border-gray-200 bg-white px-3.5 sm:px-4 py-3 hover:border-primary-200 hover:bg-primary-50/30 transition-colors">
@@ -308,12 +311,16 @@ function QueueRow({ luot, onGoiLoa, onChuyenBacSi, onDoiUuTien, isCalling }) {
           )}
           <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5 flex-wrap">
             <span>
-              {tinhTuoi(bn.ngaySinh) && `${tinhTuoi(bn.ngaySinh)} tuổi`}
+              {tinhTuoi(bn.ngaySinh)}
               {bn.soDienThoai && ` · ${bn.soDienThoai}`}
             </span>
             <span className="sm:hidden inline-flex items-center gap-1 text-[11px] text-gray-400">
               • <Clock className="h-3 w-3" /> {formatDateTime(luot.thoiGianDen)}
             </span>
+          </div>
+          <div className="flex items-center gap-1 text-xs font-medium text-primary-700 mt-0.5">
+            <Stethoscope className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="truncate">{bs.hoTen ? `BS. ${bs.hoTen}` : 'Chưa chỉ định bác sĩ'}</span>
           </div>
         </div>
       </div>
