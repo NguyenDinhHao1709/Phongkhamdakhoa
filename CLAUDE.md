@@ -19,6 +19,7 @@ Outpatient clinic management system (graduation thesis). Workflow follows QĐ 13
 | `ai-service/` (:5002), `office-service/` (:5003) | `npm run build && npm run start:dev` (plain `tsc`, no watch) | `npm run build`; ai-service: `npm run test:chat` |
 | `python-ml/` (FastAPI, :5001) | `python -m uvicorn main:app --reload --port 5001` | `python -m pytest tests -q` (single: `pytest tests/test_ml.py::<name>`) |
 | `mobile-patient/` (Expo) | `npm start` | — |
+| `zalo-mini-app/` (Zalo Mini App, zmp-sdk + Vite) | `npm run dev` (browser, Zalo APIs stubbed) / `npm start` (zmp simulator) | `npm run build` (outputs to `www/`), `zmp deploy` |
 
 - There is no JS unit-test suite. Verify Node changes with `npm run build` (that is what CI runs, [.github/workflows/ci.yml](.github/workflows/ci.yml)); API test cases are in `scripts/*.postman_collection.json`.
 - Frontend `npm run build` runs `prebuild` = eslint with `--max-warnings 0` first, so any lint warning fails the build.
@@ -35,6 +36,7 @@ Outpatient clinic management system (graduation thesis). Workflow follows QĐ 13
 - **DB pool:** `DB_POOL_LIMIT` (default 10, `app.module.ts`) must not be set to 2 on Render — together with `GET_LOCK` usage it deadlocks the pool; check pool stats at `/api/health`.
 - **Timezone:** everything runs in Asia/Ho_Chi_Minh; the DB session timezone is set in `vn-session-timezone.util.ts`.
 - **Real-time queue:** `modules/tiep-nhan/queue.gateway.ts` pushes queue changes to reception, doctor, kiosk and TV screens.
+- **Zalo Mini App** is a second patient client that reuses the backend's patient APIs (own fetch client + token refresh in `zalo-mini-app/src/lib/api.js`). Its only dedicated endpoint is `POST /api/auth/zalo` (`auth.service.ts`). Zalo's Graph API only answers Vietnamese IPs, so Render reaches it through `tools/zalo-relay` (`ZALO_GRAPH_BASE_URL` + `ZALO_RELAY_KEY`). ZNS messages are sent from `thong-bao/zalo-zns.service.ts`. CORS for Zalo origins is set via `ZALO_MINI_APP_ORIGINS`. Setup: [zalo-mini-app/README.md](zalo-mini-app/README.md).
 - **Frontend:** routes per role in `src/App.jsx` (lazy pages under `src/pages/<Role>`); axios instance in `src/services/api.js` handles token refresh; state in Zustand (`src/store`) + TanStack Query.
 
 ## Database & deployment
@@ -111,6 +113,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 Việc lớn (sửa hơn 1 file) thì viết ra phương án rồi để tôi xác nhận mới làm; việc nhỏ làm luôn.
 Làm xong cái nào xóa code dư thừa ,tối ưu code 
 backend chạy trên render,frontend chạy trên cpanel ,database trên clever
+chỉ làm trên bản web còn app mobile chưa làm 
 ## 5. Tiết kiệm token
 
 **Claude phải làm:**
@@ -119,7 +122,7 @@ backend chạy trên render,frontend chạy trên cpanel ,database trên clever
 - Không gọi subagent nếu tự làm được bằng Grep/Read.
 - Trả lời ngắn gọn, đi thẳng vào việc; không nhắc lại những gì đã nói.
 - Khi user đổi sang việc khác hẳn, nhắc user gõ `/clear`; phiên quá dài thì nhắc `/compact`.
-
+-những cái chức năng nào thay đổi phải chỉnh lại ở file chính readme.md.
 **Nhắc nhanh cho user:**
 - Một việc một phiên → `/clear` khi xong.
 - Chỉ rõ file bằng `@đường/dẫn`, tên hàm, tiêu chí "xong là gì".
