@@ -15,6 +15,8 @@ export default function RescheduleAppointmentModal({
 }) {
   const [newDate, setNewDate] = useState('');
   const [hinhThuc, setHinhThuc] = useState(appointment?.hinhThuc || 'truc_tiep');
+  // Đã thanh toán thì không đổi được hình thức (phí online và cọc khám trực tiếp khác nhau)
+  const khoaHinhThuc = Boolean(appointment?.trangThai && appointment.trangThai !== 'cho_thanh_toan');
   const [loadingDoctors, setLoadingDoctors] = useState(false);
   const [doctorsOnDate, setDoctorsOnDate] = useState([]);
   const [selectedDoctor, setSelectedDoctor] = useState(null);
@@ -251,14 +253,15 @@ export default function RescheduleAppointmentModal({
                   <span>1. Chọn Hình Thức Khám *</span>
                 </span>
                 <span className="text-[11px] text-gray-500 font-normal">
-                  Có thể đổi giữa Khám tại chỗ và Khám Online
+                  {khoaHinhThuc ? 'Lịch đã thanh toán: giữ nguyên hình thức khám' : 'Có thể đổi giữa Khám tại chỗ và Khám Online'}
                 </span>
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <button
                   type="button"
                   onClick={() => setHinhThuc('truc_tiep')}
-                  className={`p-3 rounded-2xl border-2 text-left transition-all flex items-start gap-2.5 cursor-pointer ${
+                  disabled={khoaHinhThuc && hinhThuc !== 'truc_tiep'}
+                  className={`p-3 rounded-2xl border-2 text-left transition-all flex items-start gap-2.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
                     hinhThuc === 'truc_tiep'
                       ? 'border-blue-600 bg-blue-50/60 shadow-xs ring-1 ring-blue-300'
                       : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
@@ -279,7 +282,8 @@ export default function RescheduleAppointmentModal({
                 <button
                   type="button"
                   onClick={() => setHinhThuc('truc_tuyen')}
-                  className={`p-3 rounded-2xl border-2 text-left transition-all flex items-start gap-2.5 cursor-pointer ${
+                  disabled={khoaHinhThuc && hinhThuc !== 'truc_tuyen'}
+                  className={`p-3 rounded-2xl border-2 text-left transition-all flex items-start gap-2.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
                     hinhThuc === 'truc_tuyen'
                       ? 'border-purple-600 bg-purple-50/60 shadow-xs ring-1 ring-purple-300'
                       : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'

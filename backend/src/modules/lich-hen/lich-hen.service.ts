@@ -410,14 +410,20 @@ export class LichHenService implements OnModuleInit {
       for (const lh of caOnline) {
         const quaNgay = String(lh.ngayHen).slice(0, 10) < todayStr;
         const daDongCua = nowMs > gioDongPhong(mocGioHen(lh.ngayHen, lh.gioHen), lh);
-        const daDongPhi = lh.trangThai === TrangThaiLichHen.DA_XAC_NHAN;
+        const daXacNhan = lh.trangThai === TrangThaiLichHen.DA_XAC_NHAN;
+        // Chỉ hoàn khi phòng khám thật sự đã nhận tiền qua PayOS (lịch lễ tân xác nhận không thu phí thì không có gì để hoàn)
+        const daTraPhi = Boolean(lh.ghiChu?.includes('[ĐÃ_THANH_TOÁN_THÀNH_CÔNG]'));
         // Ca đã gặp nhau hoặc đang chờ duyệt hủy / chưa đóng phí: giữ đến hết ngày hẹn như trước
-        if (!quaNgay && (lh.gapNhauLuc || !daDongPhi || !daDongCua)) continue;
+        if (!quaNgay && (lh.gapNhauLuc || !daXacNhan || !daDongCua)) continue;
 
         let trangThaiMoi = TrangThaiLichHen.DA_HUY;
         let ghiChu = '[Tự động hủy do hết hạn ngày tư vấn trực tuyến]';
         let lyDoHoan: string | null = null;
-        if (daDongPhi) {
+        if (lh.trangThai === TrangThaiLichHen.CHO_DUYET_HUY) {
+          // Bác sĩ xin hủy nhưng Ban Giám đốc chưa duyệt trong ngày hẹn: phòng gọi đã khóa nên ca không thể diễn ra
+          ghiChu = '[Yêu cầu hủy ca của bác sĩ chưa được duyệt trước khi hết ngày hẹn - tự động hủy]';
+          if (daTraPhi) lyDoHoan = 'Bác sĩ xin hủy ca tư vấn trực tuyến, ca không diễn ra - hoàn phí cho bệnh nhân';
+        } else if (daXacNhan) {
           if (lh.gapNhauLuc) {
             ghiChu = '[Hai bên đã tư vấn nhưng bác sĩ không kết luận trong ngày hẹn - chờ xác minh]';
             lyDoHoan = 'Hai bên đã gặp nhau trong phòng tư vấn nhưng ca chưa được kết luận - chờ xác minh';
@@ -431,6 +437,7 @@ export class LichHenService implements OnModuleInit {
             ghiChu = '[Bác sĩ không vào phòng tư vấn trực tuyến - hoàn phí]';
             lyDoHoan = 'Bác sĩ không vào phòng tư vấn trực tuyến - hoàn phí cho bệnh nhân';
           }
+          if (!daTraPhi) lyDoHoan = null;
         }
         // Cập nhật có điều kiện: instance khác hoặc bác sĩ vừa kết luận thì bỏ qua (không tạo yêu cầu hoàn trùng)
         const kq = await this.repo.update(
@@ -1260,6 +1267,28 @@ export class LichHenService implements OnModuleInit {
     return { data: saved, message: 'Đã tự động phân công bác sĩ' };
   }
 
+  /**
+   * Cấp số thứ tự kế tiếp của ngày hẹn và ghi ngay vào lịch (khóa theo ngày để hai lịch không nhận trùng số).
+   * Lấy số lớn nhất đã cấp trong ngày + 1 — không đếm lịch đang xác nhận, vì lịch bị hủy / đã khám làm số đếm giảm và cấp lại số cũ.
+   */
+  private async capSoThuTu(lh: LichHen): Promise<string> {
+    const ngay = String(lh.ngayHen).slice(0, 10);
+    return voiKhoaDb(this.dataSource, `stt_lich_hen:${ngay}`, async () => {
+      const rows: any[] = await this.dataSource.query(
+        `SELECT ghi_chu FROM lich_hen WHERE ngay_hen = ? AND id != ? AND ghi_chu LIKE '%[STT:%'`,
+        [ngay, lh.id],
+      );
+      const lonNhat = rows.reduce((max, r) => {
+        const so = Number(String(r.ghi_chu).match(/\[STT:\s*[A-Z]*(\d+)\]/)?.[1] || 0);
+        return so > max ? so : max;
+      }, 0);
+      const soThuTu = MaGeneratorService.generateSoThuTu(lonNhat + 1);
+      lh.ghiChu = `${(lh.ghiChu || '').replace(/\s*\[STT:\s*[^\]]+\]/g, '').trim()} [STT: ${soThuTu}]`.trim();
+      await this.repo.update(lh.id, { ghiChu: lh.ghiChu });
+      return soThuTu;
+    });
+  }
+
   async xacNhanSauThanhToan(lichHenId: number) {
     let appointment = await this.repo.findOne({
       where: { id: lichHenId },
@@ -1269,12 +1298,54 @@ export class LichHenService implements OnModuleInit {
       throw new NotFoundException({ code: 'LICH_HEN_KHONG_TON_TAI', message: 'Không tìm thấy lịch hẹn' });
     }
 
-    const alreadyConfirmed =
-      appointment.trangThai === TrangThaiLichHen.DA_XAC_NHAN &&
-      Boolean(appointment.ghiChu?.includes('[ĐÃ_THANH_TOÁN_THÀNH_CÔNG]'));
+    const daGhiNhanTien = Boolean(appointment.ghiChu?.includes('[ĐÃ_THANH_TOÁN_THÀNH_CÔNG]'));
+    const alreadyConfirmed = appointment.trangThai === TrangThaiLichHen.DA_XAC_NHAN && daGhiNhanTien;
 
-    if (appointment.trangThai === TrangThaiLichHen.DA_HUY) {
-      // Nếu trước đó bị huỷ do hết giờ nhưng tiền đã vào thực tế: Hồi sinh lịch hẹn ngay
+    // Chỉ lịch đang chờ thanh toán / đã xác nhận / đã hủy khi CHƯA trả tiền mới được xử lý tiếp.
+    // Lịch đã trả tiền rồi bị hủy (đang chờ hoàn), chờ duyệt hủy, đang khám, vắng mặt, hoàn thành: giữ nguyên.
+    // (PayOS vẫn báo PAID cho đơn cũ: gọi lại kiểm tra/webhook không được hồi sinh lịch đã hủy để vừa khám vừa được hoàn tiền)
+    const huyKhiChuaTra = appointment.trangThai === TrangThaiLichHen.DA_HUY && !daGhiNhanTien;
+    if (
+      appointment.trangThai !== TrangThaiLichHen.CHO_THANH_TOAN &&
+      appointment.trangThai !== TrangThaiLichHen.DA_XAC_NHAN &&
+      !huyKhiChuaTra
+    ) {
+      return { data: appointment, message: 'Lịch hẹn đã được ghi nhận thanh toán trước đó, trạng thái lịch không thay đổi.' };
+    }
+
+    if (huyKhiChuaTra) {
+      // Tiền vào sau khi lịch đã bị hủy vì quá hạn: chỉ hồi sinh khi giờ hẹn chưa qua và suất của bác sĩ vẫn còn trống
+      const daQuaGio = mocGioHen(appointment.ngayHen, appointment.gioHen) <= Date.now();
+      const biChiemSuat = appointment.bacSiId
+        ? await this.repo.findOne({
+            where: {
+              id: Not(appointment.id),
+              bacSiId: appointment.bacSiId,
+              ngayHen: appointment.ngayHen,
+              gioHen: appointment.gioHen,
+              trangThai: Not(In([TrangThaiLichHen.DA_HUY, TrangThaiLichHen.HOAN_THANH])),
+            },
+          })
+        : null;
+      if (daQuaGio || biChiemSuat) {
+        const soTien = await this.getSoTienCocHienHanh(appointment.hinhThuc, appointment.maLichHen);
+        const soTienText = `${soTien.toLocaleString('vi-VN')}đ`;
+        appointment.ghiChu = `${appointment.ghiChu || ''} [ĐÃ_THANH_TOÁN_THÀNH_CÔNG] [CHỜ HOÀN CỌC ${soTienText}] [Tiền về sau khi lịch đã hủy, ${daQuaGio ? 'giờ hẹn đã qua' : 'khung giờ đã có người khác đặt'} - hoàn lại cho bệnh nhân]`.trim();
+        const savedHuy = await this.repo.save(appointment);
+        await this.dongBoHoaDonTamUng(savedHuy, true).catch((err) =>
+          console.warn('[LichHenDeposit] Lỗi tạo hóa đơn chờ hoàn:', err?.message),
+        );
+        this.thongBaoService.taoNeuChuaCo({
+          nguoiNhanId: appointment.benhNhan?.nguoiDungId,
+          tieuDe: 'Thanh toán đến sau khi lịch hẹn đã hủy',
+          noiDung: `Phòng khám đã nhận ${soTienText} cho lịch ${appointment.maLichHen}, nhưng lịch đã bị hủy do quá hạn thanh toán và ${daQuaGio ? 'giờ hẹn đã qua' : 'khung giờ đã có người khác đặt'}. Thu ngân sẽ hoàn lại khoản này cho bạn.`,
+          loai: 'lich_hen',
+          doiTuongBang: 'lich_hen',
+          doiTuongId: appointment.id,
+        }).catch(() => {});
+        return { data: savedHuy, message: `Lịch hẹn đã bị hủy trước khi nhận được tiền; khoản ${soTienText} sẽ được hoàn lại.` };
+      }
+      // Bị hủy do hết giờ thanh toán nhưng tiền đã vào thực tế và suất còn trống: hồi sinh lịch hẹn
       appointment.ghiChu = `${(appointment.ghiChu || '').replace('[Đã hủy khi chưa thanh toán tạm ứng]', '').trim()} [ĐÃ_THANH_TOÁN_THẬT_TỰ_ĐỘNG_HỒI_SINH]`.trim();
     }
 
@@ -1315,14 +1386,7 @@ export class LichHenService implements OnModuleInit {
     if (sttMatch) {
       soThuTu = sttMatch[1];
     } else {
-      const countToday = await this.repo.count({
-        where: {
-          ngayHen: appointment.ngayHen,
-          trangThai: TrangThaiLichHen.DA_XAC_NHAN,
-        },
-      });
-      soThuTu = MaGeneratorService.generateSoThuTu(countToday + 1);
-      appointment.ghiChu = `${appointment.ghiChu || ''} [STT: ${soThuTu}]`.trim();
+      soThuTu = await this.capSoThuTu(appointment);
     }
 
     const saved = await this.repo.save(appointment);
@@ -1635,7 +1699,17 @@ export class LichHenService implements OnModuleInit {
       throw new BadRequestException({ code: 'THOI_GIAN_KHONG_HOP_LE', message: 'Ngày hoặc giờ hẹn mới không hợp lệ.' });
     }
 
-    const targetHinhThuc = lh.hinhThuc === 'truc_tuyen' ? 'truc_tuyen' : 'truc_tiep';
+    // Phí online (thu đủ phí tư vấn) và cọc khám trực tiếp (tạm ứng 1/5) khác nhau và hóa đơn đã lập theo hình thức cũ:
+    // sau khi đã trả tiền thì không được đổi hình thức, muốn đổi phải hủy lịch và đặt lại
+    const hinhThucMoi = dto.hinhThuc === 'truc_tuyen' || dto.hinhThuc === 'truc_tiep' ? dto.hinhThuc : lh.hinhThuc;
+    if (hinhThucMoi !== lh.hinhThuc && lh.trangThai !== TrangThaiLichHen.CHO_THANH_TOAN) {
+      throw new BadRequestException({
+        code: 'KHONG_THE_DOI_HINH_THUC',
+        message: 'Lịch hẹn đã thanh toán nên không thể đổi giữa khám trực tiếp và tư vấn online (mức phí khác nhau). Vui lòng hủy lịch và đặt lại theo hình thức mong muốn.',
+      });
+    }
+
+    const targetHinhThuc = hinhThucMoi === 'truc_tuyen' ? 'truc_tuyen' : 'truc_tiep';
     const cocConfig = await this.dataSource.getRepository(CauHinhTienCoc).findOne({
       where: { loaiHinhThuc: targetHinhThuc },
     });
@@ -1718,6 +1792,7 @@ export class LichHenService implements OnModuleInit {
     }
 
     // 5. Khóa nguyên tử theo slot mới và cập nhật lịch hẹn
+    const ngayHenTruocKhiDoi = String(lh.ngayHen).slice(0, 10);
     const rescheduleLockKey = targetBacSiId
       ? await this.khoaCaBacSi(targetBacSiId, dto.ngayHen, dto.gioHen)
       : `patient:${lh.benhNhanId}:${dto.ngayHen}`;
@@ -1741,7 +1816,7 @@ export class LichHenService implements OnModuleInit {
           });
         }
         await this.kiemTraSuatBuoi(targetBacSiId, dto.ngayHen, dto.gioHen, lh.id);
-        await this.kiemTraKhungOnline(targetBacSiId, dto.ngayHen, dto.gioHen, dto.hinhThuc || lh.hinhThuc || 'truc_tiep');
+        await this.kiemTraKhungOnline(targetBacSiId, dto.ngayHen, dto.gioHen, targetHinhThuc);
       }
 
       const ngayHenCu = lh.ngayHen;
@@ -1751,7 +1826,9 @@ export class LichHenService implements OnModuleInit {
       lh.ngayHen = dto.ngayHen;
       lh.gioHen = dto.gioHen;
       if (dto.bacSiId) lh.bacSiId = dto.bacSiId;
-      if (dto.hinhThuc) lh.hinhThuc = dto.hinhThuc;
+      lh.hinhThuc = targetHinhThuc;
+      // Tư vấn online không dùng phòng khám vật lý
+      if (targetHinhThuc === 'truc_tuyen') lh.phongKhamId = null;
       if (dto.lyDoKham) lh.lyDoKham = dto.lyDoKham;
 
       const noteDoiLich = `[Đổi lịch từ ${ngayHenCu} ${gioHenCu} (${hinhThucCu || 'truc_tiep'}) sang ${dto.ngayHen} ${dto.gioHen} (${lh.hinhThuc || 'truc_tiep'}) lúc ${new Date().toLocaleString('vi-VN')}]`;
@@ -1762,6 +1839,11 @@ export class LichHenService implements OnModuleInit {
     });
 
     this.cache.invalidatePrefix('lich_hen:bac_si_ca_trong');
+
+    // Số thứ tự cấp theo từng ngày: đổi sang ngày khác thì cấp số mới của ngày đó (ngoài khóa slot, tránh giữ hai khóa cùng lúc)
+    if (ngayHenTruocKhiDoi !== String(saved.ngayHen).slice(0, 10) && /\[STT:/.test(saved.ghiChu || '')) {
+      await this.capSoThuTu(saved);
+    }
 
     const withRelations = await this.findOne(saved.id);
 
@@ -2382,11 +2464,60 @@ export class LichHenService implements OnModuleInit {
   /**
    * Hoàn tất ca tư vấn trực tuyến (Telehealth) & lưu kết luận bệnh án
    */
-  async hoanTatTuVan(id: number, body: { chanDoan?: string; loiKhuyen?: string }, user: any) {
+  async hoanTatTuVan(
+    id: number,
+    body: {
+      chanDoan?: string;
+      loiKhuyen?: string;
+      donThuoc?: Array<{ thuocId: number; soLuong: number; lieuDung?: string; soNgayDung?: number; ghiChu?: string }>;
+    },
+    user: any,
+  ) {
     const chanDoan = body.chanDoan?.trim();
     const loiKhuyen = body.loiKhuyen?.trim() || 'Theo dõi sức khỏe và tái khám theo chỉ định';
     if (!chanDoan) {
       throw new BadRequestException({ code: 'THIEU_CHAN_DOAN', message: 'Vui lòng nhập chẩn đoán trước khi hoàn tất ca tư vấn.' });
+    }
+
+    // Đơn thuốc điện tử của ca online: bệnh nhân tự mua tại nhà thuốc bất kỳ (không giữ kho, không thu tiền tại phòng khám)
+    const dsThuoc = (body.donThuoc || []).filter((t) => t && Number(t.thuocId) > 0);
+    const daCo = new Set<number>();
+    for (const t of dsThuoc) {
+      const thuocId = Number(t.thuocId);
+      if (daCo.has(thuocId)) {
+        throw new BadRequestException({ code: 'THUOC_TRUNG', message: 'Một thuốc bị kê trên nhiều dòng. Vui lòng gộp số lượng vào một dòng.' });
+      }
+      daCo.add(thuocId);
+      if (!Number.isInteger(Number(t.soLuong)) || Number(t.soLuong) <= 0) {
+        throw new BadRequestException({ code: 'SO_LUONG_KHONG_HOP_LE', message: 'Số lượng thuốc kê phải là số nguyên lớn hơn 0.' });
+      }
+    }
+    if (dsThuoc.length) {
+      const rows: any[] = await this.dataSource.query(
+        `SELECT id, ten_thuoc, ten_hoat_chat, trang_thai FROM thuoc WHERE id IN (?)`, [[...daCo]],
+      );
+      // di_ung lưu mã hóa → đọc qua entity để transformer giải mã
+      const lhBn = await this.repo.findOne({ where: { id }, select: ['id', 'benhNhanId'] });
+      const bnRow = lhBn
+        ? await this.dataSource.getRepository(BenhNhan).findOne({ where: { id: lhBn.benhNhanId }, select: ['id', 'diUng'] })
+        : null;
+      const diUng = String(bnRow?.diUng || '').trim().toLowerCase();
+      const coDiUng = diUng && !['không', 'khong', 'không có'].includes(diUng);
+      for (const thuocId of daCo) {
+        const th = rows.find((r) => Number(r.id) === thuocId);
+        if (!th) throw new BadRequestException({ code: 'THUOC_KHONG_TON_TAI', message: `Không tìm thấy thuốc #${thuocId} trong danh mục.` });
+        if (th.trang_thai === 'ngung_kinh_doanh') {
+          throw new BadRequestException({ code: 'THUOC_NGUNG_KINH_DOANH', message: `Thuốc "${th.ten_thuoc}" đã ngừng kinh doanh, không thể kê đơn.` });
+        }
+        const ten = String(th.ten_thuoc || '').toLowerCase();
+        const hoatChat = String(th.ten_hoat_chat || '').toLowerCase();
+        if (coDiUng && ((ten && diUng.includes(ten)) || (hoatChat.length >= 4 && diUng.includes(hoatChat)))) {
+          throw new BadRequestException({
+            code: 'DI_UNG_THUOC',
+            message: `Bệnh nhân có tiền sử dị ứng "${bnRow?.diUng}" trùng với thuốc/hoạt chất "${th.ten_thuoc}". Vui lòng đổi thuốc khác.`,
+          });
+        }
+      }
     }
 
     const lh = await this.dataSource.transaction(async (m) => {
@@ -2438,7 +2569,7 @@ export class LichHenService implements OnModuleInit {
       }
 
       // Bắt đầu ca = lúc hai bên gặp nhau, để thống kê đo được thời gian khám thật
-      await m.query(
+      const insBak: any = await m.query(
         `INSERT INTO benh_an_kham
          (ho_so_benh_an_id, luot_tiep_nhan_id, bac_si_id, ngay_kham, chan_doan_so_bo, chan_doan_xac_dinh, trieu_chung, phuong_phap_dieu_tri, hinh_thuc_kham, trang_thai, thoi_gian_ket_thuc, ghi_chu)
          VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'truc_tuyen', 'da_hoan_thanh', NOW(), ?)`,
@@ -2453,6 +2584,26 @@ export class LichHenService implements OnModuleInit {
           `Ca tư vấn trực tuyến Telehealth (Mã lịch: ${lh.maLichHen})`,
         ],
       );
+
+      if (dsThuoc.length && insBak?.insertId) {
+        const now = new Date();
+        const ngay = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        const so = await soTiepTheo(m, `ma_don_thuoc_${ngay}`,
+          `SELECT COALESCE(MAX(CAST(SUBSTRING(ma_don_thuoc, 11) AS UNSIGNED)), 0) AS maxNum FROM don_thuoc WHERE ma_don_thuoc LIKE ?`,
+          [`DT${ngay}%`]);
+        const maDonThuoc = `DT${ngay}${String(so).padStart(4, '0')}`;
+        const insDt: any = await m.query(
+          `INSERT INTO don_thuoc (ma_don_thuoc, benh_an_kham_id, bac_si_ke_id, ngay_ke, trang_thai, lua_chon_mua, ghi_chu)
+           VALUES (?, ?, ?, NOW(), 'mua_ngoai', 'mua_ngoai', ?)`,
+          [maDonThuoc, insBak.insertId, lh.bacSiId, `Đơn thuốc tư vấn trực tuyến (Mã lịch: ${lh.maLichHen}) - bệnh nhân tự mua tại nhà thuốc`],
+        );
+        for (const t of dsThuoc) {
+          await m.query(
+            `INSERT INTO don_thuoc_chi_tiet (don_thuoc_id, thuoc_id, so_luong, lieu_dung, so_ngay_dung, ghi_chu) VALUES (?, ?, ?, ?, ?, ?)`,
+            [insDt.insertId, Number(t.thuocId), Number(t.soLuong), String(t.lieuDung || '').slice(0, 200), Number(t.soNgayDung) || 1, t.ghiChu || ''],
+          );
+        }
+      }
       return lh;
     });
 

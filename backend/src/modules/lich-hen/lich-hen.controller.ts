@@ -3,6 +3,7 @@ import {
   ParseIntPipe, UseGuards, BadRequestException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { ModuleRef } from '@nestjs/core';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { LichHenService } from './lich-hen.service';
 import {
@@ -24,6 +25,7 @@ export class LichHenController {
   constructor(
     private readonly service: LichHenService,
     private readonly dataSource: DataSource,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   private soHuu(user: any, id: number) {
@@ -136,6 +138,16 @@ export class LichHenController {
     @CurrentUser() user: any,
   ) {
     await this.soHuu(user, id);
+    // Đổi hình thức khi chưa trả tiền: đóng mã QR cũ trước (mức phí online / trực tiếp khác nhau)
+    if (dto.hinhThuc) {
+      const [lh] = await this.dataSource.query('SELECT hinh_thuc, trang_thai FROM lich_hen WHERE id = ?', [id]);
+      if (lh && lh.hinh_thuc !== dto.hinhThuc && lh.trang_thai === 'cho_thanh_toan') {
+        // Lấy lúc chạy để tránh vòng phụ thuộc module (PayosModule import LichHenModule)
+        const { PayosService } = await import('../payos/payos.service');
+        const payos = this.moduleRef.get(PayosService, { strict: false });
+        await payos?.dongLinkCuLichHen(id, 'Doi hinh thuc kham');
+      }
+    }
     return this.service.chinhSuaLichHenBoiBenhNhan(id, dto, user?.id);
   }
 
@@ -200,7 +212,7 @@ export class LichHenController {
   @Quyen('kham_benh.truc_tuyen')
   hoanTatTuVan(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { chanDoan?: string; loiKhuyen?: string },
+    @Body() body: { chanDoan?: string; loiKhuyen?: string; donThuoc?: Array<{ thuocId: number; soLuong: number; lieuDung?: string; soNgayDung?: number; ghiChu?: string }> },
     @CurrentUser() user: any,
   ) {
     return this.service.hoanTatTuVan(id, body, user);

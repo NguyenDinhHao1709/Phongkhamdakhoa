@@ -107,6 +107,31 @@ export class PayosService implements OnModuleInit {
   }
 
   /**
+   * Đóng link PayOS đang mở của lịch hẹn (mã QR cũ còn quét được sẽ trả theo số tiền cũ / không khớp lịch).
+   * Nếu link cũ thực tế đã được trả thì xác nhận lịch luôn và trả về true.
+   */
+  async dongLinkCuLichHen(lichHenId: number, lyDo = 'Tao ma thanh toan moi'): Promise<boolean> {
+    if (!this.payOS) return false;
+    const lh = await this.lichHenRepo.findOne({ where: { id: lichHenId } });
+    const m = lh?.ghiChu?.match(/\[PAYOS_ORDER:(\d+)\]/);
+    if (!lh || !m) return false;
+    const orderCode = Number(m[1]);
+    try {
+      const order = await this.payOS.paymentRequests.get(orderCode);
+      if (order?.status === 'PAID') {
+        await this.lichHenService.xacNhanSauThanhToan(lh.id);
+        return true;
+      }
+      if (order?.status === 'PENDING' || order?.status === 'PROCESSING') {
+        await this.payOS.paymentRequests.cancel(orderCode, lyDo);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Không đóng được link PayOS cũ ${orderCode} của lịch ${lh.maLichHen}: ${err?.message}`);
+    }
+    return false;
+  }
+
+  /**
    * Tạo Payment Link (Mã VietQR động chuyển thẳng vào tài khoản ngân hàng phòng khám)
    */
   async taoLinkThanhToanLichHen(lichHenId: number) {
@@ -121,6 +146,11 @@ export class PayosService implements OnModuleInit {
 
     if (!lh) {
       throw new NotFoundException('Không tìm thấy lịch hẹn cần thanh toán');
+    }
+
+    // Link cũ: đã trả thì không tạo link mới (tránh thu hai lần); chưa trả thì đóng lại để chỉ còn một mã QR hợp lệ
+    if (await this.dongLinkCuLichHen(lh.id)) {
+      throw new BadRequestException('Lịch hẹn này đã được thanh toán. Vui lòng tải lại trang để xem phiếu hẹn.');
     }
 
     // Lấy số tiền cọc động từ cấu hình Ban Giám Đốc

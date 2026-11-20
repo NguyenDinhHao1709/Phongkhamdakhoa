@@ -35,6 +35,8 @@ export default function KhamTrucTuyenPage() {
   const detailPanelRef = useRef(null);
   const [formAdvise, setFormAdvise] = useState({ chanDoan: '', loiKhuyen: '' });
   const [savingAdvise, setSavingAdvise] = useState(false);
+  // Đơn thuốc điện tử của ca online (bệnh nhân tự mua tại nhà thuốc)
+  const [donThuoc, setDonThuoc] = useState([]);
   const [showDatLichModal, setShowDatLichModal] = useState(false);
   const [bookedAppointmentMap, setBookedAppointmentMap] = useState({});
 
@@ -113,11 +115,13 @@ export default function KhamTrucTuyenPage() {
       const res = await apiPost(`/lich-hen/${activeLich.id}/hoan-tat-tu-van`, {
         chanDoan: formAdvise.chanDoan,
         loiKhuyen: formAdvise.loiKhuyen,
+        donThuoc: donThuoc.map(({ thuocId, soLuong, lieuDung, soNgayDung }) => ({ thuocId, soLuong, lieuDung, soNgayDung })),
       });
 
       alert(res?.message || 'Đã hoàn tất ca tư vấn trực tuyến và ghi nhận hồ sơ bệnh án thành công!');
       queryClient.invalidateQueries(['lich-tu-van-online']);
       setFormAdvise({ chanDoan: '', loiKhuyen: '' });
+      setDonThuoc([]);
     } catch (err) {
       console.error('Lỗi hoàn tất tư vấn:', err);
       alert(err?.error?.message || err?.message || 'Có lỗi khi lưu kết luận tư vấn.');
@@ -267,6 +271,12 @@ export default function KhamTrucTuyenPage() {
 
   const activeLich = filteredItems.find((item) => item.id === selectedLich?.id) || filteredItems[0];
   const isDaHuy = activeLich?.trangThai === 'da_huy';
+
+  // Đổi sang ca khác: xóa chẩn đoán / đơn thuốc đang nhập dở để không gửi nhầm cho bệnh nhân khác
+  useEffect(() => {
+    setFormAdvise({ chanDoan: '', loiKhuyen: '' });
+    setDonThuoc([]);
+  }, [activeLich?.id]);
   const isDangKham = activeLich?.trangThai === 'dang_kham';
   // Máy chủ chỉ cho hoàn tất khi bác sĩ và bệnh nhân từng cùng có mặt trong phòng gọi
   const lyDoKhoaHoanTat = !activeLich || activeLich.gapNhauLuc ? ''
@@ -814,6 +824,12 @@ export default function KhamTrucTuyenPage() {
                     className="w-full rounded-xl border border-gray-300 p-3 text-sm focus:ring-2 focus:ring-primary-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed transition"
                   />
                 </div>
+
+                <DonThuocOnline
+                  value={donThuoc}
+                  onChange={setDonThuoc}
+                  disabled={isDaHuy || activeLich?.trangThai === 'hoan_thanh'}
+                />
               </div>
 
               {/* Nút hành động cuối trang */}
@@ -996,6 +1012,111 @@ function DatLichHoModal({ benhNhan, activeLich, doctorUser, onClose, onSuccess }
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+/** Kê đơn thuốc điện tử cho ca tư vấn online: bệnh nhân tự mua tại nhà thuốc bất kỳ, đơn lưu vào hồ sơ bệnh án */
+function DonThuocOnline({ value, onChange, disabled }) {
+  const [tuKhoa, setTuKhoa] = useState('');
+  const { data } = useQuery({
+    queryKey: ['thuoc-tu-van-online', tuKhoa],
+    queryFn: () => apiGet(`/nha-thuoc/thuoc?search=${encodeURIComponent(tuKhoa)}`),
+    enabled: !disabled && tuKhoa.trim().length >= 2,
+    staleTime: 60_000,
+  });
+  const ketQua = (Array.isArray(data) ? data : data?.data || [])
+    .filter((t) => t.trangThai !== 'ngung_kinh_doanh' && !value.some((v) => v.thuocId === t.id))
+    .slice(0, 8);
+
+  const them = (t) => {
+    onChange([...value, { thuocId: t.id, tenThuoc: t.tenThuoc, donViTinh: t.donViTinh, soLuong: 1, lieuDung: '', soNgayDung: 5 }]);
+    setTuKhoa('');
+  };
+  const sua = (i, field, v) => onChange(value.map((row, idx) => (idx === i ? { ...row, [field]: v } : row)));
+
+  return (
+    <div>
+      <label className="block text-xs font-bold text-gray-800 mb-1.5 flex items-center gap-1.5">
+        <Pill className="h-4 w-4 text-indigo-600" /> Đơn thuốc (không bắt buộc)
+        <span className="font-normal text-gray-500">— bệnh nhân tự mua tại nhà thuốc, đơn lưu trong hồ sơ</span>
+      </label>
+      {!disabled && (
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+          <input
+            value={tuKhoa}
+            onChange={(e) => setTuKhoa(e.target.value)}
+            placeholder="Tìm thuốc theo tên (gõ ít nhất 2 ký tự)..."
+            className="w-full rounded-xl border border-gray-300 py-2 pl-9 pr-3 text-sm focus:ring-2 focus:ring-primary-500"
+          />
+          {tuKhoa.trim().length >= 2 && (
+            <div className="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-lg max-h-60 overflow-y-auto">
+              {ketQua.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-gray-500">Không tìm thấy thuốc phù hợp.</p>
+              ) : (
+                ketQua.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => them(t)}
+                    className="block w-full px-3 py-2 text-left text-sm hover:bg-primary-50"
+                  >
+                    <span className="font-semibold text-gray-900">{t.tenThuoc}</span>
+                    {t.tenHoatChat && <span className="text-xs text-gray-500"> · {t.tenHoatChat}</span>}
+                    {t.donViTinh && <span className="text-xs text-gray-400"> ({t.donViTinh})</span>}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {value.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {value.map((row, i) => (
+            <div key={row.thuocId} className="grid grid-cols-12 gap-2 items-center rounded-xl border border-indigo-100 bg-indigo-50/40 p-2 text-xs">
+              <div className="col-span-12 sm:col-span-4 font-semibold text-gray-900">{row.tenThuoc}</div>
+              <input
+                type="number"
+                min="1"
+                disabled={disabled}
+                value={row.soLuong}
+                onChange={(e) => sua(i, 'soLuong', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                className="col-span-3 sm:col-span-2 rounded-lg border border-gray-300 p-1.5"
+                title={`Số lượng (${row.donViTinh || 'đơn vị'})`}
+              />
+              <input
+                disabled={disabled}
+                value={row.lieuDung}
+                onChange={(e) => sua(i, 'lieuDung', e.target.value)}
+                placeholder="Liều dùng, vd: Sáng 1 viên, tối 1 viên sau ăn"
+                className="col-span-6 sm:col-span-4 rounded-lg border border-gray-300 p-1.5"
+              />
+              <input
+                type="number"
+                min="1"
+                disabled={disabled}
+                value={row.soNgayDung}
+                onChange={(e) => sua(i, 'soNgayDung', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                className="col-span-2 sm:col-span-1 rounded-lg border border-gray-300 p-1.5"
+                title="Số ngày dùng"
+              />
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => onChange(value.filter((_, idx) => idx !== i))}
+                  className="col-span-1 justify-self-end rounded-lg p-1 text-rose-500 hover:bg-rose-50"
+                  title="Bỏ thuốc này"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          ))}
+          <p className="text-[11px] text-gray-500">Cột: tên thuốc · số lượng · liều dùng · số ngày.</p>
+        </div>
+      )}
     </div>
   );
 }
