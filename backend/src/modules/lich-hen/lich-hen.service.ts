@@ -1951,7 +1951,11 @@ export class LichHenService implements OnModuleInit {
       await this.thongBaoService.taoNeuChuaCo({
         nguoiNhanId: bn?.nguoiDungId,
         tieuDe: 'Nhắc lịch khám sắp tới',
-        noiDung: `Lịch ${lh.maLichHen}: ${String(lh.gioHen || '').slice(0, 5)} ngày ${String(lh.ngayHen || '').slice(0, 10).split('-').reverse().join('/')} với ${bacSiTen}. Vui lòng đến trước 15 phút, mang theo CCCD và thẻ BHYT (nếu có).`,
+        noiDung: `Lịch ${lh.maLichHen}: ${String(lh.gioHen || '').slice(0, 5)} ngày ${String(lh.ngayHen || '').slice(0, 10).split('-').reverse().join('/')} với ${bacSiTen}. ${
+          lh.hinhThuc === 'truc_tuyen'
+            ? 'Vui lòng vào ứng dụng trước giờ hẹn 10 phút, chuẩn bị thiết bị có camera, micro và kết nối mạng ổn định để bác sĩ gọi video.'
+            : 'Vui lòng đến trước 15 phút, mang theo CCCD và thẻ BHYT (nếu có).'
+        }`,
         loai: 'lich_hen',
         doiTuongBang: 'lich_hen',
         doiTuongId: lh.id,
@@ -1982,12 +1986,19 @@ export class LichHenService implements OnModuleInit {
                 </div>
 
                 <div style="background-color: #fffbeb; border: 1px solid #fde68a; padding: 12px; border-radius: 8px; font-size: 13px; color: #92400e;">
+                  ${lh.hinhThuc === 'truc_tuyen' ? `
+                  <strong>⚠️ Lưu ý trước buổi khám trực tuyến:</strong>
+                  <ul style="margin: 6px 0 0 0; padding-left: 20px;">
+                    <li>Đăng nhập vào hệ thống trước giờ hẹn 10 phút; bác sĩ sẽ gọi video trực tiếp cho Quý khách.</li>
+                    <li>Chuẩn bị điện thoại hoặc máy tính có camera, micro và kết nối mạng ổn định.</li>
+                    <li>Chuẩn bị sẵn kết quả xét nghiệm, đơn thuốc cũ (nếu có) để bác sĩ tham khảo.</li>
+                  </ul>` : `
                   <strong>⚠️ Lưu ý quan trọng trước khi đi khám:</strong>
                   <ul style="margin: 6px 0 0 0; padding-left: 20px;">
                     <li>Vui lòng có mặt trước giờ hẹn 10 - 15 phút tại Quầy tiếp tân để làm thủ tục.</li>
                     <li>Mang theo CCCD/VNeID và thẻ BHYT (nếu có) để hưởng quyền lợi chiết khấu 80%.</li>
                     <li>Nếu có chỉ định xét nghiệm máu / đường huyết, vui lòng nhịn ăn sáng từ 6 - 8 tiếng.</li>
-                  </ul>
+                  </ul>`}
                 </div>
 
                 <p style="margin-top: 24px; font-size: 12px; color: #9ca3af; text-align: center;">
@@ -2055,7 +2066,11 @@ export class LichHenService implements OnModuleInit {
         nguoiNhanId: lh.benhNhan?.nguoiDungId,
         tieuDe: loaiEmail === 'da_xac_nhan' ? 'Lịch khám đã được xác nhận' : 'Đặt lịch thành công, chờ thanh toán cọc',
         noiDung: loaiEmail === 'da_xac_nhan'
-          ? `Lịch ${lh.maLichHen}: ${thoiGian}${tenBs}. Vui lòng đến trước 15 phút.`
+          ? `Lịch ${lh.maLichHen}: ${thoiGian}${tenBs}. ${
+              lh.hinhThuc === 'truc_tuyen'
+                ? 'Vui lòng vào ứng dụng trước giờ hẹn 10 phút để bác sĩ gọi video.'
+                : 'Vui lòng đến trước 15 phút.'
+            }`
           : `Lịch ${lh.maLichHen}: ${thoiGian}. Vui lòng thanh toán tiền cọc để giữ lịch.`,
         loai: 'lich_hen',
         doiTuongBang: 'lich_hen',

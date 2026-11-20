@@ -91,6 +91,13 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
   const thucThu = Math.max(0, conLai);
   const tienHoanTra = Math.max(0, -conLai);
 
+  // Chỉ hóa đơn "chờ thanh toán" mới được thu tiền; đã thanh toán / đã hủy chỉ xem
+  const daChot = hoaDon?.trangThai !== 'cho_thanh_toan';
+  const daHuy = hoaDon?.trangThai === 'huy';
+  const daThuTien = Boolean(hoaDon?.ngayThanhToan);
+  const thucThuLuu = Number(hoaDon?.thucThu || 0);
+  const soTienDaHoan = daHuy ? (daThuTien ? thucThuLuu : 0) : Number(hoaDon?.tienHoanTra || 0);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl border border-gray-100 flex flex-col max-h-[90vh]">
@@ -121,7 +128,16 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
             </div>
           )}
 
-          {hoaDon?.trangThai !== 'da_thanh_toan' && hoaDon?.donThuoc?.length > 0 && (
+          {daHuy && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+              <div className="text-sm font-bold text-rose-800">
+                {daThuTien ? `Hóa đơn đã hủy — đã hoàn trả ${formatCurrency(soTienDaHoan)}` : 'Hóa đơn đã hủy (chưa thu tiền)'}
+              </div>
+              {hoaDon?.ghiChu && <p className="mt-1 text-xs text-rose-700 whitespace-pre-line break-words">{hoaDon.ghiChu}</p>}
+            </div>
+          )}
+
+          {!daChot && hoaDon?.donThuoc?.length > 0 && (
             <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
               <div className="text-sm font-bold text-indigo-900">Lựa chọn nhận thuốc</div>
               <p className="mt-1 text-xs text-indigo-800">
@@ -214,7 +230,7 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
                       setSoTienGiam(Math.round(tongTien * 0.8));
                     }
                   }}
-                  disabled={hoaDon?.trangThai === 'da_thanh_toan'}
+                  disabled={daChot}
                   className="w-full rounded-lg border border-gray-300 p-2.5 text-sm bg-white focus:ring-2 focus:ring-primary-500 font-medium"
                 >
                   <option value="tien_mat">💵 Tiền mặt</option>
@@ -227,7 +243,7 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
               </div>
 
               {/* BHYT Quick Toggle Button */}
-              {hoaDon?.trangThai !== 'da_thanh_toan' && (
+              {!daChot && (
                 <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
@@ -248,17 +264,32 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
                 </div>
               )}
 
-              <div>
-                <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Ghi chú thanh toán</label>
-                <input
-                  type="text"
-                  value={ghiChu}
-                  onChange={(e) => setGhiChu(e.target.value)}
-                  disabled={hoaDon?.trangThai === 'da_thanh_toan'}
-                  placeholder="Ghi chú số thẻ BHYT hoặc mã giao dịch..."
-                  className="w-full rounded-lg border border-gray-300 p-2.5 text-sm"
-                />
-              </div>
+              {!daChot ? (
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-gray-500 mb-1">Ghi chú thanh toán</label>
+                  <input
+                    type="text"
+                    value={ghiChu}
+                    onChange={(e) => setGhiChu(e.target.value)}
+                    placeholder="Ghi chú số thẻ BHYT hoặc mã giao dịch..."
+                    className="w-full rounded-lg border border-gray-300 p-2.5 text-sm"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-1 text-xs text-gray-600">
+                  {hoaDon?.ngayThanhToan && (
+                    <p>
+                      Thời gian thu: <span className="font-semibold text-gray-800">{new Date(hoaDon.ngayThanhToan).toLocaleString('vi-VN')}</span>
+                    </p>
+                  )}
+                  {hoaDon?.thuNgan?.hoTen && (
+                    <p>
+                      Thu ngân: <span className="font-semibold text-gray-800">{hoaDon.thuNgan.hoTen}</span>
+                    </p>
+                  )}
+                  {!daHuy && hoaDon?.ghiChu && <p className="break-words">Ghi chú: {hoaDon.ghiChu}</p>}
+                </div>
+              )}
             </div>
 
             <div className="rounded-xl bg-gray-50 p-4 border border-gray-200 space-y-2.5">
@@ -284,7 +315,7 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
                   min="0"
                   value={soTienGiam}
                   onChange={(e) => setSoTienGiam(Number(e.target.value))}
-                  disabled={hoaDon?.trangThai === 'da_thanh_toan'}
+                  disabled={daChot}
                   className="w-28 rounded border border-gray-300 p-1 text-right text-sm font-bold text-emerald-700 bg-white"
                 />
               </div>
@@ -293,7 +324,22 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
                   ✓ BHYT/Ưu đãi chi trả: {((Number(soTienGiam) / (tongTien || 1)) * 100).toFixed(0)}%
                 </div>
               )}
-              {tienHoanTra > 0 ? (
+              {daChot ? (
+                <div className="border-t pt-2 space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-base font-bold text-gray-900">Đã thu:</span>
+                    <span className={`text-xl font-black ${daHuy ? 'text-gray-400 line-through' : 'text-primary-600'}`}>
+                      {formatCurrency(daThuTien ? thucThuLuu : 0)}
+                    </span>
+                  </div>
+                  {soTienDaHoan > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-base font-bold text-rose-700">Đã hoàn trả bệnh nhân:</span>
+                      <span className="text-xl font-black text-rose-600">{formatCurrency(soTienDaHoan)}</span>
+                    </div>
+                  )}
+                </div>
+              ) : tienHoanTra > 0 ? (
                 <div className="border-t pt-2 flex justify-between items-center">
                   <div>
                     <span className="text-base font-bold text-rose-700 block">Hoàn trả bệnh nhân:</span>
@@ -326,7 +372,7 @@ export default function ThanhToanModal({ hoaDonId, onClose, onSuccess }) {
             <MedButton variant="secondary" onClick={onClose}>
               Đóng
             </MedButton>
-            {hoaDon?.trangThai !== 'da_thanh_toan' && (
+            {!daChot && (
               <MedButton
                 variant="primary"
                 loading={submitting}
