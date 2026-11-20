@@ -326,7 +326,7 @@ export default function DatLichKhamPage() {
                 ...(res.data || {}),
                 id: paymentModal.lichHenId,
                 maLichHen: paymentModal.maLichHen,
-                soThuTu: res.data?.soThuTu || 'A001',
+                soThuTu: res.data?.soThuTu || null, // số thứ tự cấp khi check-in
                 ngayHen: selectedNgayHen,
                 gioHen: selectedSlot,
                 chuyenKhoa: selectedChuyenKhoa,

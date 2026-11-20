@@ -13,6 +13,7 @@ import { BenhAnKham } from '../ho-so-benh-an/entities/ho-so-benh-an.entity';
 import { ChiDinhCanLamSang, TrangThaiChiDinh } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHenService } from '../lich-hen/lich-hen.service';
+import { MARKER_CHO_DUYET_HOAN } from '../lich-hen/entities/lich-hen.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { YeuCauNhapKho } from '../nha-thuoc/entities/yeu-cau-nhap-kho.entity';
 import { PhieuChiHoatDong } from './entities/phieu-chi-hoat-dong.entity';
@@ -154,6 +155,8 @@ export class ThanhToanService {
         const choHoanCoc =
           hd.trangThai === 'da_thanh_toan' &&
           Boolean(hd.ghiChu?.includes('[CHỜ HOÀN CỌC'));
+        // Lễ tân ghi lỗi phía phòng khám: chờ Ban Giám Đốc duyệt mới được chi
+        const choDuyetHoan = choHoanCoc && Boolean(hd.ghiChu?.includes(MARKER_CHO_DUYET_HOAN));
         // Số tiền chờ hoàn: theo yêu cầu ghi trong ghi chú (có thể hoàn một phần), không vượt số đã thu
         const daThuHd = Number(hd.thucThu || hd.tongTien || 0);
         const yeuCauHoanMatch = hd.ghiChu?.match(/\[CHỜ HOÀN CỌC ([\d.,]+)/);
@@ -183,6 +186,7 @@ export class ThanhToanService {
           loaiHoaDon: isTamUngQuay ? 'tam_ung_tai_quay' : isTamUng ? 'tam_ung_dat_lich' : 'vien_phi',
           maLichHen,
           choHoanCoc,
+          choDuyetHoan,
           soTienChoHoan,
           thongTinHoanCoc,
           ghiChu: hd.ghiChu || null,
@@ -836,6 +840,9 @@ export class ThanhToanService {
     }
     if (hd.trangThai === 'huy') {
       throw new BadRequestException('Hóa đơn này đã được hủy trước đó');
+    }
+    if (hd.ghiChu?.includes(MARKER_CHO_DUYET_HOAN)) {
+      throw new BadRequestException('Khoản hoàn cọc này đang chờ Ban Giám Đốc duyệt (lễ tân ghi lỗi phía phòng khám), chưa được chi.');
     }
 
     const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });

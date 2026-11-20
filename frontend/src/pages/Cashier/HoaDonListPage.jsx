@@ -785,6 +785,11 @@ export default function HoaDonListPage() {
                               <span className="w-1.5 h-1.5 rounded-full bg-orange-600 animate-ping" />
                               Chờ hoàn {formatCurrency(hd.soTienChoHoan ?? hd.thucThu)}
                             </span>
+                            {hd.choDuyetHoan && (
+                              <p className="text-[10px] font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+                                Chờ Ban Giám Đốc duyệt
+                              </p>
+                            )}
                             {hd.thongTinHoanCoc?.soTaiKhoan ? (
                               <p
                                 className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 truncate max-w-[180px]"
@@ -866,13 +871,16 @@ export default function HoaDonListPage() {
 
                               <button
                                 onClick={() => setCancellingInvoice(hd)}
-                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-xl transition-colors cursor-pointer ${
+                                disabled={hd.choDuyetHoan}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                                   hd.choHoanCoc
                                     ? 'text-white bg-rose-600 hover:bg-rose-700 shadow-xs'
                                     : 'text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200'
                                 }`}
                                 title={
-                                  hd.choHoanCoc
+                                  hd.choDuyetHoan
+                                    ? 'Khoản hoàn chờ Ban Giám Đốc duyệt, chưa được chi'
+                                    : hd.choHoanCoc
                                     ? `Xem STK / Mã QR của bệnh nhân và xác nhận hoàn ${formatCurrency(hd.soTienChoHoan ?? hd.thucThu)}`
                                     : 'Hủy hóa đơn & Hoàn tiền viện phí'
                                 }

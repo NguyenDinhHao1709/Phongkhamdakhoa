@@ -47,12 +47,5 @@ export class MaGeneratorService {
   static generateOtp(): string {
     return String(randomInt(100000, 1000000));
   }
-
-  /**
-   * Tạo số thứ tự hàng đợi trong ngày: A001, A002...
-   */
-  static generateSoThuTu(soThuTu: number): string {
-    return `A${String(soThuTu).padStart(3, '0')}`;
-  }
 }
 

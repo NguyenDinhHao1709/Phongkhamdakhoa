@@ -18,6 +18,10 @@ export enum TrangThaiLichHen {
 }
 
 export const CHO_PHAN_CONG_MARKER = '[CHO_PHAN_CONG]';
+/** Khoản hoàn cọc (lễ tân ghi lỗi phía phòng khám) chờ Ban Giám Đốc duyệt: thu ngân chưa được chi */
+export const MARKER_CHO_DUYET_HOAN = '[CHỜ DUYỆT HOÀN]';
+/** Loại đơn trình Ban Giám Đốc duyệt khoản hoàn cọc đó (nội dung đơn chứa [LH_HOAN_COC: <id lịch hẹn>]) */
+export const LOAI_DON_DUYET_HOAN_COC = 'Duyệt hoàn cọc hủy lịch';
 
 @Entity('lich_hen')
 export class LichHen {

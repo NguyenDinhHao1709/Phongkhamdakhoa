@@ -142,7 +142,7 @@ export class KioskService {
         hoTen: lh.benhNhan?.hoTen,
         soDienThoai: lh.benhNhan?.soDienThoai,
         bacSi: lh.bacSi?.nhanVien?.hoTen,
-        loai: 'Đã đặt hẹn trước (Trực tuyến)',
+        loai: 'Đã đặt lịch hẹn trước',
         qrCode: `CHECKIN:${luot.maSoThuTu}:${lh.maLichHen}`,
       });
 
@@ -155,20 +155,10 @@ export class KioskService {
           ticket: await this.taoVe(existingLuot, thongTinVe(existingLuot)),
         };
       }
-      this.tiepNhanService.kiemTraLichHenCheckIn(lh);
-
-      const savedLuot = await this.luotRepo.save(this.luotRepo.create({
-        maSoThuTu: await this.tiepNhanService.generateNextSoThuTu('A'),
-        benhNhanId: lh.benhNhanId,
-        lichHenId: lh.id,
-        phongKhamId: lh.phongKhamId ?? (lh.bacSi ? await this.tiepNhanService.phongCuaBacSi(lh.bacSi) : null),
-        bacSiId: lh.bacSiId || undefined,
-        thoiGianDen: new Date(),
-        trangThai: TrangThaiTiepNhan.CHO_KHAM,
-        ghiChu: `Check-in tự động Kiosk lúc ${new Date().toLocaleTimeString('vi-VN')}. Lịch hẹn: ${lh.maLichHen}`,
-      }));
       // Đóng đủ phí khám (trừ cọc) tại quầy thu ngân rồi mới vào hàng đợi bác sĩ
-      await this.tiepNhanService.lapPhieuTamUng(savedLuot, lh.benhNhan?.hoTen);
+      const { luot: savedLuot } = await this.tiepNhanService.taoLuotTuLichHen(lh, {
+        ghiChu: `Check-in tự động Kiosk lúc ${new Date().toLocaleTimeString('vi-VN')}. Lịch hẹn: ${lh.maLichHen}`,
+      });
       await this.lichHenRepo.update(lh.id, {
         ghiChu: `${lh.ghiChu || ''} [ĐÃ_CHECKIN_KIOSK: ${savedLuot.maSoThuTu}]`.trim(),
       });

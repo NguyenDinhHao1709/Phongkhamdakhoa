@@ -25,7 +25,8 @@ import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
 import { HoaDonChiTiet } from '../thanh-toan/entities/hoa-don-chi-tiet.entity';
 import { ChiDinhCanLamSang, DichVuXetNghiem } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
-import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
+import { LichHen, TrangThaiLichHen, LOAI_DON_DUYET_HOAN_COC } from '../lich-hen/entities/lich-hen.entity';
+import { LichHenService } from '../lich-hen/lich-hen.service';
 import { NhatKyHeThong, LoaiNhatKy } from './entities/nhat-ky-he-thong.entity';
 import { auditModuleLabel } from '../../common/audit/audit-log.config';
 import { BaoCaoBoPhan } from './entities/bao-cao-bo-phan.entity';
@@ -98,6 +99,7 @@ export class QuanLyService implements OnModuleInit {
     private readonly httpService: HttpService,
     private readonly cache: MemoryCacheService,
     private readonly nhaThuocService: NhaThuocService,
+    private readonly lichHenService: LichHenService,
   ) {}
 
   // ==========================================
@@ -1841,7 +1843,20 @@ export class QuanLyService implements OnModuleInit {
     don.ghiChuXuLy = ghiChuXuLy || (action === 'duyet' ? 'Đã phê duyệt' : 'Từ chối');
     don.ngayXuLy = new Date();
 
-    await this.donGuiRepo.save(don);
+    // Chỉ xử lý đơn đang chờ (cập nhật có điều kiện): duyệt lại / bấm hai lần không chạy lại các tác vụ tiền nong bên dưới
+    const kq = await this.donGuiRepo.update(
+      { id, trangThai: TrangThaiDonGui.CHO_XU_LY },
+      { trangThai: don.trangThai, ghiChuXuLy: don.ghiChuXuLy, ngayXuLy: don.ngayXuLy },
+    );
+    if (!kq.affected) throw new BadRequestException('Đơn này đã được xử lý trước đó.');
+
+    if (don.loaiDon === LOAI_DON_DUYET_HOAN_COC) {
+      const lichHenId = Number(don.noiDung?.match(/\[LH_HOAN_COC:\s*(\d+)\]/)?.[1]);
+      if (lichHenId) {
+        await this.lichHenService.xuLyDuyetHoanCoc(lichHenId, action === 'duyet', don.ghiChuXuLy)
+          .catch((err) => console.error('Lỗi xử lý duyệt hoàn cọc:', err));
+      }
+    }
 
     // Xử lý logic đặc thù nếu là "Yêu cầu hủy ca khám" của Bác sĩ
     if (don.loaiDon === 'Yêu cầu hủy ca khám' || don.noiDung?.includes('Lịch hẹn ID:')) {
@@ -1854,30 +1869,32 @@ export class QuanLyService implements OnModuleInit {
             relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
           });
 
-          if (lh) {
+          // Lịch đã được xử lý trong lúc chờ duyệt (vd. quá giờ hẹn hệ thống đã tự hủy và hoàn cọc) thì không làm lại
+          if (lh && lh.trangThai === TrangThaiLichHen.CHO_DUYET_HUY) {
             if (action === 'duyet') {
+              // Hoàn đúng số cọc đã thu qua PayOS (lịch lễ tân đặt không thu cọc thì không có gì để hoàn)
+              const [coc]: any[] = await this.lichHenRepo.manager.query(
+                `SELECT thuc_thu FROM hoa_don WHERE ma_hoa_don = ? AND trang_thai = 'da_thanh_toan' LIMIT 1`,
+                [`HDT${(lh.maLichHen || '').replace(/^LH/i, '')}`.slice(0, 20)],
+              );
+              const soTienCoc = Number(coc?.thuc_thu || 0);
+              const soTienCocText = `${soTienCoc.toLocaleString('vi-VN')}đ`;
               lh.trangThai = TrangThaiLichHen.DA_HUY;
-              lh.ghiChu = `${(lh.ghiChu || '').trim()} [CHỜ HOÀN CỌC 40.000đ] [Ban Giám Đốc đã duyệt hủy ca: ${don.ghiChuXuLy}] [Được hoàn tiền 100% tạm ứng 40.000đ]`.trim();
+              lh.ghiChu = `${(lh.ghiChu || '').trim()}${soTienCoc > 0 ? ` [CHỜ HOÀN CỌC ${soTienCocText}]` : ''} [Ban Giám Đốc đã duyệt hủy ca: ${don.ghiChuXuLy}]`.trim();
               await this.lichHenRepo.save(lh);
-
-              // Đánh dấu phiếu thu tạm ứng (HDT...) sang trạng thái Chờ Thu ngân hoàn cọc (kèm thông tin nhận hoàn)
-              const maHdTamUng = `HDT${(lh.maLichHen || '').replace(/^LH/i, '')}`;
-              const pendingNote = `[CHỜ HOÀN CỌC 40.000đ] [TẠM ỨNG ĐẶT LỊCH] [MÃ_LỊCH_HẸN: ${lh.maLichHen}] [TK_HOÀN_TIỀN: chua_cung_cap|Chờ bệnh nhân cập nhật STK hoặc nhận tại quầy||${lh.benhNhan?.hoTen || ''}] [LÝ_DO_HỦY: Ban Giám Đốc phê duyệt hủy ca khám (${don.ghiChuXuLy || 'Theo đề xuất Bác sĩ'})]`;
-              await this.lichHenRepo.manager.query(
-                `UPDATE hoa_don
-                 SET trang_thai = 'da_thanh_toan',
-                     ghi_chu = ?
-                 WHERE (ma_hoa_don = ? OR ghi_chu LIKE ?)`,
-                [pendingNote, maHdTamUng, `%[MÃ_LỊCH_HẸN: ${lh.maLichHen}]%`],
-              ).catch(() => {});
+              if (soTienCoc > 0) {
+                await this.lichHenService.yeuCauHoanCocHoaDonTamUng(
+                  lh, `Ban Giám Đốc phê duyệt hủy ca khám (${(don.ghiChuXuLy || 'Theo đề xuất Bác sĩ').replace(/[[\]]/g, '')})`, undefined, soTienCoc,
+                ).catch(() => {});
+              }
 
               // 1. GỬI THÔNG BÁO CHO BỆNH NHÂN VỀ CA HỦY VÀ HƯỚNG DẪN CẬP NHẬT STK NHẬN HOÀN CỌC
               const bnUserId = lh.benhNhan?.nguoiDungId;
               if (bnUserId) {
                 await this.thongBaoService.taoThongBao({
                   nguoiNhanId: bnUserId,
-                  tieuDe: `Thông báo hủy ca khám & nhận hoàn cọc 40.000đ: ${lh.maLichHen}`,
-                  noiDung: `Ca khám mã ${lh.maLichHen} vào ngày ${lh.ngayHen} lúc ${lh.gioHen} của bạn đã được hủy theo đề xuất của Bác sĩ ${lh.bacSi?.nhanVien?.hoTen || ''} (Ban Giám Đốc đã phê duyệt). Quý khách được hoàn lại 100% tiền tạm ứng (40.000đ). Vui lòng vào mục "Lịch hẹn của tôi" bấm "Cập nhật STK nhận hoàn cọc" hoặc nhận trực tiếp tại Quầy Thu Ngân!`,
+                  tieuDe: `Thông báo hủy ca khám${soTienCoc > 0 ? ` & nhận hoàn cọc ${soTienCocText}` : ''}: ${lh.maLichHen}`,
+                  noiDung: `Ca khám mã ${lh.maLichHen} vào ngày ${lh.ngayHen} lúc ${lh.gioHen} của bạn đã được hủy theo đề xuất của Bác sĩ ${lh.bacSi?.nhanVien?.hoTen || ''} (Ban Giám Đốc đã phê duyệt).${soTienCoc > 0 ? ` Quý khách được hoàn lại 100% tiền cọc (${soTienCocText}). Vui lòng vào mục "Lịch hẹn của tôi" bấm "Cập nhật STK nhận hoàn cọc" hoặc nhận trực tiếp tại Quầy Thu Ngân!` : ''}`,
                   loai: 'lich_hen',
                   doiTuongBang: 'lich_hen',
                   doiTuongId: lh.id,
@@ -1890,7 +1907,7 @@ export class QuanLyService implements OnModuleInit {
                 await this.thongBaoService.taoThongBao({
                   nguoiNhanId: bsUserId,
                   tieuDe: `Ban Giám Đốc đã DUYỆT hủy ca khám [${lh.maLichHen}]`,
-                  noiDung: `Yêu cầu hủy ca khám ${lh.maLichHen} (ngày ${lh.ngayHen} lúc ${lh.gioHen}) của bạn đã được Ban Giám Đốc phê duyệt. Hệ thống đã tự động gửi thông báo đến bệnh nhân và hoàn lại tiền tạm ứng.`,
+                  noiDung: `Yêu cầu hủy ca khám ${lh.maLichHen} (ngày ${lh.ngayHen} lúc ${lh.gioHen}) của bạn đã được Ban Giám Đốc phê duyệt. Hệ thống đã tự động gửi thông báo đến bệnh nhân${soTienCoc > 0 ? ' và chuyển thu ngân hoàn tiền cọc' : ''}.`,
                   loai: 'lich_hen',
                   doiTuongBang: 'lich_hen',
                   doiTuongId: lh.id,

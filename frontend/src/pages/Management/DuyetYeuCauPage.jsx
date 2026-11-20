@@ -53,6 +53,7 @@ const LOAI_DON_PRESETS = [
   { value: 'Đề xuất chi phí vận hành (OPEX)', label: '🏢 Đề xuất chi phí vận hành (OPEX)' },
   { value: 'Yêu cầu mua thuốc', label: '📦 Yêu cầu mua thuốc' },
   { value: 'Yêu cầu hủy ca khám', label: 'Yêu cầu hủy ca khám' },
+  { value: 'Duyệt hoàn cọc hủy lịch', label: 'Duyệt hoàn cọc hủy lịch (lễ tân)' },
   { value: 'Đề xuất vật tư y tế', label: 'Đề xuất vật tư y tế' },
   { value: 'Xin nghỉ phép', label: 'Xin nghỉ phép' },
   { value: 'Đề xuất đổi ca trực', label: 'Đổi ca trực' },
@@ -245,6 +246,8 @@ export default function DuyetYeuCauPage() {
       setApproveNote(
         'Ban Giám Đốc đồng ý phê duyệt hủy ca khám. Hệ thống tự động hoàn tiền 100% tạm ứng cho bệnh nhân.'
       );
+    } else if (don.loaiDon === 'Duyệt hoàn cọc hủy lịch') {
+      setApproveNote('Xác nhận lỗi phía phòng khám. Đồng ý hoàn 100% tiền cọc, thu ngân tiến hành hoàn cho bệnh nhân.');
     } else if (don.isCancelOpexRequest || don.isCancelApRequest) {
       setApproveNote('Ban Giám Đốc đồng ý phê duyệt hủy phiếu chi. Kế toán / Thu ngân tiến hành thu hồi tiền vào quỹ phòng khám.');
     } else if (don.isApPaymentRequest) {
@@ -586,7 +589,7 @@ export default function DuyetYeuCauPage() {
         dot: 'bg-purple-600',
       };
     }
-    if (loaiDon?.includes('hủy ca')) {
+    if (loaiDon?.includes('hủy ca') || loaiDon?.includes('hoàn cọc')) {
       return {
         icon: CalendarOff,
         color: 'bg-rose-50 text-rose-700 border-rose-200',

@@ -26,6 +26,7 @@ import { QuanLyController } from './quan-ly.controller';
 import { QuanLyService } from './quan-ly.service';
 import { ThongBaoModule } from '../thong-bao/thong-bao.module';
 import { NhaThuocModule } from '../nha-thuoc/nha-thuoc.module';
+import { LichHenModule } from '../lich-hen/lich-hen.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { NhaThuocModule } from '../nha-thuoc/nha-thuoc.module';
     ]),
     ThongBaoModule,
     NhaThuocModule, // số liệu kho dược dùng chung với trang Nhà thuốc
+    LichHenModule, // duyệt hoàn cọc lễ tân ghi lỗi phía phòng khám
     HttpModule,
   ],
   controllers: [QuanLyController],

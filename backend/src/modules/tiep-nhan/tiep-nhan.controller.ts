@@ -7,7 +7,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import {
   TiepNhanService,
-  TaoTiepNhanDto, TiepNhanTaiQuayDto, GhiSinhHieuDto, DieuPhoiPhongDto, CapNhatTrangThaiTiepNhanDto,
+  TaoTiepNhanDto, TiepNhanTaiQuayDto, GhiSinhHieuDto, DieuPhoiPhongDto, CapNhatTrangThaiTiepNhanDto, HuyLichHenDto,
 } from './tiep-nhan.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -142,6 +142,21 @@ export class TiepNhanController {
   @Quyen('tiep_nhan.goi_so')
   dieuPhoiPhong(@Param('id', ParseIntPipe) id: number, @Body() dto: DieuPhoiPhongDto) {
     return this.service.dieuPhoiPhong(id, dto);
+  }
+
+  @Get('bao-cao/huy-lich')
+  @Roles('ban_giam_doc', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Báo cáo lịch hẹn / lượt khám bị hủy tại quầy theo nhân viên và lỗi bên nào' })
+  baoCaoHuyLich(@Query('tuNgay') tuNgay?: string, @Query('denNgay') denNgay?: string) {
+    return this.service.baoCaoHuyLich({ tuNgay, denNgay });
+  }
+
+  @Patch('lich-hen/:lichHenId/huy')
+  @Roles('tiep_tan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
+  @ApiOperation({ summary: 'Hủy lịch hẹn khám trực tiếp (kèm lượt đã check-in): lỗi phòng khám hoàn cọc, lỗi bệnh nhân mất cọc' })
+  @Quyen('lich_hen.duyet')
+  huyLichHen(@Param('lichHenId', ParseIntPipe) lichHenId: number, @Body() dto: HuyLichHenDto, @CurrentUser() user: any) {
+    return this.service.huyLichHen(lichHenId, dto, user);
   }
 
   @Patch(':id/trang-thai')

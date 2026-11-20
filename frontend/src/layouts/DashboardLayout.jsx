@@ -8,7 +8,7 @@ import { VAI_TRO_LABEL } from '../utils/constants';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { toBackendUrl } from '../utils/backendUrl';
 import {
-  Stethoscope, Users, Calendar, ClipboardList,
+  Stethoscope, Users, Calendar, ClipboardList, CalendarX,
   FlaskConical, Pill, Receipt, BarChart3,
   LogOut, ChevronLeft, ChevronRight, Bell,
   User, Settings, Video, Clock, Send, Bot, Database,
@@ -120,6 +120,7 @@ const MENU_CONFIG = {
     { to: '/ban-giam-doc/quan-ly-cham-cong', icon: ScanFace, label: 'Quản lý chấm công', perm: 'cham_cong.quan_ly' },
     { to: '/ban-giam-doc/tra-cuu', icon: FileSearch, label: 'Tra cứu tổng hợp', perm: 'dieu_hanh.tra_cuu' },
     { to: '/ban-giam-doc/phe-duyet-don', icon: CheckSquare, label: 'Phê duyệt yêu cầu', perm: 'don_tu.phe_duyet' },
+    { to: '/ban-giam-doc/huy-lich', icon: CalendarX, label: 'Lịch hủy tại quầy', perm: 'don_tu.phe_duyet' },
     { to: '/ban-giam-doc/ca-nhan', icon: User, label: 'Thông tin cá nhân' },
   ],
 };

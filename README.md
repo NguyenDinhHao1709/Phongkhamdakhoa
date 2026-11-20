@@ -34,6 +34,13 @@ Python ML: https://phongkham-python-ml.onrender.com/health
   3. Người có lịch hẹn đã đến giờ
   4. Khách vãng lai
 - **Qua lượt** khi gọi mà bệnh nhân vắng mặt. Vắng lần thứ 3 thì hủy lượt.
+- **Hủy lịch hẹn tại quầy theo lỗi bên nào:**
+  - lỗi phía phòng khám: hoàn 100% cọc sau khi Ban Giám Đốc duyệt;
+  - lỗi phía bệnh nhân: hoàn theo quy định hủy của giám đốc;
+  - tiếp nhận nhầm: chỉ hủy lượt, giữ lịch để check-in lại.
+
+  Tạm ứng đã đóng tại quầy luôn được hoàn. Bệnh nhân luôn được thông báo, và Ban Giám Đốc xem báo cáo "Lịch hủy tại quầy".
+- **Số thứ tự** chỉ cấp khi check-in. Vé hẹn điện tử dùng mã lịch hẹn, mã QR quét được ở kiosk.
 - **Bác sĩ chậm giờ:** báo trễ ở mốc 15 phút; đến 30 phút thì gợi ý chuyển sang bác sĩ khác.
 - **Suất tối đa mỗi buổi:** chừa sẵn khung trống để bác sĩ bù giờ.
 - **BHYT:** tính mức hưởng theo mã thẻ, kiểm tra hạn thẻ, đúng/trái tuyến, giấy chuyển tuyến và ngưỡng chi phí được BHYT trả 100%.
@@ -178,3 +185,4 @@ Mật khẩu tài khoản mẫu không ghi trong repo; liên hệ quản trị h
   - thu đồng thời;
   - hoàn cọc;
   - tư vấn trực tuyến.
+d:\KLTN\tools\zalo-relay\chay-relay.bat

@@ -15,7 +15,9 @@ import {
   IsBoolean, IsIn,
 } from 'class-validator';
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
-import { LichHen, TrangThaiLichHen } from '../lich-hen/entities/lich-hen.entity';
+import { LichHen, TrangThaiLichHen, MARKER_CHO_DUYET_HOAN, LOAI_DON_DUYET_HOAN_COC } from '../lich-hen/entities/lich-hen.entity';
+import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
+import { DonGui, TrangThaiDonGui } from '../nhan-vien/entities/don-gui.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { LichLamViec } from '../nhan-vien/entities/lich-lam-viec.entity';
 import { OnModuleInit } from '@nestjs/common';
@@ -88,11 +90,9 @@ function cungChuyenKhoa(luot: LuotTiepNhan, bs: BacSi): boolean {
 /** Check-in lịch hẹn tại quầy (khách vãng lai đi qua POST /tiep-nhan/tai-quay) */
 export class TaoTiepNhanDto {
   @ApiProperty() @IsInt() @IsPositive() lichHenId: number;
+  /** Không dùng: bệnh nhân, bác sĩ, phòng lấy theo lịch hẹn */
   @ApiPropertyOptional() @IsOptional() @IsInt() benhNhanId?: number;
-  @ApiPropertyOptional() @IsOptional() @IsInt() phongKhamId?: number;
-  @ApiPropertyOptional() @IsOptional() @IsInt() bacSiId?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() ghiChu?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() lyDoKham?: string;
   @ApiPropertyOptional({ enum: DOI_TUONG_UU_TIEN }) @IsOptional() @IsIn(DOI_TUONG_UU_TIEN) doiTuongUuTien?: string;
 }
 
@@ -132,16 +132,46 @@ export class DieuPhoiPhongDto {
   @ApiPropertyOptional() @IsOptional() @IsInt() bacSiId?: number;
 }
 
+/**
+ * Bên gây ra việc hủy quyết định tiền cọc đặt lịch: phía phòng khám → hoàn cọc; phía bệnh nhân → mất cọc;
+ * tiếp nhận nhầm → chỉ hủy lượt, lịch hẹn giữ nguyên để check-in lại. Tạm ứng TU đã thu luôn được hoàn (chưa khám).
+ */
+export const LOAI_HUY = ['phong_kham', 'benh_nhan', 'nham'] as const;
+export type LoaiHuy = typeof LOAI_HUY[number];
+/** Lý do hủy ghi vào ghi chú dạng [..]: bỏ ngoặc vuông để không làm vỡ các marker */
+const sachLyDo = (s: string) => s.replace(/[[\]]/g, '').trim();
+const NHAN_LOAI_HUY: Record<LoaiHuy, string> = {
+  phong_kham: 'Phòng khám hủy',
+  benh_nhan: 'Hủy do bệnh nhân',
+  nham: 'Tiếp nhận nhầm',
+};
+
 export class CapNhatTrangThaiTiepNhanDto {
   @ApiProperty({ enum: ['cho_kham', 'dang_kham', 'dang_cls', 'da_co_kq_cls', 'hoan_thanh', 'da_huy'] })
   @IsEnum(['cho_kham', 'dang_kham', 'dang_cls', 'da_co_kq_cls', 'hoan_thanh', 'da_huy'])
   trangThai: string;
+  @ApiPropertyOptional({ enum: LOAI_HUY, description: 'Bắt buộc khi hủy lượt' }) @IsOptional() @IsIn(LOAI_HUY) loaiHuy?: LoaiHuy;
+  @ApiPropertyOptional() @IsOptional() @IsString() lyDo?: string;
+}
+
+export class HuyLichHenDto {
+  @ApiProperty({ enum: LOAI_HUY }) @IsIn(LOAI_HUY) loaiHuy: LoaiHuy;
+  @ApiProperty() @IsString() lyDo: string;
 }
 
 import { DanhGiaCaKham } from '../danh-gia/entities/danh-gia.entity';
 import { QueueGateway } from './queue.gateway';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { ThanhToanService, MA_TAM_UNG_QUAY } from '../thanh-toan/thanh-toan.service';
+import { LichHenService } from '../lich-hen/lich-hen.service';
+
+// Lịch hẹn còn hiệu lực (hủy được)
+const LICH_CON_HIEU_LUC = [
+  TrangThaiLichHen.CHO_THANH_TOAN, TrangThaiLichHen.CHO_XAC_NHAN, TrangThaiLichHen.DA_XAC_NHAN,
+  TrangThaiLichHen.DANG_KHAM, TrangThaiLichHen.CHO_DUYET_HUY,
+];
+// Lượt còn hủy được (chưa kết thúc khám)
+const LUOT_HUY_DUOC = [TrangThaiTiepNhan.CHO_KHAM, TrangThaiTiepNhan.DANG_KHAM, TrangThaiTiepNhan.DANG_CLS, TrangThaiTiepNhan.DA_CO_KQ_CLS];
 
 // Lượt được vào hàng đợi bác sĩ: ca cấp cứu hoặc phiếu tạm ứng tại quầy đã thu (dùng với tham số :maTu).
 // Thiếu phiếu thì KHÔNG cho vào (lỗi lập phiếu không được biến thành khám miễn phí)
@@ -176,6 +206,7 @@ export class TiepNhanService implements OnModuleInit {
     private readonly queueGateway: QueueGateway,
     private readonly thongBaoService: ThongBaoService,
     private readonly thanhToanService: ThanhToanService,
+    private readonly lichHenService: LichHenService,
   ) {}
 
   onModuleInit() {
@@ -872,6 +903,36 @@ export class TiepNhanService implements OnModuleInit {
     if (String(lh.ngayHen).slice(0, 10) !== today) {
       throw new BadRequestException({ code: 'LICH_HEN_KHONG_PHAI_HOM_NAY', message: `Lịch hẹn ${lh.maLichHen} hẹn ngày ${String(lh.ngayHen).slice(0, 10)}, chỉ check-in đúng ngày hẹn.` });
     }
+    // Lượt không có bác sĩ thì không bác sĩ nào thấy/gọi được
+    if (!lh.bacSiId) {
+      throw new BadRequestException({ code: 'LICH_HEN_CHUA_CO_BAC_SI', message: `Lịch hẹn ${lh.maLichHen} chưa có bác sĩ phụ trách, vui lòng phân công bác sĩ tại quầy trước khi check-in.` });
+    }
+  }
+
+  /**
+   * Check-in lịch hẹn (dùng chung quầy và kiosk, gọi trong voiKhoaLichHen): tạo lượt cho bác sĩ của lịch,
+   * phòng theo lịch hoặc theo chuyên khoa của bác sĩ, ghi chuyên khoa đã đặt; rồi lập phiếu tạm ứng.
+   */
+  async taoLuotTuLichHen(lh: LichHen, opts: { tiepTanId?: number | null; doiTuongUuTien?: string; ghiChu?: string }) {
+    this.kiemTraLichHenCheckIn(lh);
+    const bacSi = lh.bacSi ?? await this.bacSiRepo.findOne({ where: { id: lh.bacSiId! } });
+    const saved = await this.luotRepo.save(this.luotRepo.create({
+      benhNhanId: lh.benhNhanId,
+      lichHenId: lh.id,
+      tiepTanId: opts.tiepTanId ?? null,
+      bacSiId: lh.bacSiId!,
+      phongKhamId: lh.phongKhamId ?? (bacSi ? await this.phongCuaBacSi(bacSi) : null),
+      chuyenKhoa: lh.lyDoKham?.match(/\[Chuyên khoa:\s*([^\]]+)\]/i)?.[1].trim() || null,
+      doiTuongUuTien: opts.doiTuongUuTien || null,
+      maSoThuTu: await this.generateNextSoThuTu(),
+      thoiGianDen: new Date(),
+      trangThai: TrangThaiTiepNhan.CHO_KHAM,
+      ghiChu: opts.ghiChu || null,
+    }));
+    const luot = (await this.luotRepo.findOne({ where: { id: saved.id }, relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'] }))!;
+    // Phải đóng tạm ứng (đủ phí khám trừ cọc) trước khi vào hàng đợi bác sĩ
+    const phieuTu = await this.lapPhieuTamUng(saved, luot.benhNhan?.hoTen);
+    return { luot, phieuTu };
   }
 
   /** Lượt còn hiệu lực (chưa hủy) của lịch hẹn */
@@ -938,45 +999,19 @@ export class TiepNhanService implements OnModuleInit {
     }
   }
 
-  /** Lễ tân check-in bệnh nhân có lịch hẹn: kiểm tra lịch hẹn hợp lệ, dùng lại lượt đã có (tự tạo lúc đến giờ / kiosk) */
+  /** Lễ tân check-in bệnh nhân có lịch hẹn: đã có lượt (vd. check-in ở kiosk) thì dùng lại */
   private async checkInLichHenTaiQuay(dto: TaoTiepNhanDto, tiepTanId: number) {
     const existing = await this.luotCuaLichHen(dto.lichHenId);
     if (existing) {
       return { data: existing, message: `Lịch hẹn đã được tiếp nhận trước đó. Số thứ tự: ${existing.maSoThuTu}.` };
     }
-    const lh = await this.lichHenRepo.findOne({ where: { id: dto.lichHenId } });
+    const lh = await this.lichHenRepo.findOne({ where: { id: dto.lichHenId }, relations: ['bacSi'] });
     if (!lh) throw new NotFoundException({ code: 'LICH_HEN_KHONG_TON_TAI', message: 'Không tìm thấy lịch hẹn.' });
-    this.kiemTraLichHenCheckIn(lh);
 
-    return this.taoLuot({
-      ...dto,
-      benhNhanId: lh.benhNhanId,
-      bacSiId: dto.bacSiId ?? lh.bacSiId,
-      phongKhamId: dto.phongKhamId ?? lh.phongKhamId,
-    }, tiepTanId);
-  }
-
-  private async taoLuot(dto: TaoTiepNhanDto, tiepTanId: number) {
-    const maSoThuTu = await this.generateNextSoThuTu();
-
-    const luot = this.luotRepo.create({
-      ...dto,
-      maSoThuTu,
-      tiepTanId,
-      thoiGianDen: new Date(),
-    });
-
-    const saved = await this.luotRepo.save(luot);
-    const withRelations = await this.luotRepo.findOne({
-      where: { id: saved.id },
-      relations: ['benhNhan', 'bacSi', 'bacSi.nhanVien'],
-    });
-
-    // Phải đóng tạm ứng (có lịch hẹn: đủ phí khám trừ cọc) trước khi vào hàng đợi bác sĩ
-    const phieuTu = await this.lapPhieuTamUng(saved, withRelations?.benhNhan?.hoTen);
+    const { luot, phieuTu } = await this.taoLuotTuLichHen(lh, { tiepTanId, doiTuongUuTien: dto.doiTuongUuTien, ghiChu: dto.ghiChu });
     return {
-      data: withRelations,
-      message: `Tiếp nhận thành công. Số thứ tự: ${maSoThuTu}.${phieuTu ? ' Mời bệnh nhân đóng tạm ứng tại quầy thu ngân.' : ''}`,
+      data: luot,
+      message: `Tiếp nhận thành công. Số thứ tự: ${luot.maSoThuTu}.${phieuTu ? ' Mời bệnh nhân đóng tạm ứng tại quầy thu ngân.' : ''}`,
     };
   }
 
@@ -1101,8 +1136,71 @@ export class TiepNhanService implements OnModuleInit {
       await this.kiemTraDaDongTamUng(luot);
     }
 
-    // Chốt chặn ERP Y Tế khi hủy lượt khám: Giải phóng giữ chỗ kho thuốc, hủy CLS nháp & chặn nếu đã thu tiền/xuất thuốc
     if (dto.trangThai === TrangThaiTiepNhan.DA_HUY) {
+      if (!dto.loaiHuy || !dto.lyDo?.trim()) {
+        throw new BadRequestException({ code: 'THIEU_LY_DO_HUY', message: 'Hủy lượt khám phải chọn lỗi bên nào và ghi lý do.' });
+      }
+      const huy = () => this.huyLuot(luot, dto.loaiHuy!, sachLyDo(dto.lyDo!), user);
+      const ketQua = luot.lichHenId ? await this.voiKhoaLichHen(luot.lichHenId, huy) : await huy();
+      const updated = await this.luotRepo.findOne({ where: { id: luotId }, relations: ['benhNhan', 'bacSi'] });
+      return { data: updated, callEvent: null, message: ketQua };
+    }
+
+    const tuChoKham = luot.trangThai === TrangThaiTiepNhan.CHO_KHAM;
+    luot.trangThai = dto.trangThai as TrangThaiTiepNhan;
+    await this.luotRepo.save(luot);
+    if (tuChoKham && dto.trangThai === TrangThaiTiepNhan.DANG_KHAM) await this.lichHenDangKham(luot);
+
+    let callEvent = null;
+    if (dto.trangThai === 'dang_kham') {
+      callEvent = await this.recordAndEmitCall(luotId);
+    } else {
+      if (['hoan_thanh', 'dang_cls'].includes(dto.trangThai) && this.latestCallEvent?.id === luotId) {
+        this.latestCallEvent = null;
+      }
+      // Mọi đổi trạng thái khác (chờ khám, có kết quả CLS, chờ thanh toán…) cũng báo hàng đợi
+      this.baoHangDoiThayDoi();
+    }
+
+    const updated = await this.luotRepo.findOne({ where: { id: luotId }, relations: ['benhNhan', 'bacSi'] });
+    return { data: updated, callEvent, message: 'Cập nhật trạng thái thành công' };
+  }
+
+  /**
+   * Lễ tân hủy lịch hẹn khám trực tiếp (kèm lượt đã check-in nếu có). Lỗi phía phòng khám → hoàn cọc;
+   * phía bệnh nhân → mất cọc; tiếp nhận nhầm → chỉ hủy lượt, lịch giữ nguyên để check-in lại.
+   */
+  async huyLichHen(lichHenId: number, dto: HuyLichHenDto, user: any) {
+    const lyDo = sachLyDo(dto.lyDo || '');
+    if (!lyDo) throw new BadRequestException({ code: 'THIEU_LY_DO_HUY', message: 'Phải ghi lý do hủy.' });
+    return this.voiKhoaLichHen(lichHenId, async () => {
+      const lh = await this.lichHenRepo.findOne({ where: { id: lichHenId } });
+      if (!lh) throw new NotFoundException({ code: 'LICH_HEN_KHONG_TON_TAI', message: 'Không tìm thấy lịch hẹn.' });
+      if (lh.hinhThuc === 'truc_tuyen') {
+        throw new BadRequestException({ code: 'LICH_HEN_TRUC_TUYEN', message: 'Chức năng này chỉ dùng cho lịch khám trực tiếp.' });
+      }
+      if (!LICH_CON_HIEU_LUC.includes(lh.trangThai)) {
+        throw new BadRequestException({ code: 'LICH_HEN_DA_KET_THUC', message: `Lịch hẹn ${lh.maLichHen} đang "${lh.trangThai}", không hủy được.` });
+      }
+      const luot = await this.luotCuaLichHen(lichHenId);
+      if (luot) return { data: { lichHenId }, message: await this.huyLuot(luot, dto.loaiHuy, lyDo, user) };
+      if (dto.loaiHuy === 'nham') {
+        throw new BadRequestException({ code: 'CHUA_CHECK_IN', message: 'Lịch hẹn chưa check-in, không có lượt khám nào để hủy.' });
+      }
+      return { data: { lichHenId }, message: await this.xuLyLichHenKhiHuy(lh, dto.loaiHuy, lyDo, await this.nguoiHuy(user), null) };
+    });
+  }
+
+  /**
+   * Hủy lượt khám: chặn khi đã quyết toán / đã cấp thuốc / đã kết thúc khám; hủy đơn thuốc chờ, CLS chưa có kết quả,
+   * hóa đơn nháp; tạm ứng TU đã thu → chờ hoàn; lịch hẹn xử lý theo lỗi bên nào. Trả về thông báo cho người dùng.
+   */
+  private async huyLuot(luot: LuotTiepNhan, loaiHuy: LoaiHuy, lyDo: string, user: any): Promise<string> {
+    const luotId = luot.id;
+    if (!LUOT_HUY_DUOC.includes(luot.trangThai)) {
+      throw new BadRequestException({ code: 'LUOT_KHONG_HUY_DUOC', message: `Lượt ${luot.maSoThuTu} đang "${luot.trangThai}" (đã kết thúc khám hoặc đã hủy), không hủy được.` });
+    }
+    {
       const paidHdRows: any[] = await this.luotRepo.manager.query(
         `SELECT ma_hoa_don FROM hoa_don WHERE luot_tiep_nhan_id = ? AND trang_thai = 'da_thanh_toan' LIMIT 1`,
         [luotId],
@@ -1150,34 +1248,179 @@ export class TiepNhanService implements OnModuleInit {
       );
     }
 
-    const tuChoKham = luot.trangThai === TrangThaiTiepNhan.CHO_KHAM;
-    luot.trangThai = dto.trangThai as TrangThaiTiepNhan;
-    await this.luotRepo.save(luot);
-    if (tuChoKham && dto.trangThai === TrangThaiTiepNhan.DANG_KHAM) await this.lichHenDangKham(luot);
-    if (dto.trangThai === TrangThaiTiepNhan.DA_HUY) {
-      // Tạm ứng đã thu → chờ hoàn; lịch hẹn của lượt cũng hủy
-      await this.thanhToanService.xuLyTamUngKhiHuyLuot(luot, 'nhân viên hủy lượt khám');
-      if (luot.lichHenId) {
-        await this.lichHenRepo.update(
-          { id: luot.lichHenId, trangThai: In([TrangThaiLichHen.DA_XAC_NHAN, TrangThaiLichHen.DANG_KHAM]) },
-          { trangThai: TrangThaiLichHen.DA_HUY },
-        );
-      }
+    const nhan = NHAN_LOAI_HUY[loaiHuy];
+    const nguoiHuy = await this.nguoiHuy(user);
+    await this.luotRepo.update(luotId, {
+      trangThai: TrangThaiTiepNhan.DA_HUY,
+      ghiChu: `${luot.ghiChu || ''} [${nhan}: ${lyDo} - ${nguoiHuy.ten}]`.trim(),
+    });
+    if (this.latestCallEvent?.id === luotId) this.latestCallEvent = null;
+    // Chưa khám xong nên tạm ứng đã thu luôn được hoàn, bất kể lỗi bên nào
+    await this.thanhToanService.xuLyTamUngKhiHuyLuot(luot, `${nhan}: ${lyDo}`);
+    this.baoHangDoiThayDoi();
+
+    const lh = luot.lichHenId ? await this.lichHenRepo.findOne({ where: { id: luot.lichHenId } }) : null;
+    const message = `Đã hủy lượt ${luot.maSoThuTu}.`;
+    if (lh) return `${message} ${await this.xuLyLichHenKhiHuy(lh, loaiHuy, lyDo, nguoiHuy, luotId)}`;
+    await this.ghiNhatKyHuy({ lichHenId: null, luotId, nguoiHuy, loaiHuy, lyDo, soTien: 0, trangThaiHoan: 'khong_hoan' });
+    return message;
+  }
+
+  /** Báo cáo lịch / lượt bị hủy tại quầy cho Ban Giám Đốc: tổng hợp theo nhân viên và chi tiết từng lần hủy */
+  async baoCaoHuyLich(query: { tuNgay?: string; denNgay?: string }) {
+    const { fromDate, toDate } = khoangNgayVN(query);
+    const chiTiet: any[] = await this.luotRepo.manager.query(
+      `SELECT nk.id, nk.thoi_gian AS thoiGian, nk.nhan_vien_id AS nhanVienId, nk.ten_nguoi_huy AS tenNguoiHuy,
+              nk.loai_huy AS loaiHuy, nk.ly_do AS lyDo, nk.so_tien_hoan_coc AS soTienHoan, nk.trang_thai_hoan AS trangThaiHoan,
+              lh.ma_lich_hen AS maLichHen, lh.ngay_hen AS ngayHen, lh.gio_hen AS gioHen, bn.ho_ten AS tenBenhNhan,
+              ltn.ma_so_thu_tu AS maSoThuTu
+         FROM nhat_ky_huy_lich nk
+         LEFT JOIN lich_hen lh ON lh.id = nk.lich_hen_id
+         LEFT JOIN luot_tiep_nhan ltn ON ltn.id = nk.luot_tiep_nhan_id
+         LEFT JOIN benh_nhan bn ON bn.id = COALESCE(lh.benh_nhan_id, ltn.benh_nhan_id)
+        WHERE DATE(nk.thoi_gian) BETWEEN ? AND ?
+        ORDER BY nk.thoi_gian DESC`,
+      [fromDate, toDate],
+    );
+    const theoNhanVien = new Map<string, any>();
+    for (const r of chiTiet) {
+      r.soTienHoan = Number(r.soTienHoan);
+      const key = String(r.nhanVienId ?? r.tenNguoiHuy);
+      const nv = theoNhanVien.get(key) ?? { nhanVienId: r.nhanVienId, tenNguoiHuy: r.tenNguoiHuy, tong: 0, phong_kham: 0, benh_nhan: 0, nham: 0, tienHoan: 0 };
+      nv.tong += 1;
+      nv[r.loaiHuy] = (nv[r.loaiHuy] || 0) + 1;
+      if (r.trangThaiHoan !== 'tu_choi') nv.tienHoan += r.soTienHoan;
+      theoNhanVien.set(key, nv);
+    }
+    return {
+      data: { tuNgay: fromDate, denNgay: toDate, theoNhanVien: [...theoNhanVien.values()].sort((a, b) => b.tong - a.tong), chiTiet },
+      message: 'Lấy báo cáo hủy lịch thành công',
+    };
+  }
+
+  /** Nhân viên thực hiện hủy (ghi vào lịch, lượt và nhật ký hủy) */
+  private async nguoiHuy(user: any) {
+    const nguoiDungId = user?.id || user?.userId;
+    const nv = nguoiDungId ? await this.luotRepo.manager.findOne(NhanVien, { where: { nguoiDungId } }) : null;
+    return { nhanVienId: nv?.id ?? null, ten: nv?.hoTen || user?.tenDangNhap || user?.vai_tro || 'không rõ' };
+  }
+
+  private async ghiNhatKyHuy(d: {
+    lichHenId: number | null; luotId: number | null; nguoiHuy: { nhanVienId: number | null; ten: string };
+    loaiHuy: LoaiHuy; lyDo: string; soTien: number; trangThaiHoan: 'khong_hoan' | 'cho_duyet' | 'tu_dong';
+  }) {
+    await this.luotRepo.manager.query(
+      `INSERT INTO nhat_ky_huy_lich (lich_hen_id, luot_tiep_nhan_id, nhan_vien_id, ten_nguoi_huy, loai_huy, ly_do, so_tien_hoan_coc, trang_thai_hoan)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [d.lichHenId, d.luotId, d.nguoiHuy.nhanVienId, d.nguoiHuy.ten, d.loaiHuy, d.lyDo.slice(0, 500), d.soTien, d.trangThaiHoan],
+    ).catch((e) => console.warn('Lỗi ghi nhật ký hủy lịch:', e?.message));
+  }
+
+  /**
+   * Lịch hẹn khi bị hủy (hoặc lượt của nó bị hủy) — tiền cọc theo lỗi bên nào:
+   * - phía bệnh nhân: theo quy định hủy của giám đốc (đủ thời hạn → hoàn %; sát giờ / đã check-in rồi bỏ về → không hoàn);
+   * - phía phòng khám: hoàn 100% nhưng phải chờ Ban Giám Đốc duyệt mới được chi (chống lễ tân tự ý hoàn);
+   * - tiếp nhận nhầm: lịch giữ nguyên.
+   * Bệnh nhân luôn được báo (kèm lý do, người hủy) để khiếu nại được nếu bị ghi sai.
+   */
+  private async xuLyLichHenKhiHuy(
+    lh: LichHen, loaiHuy: LoaiHuy, lyDo: string, nguoiHuy: { nhanVienId: number | null; ten: string }, luotId: number | null,
+  ): Promise<string> {
+    const nhatKy = { lichHenId: lh.id, luotId, nguoiHuy, loaiHuy, lyDo };
+    if (loaiHuy === 'nham') {
+      await this.lichHenRepo.update({ id: lh.id, trangThai: TrangThaiLichHen.DANG_KHAM }, { trangThai: TrangThaiLichHen.DA_XAC_NHAN });
+      await this.ghiNhatKyHuy({ ...nhatKy, soTien: 0, trangThaiHoan: 'khong_hoan' });
+      return `Lịch hẹn ${lh.maLichHen} giữ nguyên, có thể check-in lại.`;
     }
 
-    let callEvent = null;
-    if (dto.trangThai === 'dang_kham') {
-      callEvent = await this.recordAndEmitCall(luotId);
+    // Cọc thực đã thu qua PayOS (lịch lễ tân đặt không thu cọc thì không có gì để hoàn)
+    const maHdCoc = `HDT${lh.maLichHen.replace(/^LH/i, '')}`.slice(0, 20);
+    const [coc]: any[] = await this.luotRepo.manager.query(
+      `SELECT thuc_thu FROM hoa_don WHERE ma_hoa_don = ? AND trang_thai = 'da_thanh_toan' LIMIT 1`,
+      [maHdCoc],
+    );
+    const tienCoc = Number(coc?.thuc_thu || 0);
+    const daCheckIn = luotId !== null;
+
+    let soTienHoan = 0;
+    let moTaCoc: string;
+    if (loaiHuy === 'benh_nhan') {
+      const qd = await this.lichHenService.quyDinhHoanCocKhiBenhNhanHuy(lh);
+      if (tienCoc > 0 && !daCheckIn && qd.duHan) soTienHoan = Math.round(tienCoc * qd.phanTramHoan / 100);
+      moTaCoc = !(tienCoc > 0)
+        ? 'không có tiền cọc'
+        : soTienHoan > 0
+          ? `hoàn ${qd.phanTramHoan}% cọc (${soTienHoan.toLocaleString('vi-VN')} đ) vì hủy trước giờ hẹn ít nhất ${qd.gioToiThieu} giờ`
+          : daCheckIn
+            ? 'giữ cọc (đã check-in rồi bỏ về)'
+            : qd.duHan ? 'giữ cọc (quy định không hoàn)' : `giữ cọc (hủy sát giờ, dưới ${qd.gioToiThieu} giờ trước giờ hẹn)`;
     } else {
-      if (['hoan_thanh', 'da_huy', 'dang_cls'].includes(dto.trangThai) && this.latestCallEvent?.id === luotId) {
-        this.latestCallEvent = null;
-      }
-      // Mọi đổi trạng thái khác (chờ khám, có kết quả CLS, chờ thanh toán…) cũng báo hàng đợi
-      this.baoHangDoiThayDoi();
+      soTienHoan = tienCoc;
+      moTaCoc = tienCoc > 0
+        ? `hoàn 100% cọc (${tienCoc.toLocaleString('vi-VN')} đ) sau khi Ban Giám Đốc duyệt`
+        : 'không có tiền cọc';
     }
+    const canDuyet = loaiHuy === 'phong_kham' && soTienHoan > 0;
 
-    const updated = await this.luotRepo.findOne({ where: { id: luotId }, relations: ['benhNhan', 'bacSi'] });
-    return { data: updated, callEvent, message: 'Cập nhật trạng thái thành công' };
+    const ghiChu = `${lh.ghiChu || ''}${soTienHoan > 0 ? ` [CHỜ HOÀN CỌC ${soTienHoan.toLocaleString('vi-VN')}đ]` : ''}${canDuyet ? ` ${MARKER_CHO_DUYET_HOAN}` : ''} [${NHAN_LOAI_HUY[loaiHuy]}: ${lyDo} - ${nguoiHuy.ten}]`.trim();
+    const kq = await this.lichHenRepo.update(
+      { id: lh.id, trangThai: In(LICH_CON_HIEU_LUC) },
+      { trangThai: loaiHuy === 'benh_nhan' && daCheckIn ? TrangThaiLichHen.VANG_MAT : TrangThaiLichHen.DA_HUY, ghiChu },
+    );
+    if (!kq.affected) return `Lịch hẹn ${lh.maLichHen} đã được xử lý trước đó.`;
+
+    if (soTienHoan > 0) {
+      await this.lichHenService.yeuCauHoanCocHoaDonTamUng({ ...lh, ghiChu, trangThai: TrangThaiLichHen.DA_HUY }, `${NHAN_LOAI_HUY[loaiHuy]}: ${lyDo}`, undefined, soTienHoan);
+      if (canDuyet) {
+        await this.luotRepo.manager.query(`UPDATE hoa_don SET ghi_chu = CONCAT(ghi_chu, ' ', ?) WHERE ma_hoa_don = ?`, [MARKER_CHO_DUYET_HOAN, maHdCoc]);
+        await this.trinhDuyetHoanCoc(lh, lyDo, nguoiHuy, soTienHoan);
+      }
+    }
+    await this.ghiNhatKyHuy({ ...nhatKy, soTien: soTienHoan, trangThaiHoan: canDuyet ? 'cho_duyet' : soTienHoan > 0 ? 'tu_dong' : 'khong_hoan' });
+
+    await this.baoBenhNhanHuyLich(lh,
+      loaiHuy === 'phong_kham' ? `Phòng khám hủy lịch hẹn ${lh.maLichHen}` : `Lịch hẹn ${lh.maLichHen} đã được hủy`,
+      `${loaiHuy === 'phong_kham' ? 'Rất xin lỗi, phòng khám' : 'Theo yêu cầu của bạn, phòng khám'} đã hủy lịch hẹn ${lh.maLichHen} ngày ${String(lh.ngayHen).slice(0, 10)} lúc ${String(lh.gioHen).slice(0, 5)}. Lý do: ${lyDo}. Người thực hiện: ${nguoiHuy.ten}. Tiền cọc: ${moTaCoc}.${soTienHoan > 0 ? ' Vui lòng cập nhật tài khoản nhận hoàn trong mục Lịch hẹn hoặc nhận tại quầy thu ngân.' : ''} Nếu thông tin không đúng, vui lòng liên hệ phòng khám.`,
+    );
+    if (soTienHoan > 0 && !canDuyet) {
+      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+        tieuDe: `Cần hoàn cọc lịch hẹn ${lh.maLichHen}`,
+        noiDung: `Bệnh nhân hủy lịch hẹn ${lh.maLichHen} đủ thời hạn: hoàn ${soTienHoan.toLocaleString('vi-VN')} đ tiền cọc.`,
+        loai: 'can_thanh_toan',
+        doiTuongBang: 'lich_hen',
+        doiTuongId: lh.id,
+      }).catch((e) => console.warn('Lỗi báo thu ngân hoàn cọc:', e?.message));
+    }
+    return `Lịch hẹn ${lh.maLichHen} đã hủy; ${moTaCoc}.`;
+  }
+
+  /** Đơn trình Ban Giám Đốc duyệt khoản hoàn cọc lễ tân ghi "lỗi phía phòng khám" (duyệt ở trang Phê duyệt đơn) */
+  private async trinhDuyetHoanCoc(lh: LichHen, lyDo: string, nguoiHuy: { nhanVienId: number | null; ten: string }, soTien: number) {
+    const benhNhan = await this.benhNhanRepo.findOne({ where: { id: lh.benhNhanId } });
+    const don = await this.luotRepo.manager.getRepository(DonGui).save({
+      nguoiGuiId: nguoiHuy.nhanVienId ?? 1, // tài khoản không gắn nhân viên (quản trị): ghi theo nhân viên mặc định như đơn hủy ca của bác sĩ
+      loaiDon: LOAI_DON_DUYET_HOAN_COC,
+      noiDung: `[LH_HOAN_COC: ${lh.id}] ${nguoiHuy.ten} hủy lịch hẹn ${lh.maLichHen} (ngày ${String(lh.ngayHen).slice(0, 10)} lúc ${String(lh.gioHen).slice(0, 5)}) của bệnh nhân ${benhNhan?.hoTen || ''} với lý do LỖI PHÍA PHÒNG KHÁM: ${lyDo}. Đề nghị hoàn ${soTien.toLocaleString('vi-VN')} đ tiền cọc. Duyệt: thu ngân được chi; từ chối: không hoàn.`,
+      trangThai: TrangThaiDonGui.CHO_XU_LY,
+    });
+    await this.thongBaoService.taoThongBaoTheoRole('ban_giam_doc', {
+      tieuDe: `Duyệt hoàn cọc: ${lh.maLichHen}`,
+      noiDung: `${nguoiHuy.ten} hủy lịch ${lh.maLichHen} vì lỗi phía phòng khám (${lyDo}), đề nghị hoàn ${soTien.toLocaleString('vi-VN')} đ.`,
+      loai: 'don_tu',
+      doiTuongBang: 'don_gui',
+      doiTuongId: don.id,
+    }).catch((e) => console.warn('Lỗi báo giám đốc duyệt hoàn cọc:', e?.message));
+  }
+
+  /** Báo bệnh nhân (thông báo trong app + email) khi lịch hẹn bị hủy tại quầy */
+  private async baoBenhNhanHuyLich(lh: LichHen, tieuDe: string, noiDung: string) {
+    const benhNhan = await this.benhNhanRepo.findOne({ where: { id: lh.benhNhanId } });
+    if (benhNhan?.nguoiDungId) {
+      await this.thongBaoService.taoThongBao({
+        nguoiNhanId: benhNhan.nguoiDungId, tieuDe, noiDung, loai: 'lich_hen', doiTuongBang: 'lich_hen', doiTuongId: lh.id,
+      }).catch((e) => console.warn('Lỗi báo bệnh nhân hủy lịch:', e?.message));
+    }
+    if (benhNhan?.email) this.lichHenService.guiEmailBenhNhan(benhNhan.email, tieuDe, noiDung);
   }
 
   // ─── PHÁT ÂM THANH GIỌNG NÓI TIẾNG VIỆT CHUẨN (TTS MP3) ───────
@@ -1331,6 +1574,10 @@ export class TiepNhanService implements OnModuleInit {
       message = `${luot.maSoThuTu} vắng mặt ${soLan} lần: đã hủy lượt khám. Tạm ứng đã đóng sẽ được thu ngân hoàn lại.`;
     } else {
       await this.luotRepo.update(luotId, { trangThai: TrangThaiTiepNhan.CHO_KHAM, quaLuotLuc: new Date(), soLanQuaLuot: soLan });
+      // Bệnh nhân quay lại hàng chờ: lịch hẹn về "đã xác nhận" (gọi lại thì lichHenDangKham đặt lại "đang khám")
+      if (luot.lichHenId) {
+        await this.lichHenRepo.update({ id: luot.lichHenId, trangThai: TrangThaiLichHen.DANG_KHAM }, { trangThai: TrangThaiLichHen.DA_XAC_NHAN });
+      }
       message = `${luot.maSoThuTu} vắng mặt, đã qua lượt (lần ${soLan}/${SO_LAN_QUA_LUOT_TOI_DA}). Bệnh nhân quay lại sẽ được gọi theo thứ tự mới.`;
     }
     this.queueGateway.emitQueueUpdate();

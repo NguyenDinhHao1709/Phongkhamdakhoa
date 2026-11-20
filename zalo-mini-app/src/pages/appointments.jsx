@@ -92,7 +92,7 @@ function TheLichHen({ lh, onThanhToan, onHuy }) {
         nhan="Nơi khám"
         giaTri={online ? "Tư vấn trực tuyến" : [lh.phongKham?.ten_phong, lh.phongKham?.vi_tri].filter(Boolean).join(" - ")}
       />
-      {!online && LICH_CON_HIEU_LUC.includes(lh.trangThai) && <DongThongTin nhan="Số thứ tự" giaTri={lh.soThuTu} />}
+      {!online && LICH_CON_HIEU_LUC.includes(lh.trangThai) && <DongThongTin nhan="Số thứ tự" giaTri={lh.soThuTu || 'Cấp khi check-in'} />}
       <DongThongTin nhan="Tiền cọc" giaTri={tien(lh.soTienCoc)} />
       {lh.trangThaiHoanCoc && (
         <div style={{ marginTop: 6 }}>

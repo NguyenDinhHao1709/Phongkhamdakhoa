@@ -10,6 +10,7 @@ import BaiVietQuanLyPage from '../Shared/BaiViet/BaiVietQuanLyPage';
 import QuanLyChamCongPage from './QuanLyChamCongPage';
 import QuanLyBangGiaDichVuPage from './QuanLyBangGiaDichVuPage';
 import BaoCaoBoPhanGiamDocPage from './BaoCaoBoPhanGiamDocPage';
+import BaoCaoHuyLichPage from './BaoCaoHuyLichPage';
 import ThongTinCaNhanPage from '../Receptionist/NhanVienShared/ThongTinCaNhanPage';
 import OfficeWorkspacePage from '../Receptionist/NhanVienShared/OfficeWorkspacePage';
 
@@ -46,6 +47,8 @@ export default function DirectorPortal() {
 
         {/* Báo cáo chuyên môn các bộ phận & Ý kiến chỉ đạo */}
         <Route path="bao-cao-bo-phan" element={<BaoCaoBoPhanGiamDocPage />} />
+        {/* Lễ tân hủy lịch / lượt: ai hủy, lỗi bên nào, hoàn bao nhiêu */}
+        <Route path="huy-lich" element={<BaoCaoHuyLichPage />} />
 
         {/* Thông tin cá nhân */}
         <Route path="ca-nhan" element={<ThongTinCaNhanPage />} />

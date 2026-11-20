@@ -12,6 +12,7 @@ import { DanhGiaCaKham } from '../danh-gia/entities/danh-gia.entity';
 import { LichSuGoiKham } from './entities/lich-su-goi-kham.entity';
 import { ThongBaoModule } from '../thong-bao/thong-bao.module';
 import { ThanhToanModule } from '../thanh-toan/thanh-toan.module';
+import { LichHenModule } from '../lich-hen/lich-hen.module';
 import { ThongBaoRealtimeSubscriber } from '../thong-bao/thong-bao-realtime.subscriber';
 import { HangDoiRealtimeSubscriber } from './hang-doi-realtime.subscriber';
 
@@ -20,6 +21,7 @@ import { HangDoiRealtimeSubscriber } from './hang-doi-realtime.subscriber';
     TypeOrmModule.forFeature([LuotTiepNhan, SinhHieu, LichHen, BacSi, BenhNhan, LichLamViec, DanhGiaCaKham, LichSuGoiKham]),
     ThongBaoModule,
     ThanhToanModule,
+    LichHenModule,
   ],
   controllers: [TiepNhanController],
   // ThongBaoRealtimeSubscriber đặt ở đây vì cần QueueGateway (ThongBaoModule không import được TiepNhanModule do vòng lặp)

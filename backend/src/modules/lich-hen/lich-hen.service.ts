@@ -6,7 +6,7 @@ import { Repository, DataSource, Between, In, Not, LessThanOrEqual } from 'typeo
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import axios from 'axios';
-import { LichHen, TrangThaiLichHen, CHO_PHAN_CONG_MARKER } from './entities/lich-hen.entity';
+import { LichHen, TrangThaiLichHen, CHO_PHAN_CONG_MARKER, MARKER_CHO_DUYET_HOAN } from './entities/lich-hen.entity';
 import { BenhNhan } from '../benh-nhan/entities/benh-nhan.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
@@ -183,13 +183,8 @@ export class LichHenService implements OnModuleInit {
       });
 
       for (const lh of list) {
-        const note = (lh.ghiChu || '').toLowerCase();
-        // Nếu bị hủy do hết thời gian đếm ngược mà chưa đóng cọc thì bỏ qua
-        if (
-          lh.trangThai === TrangThaiLichHen.DA_HUY &&
-          !note.includes('hoàn tiền') &&
-          !note.includes('[stt:')
-        ) {
+        // Lịch đã hủy mà chưa từng đóng cọc (vd. hết hạn thanh toán) thì bỏ qua
+        if (lh.trangThai === TrangThaiLichHen.DA_HUY && !lh.ghiChu?.includes('[ĐÃ_THANH_TOÁN_THÀNH_CÔNG]')) {
           continue;
         }
         await this.dongBoHoaDonTamUng(lh, false);
@@ -240,10 +235,11 @@ export class LichHenService implements OnModuleInit {
       [maHoaDonTamUng, `%${marker}%`]
     );
 
-    const noteLower = (lh.ghiChu || '').toLowerCase();
-    const isCanceledEligibleRefund =
-      lh.trangThai === TrangThaiLichHen.DA_HUY &&
-      (noteLower.includes('hoàn tiền') || noteLower.includes('hoàn cọc') || noteLower.includes('chờ hoàn cọc'));
+    // Chỉ lịch có yêu cầu hoàn đã chốt ([CHỜ HOÀN CỌC …]) mới được đưa về chờ hoàn; không dò chữ "hoàn cọc" trong ghi chú
+    // (ghi chú "không hoàn cọc" / "giữ cọc" từng bị hiểu nhầm thành được hoàn)
+    const isCanceledEligibleRefund = lh.trangThai === TrangThaiLichHen.DA_HUY && Boolean(daChotHoan);
+    // Khoản hoàn do lễ tân ghi "lỗi phía phòng khám" phải chờ Ban Giám Đốc duyệt mới được chi
+    const choDuyet = lh.ghiChu?.includes(MARKER_CHO_DUYET_HOAN) ? ` ${MARKER_CHO_DUYET_HOAN}` : '';
     const tkMatchFromLh = lh.ghiChu?.match(/\[TK_HOÀN_TIỀN:[^\]]+\]/i);
     const tkTag = tkMatchFromLh
       ? tkMatchFromLh[0]
@@ -260,7 +256,7 @@ export class LichHenService implements OnModuleInit {
       if (isCanceledEligibleRefund && !cashierConfirmedRefund) {
         if (!existingNote.includes(`[CHỜ HOÀN CỌC ${soTienCocText}]`) || existing.trang_thai === 'huy') {
           const hinhThucText = isOnline ? 'Tư vấn Online' : 'Khám tại PK';
-          const pendingRefundNote = `[CHỜ HOÀN CỌC ${soTienCocText}] [${isOnline ? 'PHÍ TƯ VẤN ONLINE' : 'TẠM ỨNG ĐẶT LỊCH'}] ${marker} ${tkTag} Lịch hẹn ${lh.maLichHen} (${hinhThucText}) đã hủy hợp lệ - Chờ Thu ngân chuyển hoàn ${soTienCoc.toLocaleString('vi-VN')} đ.`;
+          const pendingRefundNote = `[CHỜ HOÀN CỌC ${soTienCocText}] [${isOnline ? 'PHÍ TƯ VẤN ONLINE' : 'TẠM ỨNG ĐẶT LỊCH'}] ${marker} ${tkTag} Lịch hẹn ${lh.maLichHen} (${hinhThucText}) đã hủy hợp lệ - Chờ Thu ngân chuyển hoàn ${soTienCoc.toLocaleString('vi-VN')} đ.${choDuyet}`;
           await this.dataSource.query(
             `UPDATE hoa_don SET trang_thai = 'da_thanh_toan', ghi_chu = ? WHERE id = ?`,
             [pendingRefundNote, existing.id]
@@ -273,7 +269,7 @@ export class LichHenService implements OnModuleInit {
     const ngayGiaoDich = isNewPayment ? new Date() : (lh.capNhatLuc || lh.taoLuc || new Date());
     const hinhThucText = isOnline ? 'Tư vấn Online' : 'Khám tại PK';
     const ghiChuHd = isCanceledEligibleRefund
-      ? `[CHỜ HOÀN CỌC ${soTienCocText}] [${isOnline ? 'PHÍ TƯ VẤN ONLINE' : 'TẠM ỨNG ĐẶT LỊCH'}] ${marker} ${tkTag} Lịch hẹn ${lh.maLichHen} (${hinhThucText}) đã hủy hợp lệ - Chờ Thu ngân chuyển hoàn ${soTienCoc.toLocaleString('vi-VN')} đ.`
+      ? `[CHỜ HOÀN CỌC ${soTienCocText}] [${isOnline ? 'PHÍ TƯ VẤN ONLINE' : 'TẠM ỨNG ĐẶT LỊCH'}] ${marker} ${tkTag} Lịch hẹn ${lh.maLichHen} (${hinhThucText}) đã hủy hợp lệ - Chờ Thu ngân chuyển hoàn ${soTienCoc.toLocaleString('vi-VN')} đ.${choDuyet}`
       : `[${isOnline ? 'PHÍ TƯ VẤN ONLINE' : 'TẠM ỨNG ĐẶT LỊCH'}] ${marker} Thu ${isOnline ? 'phí tư vấn online' : 'tạm ứng 1/5 phí khám giữ chỗ'} qua PayOS/Chuyển khoản (${hinhThucText} - Ngày hẹn: ${lh.ngayHen} ${lh.gioHen})`;
 
     const insertRes: any = await this.dataSource.query(
@@ -344,6 +340,67 @@ export class LichHenService implements OnModuleInit {
     );
   }
 
+  /** Email thông báo ngắn cho bệnh nhân (không chặn luồng chính) */
+  guiEmailBenhNhan(email: string, tieuDe: string, noiDung: string) {
+    this.mailer.sendMail({
+      from: this.config.get('MAIL_FROM', 'Phong Kham <no-reply@phongkham.vn>'),
+      to: email,
+      subject: `[Phòng Khám] ${tieuDe}`,
+      text: noiDung,
+    }).catch((e) => console.warn('[LichHenMailer] Lỗi gửi email:', e?.message));
+  }
+
+  /**
+   * Ban Giám Đốc duyệt / từ chối khoản hoàn cọc do lễ tân hủy lịch ghi "lỗi phía phòng khám".
+   * Duyệt: gỡ dấu chờ duyệt, thu ngân được chi. Từ chối: bỏ yêu cầu hoàn (đổi [CHỜ HOÀN CỌC → [KHÔNG DUYỆT HOÀN CỌC).
+   */
+  async xuLyDuyetHoanCoc(lichHenId: number, duyet: boolean, ghiChuXuLy: string) {
+    const lh = await this.repo.findOne({ where: { id: lichHenId }, relations: ['benhNhan'] });
+    if (!lh?.ghiChu?.includes(MARKER_CHO_DUYET_HOAN)) return;
+    const maHd = `HDT${lh.maLichHen.replace(/^LH/i, '')}`.slice(0, 20);
+    const [hd]: any[] = await this.dataSource.query('SELECT id, ghi_chu FROM hoa_don WHERE ma_hoa_don = ? LIMIT 1', [maHd]);
+    const soTien = Number(lh.ghiChu.match(/\[CHỜ HOÀN CỌC ([\d.,]+)/)?.[1].replace(/\D/g, '') || 0);
+    const soTienText = `${soTien.toLocaleString('vi-VN')} đ`;
+    const yKien = (ghiChuXuLy || '').replace(/[[\]]/g, '');
+    const boDauCho = (s: string) => s.split(MARKER_CHO_DUYET_HOAN).map((x) => x.trim()).filter(Boolean).join(' ');
+    const doiThanhKhongHoan = (s: string) => s.replace(/\[CHỜ HOÀN CỌC/g, '[KHÔNG DUYỆT HOÀN CỌC');
+
+    const lhNote = duyet
+      ? `${boDauCho(lh.ghiChu)} [BGĐ duyệt hoàn cọc: ${yKien}]`
+      : `${doiThanhKhongHoan(boDauCho(lh.ghiChu))} [BGĐ từ chối hoàn cọc: ${yKien}]`;
+    await this.repo.update(lh.id, { ghiChu: lhNote });
+    if (hd) {
+      const hdNote = duyet ? boDauCho(hd.ghi_chu || '') : doiThanhKhongHoan(boDauCho(hd.ghi_chu || ''));
+      await this.dataSource.query('UPDATE hoa_don SET ghi_chu = ? WHERE id = ?', [hdNote, hd.id]);
+    }
+    await this.dataSource.query(
+      `UPDATE nhat_ky_huy_lich SET trang_thai_hoan = ? WHERE lich_hen_id = ? AND trang_thai_hoan = 'cho_duyet'`,
+      [duyet ? 'da_duyet' : 'tu_choi', lh.id],
+    );
+
+    if (lh.benhNhan?.nguoiDungId) {
+      await this.thongBaoService.taoThongBao({
+        nguoiNhanId: lh.benhNhan.nguoiDungId,
+        tieuDe: duyet ? `Đã duyệt hoàn cọc lịch hẹn ${lh.maLichHen}` : `Lịch hẹn ${lh.maLichHen} không được hoàn cọc`,
+        noiDung: duyet
+          ? `Phòng khám đã duyệt hoàn ${soTienText} tiền cọc của lịch hẹn ${lh.maLichHen}. Vui lòng cập nhật tài khoản nhận hoàn trong mục Lịch hẹn hoặc nhận tại quầy thu ngân.`
+          : `Ban Giám Đốc xác định việc hủy lịch hẹn ${lh.maLichHen} không thuộc lỗi phía phòng khám nên khoản cọc ${soTienText} không được hoàn. Lý do: ${yKien}. Nếu chưa đồng ý, vui lòng liên hệ quầy lễ tân.`,
+        loai: 'lich_hen',
+        doiTuongBang: 'lich_hen',
+        doiTuongId: lh.id,
+      }).catch(() => {});
+    }
+    if (duyet) {
+      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+        tieuDe: `Đã duyệt hoàn cọc ${lh.maLichHen}`,
+        noiDung: `Ban Giám Đốc đã duyệt hoàn ${soTienText} tiền cọc lịch hẹn ${lh.maLichHen} (${maHd}). Vui lòng hoàn cho bệnh nhân.`,
+        loai: 'can_thanh_toan',
+        doiTuongBang: 'lich_hen',
+        doiTuongId: lh.id,
+      }).catch(() => {});
+    }
+  }
+
   // ─── TỰ ĐỘNG HỦY LỊCH HẸN ĐÃ QUA GIỜ KHÁM (NO-SHOW / HẾT HẠN) ───
   async tuDongHuyLichQuaGio() {
     try {
@@ -378,7 +435,10 @@ export class LichHenService implements OnModuleInit {
           ghiChu: () => `COALESCE(CONCAT(COALESCE(ghi_chu, ''), ' [Tự động hủy do quá thời gian hẹn khám]'), '[Tự động hủy do quá thời gian hẹn khám]')`
         })
         .where('trang_thai NOT IN (:...doneStates)', {
-          doneStates: [TrangThaiLichHen.HOAN_THANH, TrangThaiLichHen.DA_HUY, TrangThaiLichHen.DANG_KHAM],
+          doneStates: [
+            TrangThaiLichHen.HOAN_THANH, TrangThaiLichHen.DA_HUY, TrangThaiLichHen.DANG_KHAM,
+            TrangThaiLichHen.VANG_MAT, TrangThaiLichHen.CHO_DUYET_HUY,
+          ],
         })
         .andWhere('(hinh_thuc IS NULL OR hinh_thuc != :trucTuyen)', {
           trucTuyen: 'truc_tuyen',
@@ -387,11 +447,26 @@ export class LichHenService implements OnModuleInit {
           thresholdDateStr,
           thresholdTimeStr,
         })
-        .andWhere('id NOT IN (SELECT ltn.lich_hen_id FROM luot_tiep_nhan ltn WHERE ltn.lich_hen_id IS NOT NULL)')
+        // Lượt đã hủy chỉ giữ lịch trong ngày đó (lễ tân còn check-in lại được); sang ngày sau thì lịch được dọn
+        .andWhere(`id NOT IN (SELECT ltn.lich_hen_id FROM luot_tiep_nhan ltn WHERE ltn.lich_hen_id IS NOT NULL
+                   AND (ltn.trang_thai != 'da_huy' OR DATE(ltn.thoi_gian_den) = CURDATE()))`)
         .execute();
 
       if (result.affected && result.affected > 0) {
         console.log(`[LichHen] Đã tự động hủy ${result.affected} ca khám trực tiếp quá thời gian hẹn.`);
+      }
+
+      // 1b. Ca TRỰC TIẾP bác sĩ xin hủy mà chưa được duyệt trước giờ hẹn: ca không diễn ra do phía phòng khám → hoàn cọc
+      const caXinHuy = (await this.repo.find({ where: { trangThai: TrangThaiLichHen.CHO_DUYET_HUY } }))
+        .filter((lh) => lh.hinhThuc !== 'truc_tuyen' && mocGioHen(lh.ngayHen, lh.gioHen) <= threshold.getTime());
+      for (const lh of caXinHuy) {
+        const daTraCoc = Boolean(lh.ghiChu?.includes('[ĐÃ_THANH_TOÁN_THÀNH_CÔNG]'));
+        const soTienCoc = daTraCoc ? await this.getSoTienCocHienHanh(lh.hinhThuc, lh.maLichHen) : 0;
+        const ghiChu = `${lh.ghiChu || ''}${daTraCoc ? ` [CHỜ HOÀN CỌC ${soTienCoc.toLocaleString('vi-VN')}đ]` : ''} [Yêu cầu hủy ca của bác sĩ chưa được duyệt trước giờ hẹn - tự động hủy]`.trim();
+        const kq = await this.repo.update({ id: lh.id, trangThai: TrangThaiLichHen.CHO_DUYET_HUY }, { trangThai: TrangThaiLichHen.DA_HUY, ghiChu });
+        if (!kq.affected || !daTraCoc) continue;
+        await this.yeuCauHoanCocHoaDonTamUng({ ...lh, ghiChu }, 'Bác sĩ xin hủy ca, ca không diễn ra - hoàn cọc cho bệnh nhân', undefined, soTienCoc)
+          .catch((e) => console.warn('[LichHen] Lỗi yêu cầu hoàn cọc ca bác sĩ xin hủy:', e?.message));
       }
 
       // 2. Ca TRỰC TUYẾN chưa kết luận, xử lý theo việc ai đã vào phòng gọi (ca đã đóng phí):
@@ -593,9 +668,9 @@ export class LichHenService implements OnModuleInit {
     const cocTrucTiep = Number(cocConfigs.find((c) => c.loai_hinh_thuc === 'truc_tiep')?.so_tien_coc || 40000);
     const cocTrucTuyen = Number(cocConfigs.find((c) => c.loai_hinh_thuc === 'truc_tuyen')?.so_tien_coc || 200000);
 
+    const sttCheckIn = await this.soThuTuCheckIn(items.map((i) => i.id));
     const mappedItems = items.map((item) => {
-      const sttMatch = item.ghiChu?.match(/\[STT:\s*([^\]]+)\]/);
-      const soThuTu = sttMatch ? sttMatch[1] : `A${String((item.id % 900) + 100)}`;
+      const soThuTu = sttCheckIn.get(item.id) ?? null;
       const isOnlineItem = item.hinhThuc === 'truc_tuyen';
       const phong = (!isOnlineItem && item.phongKhamId)
         ? (allRooms.find((r) => r.id === item.phongKhamId) || null)
@@ -604,7 +679,6 @@ export class LichHenService implements OnModuleInit {
       const maHdTamUng = `HDT${(item.maLichHen || '').replace(/^LH/i, '')}`.slice(0, 20);
       const hdCoc = depositInvoices.find((h) => h.ma_hoa_don === maHdTamUng);
       const noteCombined = `${item.ghiChu || ''} ${hdCoc?.ghi_chu || ''}`;
-      const noteLower = noteCombined.toLowerCase();
 
       const defaultCoc = item.hinhThuc === 'truc_tuyen' ? cocTrucTuyen : cocTrucTiep;
       const soTienThanhToan = Number(hdCoc?.thuc_thu || hdCoc?.tong_tien || defaultCoc);
@@ -628,11 +702,7 @@ export class LichHenService implements OnModuleInit {
           (hdCoc?.trang_thai === 'huy' && (hdCoc?.thu_ngan_id != null || noteCombined.includes('bởi ')))
         ) {
           trangThaiHoanCoc = 'da_hoan_coc';
-        } else if (
-          noteLower.includes('hoàn tiền') ||
-          noteLower.includes('hoàn cọc') ||
-          noteLower.includes('chờ hoàn cọc')
-        ) {
+        } else if (noteCombined.includes('[CHỜ HOÀN CỌC')) {
           trangThaiHoanCoc = 'cho_hoan_coc';
         }
       }
@@ -645,7 +715,7 @@ export class LichHenService implements OnModuleInit {
         soTienCoc: soTienThanhToan,
         trangThaiHoanCoc,
         thongTinHoanCoc,
-        qrCodeValue: `${item.maLichHen}|STT:${soThuTu}|DATE:${item.ngayHen}|TIME:${item.gioHen}`,
+        qrCodeValue: item.maLichHen, // quét ở kiosk = nhập mã lịch hẹn
       };
     });
 
@@ -668,8 +738,7 @@ export class LichHenService implements OnModuleInit {
       const [pk]: any[] = await this.dataSource.query('SELECT id, ten_phong, vi_tri, chuyen_khoa FROM phong_kham WHERE id = ?', [lh.phongKhamId]);
       phongKham = pk || null;
     }
-    const sttMatch = lh.ghiChu?.match(/\[STT:\s*([^\]]+)\]/);
-    const soThuTu = sttMatch ? sttMatch[1] : `A${String((lh.id % 900) + 100)}`;
+    const soThuTu = (await this.soThuTuCheckIn([lh.id])).get(lh.id) ?? null;
     const soTienCoc = await this.getSoTienCocHienHanh(lh.hinhThuc, lh.maLichHen);
 
     return {
@@ -679,7 +748,7 @@ export class LichHenService implements OnModuleInit {
         soThuTu,
         soTienCoc,
         soTienThanhToan: soTienCoc,
-        qrCodeValue: `${lh.maLichHen}|STT:${soThuTu}|DATE:${lh.ngayHen}|TIME:${lh.gioHen}`,
+        qrCodeValue: lh.maLichHen,
       },
       message: 'Lấy thông tin lịch hẹn thành công',
     };
@@ -1268,25 +1337,16 @@ export class LichHenService implements OnModuleInit {
   }
 
   /**
-   * Cấp số thứ tự kế tiếp của ngày hẹn và ghi ngay vào lịch (khóa theo ngày để hai lịch không nhận trùng số).
-   * Lấy số lớn nhất đã cấp trong ngày + 1 — không đếm lịch đang xác nhận, vì lịch bị hủy / đã khám làm số đếm giảm và cấp lại số cũ.
+   * Số thứ tự thật của lịch hẹn = số của lượt khám đã check-in (A0xx, reset theo ngày).
+   * Chưa check-in thì chưa có số: số được cấp khi check-in tại quầy / kiosk.
    */
-  private async capSoThuTu(lh: LichHen): Promise<string> {
-    const ngay = String(lh.ngayHen).slice(0, 10);
-    return voiKhoaDb(this.dataSource, `stt_lich_hen:${ngay}`, async () => {
-      const rows: any[] = await this.dataSource.query(
-        `SELECT ghi_chu FROM lich_hen WHERE ngay_hen = ? AND id != ? AND ghi_chu LIKE '%[STT:%'`,
-        [ngay, lh.id],
-      );
-      const lonNhat = rows.reduce((max, r) => {
-        const so = Number(String(r.ghi_chu).match(/\[STT:\s*[A-Z]*(\d+)\]/)?.[1] || 0);
-        return so > max ? so : max;
-      }, 0);
-      const soThuTu = MaGeneratorService.generateSoThuTu(lonNhat + 1);
-      lh.ghiChu = `${(lh.ghiChu || '').replace(/\s*\[STT:\s*[^\]]+\]/g, '').trim()} [STT: ${soThuTu}]`.trim();
-      await this.repo.update(lh.id, { ghiChu: lh.ghiChu });
-      return soThuTu;
-    });
+  private async soThuTuCheckIn(lichHenIds: number[]): Promise<Map<number, string>> {
+    if (!lichHenIds.length) return new Map();
+    const rows: any[] = await this.dataSource.query(
+      `SELECT lich_hen_id AS id, ma_so_thu_tu AS stt FROM luot_tiep_nhan WHERE lich_hen_id IN (?) AND trang_thai != 'da_huy'`,
+      [lichHenIds],
+    );
+    return new Map(rows.map((r) => [Number(r.id), r.stt]));
   }
 
   async xacNhanSauThanhToan(lichHenId: number) {
@@ -1380,15 +1440,6 @@ export class LichHenService implements OnModuleInit {
       }
     }
 
-    // Cấp số thứ tự STT khám nếu chưa có
-    let soThuTu = '';
-    const sttMatch = appointment.ghiChu?.match(/\[STT:\s*([^\]]+)\]/);
-    if (sttMatch) {
-      soThuTu = sttMatch[1];
-    } else {
-      soThuTu = await this.capSoThuTu(appointment);
-    }
-
     const saved = await this.repo.save(appointment);
 
     // Chuẩn ERP Y tế: Tự động sinh Phiếu thu Tạm ứng bên Thu ngân ngay khi xác nhận thanh toán
@@ -1424,11 +1475,11 @@ export class LichHenService implements OnModuleInit {
     return {
       data: {
         ...fullAppointment,
-        soThuTu,
+        soThuTu: null, // số thứ tự cấp khi check-in tại quầy / kiosk
         phongKham: phongKhamRow,
         soTienCoc,
         soTienThanhToan: soTienCoc,
-        qrCodeValue: `${saved.maLichHen}|STT:${soThuTu}|DATE:${saved.ngayHen}|TIME:${saved.gioHen}`,
+        qrCodeValue: saved.maLichHen,
       },
       message: 'Đã xác nhận thanh toán thành công. Đã xuất phiếu hẹn khám!',
     };
@@ -1481,6 +1532,21 @@ export class LichHenService implements OnModuleInit {
   }
 
   // ─── HỦY LỊCH HẸN BỆNH NHÂN (Phải trước ngày khám ít nhất 1 ngày / 24 tiếng) ───
+  /**
+   * Bệnh nhân hủy (tự hủy online hoặc báo lễ tân hủy hộ): thời hạn hủy và % hoàn cọc theo cấu hình của giám đốc.
+   * duHan = còn cách giờ hẹn ít nhất thời hạn đó.
+   */
+  async quyDinhHoanCocKhiBenhNhanHuy(lh: LichHen) {
+    const [qd]: any[] = await this.dataSource.query(
+      'SELECT thoi_gian_huy_hoan_coc_gio, phan_tram_hoan_coc FROM cau_hinh_tien_coc WHERE loai_hinh_thuc = ? LIMIT 1',
+      [lh.hinhThuc || 'truc_tiep'],
+    );
+    const gioToiThieu = Number(qd?.thoi_gian_huy_hoan_coc_gio ?? 24);
+    const phanTramHoan = Math.min(100, Math.max(0, Number(qd?.phan_tram_hoan_coc ?? 100)));
+    const duHan = (mocGioHen(lh.ngayHen, lh.gioHen) - Date.now()) / 3_600_000 >= gioToiThieu;
+    return { gioToiThieu, phanTramHoan, duHan };
+  }
+
   async huyLichHenBoiBenhNhan(
     id: number,
     userId: number,
@@ -1515,20 +1581,8 @@ export class LichHenService implements OnModuleInit {
     const wasPaid = lh.trangThai !== TrangThaiLichHen.CHO_THANH_TOAN;
 
     if (wasPaid) {
-      const now = new Date();
-      const ngayGioStr = `${lh.ngayHen}T${lh.gioHen}`;
-      const gioHenFull = new Date(ngayGioStr);
-
-      const diffHours = (gioHenFull.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-      // Thời hạn hủy và % hoàn cọc theo cấu hình của giám đốc cho từng hình thức khám
-      const [qd]: any[] = await this.dataSource.query(
-        'SELECT thoi_gian_huy_hoan_coc_gio, phan_tram_hoan_coc FROM cau_hinh_tien_coc WHERE loai_hinh_thuc = ? LIMIT 1',
-        [lh.hinhThuc],
-      );
-      const gioToiThieu = Number(qd?.thoi_gian_huy_hoan_coc_gio ?? 24);
-      const phanTramHoan = Math.min(100, Math.max(0, Number(qd?.phan_tram_hoan_coc ?? 100)));
-      if (diffHours < gioToiThieu) {
+      const { gioToiThieu, phanTramHoan, duHan } = await this.quyDinhHoanCocKhiBenhNhanHuy(lh);
+      if (!duHan) {
         throw new BadRequestException({
           code: 'QUA_THOI_HAN_HUY',
           message: `Theo quy định, lịch hẹn chỉ được hủy trực tuyến trước giờ khám ít nhất ${gioToiThieu} tiếng. Hủy sát giờ hơn không được xử lý trực tuyến và không được hoàn tiền tạm ứng.`,
@@ -1792,7 +1846,6 @@ export class LichHenService implements OnModuleInit {
     }
 
     // 5. Khóa nguyên tử theo slot mới và cập nhật lịch hẹn
-    const ngayHenTruocKhiDoi = String(lh.ngayHen).slice(0, 10);
     const rescheduleLockKey = targetBacSiId
       ? await this.khoaCaBacSi(targetBacSiId, dto.ngayHen, dto.gioHen)
       : `patient:${lh.benhNhanId}:${dto.ngayHen}`;
@@ -1839,11 +1892,6 @@ export class LichHenService implements OnModuleInit {
     });
 
     this.cache.invalidatePrefix('lich_hen:bac_si_ca_trong');
-
-    // Số thứ tự cấp theo từng ngày: đổi sang ngày khác thì cấp số mới của ngày đó (ngoài khóa slot, tránh giữ hai khóa cùng lúc)
-    if (ngayHenTruocKhiDoi !== String(saved.ngayHen).slice(0, 10) && /\[STT:/.test(saved.ghiChu || '')) {
-      await this.capSoThuTu(saved);
-    }
 
     const withRelations = await this.findOne(saved.id);
 
@@ -1960,6 +2008,16 @@ export class LichHenService implements OnModuleInit {
 
   // ─── CẬP NHẬT TRẠNG THÁI (Optimistic Lock) ────────────────────
   async capNhatTrangThai(id: number, dto: CapNhatTrangThaiLichHenDto) {
+    // Hủy lịch khám trực tiếp phải xử lý cả lượt đã check-in, tạm ứng và tiền cọc theo lỗi bên nào → PATCH /tiep-nhan/lich-hen/:id/huy
+    if (dto.trangThai === TrangThaiLichHen.DA_HUY) {
+      const lh = await this.repo.findOne({ where: { id }, select: ['id', 'hinhThuc'] });
+      if (lh && lh.hinhThuc !== 'truc_tuyen') {
+        throw new BadRequestException({
+          code: 'DUNG_CHUC_NANG_HUY_LICH',
+          message: 'Hủy lịch khám trực tiếp phải chọn lý do (phía phòng khám / phía bệnh nhân) qua chức năng Hủy lịch.',
+        });
+      }
+    }
     const qb = this.repo
       .createQueryBuilder()
       .update(LichHen)
@@ -2216,11 +2274,6 @@ export class LichHenService implements OnModuleInit {
         }
       }
 
-      // Số thứ tự
-      let soThuTu = '';
-      const sttMatch = lh.ghiChu?.match(/\[STT:\s*([^\]]+)\]/i);
-      if (sttMatch) soThuTu = sttMatch[1];
-
       const soTienCoc = await this.getSoTienCocHienHanh(lh.hinhThuc, lh.maLichHen);
       const soTienCocStr = `${soTienCoc.toLocaleString('vi-VN')} đ`;
       const clientUrl = this.config.get<string>('CLIENT_URL', 'http://localhost:3000');
@@ -2327,7 +2380,7 @@ export class LichHenService implements OnModuleInit {
         subject = isOnline
           ? `[Phòng Khám Đa Khoa] Xác nhận lịch Tư vấn trực tuyến (Telehealth) #${lh.maLichHen}`
           : `[Phòng Khám Đa Khoa] Vé khám bệnh điện tử & Xác nhận lịch hẹn #${lh.maLichHen}`;
-        const qrData = encodeURIComponent(`${lh.maLichHen}|STT:${soThuTu || '0'}|DATE:${lh.ngayHen}|TIME:${lh.gioHen}`);
+        const qrData = encodeURIComponent(lh.maLichHen);
         const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${qrData}`;
         const telehealthUrl = `${clientUrl}/benh-nhan/lich-hen?maLichHen=${lh.maLichHen}`;
 
@@ -2353,11 +2406,12 @@ export class LichHenService implements OnModuleInit {
               <!-- Card Vé Khám STT & QR Code -->
               <div style="background: linear-gradient(135deg, ${isOnline ? '#eef2ff 0%, #e0e7ff 100%' : '#f0fdfa 0%, #e6fffa 100%'}); border: 2px solid ${isOnline ? '#818cf8' : '#5eead4'}; border-radius: 14px; padding: 20px; margin: 20px 0; text-align: center;">
                 <div style="font-size: 13px; font-weight: 700; color: ${isOnline ? '#3730a3' : '#0f766e'}; text-transform: uppercase; letter-spacing: 1px;">
-                  ${isOnline ? 'SỐ THỨ TỰ CA TƯ VẤN TRỰC TUYẾN' : 'SỐ THỨ TỰ TIẾP ĐÓN (STT)'}
+                  ${isOnline ? 'MÃ CA TƯ VẤN TRỰC TUYẾN' : 'MÃ LỊCH HẸN'}
                 </div>
-                <div style="font-size: 36px; font-weight: 900; color: ${isOnline ? '#4f46e5' : '#0d9488'}; margin: 4px 0 10px 0;">
-                  #${soThuTu || lh.maLichHen}
+                <div style="font-size: 30px; font-weight: 900; color: ${isOnline ? '#4f46e5' : '#0d9488'}; margin: 4px 0 4px 0;">
+                  #${lh.maLichHen}
                 </div>
+                ${isOnline ? '' : `<div style="font-size: 12px; color: #0f766e; margin-bottom: 10px;">Số thứ tự khám được cấp khi check-in tại quầy lễ tân hoặc kiosk</div>`}
 
                 <!-- QR Code Box -->
                 <div style="background-color: #ffffff; display: inline-block; padding: 12px; border-radius: 12px; border: 1px solid ${isOnline ? '#c7d2fe' : '#ccfbf1'}; box-shadow: 0 2px 6px rgba(0,0,0,0.04); margin-bottom: 8px;">

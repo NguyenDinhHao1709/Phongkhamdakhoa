@@ -19,7 +19,7 @@ export default function AppointmentTicketModal({
 
   const {
     maLichHen = 'LH2026',
-    soThuTu = 'A001',
+    soThuTu = null, // số thứ tự thật chỉ có sau khi check-in tại quầy / kiosk
     ngayHen = '',
     gioHen = '',
     hinhThuc = 'truc_tiep',
@@ -56,7 +56,8 @@ export default function AppointmentTicketModal({
   const formattedPaidAmount = actualPaidAmount.toLocaleString('vi-VN') + ' đ';
 
   // QR Code data: chứa mã lịch hẹn, STT, giờ hẹn và mã phòng khám
-  const qrData = qrCodeValue || `${maLichHen}|STT:${soThuTu}|DATE:${ngayHen}|TIME:${gioHen}`;
+  // QR chỉ chứa mã lịch hẹn: quét ở kiosk / quầy = nhập mã lịch hẹn để tra cứu và check-in
+  const qrData = qrCodeValue || maLichHen;
 
   const handlePrint = () => {
     const printContent = printRef.current;
@@ -202,20 +203,20 @@ export default function AppointmentTicketModal({
                 Tư Vấn Khám Trực Tuyến Telehealth
               </span>
               <div className="text-3xl sm:text-4xl font-black text-indigo-700 font-mono tracking-wider my-2">
-                STT: {soThuTu}
+                {maLichHen}
               </div>
-              <p className="text-xs text-indigo-900 font-medium">
-                Mã cuộc hẹn: <span className="font-mono font-bold text-indigo-700">{maLichHen}</span>
-              </p>
+              <p className="text-xs text-indigo-900 font-medium">Mã cuộc hẹn tư vấn trực tuyến</p>
             </div>
           ) : (
             <div className="bg-blue-50/80 border-2 border-blue-300 rounded-2xl p-4 text-center">
               <span className="text-xs font-bold uppercase tracking-wider text-blue-800 bg-white px-3 py-1 rounded-full border border-blue-200">
                 Số Thứ Tự Tiếp Nhận Khám
               </span>
-              <div className="text-5xl font-black text-blue-700 font-mono tracking-wider my-2">
-                {soThuTu}
-              </div>
+              {soThuTu ? (
+                <div className="text-5xl font-black text-blue-700 font-mono tracking-wider my-2">{soThuTu}</div>
+              ) : (
+                <div className="text-sm font-bold text-blue-700 my-3">Cấp khi check-in tại quầy lễ tân hoặc kiosk</div>
+              )}
               <p className="text-xs text-blue-900 font-medium">
                 Mã lịch hẹn: <span className="font-mono font-bold text-primary-700">{maLichHen}</span>
               </p>

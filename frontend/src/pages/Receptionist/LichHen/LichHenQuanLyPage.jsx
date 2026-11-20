@@ -77,6 +77,8 @@ export default function LichHenQuanLyPage() {
   const [selectedLichHen, setSelectedLichHen] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [actionLoadingId, setActionLoadingId] = useState(null);
+  // Hủy lịch khám trực tiếp: { lh, loaiHuy, lyDo } — lỗi bên nào quyết định có hoàn cọc không
+  const [huyModal, setHuyModal] = useState(null);
 
   const [reviewModalData, setReviewModalData] = useState({
     isOpen: false,
@@ -336,6 +338,22 @@ export default function LichHenQuanLyPage() {
       await fetchData();
     } catch (err) {
       alert(err?.error?.message || err?.message || 'Không check-in được lịch hẹn');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleHuyLich = async () => {
+    const { lh, loaiHuy, lyDo } = huyModal;
+    setActionLoadingId(lh.id);
+    try {
+      const res = await apiPatch(`/tiep-nhan/lich-hen/${lh.id}/huy`, { loaiHuy, lyDo: lyDo.trim() });
+      alert(res?.message || 'Đã hủy lịch hẹn');
+      setHuyModal(null);
+      if (selectedLichHen?.id === lh.id) setSelectedLichHen(null);
+      await fetchData();
+    } catch (err) {
+      alert(err?.error?.message || err?.message || 'Không hủy được lịch hẹn');
     } finally {
       setActionLoadingId(null);
     }
@@ -1145,7 +1163,9 @@ export default function LichHenQuanLyPage() {
                           {lh.trangThai !== 'da_huy' && lh.trangThai !== 'hoan_thanh' && (
                             <button
                               onClick={() => {
-                                if (window.confirm(`Bạn có chắc chắn muốn hủy lịch hẹn ${lh.maLichHen || ''}?`)) {
+                                if (lh.hinhThuc !== 'truc_tuyen') {
+                                  setHuyModal({ lh, loaiHuy: '', lyDo: '' });
+                                } else if (window.confirm(`Bạn có chắc chắn muốn hủy lịch hẹn ${lh.maLichHen || ''}?`)) {
                                   handleUpdateStatus(lh.id, 'da_huy', lh.phienBan);
                                 }
                               }}
@@ -1328,6 +1348,70 @@ export default function LichHenQuanLyPage() {
                     Duyệt lịch hẹn
                   </button>
                 )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal hủy lịch khám trực tiếp: chọn lỗi bên nào */}
+      {huyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl space-y-4 border border-gray-100">
+            <div>
+              <h3 className="text-base font-bold text-gray-900">Hủy lịch hẹn {huyModal.lh.maLichHen}</h3>
+              <p className="text-xs text-gray-500">
+                {huyModal.lh.daCheckIn
+                  ? `Bệnh nhân đã check-in (${huyModal.lh.checkIn?.maSoThuTu || ''}): lượt khám sẽ bị hủy, tạm ứng đã đóng tại quầy được hoàn.`
+                  : 'Bệnh nhân chưa check-in.'}
+              </p>
+            </div>
+            <div className="space-y-2">
+              {[
+                { value: 'phong_kham', label: 'Lỗi phía phòng khám', desc: 'Bác sĩ vắng, sự cố, quá tải… → hoàn 100% cọc sau khi Ban Giám Đốc duyệt' },
+                { value: 'benh_nhan', label: 'Lỗi phía bệnh nhân', desc: 'Bệnh nhân xin hủy, không đến, bỏ về → hoàn theo quy định hủy (đủ thời hạn mới được hoàn; đã check-in thì không hoàn)' },
+                ...(huyModal.lh.daCheckIn
+                  ? [{ value: 'nham', label: 'Tiếp nhận nhầm', desc: 'Chỉ hủy lượt khám, giữ lịch hẹn để check-in lại' }]
+                  : []),
+              ].map((o) => (
+                <label
+                  key={o.value}
+                  className={`flex items-start gap-2 rounded-xl border p-3 cursor-pointer ${huyModal.loaiHuy === o.value ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                >
+                  <input
+                    type="radio"
+                    name="loaiHuy"
+                    className="mt-0.5"
+                    checked={huyModal.loaiHuy === o.value}
+                    onChange={() => setHuyModal((m) => ({ ...m, loaiHuy: o.value }))}
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-gray-900">{o.label}</span>
+                    <span className="block text-xs text-gray-500">{o.desc}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-500">
+              Bệnh nhân sẽ nhận thông báo kèm lý do và tên người hủy; mọi lần hủy được ghi vào báo cáo của Ban Giám Đốc.
+            </p>
+            <textarea
+              rows={2}
+              value={huyModal.lyDo}
+              onChange={(e) => setHuyModal((m) => ({ ...m, lyDo: e.target.value }))}
+              placeholder="Lý do hủy (bắt buộc)"
+              className="w-full rounded-xl border border-gray-200 p-2 text-sm"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setHuyModal(null)} className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl">
+                Đóng
+              </button>
+              <button
+                onClick={handleHuyLich}
+                disabled={!huyModal.loaiHuy || !huyModal.lyDo.trim() || actionLoadingId === huyModal.lh.id}
+                className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl disabled:opacity-50"
+              >
+                Xác nhận hủy
+              </button>
             </div>
           </div>
         </div>
