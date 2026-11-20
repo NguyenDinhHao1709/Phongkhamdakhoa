@@ -2,7 +2,7 @@ import {
   Injectable, NotFoundException, ConflictException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { Repository, Not, In } from 'typeorm';
 import { HoSoBenhAn, BenhAnKham, TrangThaiBenhAnKham } from './entities/ho-so-benh-an.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { BacSi } from '../nhan-vien/entities/bac-si.entity';
@@ -692,6 +692,20 @@ export class HoSoBenhAnService {
   async ketThucKham(id: number, dto: KetThucKhamDto) {
     const bak = await this.benhAnRepo.findOne({ where: { id } });
     if (!bak) throw new NotFoundException({ code: 'BENH_AN_KHONG_TON_TAI', message: 'Không tìm thấy phiếu khám' });
+    if (bak.trangThai === TrangThaiBenhAnKham.DA_HOAN_THANH) {
+      throw new ConflictException({ code: 'DA_HOAN_THANH', message: 'Phiếu khám đã kết thúc trước đó.' });
+    }
+    // Chỉ kết thúc lượt đang khám (đã được gọi vào, chưa hủy / chưa kết thúc)
+    const DANG_KHAM = [TrangThaiTiepNhan.DANG_KHAM, TrangThaiTiepNhan.DANG_CLS, TrangThaiTiepNhan.DA_CO_KQ_CLS];
+    if (bak.luotTiepNhanId) {
+      const luot = await this.tiepNhanRepo.findOne({ where: { id: bak.luotTiepNhanId } });
+      if (!luot || !DANG_KHAM.includes(luot.trangThai)) {
+        throw new BadRequestException({
+          code: 'LUOT_KHONG_DANG_KHAM',
+          message: `Lượt khám đang ở trạng thái "${luot?.trangThai || 'không tồn tại'}", không thể kết thúc khám.`,
+        });
+      }
+    }
 
     const chanDoan = (dto.chanDoanXacDinh || bak.chanDoanXacDinh || '').trim();
     if (!chanDoan) {
@@ -717,30 +731,20 @@ export class HoSoBenhAnService {
       });
     }
 
+    // Lập hóa đơn trước: lỗi thì báo bác sĩ và giữ nguyên ca khám, không để lượt kẹt "chờ thanh toán" mà không có hóa đơn
+    if (bak.luotTiepNhanId) await this.thanhToanService.taoHoacCapNhatTuLuotKham(bak.luotTiepNhanId);
+
     Object.assign(bak, dto, {
       chanDoanXacDinh: chanDoan,
       trangThai: TrangThaiBenhAnKham.DA_HOAN_THANH,
       thoiGianKetThuc: new Date(),
     });
     const saved = await this.benhAnRepo.save(bak);
-
-    // 1. Kết thúc chuyên môn nhưng chờ thu ngân xác nhận viện phí
     if (bak.luotTiepNhanId) {
-      try {
-        await this.tiepNhanRepo.update(
-          { id: bak.luotTiepNhanId },
-          { trangThai: TrangThaiTiepNhan.CHO_THANH_TOAN }
-        );
-      } catch (e) {
-        console.warn('[ketThucKham] Cập nhật trạng thái chờ thanh toán:', e?.message);
-      }
-
-      // 2. Tự động tính toán và tạo/cập nhật hóa đơn viện phí trọn gói (Khám + Cận lâm sàng + Đơn thuốc + BHYT)
-      try {
-        await this.thanhToanService.taoHoacCapNhatTuLuotKham(bak.luotTiepNhanId);
-      } catch (err) {
-        console.warn('[ketThucKham] Tự động tổng hợp hóa đơn viện phí thất bại:', err?.message);
-      }
+      await this.tiepNhanRepo.update(
+        { id: bak.luotTiepNhanId, trangThai: In(DANG_KHAM) },
+        { trangThai: TrangThaiTiepNhan.CHO_THANH_TOAN },
+      );
     }
 
     return { data: saved, message: 'Kết thúc khám thành công. Hóa đơn viện phí và đơn thuốc đã được tổng hợp cho quầy thu ngân và bệnh nhân.' };

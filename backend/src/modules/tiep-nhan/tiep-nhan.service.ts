@@ -1105,8 +1105,10 @@ export class TiepNhanService implements OnModuleInit {
       );
     }
 
+    const tuChoKham = luot.trangThai === TrangThaiTiepNhan.CHO_KHAM;
     luot.trangThai = dto.trangThai as TrangThaiTiepNhan;
     await this.luotRepo.save(luot);
+    if (tuChoKham && dto.trangThai === TrangThaiTiepNhan.DANG_KHAM) await this.lichHenDangKham(luot);
 
     let callEvent = null;
     if (dto.trangThai === 'dang_kham') {
@@ -1244,6 +1246,15 @@ export class TiepNhanService implements OnModuleInit {
     return { data: { id: luotId, soLanQuaLuot: soLan }, message };
   }
 
+  /** Bệnh nhân có lịch hẹn được gọi vào khám → lịch hẹn "đang khám" */
+  private async lichHenDangKham(luot: LuotTiepNhan) {
+    if (!luot.lichHenId) return;
+    await this.lichHenRepo.update(
+      { id: luot.lichHenId, trangThai: TrangThaiLichHen.DA_XAC_NHAN },
+      { trangThai: TrangThaiLichHen.DANG_KHAM },
+    );
+  }
+
   async goiSoLoa(luotId: number, nguoiThucHienId?: number) {
     const luot = await this.luotRepo.findOne({ where: { id: luotId } });
     if (!luot) throw new NotFoundException({ code: 'KHONG_TIM_THAY', message: 'Không tìm thấy lượt tiếp nhận' });
@@ -1264,6 +1275,7 @@ export class TiepNhanService implements OnModuleInit {
     if (luot.trangThai === TrangThaiTiepNhan.CHO_KHAM) {
       luot.trangThai = TrangThaiTiepNhan.DANG_KHAM;
       await this.luotRepo.save(luot);
+      await this.lichHenDangKham(luot);
     }
 
     const callEvent = await this.recordAndEmitCall(luotId);

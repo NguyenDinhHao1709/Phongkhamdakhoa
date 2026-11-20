@@ -46,6 +46,7 @@ Các con số (15 phút, 3 lần, 24 giờ…) là giá trị trong mã nguồn 
    - Quá 15 phút chưa thanh toán → hệ thống tự hủy, nhả khung giờ.
 4. **Nhắc lịch.** Hệ thống gửi email nhắc các lịch hẹn trong 24 giờ tới (chạy định kỳ, có khóa để chỉ một instance chạy).
 5. **Hủy lịch bởi bệnh nhân.**
+   - Chỉ hủy được lịch đang chờ thanh toán / đã xác nhận và **chưa check-in**; lịch đã check-in, đang khám hoặc đã kết thúc thì không hủy trực tuyến.
    - Chỉ hủy trực tuyến được khi còn đủ **thời hạn hủy** do giám đốc cấu hình cho từng hình thức (hiện tại: khám trực tiếp 2 giờ, tư vấn trực tuyến 24 giờ). Bệnh nhân khai tài khoản nhận hoàn; hóa đơn cọc được đánh dấu `[CHỜ HOÀN CỌC <số tiền>]` với số tiền = cọc đã đóng × **% hoàn cọc** cấu hình.
    - Thu ngân hoàn đúng số tiền đó. Hoàn một phần thì hóa đơn cọc vẫn ở trạng thái đã thu, phần hoàn ghi vào tiền hoàn trả (phần giữ lại là doanh thu).
    - Sát giờ hơn thời hạn: không hủy trực tuyến, không hoàn cọc. % hoàn = 0 thì hủy mà không tạo yêu cầu hoàn.
@@ -101,7 +102,8 @@ Thứ tự gọi trong hàng đợi của một bác sĩ:
 
 1. Bác sĩ khám: sinh hiệu, triệu chứng, chẩn đoán sơ bộ.
 2. Cần cận lâm sàng → chỉ định xét nghiệm / chẩn đoán hình ảnh (lượt `dang_cls`). Kỹ thuật viên lấy mẫu, thực hiện, nhập kết quả, tải ảnh → lượt `da_co_kq_cls`, bác sĩ nhận kết quả. Sau khi hóa đơn đã thanh toán thì không chỉ định thêm hoặc xóa chỉ định đã thu tiền.
-3. Bác sĩ chẩn đoán xác định (ICD-10), kê đơn, hẹn tái khám, **kết thúc khám** → lượt `cho_thanh_toan`.
+3. Bác sĩ chẩn đoán xác định (ICD-10), kê đơn, hẹn tái khám, **kết thúc khám** → hệ thống lập hóa đơn trước; lập được thì lượt mới chuyển `cho_thanh_toan` (lỗi thì báo bác sĩ, ca khám giữ nguyên). Chỉ kết thúc được lượt đang khám, và mỗi phiếu khám chỉ kết thúc một lần.
+- Bác sĩ gọi bệnh nhân có lịch hẹn vào khám → lịch hẹn `dang_kham`.
 
 ### 3.5 Quyết toán viện phí
 
@@ -117,7 +119,9 @@ Thứ tự gọi trong hàng đợi của một bác sĩ:
 | Trái tuyến | Mức hưởng × % trái tuyến do giám đốc cấu hình |
 
 - Thu ngân chọn hình thức BHYT lúc thu tiền mà hóa đơn chưa có số giảm: hệ thống tính lại theo thẻ như trên; chỉ khi chưa nhập thẻ hợp lệ mới dùng mức mặc định 80%.
-- Kết quả: **thu thêm** phần còn thiếu, hoặc **hoàn tạm ứng dư** (ghi `tien_hoan_tra`). Thanh toán xong → lượt `hoan_thanh`, phiếu khám `da_hoan_thanh`.
+- Chỉ quyết toán hóa đơn đang chờ thu của lượt **đã kết thúc khám** (`cho_thanh_toan`); hóa đơn đã hủy hoặc lượt đang khám / đã hủy thì không thu.
+- Số tiền giảm thu ngân nhập phải từ 0 đến tổng viện phí, nên tiền hoàn tối đa bằng số tạm ứng/cọc đã đóng.
+- Kết quả: **thu thêm** phần còn thiếu, hoặc **hoàn tạm ứng dư** (ghi `tien_hoan_tra`). Thanh toán xong → lượt `hoan_thanh`, phiếu khám `da_hoan_thanh`, lịch hẹn (nếu có) `hoan_thanh`.
 
 ### 3.6 Cấp phát thuốc
 

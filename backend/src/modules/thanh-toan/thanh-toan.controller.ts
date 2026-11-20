@@ -9,6 +9,16 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { assertBenhNhanSoHuu } from '../../common/utils/benh-nhan-so-huu.util';
+import { IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+
+class XacNhanThanhToanDto {
+  @IsOptional() @IsString() phuongThucThanhToan?: string;
+  @IsOptional() @IsString() phuongThuc?: string;
+  @IsOptional() @IsNumber() @Min(0) soTienGiam?: number;
+  @IsOptional() @IsNumber() soTienNhan?: number;
+  @IsOptional() @IsString() ghiChu?: string;
+  @IsOptional() @IsBoolean() apDungBhyt?: boolean;
+}
 
 @ApiTags('Thu ngân & Thanh toán')
 @ApiBearerAuth()
@@ -196,7 +206,7 @@ export class ThanhToanController {
   xacNhanThanhToan(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('id') userId: number,
-    @Body() dto: { phuongThucThanhToan?: string; phuongThuc?: string; soTienGiam?: number; soTienNhan?: number; ghiChu?: string; apDungBhyt?: boolean },
+    @Body() dto: XacNhanThanhToanDto,
   ) {
     return this.thanhToanService.xacNhanThanhToan(id, userId || 1, {
       phuongThucThanhToan: dto.phuongThucThanhToan || dto.phuongThuc || 'tien_mat',
@@ -229,21 +239,6 @@ export class ThanhToanController {
   ) {
     await this.soHuu(user, id);
     return this.thanhToanService.capNhatLuaChonThuocHoaDon(id, body.luaChonMua);
-  }
-
-  @Post('vnpay/tao-url')
-  @Roles('thu_ngan', 'benh_nhan', 'quan_tri_vien')
-  @ApiOperation({ summary: 'Tạo URL thanh toán VNPay Sandbox' })
-  @Quyen('hoa_don.thanh_toan')
-  async taoUrlVNPay(@Body() body: { hoaDonId: number; soTien?: number; nganHang?: string }, @CurrentUser() user: any) {
-    await this.soHuu(user, Number(body.hoaDonId));
-    return this.thanhToanService.taoUrlVNPay(body.hoaDonId, body.soTien, body.nganHang);
-  }
-
-  @Get('vnpay/callback')
-  @ApiOperation({ summary: 'Webhook IPN callback tiếp nhận kết quả thanh toán từ VNPay' })
-  callbackVNPay(@Query() query: Record<string, string>) {
-    return this.thanhToanService.callbackVNPay(query);
   }
 
   @Get('in-hoa-don/:id')

@@ -1419,6 +1419,17 @@ export class LichHenService implements OnModuleInit {
       throw new NotFoundException({ code: 'LICH_HEN_KHONG_TON_TAI', message: 'Không tìm thấy lịch hẹn' });
     }
 
+    // Đã check-in / đang khám / đã kết thúc thì không tự hủy được (tránh hủy để đòi hoàn cọc)
+    const daCheckIn = lh.hinhThuc !== 'truc_tuyen' && await this.dataSource.query(
+      `SELECT 1 FROM luot_tiep_nhan WHERE lich_hen_id = ? AND trang_thai != 'da_huy' LIMIT 1`, [lh.id],
+    ).then((r: any[]) => r.length > 0);
+    if (daCheckIn || ![TrangThaiLichHen.CHO_THANH_TOAN, TrangThaiLichHen.DA_XAC_NHAN].includes(lh.trangThai)) {
+      throw new BadRequestException({
+        code: 'LICH_HEN_KHONG_THE_HUY',
+        message: 'Lịch hẹn đã check-in, đang khám hoặc đã kết thúc, không thể hủy trực tuyến.',
+      });
+    }
+
     const wasPaid = lh.trangThai !== TrangThaiLichHen.CHO_THANH_TOAN;
 
     if (wasPaid) {

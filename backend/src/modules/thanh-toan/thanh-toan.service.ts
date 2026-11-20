@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, In } from 'typeorm';
 import { HoaDon } from './entities/hoa-don.entity';
 import { HoaDonChiTiet } from './entities/hoa-don-chi-tiet.entity';
-import { LuotTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
+import { LuotTiepNhan, TrangThaiTiepNhan } from '../tiep-nhan/entities/tiep-nhan.entity';
 import { NhanVien } from '../nhan-vien/entities/nhan-vien.entity';
 import { MaGeneratorService } from '../../common/utils/ma-generator.util';
 import { soTiepTheo, voiKhoaDb } from '../../common/utils/db-sequence.util';
@@ -516,8 +516,14 @@ export class ThanhToanService {
         throw new NotFoundException('Không tìm thấy hóa đơn');
       }
 
-      if (hd.trangThai === 'da_thanh_toan') {
-        throw new BadRequestException('Hóa đơn này đã được thanh toán trước đó');
+      if (hd.trangThai !== 'cho_thanh_toan') {
+        throw new BadRequestException(hd.trangThai === 'da_thanh_toan'
+          ? 'Hóa đơn này đã được thanh toán trước đó'
+          : 'Hóa đơn đã hủy, không thể thu tiền');
+      }
+      // Quyết toán chỉ sau khi bác sĩ kết thúc khám (lượt đã hủy hoặc đang khám thì không thu)
+      if (hd.luotTiepNhanId && hd.luotTiepNhan?.trangThai !== TrangThaiTiepNhan.CHO_THANH_TOAN) {
+        throw new BadRequestException('Lượt khám chưa kết thúc hoặc đã hủy, chưa thể quyết toán hóa đơn này');
       }
       if (hd.maHoaDon.startsWith(MA_TAM_UNG_QUAY)) {
         throw new BadRequestException('Phiếu tạm ứng phải thu qua chức năng "Thu tạm ứng"');
@@ -544,6 +550,10 @@ export class ThanhToanService {
       } else if (isNaN(soTienGiam)) {
         soTienGiam = Number(hd.soTienGiam || 0);
       }
+      // Số giảm vượt tổng tiền sẽ biến thành "tiền hoàn" không có thật
+      if (!(soTienGiam >= 0 && soTienGiam <= tongTien)) {
+        throw new BadRequestException(`Số tiền giảm phải từ 0 đến ${tongTien.toLocaleString('vi-VN')} đ`);
+      }
 
       const { thucThu, tienHoanTra } = this.tinhThuHoan(tongTien, soTienGiam, tienCocDaThu);
 
@@ -561,13 +571,19 @@ export class ThanhToanService {
       }
 
       const updated = await this.hoaDonRepo.save(hd);
-      await this.xacNhanLichHenSauThanhToan(hd.luotTiepNhanId);
 
-      // Cập nhật trạng thái lượt tiếp nhận sang hoàn thành
+      // Quyết toán xong: lượt khám và lịch hẹn (nếu có) hoàn thành
       if (hd.luotTiepNhanId) {
-        await this.tiepNhanRepo.update(hd.luotTiepNhanId, {
-          trangThai: 'hoan_thanh' as any,
-        });
+        await this.tiepNhanRepo.update(
+          { id: hd.luotTiepNhanId, trangThai: TrangThaiTiepNhan.CHO_THANH_TOAN },
+          { trangThai: TrangThaiTiepNhan.HOAN_THANH },
+        );
+        if (hd.luotTiepNhan?.lichHenId) {
+          await this.hoaDonRepo.manager.query(
+            `UPDATE lich_hen SET trang_thai = 'hoan_thanh' WHERE id = ? AND trang_thai IN ('da_xac_nhan', 'dang_kham')`,
+            [hd.luotTiepNhan.lichHenId],
+          );
+        }
         // Đồng thời cập nhật trạng thái phiếu khám bệnh sang da_hoan_thanh
         await this.hoaDonRepo.manager.query(
           `UPDATE benh_an_kham SET trang_thai = 'da_hoan_thanh' WHERE luot_tiep_nhan_id = ? AND trang_thai != 'da_hoan_thanh'`,
@@ -796,14 +812,6 @@ export class ThanhToanService {
 
       return { message: `Đã thu tạm ứng ${soTien.toLocaleString('vi-VN')} đ`, data: saved };
     });
-  }
-
-  private async xacNhanLichHenSauThanhToan(luotTiepNhanId?: number) {
-    if (!luotTiepNhanId) return;
-    const luot = await this.tiepNhanRepo.findOne({ where: { id: luotTiepNhanId } });
-    if (luot?.lichHenId) {
-      await this.lichHenService.xacNhanSauThanhToan(luot.lichHenId);
-    }
   }
 
   /**
@@ -1929,99 +1937,6 @@ export class ThanhToanService {
 
     const list = await qb.getMany();
     return list;
-  }
-
-  /**
-   * Tạo URL thanh toán VNPay Sandbox
-   */
-  async taoUrlVNPay(hoaDonId: number, soTien?: number, nganHang?: string) {
-    const hd = await this.hoaDonRepo.findOne({ where: { id: hoaDonId } });
-    if (!hd) {
-      throw new NotFoundException('Không tìm thấy hóa đơn cần thanh toán');
-    }
-    const amount = (soTien || Number(hd.thucThu)) * 100;
-    const tmnCode = 'PHONGKHAM2026';
-    const secretKey = 'VNPAY_SECRET_KEY_PHONGKHAM_2026';
-    const vnpUrl = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
-    const returnUrl = 'http://localhost:3000/thanh-toan/vnpay-return';
-    const createDate = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-    const orderId = `${hd.maHoaDon}_${Date.now()}`;
-
-    const crypto = require('crypto');
-    const params: Record<string, string> = {
-      vnp_Version: '2.1.0',
-      vnp_Command: 'pay',
-      vnp_TmnCode: tmnCode,
-      vnp_Locale: 'vn',
-      vnp_CurrCode: 'VND',
-      vnp_TxnRef: orderId,
-      vnp_OrderInfo: `Thanh toan vien phi ${hd.maHoaDon}`,
-      vnp_OrderType: 'other',
-      vnp_Amount: String(amount),
-      vnp_ReturnUrl: returnUrl,
-      vnp_IpAddr: '127.0.0.1',
-      vnp_CreateDate: createDate,
-    };
-    if (nganHang) {
-      params['vnp_BankCode'] = nganHang;
-    }
-
-    const sortedKeys = Object.keys(params).sort();
-    const signData = sortedKeys.map(k => `${k}=${encodeURIComponent(params[k])}`).join('&');
-    const hmac = crypto.createHmac('sha512', secretKey);
-    const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
-    const paymentUrl = `${vnpUrl}?${signData}&vnp_SecureHash=${signed}`;
-
-    return {
-      success: true,
-      message: 'Tạo URL thanh toán VNPay thành công',
-      data: {
-        paymentUrl,
-        hoaDonId: hd.id,
-        maHoaDon: hd.maHoaDon,
-        soTien: Number(hd.thucThu),
-      },
-    };
-  }
-
-  /**
-   * Xử lý Callback IPN từ VNPay
-   */
-  async callbackVNPay(query: Record<string, string>) {
-    const crypto = require('crypto');
-    const secretKey = 'VNPAY_SECRET_KEY_PHONGKHAM_2026';
-    const secureHash = query['vnp_SecureHash'];
-
-    const signParams = { ...query };
-    delete signParams['vnp_SecureHash'];
-    delete signParams['vnp_SecureHashType'];
-
-    const sortedKeys = Object.keys(signParams).sort();
-    const signData = sortedKeys.map(k => `${k}=${encodeURIComponent(signParams[k])}`).join('&');
-    const hmac = crypto.createHmac('sha512', secretKey);
-    const checkHash = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
-
-    if (secureHash && secureHash !== checkHash && secureHash !== 'TEST_VALID_HASH') {
-      throw new BadRequestException({ code: 'CHU_KY_KHONG_HOP_LE', message: 'Chữ ký số VNPay không hợp lệ' });
-    }
-
-    const responseCode = query['vnp_ResponseCode'];
-    const txnRef = query['vnp_TxnRef'] || '';
-    const maHoaDon = txnRef.split('_')[0];
-
-    if (responseCode === '00') {
-      const hd = await this.hoaDonRepo.findOne({ where: { maHoaDon }, relations: ['luotTiepNhan'] });
-      if (hd) {
-        hd.trangThai = 'da_thanh_toan';
-        hd.phuongThucThanhToan = 'chuyen_khoan';
-        hd.ngayThanhToan = new Date();
-        await this.hoaDonRepo.save(hd);
-        await this.xacNhanLichHenSauThanhToan(hd.luotTiepNhanId);
-      }
-      return { success: true, message: 'Giao dịch VNPay thành công', RspCode: '00' };
-    }
-
-    return { success: false, message: 'Giao dịch không thành công hoặc đã bị hủy', RspCode: responseCode || '99' };
   }
 
   /**
