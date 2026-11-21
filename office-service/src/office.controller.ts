@@ -9,17 +9,26 @@ import {
   Query,
   Headers,
   ParseIntPipe,
+  UseGuards,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { OfficeService } from './office.service';
+import { InternalTokenGuard } from './common/internal-auth';
 
 @ApiTags('🏢 MediCare Digital Office Microservice (Port 5003)')
+@UseGuards(InternalTokenGuard)
 @Controller('office')
 export class OfficeController {
   constructor(private readonly officeService: OfficeService) {}
 
-  private resolveUserId(headerUid?: string, queryUid?: string, bodyUid?: number): number {
-    return Number(headerUid || queryUid || bodyUid || 1);
+  /** userId chỉ lấy từ header x-user-id do backend gắn sau khi đã xác thực JWT (request đã qua InternalTokenGuard) */
+  private resolveUserId(headerUid?: string): number {
+    const uid = Number(headerUid);
+    if (!Number.isInteger(uid) || uid <= 0) {
+      throw new UnauthorizedException('Thiếu thông tin người dùng');
+    }
+    return uid;
   }
 
   @Get('health')
@@ -36,12 +45,8 @@ export class OfficeController {
 
   @Get('init')
   @ApiOperation({ summary: 'Khởi tạo không gian làm việc Office: Danh sách phòng chat, Danh bạ Khoa/Phòng, Nhãn dán' })
-  getWorkspaceInit(
-    @Headers('x-user-id') headerUid?: string,
-    @Query('userId') queryUid?: string,
-  ) {
-    const uid = this.resolveUserId(headerUid, queryUid);
-    return this.officeService.getWorkspaceInit(uid);
+  getWorkspaceInit(@Headers('x-user-id') headerUid?: string) {
+    return this.officeService.getWorkspaceInit(this.resolveUserId(headerUid));
   }
 
   @Get('rooms/:id/messages')
@@ -49,74 +54,66 @@ export class OfficeController {
   getRoomMessages(
     @Param('id', ParseIntPipe) roomId: number,
     @Headers('x-user-id') headerUid?: string,
-    @Query('userId') queryUid?: string,
   ) {
-    const uid = this.resolveUserId(headerUid, queryUid);
-    return this.officeService.getRoomMessages(roomId, uid);
+    return this.officeService.getRoomMessages(roomId, this.resolveUserId(headerUid));
   }
 
   @Post('rooms/direct')
   @ApiOperation({ summary: 'Mở hoặc tạo cuộc trò chuyện riêng 1-1 với nhân sự nội bộ' })
   openDirectRoom(
-    @Body() body: { userId?: number; targetUserId: number },
+    @Body() body: { targetUserId: number },
     @Headers('x-user-id') headerUid?: string,
   ) {
-    const uid = this.resolveUserId(headerUid, undefined, body?.userId);
-    return this.officeService.openOrCreateDirectRoom(uid, Number(body?.targetUserId));
+    return this.officeService.openOrCreateDirectRoom(this.resolveUserId(headerUid), Number(body?.targetUserId));
   }
 
   @Post('rooms/group')
   @ApiOperation({ summary: 'Tạo nhóm chat mới theo Khoa/Phòng hoặc dự án' })
   createGroupRoom(
-    @Body() body: { userId?: number; tenPhong: string; moTa?: string; memberIds: number[] },
+    @Body() body: { tenPhong: string; moTa?: string; memberIds: number[] },
     @Headers('x-user-id') headerUid?: string,
   ) {
-    const uid = this.resolveUserId(headerUid, undefined, body?.userId);
-    return this.officeService.createGroupRoom(uid, body);
+    return this.officeService.createGroupRoom(this.resolveUserId(headerUid), body);
   }
 
   @Post('rooms/:id/members')
   @ApiOperation({ summary: 'Thêm thành viên vào nhóm chat' })
   addMembers(
     @Param('id', ParseIntPipe) roomId: number,
-    @Body() body: { userId?: number; memberIds: number[] },
+    @Body() body: { memberIds: number[] },
     @Headers('x-user-id') headerUid?: string,
   ) {
-    const uid = this.resolveUserId(headerUid, undefined, body?.userId);
-    return this.officeService.addMembersToRoom(roomId, uid, body?.memberIds || []);
+    return this.officeService.addMembersToRoom(roomId, this.resolveUserId(headerUid), body?.memberIds || []);
   }
 
   @Post('rooms/:id/messages')
-  @ApiOperation({ summary: 'Gửi tin nhắn (văn bản, nhãn dán, ảnh, tệp, thẻ bệnh nhân)' })
+  @ApiOperation({ summary: 'Gửi tin nhắn (văn bản, nhãn dán, ảnh, tệp)' })
   sendMessage(
     @Param('id', ParseIntPipe) roomId: number,
     @Body() body: any,
     @Headers('x-user-id') headerUid?: string,
   ) {
-    const uid = this.resolveUserId(headerUid, undefined, body?.userId);
-    return this.officeService.sendMessage(roomId, uid, body);
+    return this.officeService.sendMessage(roomId, this.resolveUserId(headerUid), body || {});
   }
 
   @Post('messages/:id/react')
   @ApiOperation({ summary: 'Thả cảm xúc (Reaction) vào tin nhắn' })
   toggleReaction(
     @Param('id', ParseIntPipe) messageId: number,
-    @Body() body: { userId?: number; emoji: string },
+    @Body() body: { emoji: string },
     @Headers('x-user-id') headerUid?: string,
   ) {
-    const uid = this.resolveUserId(headerUid, undefined, body?.userId);
-    return this.officeService.toggleReaction(messageId, uid, body?.emoji || '👍');
+    return this.officeService.toggleReaction(messageId, this.resolveUserId(headerUid), body?.emoji || '👍');
   }
 
   @Patch('rooms/:id/pin')
   @ApiOperation({ summary: 'Ghim hoặc bỏ ghim tin nhắn trong phòng chat' })
   togglePin(
     @Param('id', ParseIntPipe) roomId: number,
-    @Body() body: { userId?: number; messageId: number },
+    @Body() body: { messageId: number },
     @Headers('x-user-id') headerUid?: string,
   ) {
-    const uid = this.resolveUserId(headerUid, undefined, body?.userId);
-    return this.officeService.togglePinMessage(roomId, uid, Number(body?.messageId));
+    return this.officeService.togglePinMessage(roomId, this.resolveUserId(headerUid), Number(body?.messageId));
   }
 
   @Delete('messages/:id')
@@ -124,22 +121,18 @@ export class OfficeController {
   recallMessage(
     @Param('id', ParseIntPipe) messageId: number,
     @Headers('x-user-id') headerUid?: string,
-    @Query('userId') queryUid?: string,
     @Query('mode') mode?: string,
   ) {
-    const uid = this.resolveUserId(headerUid, queryUid);
-    return this.officeService.recallMessage(messageId, uid, mode);
+    return this.officeService.recallMessage(messageId, this.resolveUserId(headerUid), mode);
   }
 
   @Post('rooms/:id/read')
   @ApiOperation({ summary: 'Đánh dấu đã xem tin nhắn trong phòng' })
   markRoomRead(
     @Param('id', ParseIntPipe) roomId: number,
-    @Body() body: { userId?: number },
     @Headers('x-user-id') headerUid?: string,
   ) {
-    const uid = this.resolveUserId(headerUid, undefined, body?.userId);
-    return this.officeService.markRoomRead(roomId, uid);
+    return this.officeService.markRoomRead(roomId, this.resolveUserId(headerUid));
   }
 
   @Delete('rooms/:id/conversation')
@@ -147,26 +140,16 @@ export class OfficeController {
   deleteConversation(
     @Param('id', ParseIntPipe) roomId: number,
     @Headers('x-user-id') headerUid?: string,
-    @Query('userId') queryUid?: string,
   ) {
-    const uid = this.resolveUserId(headerUid, queryUid);
-    return this.officeService.deleteConversationForUser(roomId, uid);
+    return this.officeService.deleteConversationForUser(roomId, this.resolveUserId(headerUid));
   }
 
   @Post('rooms/:id/leave')
   @ApiOperation({ summary: 'Rời khỏi nhóm trò chuyện' })
   leaveGroup(
     @Param('id', ParseIntPipe) roomId: number,
-    @Body() body: { userId?: number },
     @Headers('x-user-id') headerUid?: string,
   ) {
-    const uid = this.resolveUserId(headerUid, undefined, body?.userId);
-    return this.officeService.leaveGroupRoom(roomId, uid);
-  }
-
-  @Get('patients-search')
-  @ApiOperation({ summary: 'Tìm kiếm nhanh bệnh nhân để gắn thẻ hồ sơ y tế vào cuộc trò chuyện' })
-  searchPatients(@Query('q') q?: string) {
-    return this.officeService.searchPatientsForCard(q);
+    return this.officeService.leaveGroupRoom(roomId, this.resolveUserId(headerUid));
   }
 }

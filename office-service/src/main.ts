@@ -4,6 +4,7 @@ import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import { join } from 'path';
+import { corsOriginChecker } from './common/internal-auth';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -18,7 +19,7 @@ async function bootstrap() {
   });
 
   app.setGlobalPrefix('api');
-  app.enableCors({ origin: '*', credentials: true });
+  app.enableCors({ origin: corsOriginChecker, credentials: true });
 
   const config = new DocumentBuilder()
     .setTitle('MediCare Digital Office Microservice')

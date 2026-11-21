@@ -24,6 +24,10 @@ export const HOSPITAL_STICKERS = [
   { id: 'stk_like', code: '💯 Chuẩn xác 100%', label: 'Chuẩn xác', emoji: '💯', color: '#22c55e', category: 'Công việc' },
 ];
 
+const SENDABLE_MESSAGE_TYPES = ['van_ban', 'hinh_anh', 'tep_tin', 'nhan_dan'];
+const MAX_MESSAGE_LENGTH = 5000;
+const MAX_EMOJI_LENGTH = 16;
+
 @Injectable()
 export class OfficeService implements OnModuleInit {
   private readonly logger = new Logger(OfficeService.name);
@@ -122,22 +126,47 @@ export class OfficeService implements OnModuleInit {
       if (Number(existingRooms[0]?.cnt || 0) === 0) {
         await this.seedDefaultHospitalWorkspace();
       }
-      await this.dataSource.query(`DELETE FROM office_tin_nhan WHERE loai = 'the_benh_nhan'`);
-      await this.dataSource.query(`
-        DELETE t1 FROM office_tin_nhan t1
-        INNER JOIN office_tin_nhan t2
-          ON t1.phong_chat_id = t2.phong_chat_id
-         AND t1.nguoi_gui_id = t2.nguoi_gui_id
-         AND t1.loai = t2.loai
-         AND t1.noi_dung = t2.noi_dung
-         AND t1.loai IN ('tep_tin', 'hinh_anh')
-         AND t1.id > t2.id
-         AND ABS(TIMESTAMPDIFF(SECOND, t1.tao_luc, t2.tao_luc)) <= 60
-      `);
       this.logger.log('✅ Office database schema & default channels verified');
     } catch (err: any) {
       this.logger.error('Lỗi khởi tạo schema Office:', err.message);
     }
+  }
+
+  /** Chỉ thành viên đang hoạt động (chưa rời nhóm) mới được thao tác trên phòng. Trả về bản ghi phòng. */
+  private async assertMember(roomId: number, userId: number) {
+    const rows: any[] = await this.dataSource.query(
+      `SELECT p.*, tv.vai_tro AS myRole
+       FROM office_phong_chat p
+       INNER JOIN office_thanh_vien tv
+         ON tv.phong_chat_id = p.id AND tv.nguoi_dung_id = ? AND tv.da_roi_nhom = 0
+       WHERE p.id = ?
+       LIMIT 1`,
+      [userId, roomId],
+    );
+    if (rows.length === 0) {
+      throw new ForbiddenException('Bạn không phải thành viên của cuộc trò chuyện này');
+    }
+    return rows[0];
+  }
+
+  /** Lọc danh sách id, chỉ giữ nhân sự nội bộ đang hoạt động */
+  private async filterValidStaffIds(ids: any[]): Promise<number[]> {
+    const staffIds = new Set((await this.getAllStaffRaw()).map((s) => Number(s.id)));
+    return Array.from(new Set((ids || []).map((id) => Number(id)))).filter(
+      (id) => Number.isInteger(id) && id > 0 && staffIds.has(id),
+    );
+  }
+
+  /** tin_nhan_ghim_id = tin còn ghim mới nhất của phòng (hoặc null nếu không còn tin nào ghim) */
+  private async syncPinnedMessageId(roomId: number) {
+    await this.dataSource.query(
+      `UPDATE office_phong_chat
+       SET tin_nhan_ghim_id = (
+         SELECT MAX(id) FROM office_tin_nhan WHERE phong_chat_id = ? AND da_ghim = 1 AND da_thu_hoi = 0
+       )
+       WHERE id = ?`,
+      [roomId, roomId],
+    );
   }
 
   private isDeletedForUser(rawJson: string | null | undefined, userId: number): boolean {
@@ -473,8 +502,11 @@ export class OfficeService implements OnModuleInit {
     const rooms = [];
     const roomIds = rawRooms.map((r) => Number(r.id));
 
-    // Truy vấn Batch 1 lần cho toàn bộ thành viên và tin nhắn của tất cả các phòng (Loại bỏ hoàn toàn N+1 Query)
-    const [allMemberRows, allRecentMsgRows]: [any[], any[]] =
+    const msgCols = `t.id, t.phong_chat_id AS roomId, t.nguoi_gui_id AS nguoiGuiId, t.loai, t.noi_dung AS noiDung,
+                     t.da_thu_hoi AS daThuHoi, t.xoa_boi_ids AS xoaBoiIds, t.tao_luc AS taoLuc`;
+
+    // Không tải toàn bộ lịch sử: chỉ lấy tin chưa đọc + tin mới nhất của mỗi phòng (3 truy vấn batch, không N+1)
+    const [allMemberRows, unreadRows, latestRows]: [any[], any[], any[]] =
       roomIds.length > 0
         ? await Promise.all([
             this.dataSource.query(
@@ -483,13 +515,30 @@ export class OfficeService implements OnModuleInit {
                WHERE phong_chat_id IN (${roomIds.join(',')}) AND da_roi_nhom = 0`,
             ),
             this.dataSource.query(
-              `SELECT id, phong_chat_id AS roomId, nguoi_gui_id AS nguoiGuiId, loai, noi_dung AS noiDung, da_thu_hoi AS daThuHoi, xoa_boi_ids AS xoaBoiIds, tao_luc AS taoLuc
-               FROM office_tin_nhan
-               WHERE phong_chat_id IN (${roomIds.join(',')})
-               ORDER BY id DESC`,
+              `SELECT t.id, t.phong_chat_id AS roomId, t.xoa_boi_ids AS xoaBoiIds
+               FROM office_tin_nhan t
+               INNER JOIN office_thanh_vien tv
+                 ON tv.phong_chat_id = t.phong_chat_id AND tv.nguoi_dung_id = ? AND tv.da_roi_nhom = 0
+               WHERE t.id > GREATEST(tv.da_doc_den_tin_id, tv.xoa_den_tin_id)
+                 AND t.nguoi_gui_id <> ?
+                 AND t.da_thu_hoi = 0`,
+              [userId, userId],
+            ),
+            this.dataSource.query(
+              `SELECT ${msgCols}
+               FROM office_tin_nhan t
+               INNER JOIN (
+                 SELECT m.phong_chat_id, MAX(m.id) AS maxId
+                 FROM office_tin_nhan m
+                 INNER JOIN office_thanh_vien tv
+                   ON tv.phong_chat_id = m.phong_chat_id AND tv.nguoi_dung_id = ? AND tv.da_roi_nhom = 0
+                 WHERE m.id > tv.xoa_den_tin_id
+                 GROUP BY m.phong_chat_id
+               ) x ON x.maxId = t.id`,
+              [userId],
             ),
           ])
-        : [[], []];
+        : [[], [], []];
 
     const membersByRoom = new Map<number, any[]>();
     for (const m of allMemberRows) {
@@ -498,11 +547,28 @@ export class OfficeService implements OnModuleInit {
       membersByRoom.get(rid)!.push(m);
     }
 
-    const msgsByRoom = new Map<number, any[]>();
-    for (const msg of allRecentMsgRows) {
-      const rid = Number(msg.roomId);
-      if (!msgsByRoom.has(rid)) msgsByRoom.set(rid, []);
-      msgsByRoom.get(rid)!.push(msg);
+    const unreadByRoom = new Map<number, number>();
+    for (const m of unreadRows) {
+      if (this.isDeletedForUser(m.xoaBoiIds, userId)) continue;
+      const rid = Number(m.roomId);
+      unreadByRoom.set(rid, (unreadByRoom.get(rid) || 0) + 1);
+    }
+
+    const lastMsgByRoom = new Map<number, any>();
+    for (const m of latestRows) lastMsgByRoom.set(Number(m.roomId), m);
+    // Hiếm: tin mới nhất đã bị chính user "xóa ở phía tôi" → tìm tin gần nhất còn hiển thị trong phòng đó
+    for (const [rid, m] of Array.from(lastMsgByRoom.entries())) {
+      if (!this.isDeletedForUser(m.xoaBoiIds, userId)) continue;
+      const room = rawRooms.find((r) => Number(r.id) === rid);
+      const candidates: any[] = await this.dataSource.query(
+        `SELECT ${msgCols} FROM office_tin_nhan t
+         WHERE t.phong_chat_id = ? AND t.id > ?
+         ORDER BY t.id DESC LIMIT 50`,
+        [rid, Number(room?.myClearedId || 0)],
+      );
+      const visible = candidates.find((c) => !this.isDeletedForUser(c.xoaBoiIds, userId));
+      if (visible) lastMsgByRoom.set(rid, visible);
+      else lastMsgByRoom.delete(rid);
     }
 
     for (const r of rawRooms) {
@@ -524,21 +590,9 @@ export class OfficeService implements OnModuleInit {
         };
       });
 
-      const myClearedId = Number(r.myClearedId || 0);
-      const myLastReadThreshold = Math.max(Number(r.myLastReadId || 0), myClearedId);
-      const roomMsgs = (msgsByRoom.get(rid) || []).filter((m) => Number(m.id) > myClearedId);
-
-      const lastMsgRaw =
-        roomMsgs.find((m) => !this.isDeletedForUser(m.xoaBoiIds, userId)) || null;
+      const lastMsgRaw = lastMsgByRoom.get(rid) || null;
       const lastSender = lastMsgRaw ? staffMap.get(Number(lastMsgRaw.nguoiGuiId)) : null;
-
-      const unreadCount = roomMsgs.filter(
-        (m) =>
-          Number(m.id) > myLastReadThreshold &&
-          Number(m.nguoiGuiId) !== Number(userId) &&
-          !m.daThuHoi &&
-          !this.isDeletedForUser(m.xoaBoiIds, userId),
-      ).length;
+      const unreadCount = unreadByRoom.get(rid) || 0;
 
       let displayTitle = r.ten_phong;
       let directPartner = null;
@@ -596,20 +650,7 @@ export class OfficeService implements OnModuleInit {
     const staffMap = new Map<number, any>();
     staffDirectory.forEach((s) => staffMap.set(s.id, s));
 
-    const roomRows: any[] = await this.dataSource.query(
-      `SELECT * FROM office_phong_chat WHERE id = ? LIMIT 1`,
-      [roomId],
-    );
-    if (roomRows.length === 0) {
-      throw new NotFoundException('Không tìm thấy phòng trò chuyện');
-    }
-    const room = roomRows[0];
-
-    // Đảm bảo user có trong phòng (nếu chưa từng vào)
-    await this.dataSource.query(
-      `INSERT IGNORE INTO office_thanh_vien (phong_chat_id, nguoi_dung_id, vai_tro) VALUES (?, ?, 'thanh_vien')`,
-      [roomId, userId],
-    );
+    const room = await this.assertMember(roomId, userId);
 
     const myMemberRows: any[] = await this.dataSource.query(
       `SELECT xoa_den_tin_id AS myClearedId FROM office_thanh_vien WHERE phong_chat_id = ? AND nguoi_dung_id = ? LIMIT 1`,
@@ -617,10 +658,13 @@ export class OfficeService implements OnModuleInit {
     );
     const myClearedId = Number(myMemberRows[0]?.myClearedId || 0);
 
-    const allRoomMessages: any[] = await this.dataSource.query(
-      `SELECT * FROM office_tin_nhan WHERE phong_chat_id = ? AND id > ? ORDER BY id ASC LIMIT 300`,
-      [roomId, myClearedId],
-    );
+    // Lấy 300 tin MỚI NHẤT rồi đảo lại theo thứ tự thời gian
+    const allRoomMessages: any[] = (
+      await this.dataSource.query(
+        `SELECT * FROM office_tin_nhan WHERE phong_chat_id = ? AND id > ? ORDER BY id DESC LIMIT 300`,
+        [roomId, myClearedId],
+      )
+    ).reverse();
     const rawMessages = allRoomMessages.filter(
       (m) => !this.isDeletedForUser(m.xoa_boi_ids, userId),
     );
@@ -754,6 +798,10 @@ export class OfficeService implements OnModuleInit {
     if (!userId || !targetUserId || Number(userId) === Number(targetUserId)) {
       throw new BadRequestException('Người nhận không hợp lệ');
     }
+    const [validTarget] = await this.filterValidStaffIds([targetUserId]);
+    if (!validTarget) {
+      throw new BadRequestException('Người nhận không phải nhân sự nội bộ đang hoạt động');
+    }
 
     const existing: any[] = await this.dataSource.query(
       `SELECT p.id
@@ -771,6 +819,7 @@ export class OfficeService implements OnModuleInit {
         `UPDATE office_thanh_vien SET da_roi_nhom = 0 WHERE phong_chat_id = ? AND nguoi_dung_id = ?`,
         [existingId, userId],
       );
+      this.gateway.joinUsersToRoom([Number(userId)], existingId);
       return { roomId: existingId, isNew: false };
     }
 
@@ -786,6 +835,7 @@ export class OfficeService implements OnModuleInit {
       [newRoomId, userId, newRoomId, targetUserId],
     );
 
+    this.gateway.joinUsersToRoom([Number(userId), Number(targetUserId)], newRoomId);
     this.gateway.notifyUsers([Number(userId), Number(targetUserId)], 'office:room_updated', {
       roomId: newRoomId,
     });
@@ -801,14 +851,14 @@ export class OfficeService implements OnModuleInit {
       throw new BadRequestException('Vui lòng nhập tên nhóm trò chuyện');
     }
 
-    const uniqueMembers = Array.from(
-      new Set([Number(userId), ...(dto.memberIds || []).map((id) => Number(id)).filter(Boolean)]),
-    );
+    const tenPhong = dto.tenPhong.trim().slice(0, 200);
+    const validMembers = await this.filterValidStaffIds(dto.memberIds || []);
+    const uniqueMembers = Array.from(new Set([Number(userId), ...validMembers]));
 
     const res: any = await this.dataSource.query(
       `INSERT INTO office_phong_chat (ten_phong, mo_ta, loai, nguoi_tao_id)
        VALUES (?, ?, 'nhom', ?)`,
-      [dto.tenPhong.trim(), dto.moTa?.trim() || 'Nhóm phối hợp công việc nội bộ', userId],
+      [tenPhong, dto.moTa?.trim().slice(0, 500) || 'Nhóm phối hợp công việc nội bộ', userId],
     );
     const roomId = Number(res.insertId);
 
@@ -823,15 +873,23 @@ export class OfficeService implements OnModuleInit {
     await this.dataSource.query(
       `INSERT INTO office_tin_nhan (phong_chat_id, nguoi_gui_id, loai, noi_dung)
        VALUES (?, ?, 'he_thong', ?)`,
-      [roomId, userId, `Nhóm "${dto.tenPhong.trim()}" đã được khởi tạo với ${uniqueMembers.length} thành viên.`],
+      [roomId, userId, `Nhóm "${tenPhong}" đã được khởi tạo với ${uniqueMembers.length} thành viên.`],
     );
 
+    this.gateway.joinUsersToRoom(uniqueMembers, roomId);
     this.gateway.notifyUsers(uniqueMembers, 'office:room_updated', { roomId });
-    return { roomId, tenPhong: dto.tenPhong.trim(), soThanhVien: uniqueMembers.length };
+    return { roomId, tenPhong, soThanhVien: uniqueMembers.length };
   }
 
   async addMembersToRoom(roomId: number, userId: number, memberIds: number[]) {
-    const cleanIds = (memberIds || []).map((id) => Number(id)).filter(Boolean);
+    const room = await this.assertMember(roomId, userId);
+    if (room.loai !== 'nhom') {
+      throw new BadRequestException('Chỉ có thể thêm thành viên vào cuộc trò chuyện nhóm');
+    }
+    const cleanIds = await this.filterValidStaffIds(memberIds);
+    if (cleanIds.length === 0) {
+      throw new BadRequestException('Không có nhân sự hợp lệ để thêm vào nhóm');
+    }
     for (const mid of cleanIds) {
       await this.dataSource.query(
         `INSERT INTO office_thanh_vien (phong_chat_id, nguoi_dung_id, vai_tro, da_roi_nhom)
@@ -850,6 +908,7 @@ export class OfficeService implements OnModuleInit {
       `SELECT nguoi_dung_id AS uid FROM office_thanh_vien WHERE phong_chat_id = ? AND da_roi_nhom = 0`,
       [roomId],
     );
+    this.gateway.joinUsersToRoom(cleanIds, roomId);
     this.gateway.notifyUsers(
       allMembers.map((m) => Number(m.uid)),
       'office:room_updated',
@@ -860,13 +919,7 @@ export class OfficeService implements OnModuleInit {
   }
 
   async deleteConversationForUser(roomId: number, userId: number) {
-    const roomRows: any[] = await this.dataSource.query(
-      `SELECT id FROM office_phong_chat WHERE id = ? LIMIT 1`,
-      [roomId],
-    );
-    if (roomRows.length === 0) {
-      throw new NotFoundException('Không tìm thấy cuộc trò chuyện');
-    }
+    await this.assertMember(roomId, userId);
 
     const maxMsgRows: any[] = await this.dataSource.query(
       `SELECT COALESCE(MAX(id), 0) AS maxId FROM office_tin_nhan WHERE phong_chat_id = ?`,
@@ -875,12 +928,11 @@ export class OfficeService implements OnModuleInit {
     const maxId = Number(maxMsgRows[0]?.maxId || 0);
 
     await this.dataSource.query(
-      `INSERT INTO office_thanh_vien (phong_chat_id, nguoi_dung_id, vai_tro, da_doc_den_tin_id, xoa_den_tin_id)
-       VALUES (?, ?, 'thanh_vien', ?, ?)
-       ON DUPLICATE KEY UPDATE
-         xoa_den_tin_id = GREATEST(xoa_den_tin_id, VALUES(xoa_den_tin_id)),
-         da_doc_den_tin_id = GREATEST(da_doc_den_tin_id, VALUES(da_doc_den_tin_id))`,
-      [roomId, userId, maxId, maxId],
+      `UPDATE office_thanh_vien
+       SET xoa_den_tin_id = GREATEST(xoa_den_tin_id, ?),
+           da_doc_den_tin_id = GREATEST(da_doc_den_tin_id, ?)
+       WHERE phong_chat_id = ? AND nguoi_dung_id = ?`,
+      [maxId, maxId, roomId, userId],
     );
 
     return {
@@ -928,6 +980,7 @@ export class OfficeService implements OnModuleInit {
        WHERE phong_chat_id = ? AND nguoi_dung_id = ?`,
       [maxId, maxId, roomId, userId],
     );
+    this.gateway.removeUserFromRoom(Number(userId), Number(roomId));
 
     // Nếu người rời là trưởng nhóm, nhường quyền trưởng nhóm cho thành viên tiếp theo
     if (wasLeader) {
@@ -1010,7 +1063,7 @@ export class OfficeService implements OnModuleInit {
     roomId: number,
     userId: number,
     dto: {
-      loai?: 'van_ban' | 'hinh_anh' | 'tep_tin' | 'nhan_dan' | 'the_benh_nhan';
+      loai?: string;
       noiDung?: string;
       tepDinhKem?: any;
       traLoiId?: number | null;
@@ -1018,31 +1071,47 @@ export class OfficeService implements OnModuleInit {
     },
   ) {
     const loai = dto.loai || 'van_ban';
-    const noiDung = (dto.noiDung || '').trim();
+    if (!SENDABLE_MESSAGE_TYPES.includes(loai)) {
+      throw new BadRequestException('Loại tin nhắn không hợp lệ');
+    }
+    const noiDung = String(dto.noiDung || '').trim();
 
     if (!noiDung && !dto.tepDinhKem) {
       throw new BadRequestException('Nội dung tin nhắn không được để trống');
     }
+    if (noiDung.length > MAX_MESSAGE_LENGTH) {
+      throw new BadRequestException(`Tin nhắn tối đa ${MAX_MESSAGE_LENGTH} ký tự`);
+    }
 
-    await this.dataSource.query(
-      `INSERT IGNORE INTO office_thanh_vien (phong_chat_id, nguoi_dung_id, vai_tro) VALUES (?, ?, 'thanh_vien')`,
-      [roomId, userId],
-    );
+    await this.assertMember(roomId, userId);
 
     const tepJson = dto.tepDinhKem
       ? typeof dto.tepDinhKem === 'string'
         ? dto.tepDinhKem
         : JSON.stringify(dto.tepDinhKem)
       : null;
+    if (tepJson && tepJson.length > 5000) {
+      throw new BadRequestException('Thông tin tệp đính kèm không hợp lệ');
+    }
 
     const mentionsJson = Array.isArray(dto.mentions) && dto.mentions.length > 0
-      ? JSON.stringify(dto.mentions)
+      ? JSON.stringify(dto.mentions.slice(0, 100))
       : null;
+
+    // Tin được trả lời phải nằm trong cùng phòng (tránh trích nội dung từ phòng khác)
+    let parentRow: any = null;
+    if (dto.traLoiId) {
+      const parentRows: any[] = await this.dataSource.query(
+        `SELECT id, nguoi_gui_id, loai, noi_dung, da_thu_hoi FROM office_tin_nhan WHERE id = ? AND phong_chat_id = ? LIMIT 1`,
+        [Number(dto.traLoiId), roomId],
+      );
+      parentRow = parentRows[0] || null;
+    }
 
     const res: any = await this.dataSource.query(
       `INSERT INTO office_tin_nhan (phong_chat_id, nguoi_gui_id, loai, noi_dung, tep_dinh_kem, tra_loi_id, mentions)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [roomId, userId, loai, noiDung, tepJson, dto.traLoiId || null, mentionsJson],
+      [roomId, userId, loai, noiDung, tepJson, parentRow ? Number(parentRow.id) : null, mentionsJson],
     );
     const msgId = Number(res.insertId);
 
@@ -1065,22 +1134,15 @@ export class OfficeService implements OnModuleInit {
     };
 
     let replyTo = null;
-    if (dto.traLoiId) {
-      const parentRows: any[] = await this.dataSource.query(
-        `SELECT id, nguoi_gui_id, loai, noi_dung FROM office_tin_nhan WHERE id = ? LIMIT 1`,
-        [dto.traLoiId],
-      );
-      if (parentRows.length > 0) {
-        const p = parentRows[0];
-        const pSender = staff.find((s) => s.id === Number(p.nguoi_gui_id));
-        replyTo = {
-          id: Number(p.id),
-          nguoiGuiId: Number(p.nguoi_gui_id),
-          tenNguoiGui: pSender?.hoTen || 'Đồng nghiệp',
-          loai: p.loai,
-          noiDung: p.noi_dung,
-        };
-      }
+    if (parentRow) {
+      const pSender = staff.find((s) => s.id === Number(parentRow.nguoi_gui_id));
+      replyTo = {
+        id: Number(parentRow.id),
+        nguoiGuiId: Number(parentRow.nguoi_gui_id),
+        tenNguoiGui: pSender?.hoTen || 'Đồng nghiệp',
+        loai: parentRow.loai,
+        noiDung: parentRow.da_thu_hoi ? 'Tin nhắn đã được thu hồi' : parentRow.noi_dung || '[Đính kèm]',
+      };
     }
 
     const messagePayload = {
@@ -1092,7 +1154,7 @@ export class OfficeService implements OnModuleInit {
       noiDung,
       tepDinhKem: dto.tepDinhKem || null,
       traLoi: replyTo,
-      mentions: dto.mentions || [],
+      mentions: mentionsJson ? JSON.parse(mentionsJson) : [],
       daGhim: false,
       daThuHoi: false,
       reactions: [],
@@ -1116,14 +1178,22 @@ export class OfficeService implements OnModuleInit {
   }
 
   async toggleReaction(messageId: number, userId: number, emoji: string) {
+    emoji = String(emoji || '').trim();
+    if (!emoji || Array.from(emoji).length > MAX_EMOJI_LENGTH) {
+      throw new BadRequestException('Biểu tượng cảm xúc không hợp lệ');
+    }
     const msgRows: any[] = await this.dataSource.query(
-      `SELECT id, phong_chat_id AS roomId FROM office_tin_nhan WHERE id = ? LIMIT 1`,
+      `SELECT id, phong_chat_id AS roomId, da_thu_hoi AS daThuHoi FROM office_tin_nhan WHERE id = ? LIMIT 1`,
       [messageId],
     );
     if (msgRows.length === 0) {
       throw new NotFoundException('Không tìm thấy tin nhắn');
     }
     const roomId = Number(msgRows[0].roomId);
+    await this.assertMember(roomId, userId);
+    if (msgRows[0].daThuHoi) {
+      throw new BadRequestException('Tin nhắn đã được thu hồi');
+    }
 
     const existing: any[] = await this.dataSource.query(
       `SELECT id FROM office_cam_xuc WHERE tin_nhan_id = ? AND nguoi_dung_id = ? AND emoji = ? LIMIT 1`,
@@ -1134,7 +1204,7 @@ export class OfficeService implements OnModuleInit {
       await this.dataSource.query(`DELETE FROM office_cam_xuc WHERE id = ?`, [existing[0].id]);
     } else {
       await this.dataSource.query(
-        `INSERT INTO office_cam_xuc (tin_nhan_id, nguoi_dung_id, emoji) VALUES (?, ?, ?)`,
+        `INSERT IGNORE INTO office_cam_xuc (tin_nhan_id, nguoi_dung_id, emoji) VALUES (?, ?, ?)`,
         [messageId, userId, emoji],
       );
     }
@@ -1158,8 +1228,9 @@ export class OfficeService implements OnModuleInit {
   }
 
   async togglePinMessage(roomId: number, userId: number, messageId: number) {
+    await this.assertMember(roomId, userId);
     const msgRows: any[] = await this.dataSource.query(
-      `SELECT id, da_ghim AS daGhim FROM office_tin_nhan WHERE id = ? AND phong_chat_id = ? LIMIT 1`,
+      `SELECT id, da_ghim AS daGhim, da_thu_hoi AS daThuHoi FROM office_tin_nhan WHERE id = ? AND phong_chat_id = ? LIMIT 1`,
       [messageId, roomId],
     );
     if (msgRows.length === 0) {
@@ -1167,15 +1238,14 @@ export class OfficeService implements OnModuleInit {
     }
 
     const nextPin = msgRows[0].daGhim ? 0 : 1;
+    if (nextPin && msgRows[0].daThuHoi) {
+      throw new BadRequestException('Không thể ghim tin nhắn đã thu hồi');
+    }
     await this.dataSource.query(
       `UPDATE office_tin_nhan SET da_ghim = ? WHERE id = ?`,
       [nextPin, messageId],
     );
-
-    await this.dataSource.query(
-      `UPDATE office_phong_chat SET tin_nhan_ghim_id = ? WHERE id = ?`,
-      [nextPin ? messageId : null, roomId],
-    );
+    await this.syncPinnedMessageId(roomId);
 
     const payload = { roomId: Number(roomId), messageId: Number(messageId), daGhim: Boolean(nextPin) };
     this.gateway.broadcastToRoom(Number(roomId), 'office:pin_updated', payload);
@@ -1197,6 +1267,7 @@ export class OfficeService implements OnModuleInit {
     }
 
     const msg = msgRows[0];
+    await this.assertMember(Number(msg.roomId), userId);
     const RECALL_LIMIT_SECONDS = 15 * 60; // 15 phút
     const isSender = Number(msg.senderId) === Number(userId);
     const withinRecallLimit = Number(msg.elapsedSeconds) <= RECALL_LIMIT_SECONDS;
@@ -1211,6 +1282,7 @@ export class OfficeService implements OnModuleInit {
         `UPDATE office_tin_nhan SET da_thu_hoi = 1, da_ghim = 0 WHERE id = ?`,
         [messageId],
       );
+      await this.syncPinnedMessageId(Number(msg.roomId));
 
       const payload = {
         roomId: Number(msg.roomId),
@@ -1251,6 +1323,7 @@ export class OfficeService implements OnModuleInit {
       `UPDATE office_tin_nhan SET da_thu_hoi = 1, da_ghim = 0 WHERE id = ?`,
       [messageId],
     );
+    await this.syncPinnedMessageId(Number(msg.roomId));
 
     const payload = {
       roomId: Number(msg.roomId),
@@ -1262,6 +1335,7 @@ export class OfficeService implements OnModuleInit {
   }
 
   async markRoomRead(roomId: number, userId: number) {
+    await this.assertMember(roomId, userId);
     const latestRows: any[] = await this.dataSource.query(
       `SELECT MAX(id) AS maxId FROM office_tin_nhan WHERE phong_chat_id = ?`,
       [roomId],
@@ -1281,31 +1355,4 @@ export class OfficeService implements OnModuleInit {
     }
     return { roomId: Number(roomId), lastReadId: maxId };
   }
-
-  async searchPatientsForCard(keyword?: string) {
-    const q = `%${(keyword || '').trim()}%`;
-    const rows: any[] = await this.dataSource.query(
-      `SELECT
-         bn.id,
-         bn.ma_benh_nhan AS maBenhNhan,
-         bn.ho_ten AS hoTen,
-         bn.ngay_sinh AS ngaySinh,
-         bn.gioi_tinh AS gioiTinh,
-         bn.so_dien_thoai AS soDienThoai,
-         ltn.id AS luotTiepNhanId,
-         ltn.ma_so_thu_tu AS maSoThuTu,
-         ltn.chuyen_khoa AS chuyenKhoa,
-         ltn.trang_thai AS trangThai
-       FROM benh_nhan bn
-       LEFT JOIN luot_tiep_nhan ltn ON ltn.id = (
-         SELECT id FROM luot_tiep_nhan WHERE benh_nhan_id = bn.id ORDER BY id DESC LIMIT 1
-       )
-       WHERE bn.ho_ten LIKE ? OR bn.ma_benh_nhan LIKE ? OR bn.so_dien_thoai LIKE ?
-       ORDER BY bn.id DESC
-       LIMIT 15`,
-      [q, q, q],
-    );
-    return rows;
-  }
 }
-

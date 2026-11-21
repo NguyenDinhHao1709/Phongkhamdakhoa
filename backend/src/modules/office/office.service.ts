@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { HttpException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -37,7 +37,11 @@ export class OfficeService {
   }
 
   private headersFor(userId?: number): Record<string, string> {
-    return userId ? { 'x-user-id': String(userId) } : {};
+    const headers: Record<string, string> = {};
+    const internalToken = (this.configService.get<string>('OFFICE_INTERNAL_TOKEN') || '').trim();
+    if (internalToken) headers['x-internal-token'] = internalToken;
+    if (userId) headers['x-user-id'] = String(userId);
+    return headers;
   }
 
   private async forward(
@@ -65,8 +69,14 @@ export class OfficeService {
       const status = err.response?.status;
       const responseData = err.response?.data;
       const isHtmlError = typeof responseData === 'string' && /^\s*<!doctype html/i.test(responseData);
-      if (responseData && !isHtmlError && (status || 500) < 500) {
-        return responseData;
+      // Lỗi nghiệp vụ 4xx của office-service (không phải thành viên, dữ liệu sai...) → trả đúng mã lỗi cho client.
+      // 401 từ office-service nghĩa là token nội bộ giữa 2 service bị sai, không phải phiên của người dùng
+      // → không trả 401 (frontend sẽ tưởng hết phiên và đăng xuất).
+      if (status && status >= 400 && status < 500 && status !== 401 && responseData && !isHtmlError) {
+        throw new HttpException(responseData, status);
+      }
+      if (status === 401) {
+        this.logger.error('Office-service từ chối token nội bộ — kiểm tra OFFICE_INTERNAL_TOKEN ở cả backend và office-service');
       }
       throw new ServiceUnavailableException('Dịch vụ Office Microservice (cổng 5003) hiện đang bảo trì.');
     }

@@ -288,6 +288,8 @@ export default function OfficeWorkspacePage() {
     setLoadingMessages(true);
     try {
       const res = await apiGet(`/office/rooms/${roomId}/messages`);
+      // Người dùng đã chuyển sang phòng khác trong lúc chờ → bỏ kết quả cũ, tránh hiện tin của phòng trước
+      if (Number(selectedRoomIdRef.current) !== Number(roomId)) return;
       const data = res?.data || res;
       if (data) {
         const uniqueMsgs = [];
@@ -308,7 +310,7 @@ export default function OfficeWorkspacePage() {
     } catch (err) {
       console.error('Lỗi tải tin nhắn phòng:', err);
     } finally {
-      setLoadingMessages(false);
+      if (Number(selectedRoomIdRef.current) === Number(roomId)) setLoadingMessages(false);
     }
   };
 
@@ -338,20 +340,30 @@ export default function OfficeWorkspacePage() {
     if (!user?.id) return;
 
     const socketHost = OFFICE_URL || window.location.origin;
+    // Xác thực bằng JWT; dùng hàm để mỗi lần kết nối lại đều lấy access token mới nhất (sau khi refresh)
     const socket = io(socketHost, {
       transports: ['websocket', 'polling'],
-      query: { userId: user.id },
+      auth: (cb) => cb({ token: useAuthStore.getState().accessToken }),
     });
     socketRef.current = socket;
+    let authRetries = 0;
 
     socket.on('connect', () => {
-      socket.emit('office:register', {
-        userId: user.id,
-        roomIds: rooms.map((r) => r.id),
-      });
+      // Server tự đưa socket vào mọi phòng của user; join lại phòng đang mở cho chắc khi kết nối lại
       if (selectedRoomIdRef.current) {
         socket.emit('office:join_room', { roomId: selectedRoomIdRef.current });
       }
+    });
+
+    // Server ngắt vì token hết hạn/không hợp lệ: gọi API (interceptor sẽ refresh token) rồi kết nối lại, tối đa 3 lần
+    socket.on('disconnect', (reason) => {
+      if (reason !== 'io server disconnect' || authRetries >= 3) return;
+      authRetries += 1;
+      apiGet('/office/init')
+        .catch(() => {})
+        .finally(() => {
+          if (socketRef.current === socket) socket.connect();
+        });
     });
 
     socket.on('office:presence', (payload) => {
@@ -544,7 +556,6 @@ export default function OfficeWorkspacePage() {
     if (socketRef.current && selectedRoomId) {
       socketRef.current.emit('office:typing', {
         roomId: selectedRoomId,
-        userId: user?.id,
         hoTen: currentUserProfile?.hoTen || user?.hoTen || 'Đồng nghiệp',
         isTyping: val.length > 0,
       });
@@ -585,7 +596,6 @@ export default function OfficeWorkspacePage() {
     if (socketRef.current) {
       socketRef.current.emit('office:typing', {
         roomId: selectedRoomId,
-        userId: user?.id,
         hoTen: currentUserProfile?.hoTen || 'Đồng nghiệp',
         isTyping: false,
       });
@@ -804,7 +814,7 @@ export default function OfficeWorkspacePage() {
       }
     } catch (err) {
       console.error('Lỗi thao tác hội thoại:', err);
-      window.alert(err?.response?.data?.message || 'Không thể thực hiện thao tác này.');
+      window.alert(err?.error?.message || err?.message || 'Không thể thực hiện thao tác này.');
     } finally {
       setProcessingRoomAction(false);
     }
