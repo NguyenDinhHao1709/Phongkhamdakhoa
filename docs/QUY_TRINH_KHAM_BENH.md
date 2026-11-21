@@ -91,7 +91,7 @@ Bệnh nhân phải đóng đủ phần phí khám mình chi trả **trước kh
 - **Cấp cứu:** không thu trước, vào thẳng đầu hàng đợi, quyết toán sau.
   - Lễ tân hoặc bác sĩ chuyển cấp cứu khi bệnh nhân đang chờ; **bắt buộc ghi lý do**, quản trị được thông báo.
   - Chỉ bác sĩ (hoặc quản trị) được bỏ cấp cứu, cũng phải ghi lý do; bệnh nhân phải đóng lại tạm ứng mới được gọi khám.
-- Bệnh nhân **chuyển khoản QR (PayOS)** ngay trên trang Tiến độ khám, hoặc đóng tại quầy: thu ngân bấm **Thu tạm ứng** (phải thu ít nhất số phải thu; hai quầy cùng thu một phiếu thì chỉ một lần thành công). Tiền chuyển khoản vào là hệ thống tự ghi nhận như thu ngân thu (webhook + đối soát 60 giây/lần); áp dụng cả cho phiếu phí cận lâm sàng `CLS…`. Chuyển thiếu tiền hoặc chuyển vào phiếu đã hủy → báo thu ngân xử lý.
+- Bệnh nhân **chuyển khoản QR (PayOS)** ngay trên trang Tiến độ khám, hoặc đóng tại quầy: thu ngân bấm **Thu tạm ứng** và **tự nhập số tiền** (ít nhất số phải thu, có thể thu nhiều hơn để trừ dần các chi phí trong lượt; hai quầy cùng thu một phiếu thì chỉ một lần thành công). Phí CLS thì thu đúng số trên phiếu, không nhập tay. Tiền chuyển khoản vào là hệ thống tự ghi nhận như thu ngân thu (webhook + đối soát 60 giây/lần); áp dụng cả cho phiếu phí cận lâm sàng `CLS…`. Chuyển thiếu tiền hoặc chuyển vào phiếu đã hủy → báo thu ngân xử lý.
 - Lượt chưa đóng tạm ứng **không bị hủy trong ngày** (bệnh nhân có thể đang xếp hàng ở quầy thu ngân), chỉ không hiện với bác sĩ. Hết ngày vẫn chưa khám thì hệ thống hủy lượt, lịch hẹn `vang_mat`.
 - **Hoàn tạm ứng khi hủy lượt:** chỉ hoàn khi bệnh nhân **chưa được khám** (bác sĩ chưa lập phiếu khám). Đã khám rồi bỏ về / bị hủy vì lỗi bệnh nhân thì giữ tạm ứng; lỗi phía phòng khám hoặc tiếp nhận nhầm thì vẫn hoàn.
 
@@ -131,7 +131,8 @@ Thứ tự gọi trong hàng đợi của một bác sĩ:
 ### 3.5 Quyết toán viện phí
 
 - Hóa đơn gộp: phí khám + cận lâm sàng + thuốc, trừ BHYT, trừ cọc + tạm ứng `TU` + phí CLS `CLS…` đã thu trước.
-- Không phải thu thêm cũng không phải hoàn (0 đ) → hệ thống **tự quyết toán** ngay khi bác sĩ kết thúc khám: lượt `hoan_thanh`, lịch hẹn `hoan_thanh`, nhà thuốc cấp phát được.
+- Không phải thu thêm cũng không phải hoàn (0 đ) → hệ thống **tự quyết toán** ngay khi bác sĩ kết thúc khám (có đơn thuốc chưa chọn nơi mua thì chờ bệnh nhân / thu ngân chọn xong): lượt `hoan_thanh`, lịch hẹn `hoan_thanh`, nhà thuốc cấp phát được.
+- **Bệnh nhân xác nhận một lần:** trên màn hình thanh toán, bệnh nhân chọn hình thức (chuyển khoản / tại quầy) và nơi mua thuốc (nhà thuốc phòng khám / mua ngoài) — chỉ chọn trên máy, chưa gửi đi — rồi bấm **Xác nhận**. Khi đó hệ thống mới ghi lựa chọn thuốc, lập lại hóa đơn, báo thu ngân (nhãn "BN chọn: …" trên hóa đơn) và nhà thuốc; chuyển khoản thì lúc này mới tạo mã QR. Đã xác nhận thì bệnh nhân không tự đổi được, muốn đổi phải nhờ thu ngân.
 - **Tỷ lệ BHYT:**
 
 | Điều kiện | Tỷ lệ chi trả |
@@ -149,7 +150,7 @@ Thứ tự gọi trong hàng đợi của một bác sĩ:
 
 ### 3.6 Cấp phát thuốc
 
-Dược sĩ chỉ cấp phát khi hóa đơn của lượt đã `da_thanh_toan`; xuất kho theo lô (hạn dùng gần nhất trước).
+Dược sĩ chỉ cấp phát khi hóa đơn của lượt đã `da_thanh_toan`; xuất kho theo lô (hạn dùng gần nhất trước). Danh sách "Chờ cấp phát" chỉ gồm đơn đã chọn mua tại phòng khám.
 
 ---
 

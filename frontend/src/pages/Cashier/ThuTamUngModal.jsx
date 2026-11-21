@@ -9,7 +9,9 @@ export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
   const laCls = Boolean(hoaDon?.laPhiCls);
   // Phiếu CLS: phần đã cấn trừ từ tạm ứng dư (soTienGiam) không phải thu lại
   const canThu = Math.max(0, Math.round(Number(hoaDon?.tongTien) || 0) - (laCls ? Math.round(Number(hoaDon?.soTienGiam) || 0) : 0));
-  // Số thu lấy đúng theo phiếu (giá dịch vụ / phí khám đã cấu hình, trừ BHYT và cọc), thu ngân không tự nhập
+  // Phí CLS thu đúng số trên phiếu; tạm ứng TU thu ngân tự nhập (ít nhất số phải thu), mặc định điền sẵn số phải thu
+  const [soTienNhap, setSoTienNhap] = useState(() => String(canThu || ''));
+  const soTien = laCls ? canThu : Math.round(Number(soTienNhap) || 0);
   const [bangKe, setBangKe] = useState(null);
   const [phuongThuc, setPhuongThuc] = useState('tien_mat');
   const [submitting, setSubmitting] = useState(false);
@@ -27,11 +29,15 @@ export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
       setErrorMsg('Phiếu này không còn khoản nào phải thu');
       return;
     }
+    if (soTien < canThu) {
+      setErrorMsg(`Phải thu ít nhất ${formatCurrency(canThu)}`);
+      return;
+    }
     setSubmitting(true);
     setErrorMsg('');
     try {
       await apiPatch(`/thanh-toan/hoa-don/${hoaDon.id}/thu-tam-ung`, {
-        soTien: canThu,
+        soTien,
         phuongThucThanhToan: phuongThuc,
       });
       onSuccess?.();
@@ -93,7 +99,7 @@ export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
               )}
             </div>
             <div className="mt-3 flex items-center justify-between rounded-xl bg-violet-50 border border-violet-200 px-3.5 py-3">
-              <span className="text-sm font-bold text-gray-700">Số tiền phải thu</span>
+              <span className="text-sm font-bold text-gray-700">{laCls ? 'Số tiền phải thu' : 'Phải thu tối thiểu'}</span>
               <span className="text-xl font-black text-violet-700">{formatCurrency(canThu)}</span>
             </div>
             <p className="text-[11px] text-gray-500 mt-1">
@@ -102,6 +108,28 @@ export default function ThuTamUngModal({ hoaDon, onClose, onSuccess }) {
                 : 'Theo phí khám đã cấu hình, đã trừ BHYT và tiền cọc đặt lịch.'}
             </p>
           </div>
+
+          {!laCls && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">Số tiền tạm ứng thu (đ)</label>
+              <input
+                type="number"
+                min={canThu}
+                step="10000"
+                value={soTienNhap}
+                onChange={(e) => setSoTienNhap(e.target.value)}
+                autoFocus
+                className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-lg font-bold text-right focus:outline-none focus:ring-2 focus:ring-violet-500"
+              />
+              <p className="text-right text-xs text-gray-500 mt-1">{formatCurrency(soTien)}</p>
+              {soTien > canThu && (
+                <p className="text-xs text-teal-700 mt-1">
+                  Dư {formatCurrency(soTien - canThu)} sau phí khám: tự cấn trừ phí cận lâm sàng / viện phí trong lượt khám,
+                  cuối lượt thừa thì hoàn, thiếu thì thu thêm.
+                </p>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-bold text-gray-700 mb-1">Phương thức</label>

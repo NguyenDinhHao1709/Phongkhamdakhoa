@@ -211,6 +211,7 @@ export class ThanhToanService {
             gioiTinh: hd.benhNhan?.gioiTinh,
           },
           luotTiepNhanId: hd.luotTiepNhanId,
+          luaChonThanhToan: hd.luaChonThanhToan,
           khauTruTamUng,
           thuNgan: hd.thuNgan
             ? hd.thuNgan.hoTen
@@ -502,25 +503,96 @@ export class ThanhToanService {
     });
   }
 
+  /** Thu ngân / lễ tân đổi lựa chọn mua thuốc (bệnh nhân thì xác nhận một lần qua xacNhanLuaChonBenhNhan) */
   async capNhatLuaChonThuocHoaDon(
     hoaDonId: number,
     luaChonMua: 'mua_tai_benh_vien' | 'mua_ngoai',
   ) {
-    if (!['mua_tai_benh_vien', 'mua_ngoai'].includes(luaChonMua)) {
-     
-      throw new BadRequestException('Lựa chọn mua thuốc không hợp lệ');
-    }
     const hd = await this.hoaDonRepo.findOne({ where: { id: hoaDonId } });
     if (!hd) throw new NotFoundException('Không tìm thấy hóa đơn');
     if (hd.trangThai === 'da_thanh_toan') {
       throw new BadRequestException('Không thể thay đổi thuốc sau khi hóa đơn đã thanh toán');
     }
-
-    const bak = await this.benhAnRepo.findOne({ where: { luotTiepNhanId: hd.luotTiepNhanId } });
-    if (!bak) throw new BadRequestException('Hóa đơn chưa có hồ sơ khám để xác định đơn thuốc');
-    const donThuocList = await this.donThuocRepo.find({ where: { benhAnKhamId: bak.id } });
+    const donThuocList = await this.donThuocCuaLuot(hd.luotTiepNhanId);
     if (!donThuocList.length) throw new BadRequestException('Lượt khám không có đơn thuốc');
+    await this.ghiLuaChonThuoc(donThuocList, luaChonMua);
+    const kq = await this.taoHoacCapNhatTuLuotKham(hd.luotTiepNhanId);
+    await this.tuQuyetToanNeuKhongPhaiThu(hd.luotTiepNhanId);
+    return kq;
+  }
 
+  /**
+   * Bệnh nhân xác nhận MỘT LẦN ở bước thanh toán cuối: cách trả phần còn lại (chuyển khoản / tại quầy) và nơi mua thuốc.
+   * Chỉ khi xác nhận mới ghi đơn thuốc + lập lại hóa đơn + báo thu ngân / nhà thuốc, nên các màn hình đó không
+   * nhảy theo từng lần bệnh nhân bấm thử. Đã xác nhận thì bệnh nhân không tự đổi được, phải nhờ thu ngân.
+   */
+  async xacNhanLuaChonBenhNhan(
+    hoaDonId: number,
+    dto: { luaChonThanhToan: string; luaChonMua?: 'mua_tai_benh_vien' | 'mua_ngoai' },
+  ) {
+    if (!['chuyen_khoan', 'tai_quay'].includes(dto.luaChonThanhToan)) {
+      throw new BadRequestException('Hình thức thanh toán không hợp lệ');
+    }
+    const hd = await this.hoaDonRepo.findOne({ where: { id: hoaDonId }, relations: ['benhNhan', 'luotTiepNhan'] });
+    if (!hd || laPhieuThuTruoc(hd.maHoaDon)) throw new NotFoundException('Không tìm thấy hóa đơn');
+    if (hd.luotTiepNhan?.trangThai !== TrangThaiTiepNhan.CHO_THANH_TOAN) {
+      throw new BadRequestException('Lượt khám chưa kết thúc hoặc đã hủy');
+    }
+    const donThuocList = await this.donThuocCuaLuot(hd.luotTiepNhanId);
+    if (donThuocList.length && !dto.luaChonMua) throw new BadRequestException('Vui lòng chọn nơi mua thuốc');
+
+    // Giữ chỗ nguyên tử: bấm 2 lần / 2 thiết bị thì chỉ một lần thành công
+    const giu = await this.hoaDonRepo.createQueryBuilder().update(HoaDon)
+      .set({ luaChonThanhToan: dto.luaChonThanhToan })
+      .where('id = :id AND trang_thai = :tt AND lua_chon_thanh_toan IS NULL', { id: hoaDonId, tt: 'cho_thanh_toan' })
+      .execute();
+    if (!giu.affected) {
+      throw new BadRequestException('Hóa đơn đã được xác nhận hoặc đã thanh toán. Muốn đổi lựa chọn, vui lòng liên hệ quầy thu ngân');
+    }
+    try {
+      if (donThuocList.length) await this.ghiLuaChonThuoc(donThuocList, dto.luaChonMua);
+      await this.taoHoacCapNhatTuLuotKham(hd.luotTiepNhanId);
+    } catch (e) {
+      await this.hoaDonRepo.update(hoaDonId, { luaChonThanhToan: null });
+      throw e;
+    }
+
+    const daQuyetToan = await this.tuQuyetToanNeuKhongPhaiThu(hd.luotTiepNhanId);
+    const ketQua = await this.getChiTietHoaDon(hoaDonId);
+    const hoTen = hd.benhNhan?.hoTen || '';
+    if (!daQuyetToan) {
+      await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+        tieuDe: `${hoTen} chọn ${dto.luaChonThanhToan === 'chuyen_khoan' ? 'chuyển khoản' : 'thanh toán tại quầy'}: ${hd.maHoaDon}`,
+        noiDung: `Phải thu ${Number(ketQua.data.thucThu).toLocaleString('vi-VN')} đ${
+          donThuocList.length ? (dto.luaChonMua === 'mua_ngoai' ? ' (thuốc mua ngoài)' : ' (gồm tiền thuốc)') : ''}.`,
+        loai: 'thanh_toan',
+        doiTuongBang: 'hoa_don',
+        doiTuongId: hoaDonId,
+      }).catch((e) => console.warn('Lỗi báo thu ngân lựa chọn thanh toán:', e?.message));
+    }
+    if (dto.luaChonMua === 'mua_tai_benh_vien') {
+      await this.thongBaoService.taoThongBaoTheoRole('nhan_vien_nha_thuoc', {
+        tieuDe: `Đơn thuốc mua tại phòng khám: ${hoTen}`,
+        noiDung: daQuyetToan
+          ? 'Bệnh nhân đã quyết toán, mời chuẩn bị cấp phát.'
+          : 'Bệnh nhân chọn mua tại phòng khám, cấp phát sau khi thanh toán.',
+        loai: 'don_thuoc',
+        doiTuongBang: 'hoa_don',
+        doiTuongId: hoaDonId,
+      }).catch((e) => console.warn('Lỗi báo nhà thuốc:', e?.message));
+    }
+    return ketQua;
+  }
+
+  private async donThuocCuaLuot(luotTiepNhanId: number) {
+    const bak = luotTiepNhanId ? await this.benhAnRepo.findOne({ where: { luotTiepNhanId } }) : null;
+    return bak ? this.donThuocRepo.find({ where: { benhAnKhamId: bak.id } }) : [];
+  }
+
+  private async ghiLuaChonThuoc(donThuocList: DonThuoc[], luaChonMua: string) {
+    if (!['mua_tai_benh_vien', 'mua_ngoai'].includes(luaChonMua)) {
+      throw new BadRequestException('Lựa chọn mua thuốc không hợp lệ');
+    }
     for (const dt of donThuocList) {
       if (dt.trangThai === 'da_cap_phat') {
         throw new BadRequestException('Đơn thuốc đã được cấp, không thể thay đổi lựa chọn');
@@ -529,7 +601,6 @@ export class ThanhToanService {
       dt.trangThai = luaChonMua === 'mua_ngoai' ? 'mua_ngoai' : 'cho_duyet';
     }
     await this.donThuocRepo.save(donThuocList);
-    return this.taoHoacCapNhatTuLuotKham(hd.luotTiepNhanId);
   }
 
   /**
@@ -971,6 +1042,8 @@ export class ThanhToanService {
   async tuQuyetToanNeuKhongPhaiThu(luotId: number) {
     const hd = await this.hoaDonRepo.findOne({ where: { luotTiepNhanId: luotId, trangThai: 'cho_thanh_toan' } });
     if (!hd || Number(hd.thucThu) > 0 || Number(hd.tienHoanTra || 0) > 0) return false;
+    // Đơn thuốc chưa chọn nơi mua: chờ bệnh nhân xác nhận (chọn mua tại phòng khám thì hóa đơn sẽ có tiền thuốc)
+    if ((await this.donThuocCuaLuot(luotId)).some((dt) => dt.luaChonMua === 'chua_chon')) return false;
     await this.xacNhanThanhToan(hd.id, 0, { phuongThucThanhToan: 'tien_mat', ghiChu: `${hd.ghiChu || ''} [Tự quyết toán: không phải thu thêm]`.trim() });
     return true;
   }
@@ -1010,6 +1083,7 @@ export class ThanhToanService {
   /**
    * Thu ngân thu phiếu thu trước tại quầy (phải thu đủ số cần thu): tạm ứng phí khám TU… → bệnh nhân vào hàng đợi bác sĩ;
    * phí cận lâm sàng CLS… → kỹ thuật viên được thực hiện.
+   * Tạm ứng TU: thu ngân tự nhập (≥ số phải thu); phần dư tự cấn trừ phí CLS, cuối lượt quyết toán thừa hoàn / thiếu thu thêm.
    */
   async thuTamUng(id: number, userId: number, dto: { soTien?: number; phuongThucThanhToan?: string }) {
     return this.withLock(`invoice:pay:${id}`, async () => {
@@ -1018,9 +1092,8 @@ export class ThanhToanService {
       if (hd.trangThai !== 'cho_thanh_toan') throw new BadRequestException('Phiếu tạm ứng đã được xử lý');
       const laCls = hd.maHoaDon.startsWith(MA_PHI_CLS);
       const canThu = soTienPhaiThu(hd);
-      // Thu ngân thu đúng số trên phiếu (giá dịch vụ / phí khám đã cấu hình), không tự nhập;
-      // PayOS (userId 0) ghi đúng số tiền thực nhận từ ngân hàng
-      const soTien = userId ? canThu : Math.round(Number(dto.soTien));
+      // Phí CLS thu ngân thu đúng số trên phiếu; PayOS (userId 0) ghi đúng số tiền thực nhận từ ngân hàng
+      const soTien = userId && laCls ? canThu : Math.round(Number(dto.soTien));
       if (!(soTien > 0)) throw new BadRequestException('Phiếu này không còn khoản nào phải thu');
       if (soTien < canThu) {
         throw new BadRequestException(laCls

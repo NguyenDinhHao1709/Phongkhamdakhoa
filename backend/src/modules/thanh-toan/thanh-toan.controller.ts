@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Param, Query, Body, ParseIntPipe, UseGuards,
+  Controller, Get, Post, Patch, Param, Query, Body, ParseIntPipe, UseGuards, ForbiddenException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -218,7 +218,7 @@ export class ThanhToanController {
 
   @Patch('hoa-don/:id/thu-tam-ung')
   @Roles('thu_ngan', 'quan_tri_vien', 'quan_tri_vien_cap_cao')
-  @ApiOperation({ summary: 'Thu tạm ứng / phí CLS tại quầy (số tiền lấy theo phiếu, không nhập tay)' })
+  @ApiOperation({ summary: 'Thu tạm ứng (thu ngân nhập, ≥ số phải thu) / phí CLS (đúng số trên phiếu) tại quầy' })
   @Quyen('hoa_don.thanh_toan')
   thuTamUng(
     @Param('id', ParseIntPipe) id: number,
@@ -238,7 +238,23 @@ export class ThanhToanController {
     @CurrentUser() user: any,
   ) {
     await this.soHuu(user, id);
+    // Bệnh nhân chỉ được xác nhận một lần qua xac-nhan-lua-chon; đổi lại phải nhờ thu ngân
+    if (user?.vai_tro === 'benh_nhan') {
+      throw new ForbiddenException('Vui lòng xác nhận lựa chọn trên màn hình thanh toán hoặc liên hệ quầy thu ngân');
+    }
     return this.thanhToanService.capNhatLuaChonThuocHoaDon(id, body.luaChonMua);
+  }
+
+  @Patch('hoa-don/:id/xac-nhan-lua-chon')
+  @Roles('benh_nhan')
+  @ApiOperation({ summary: 'Bệnh nhân xác nhận một lần: chuyển khoản / tại quầy và mua thuốc tại phòng khám / mua ngoài' })
+  async xacNhanLuaChon(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { luaChonThanhToan: string; luaChonMua?: 'mua_tai_benh_vien' | 'mua_ngoai' },
+    @CurrentUser() user: any,
+  ) {
+    await this.soHuu(user, id);
+    return this.thanhToanService.xacNhanLuaChonBenhNhan(id, body);
   }
 
   @Get('in-hoa-don/:id')

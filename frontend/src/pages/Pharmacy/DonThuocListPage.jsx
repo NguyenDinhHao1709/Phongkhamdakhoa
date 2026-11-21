@@ -83,7 +83,8 @@ export default function DonThuocListPage() {
 
     return list.filter((item) => {
       // 1. Trạng thái cấp phát
-      if (filterStatus === 'cho_cap_phat' && (item.trangThai === 'da_cap_phat' || item.luaChonMua === 'mua_ngoai')) return false;
+      // Chờ cấp phát: chỉ đơn bệnh nhân đã xác nhận mua tại phòng khám (chưa chọn thì còn ở tab "Tất cả")
+      if (filterStatus === 'cho_cap_phat' && (item.trangThai === 'da_cap_phat' || item.luaChonMua !== 'mua_tai_benh_vien')) return false;
       if (filterStatus === 'da_cap_phat' && item.trangThai !== 'da_cap_phat') return false;
       if (filterStatus === 'mua_ngoai' && item.luaChonMua !== 'mua_ngoai') return false;
 
@@ -143,7 +144,7 @@ export default function DonThuocListPage() {
   // Thống kê nhanh
   const stats = useMemo(() => {
     const total = list.length;
-    const pending = list.filter((i) => i.trangThai !== 'da_cap_phat' && i.luaChonMua !== 'mua_ngoai').length;
+    const pending = list.filter((i) => i.trangThai !== 'da_cap_phat' && i.luaChonMua === 'mua_tai_benh_vien').length;
     const completed = list.filter((i) => i.trangThai === 'da_cap_phat').length;
     const outside = list.filter((i) => i.luaChonMua === 'mua_ngoai').length;
     const paid = list.filter((i) => i.trangThaiThanhToan === 'da_thanh_toan').length;

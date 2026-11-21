@@ -55,6 +55,10 @@ export class HoaDon {
   @Column({ name: 'phuong_thuc_thanh_toan', nullable: true })
   phuongThucThanhToan: string;
 
+  /** Bệnh nhân đã xác nhận cách trả phần còn lại: 'chuyen_khoan' | 'tai_quay'; null = chưa xác nhận */
+  @Column({ name: 'lua_chon_thanh_toan', type: 'varchar', length: 20, nullable: true })
+  luaChonThanhToan: string | null;
+
   @Column({ name: 'trang_thai', default: 'cho_thanh_toan' })
   trangThai: string;
 

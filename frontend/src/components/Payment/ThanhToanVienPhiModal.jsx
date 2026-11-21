@@ -28,8 +28,10 @@ import BankAppLinks from './BankAppLinks';
  * Modal Thanh toán Viện phí Đa phương thức chuẩn ERP Y tế
  * Hỗ trợ:
  * 1. Chuyển khoản VietQR tự động qua STK Phòng khám (2729999996789)
- * 2. Bệnh nhân linh hoạt chọn nhận thuốc tại viện hoặc tự mua bên ngoài
+ * 2. Bệnh nhân chọn nhận thuốc tại viện hoặc tự mua bên ngoài
  * 3. Hướng dẫn đóng tiền mặt tại Quầy Thu ngân (Kèm phiếu tạm tính)
+ * Bệnh nhân chọn trên máy (chưa gửi gì), bấm "Xác nhận" một lần → server ghi lựa chọn, lập lại hóa đơn, báo thu ngân / nhà thuốc.
+ * Đã xác nhận thì khóa; muốn đổi phải nhờ thu ngân.
  */
 export default function ThanhToanVienPhiModal({
   isOpen,
@@ -39,11 +41,12 @@ export default function ThanhToanVienPhiModal({
   onSuccess,
   onPrintHoaDon,
 }) {
-  const [activeTab, setActiveTab] = useState('qr'); // 'qr' | 'cash'
+  const [chonThanhToan, setChonThanhToan] = useState(null); // 'chuyen_khoan' | 'tai_quay'
+  const [chonThuoc, setChonThuoc] = useState(null); // 'mua_tai_benh_vien' | 'mua_ngoai'
   const [copiedField, setCopiedField] = useState(null);
   const [detailHd, setDetailHd] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const [updatingMedicine, setUpdatingMedicine] = useState(false);
+  const [dangXacNhan, setDangXacNhan] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   // Mã QR động PayOS: tiền vào là hóa đơn tự chuyển "Đã thanh toán" (webhook + polling)
   const [payData, setPayData] = useState(null);
@@ -56,14 +59,18 @@ export default function ThanhToanVienPhiModal({
       fetchDetailHoaDon(hoaDon.id);
     } else {
       setDetailHd(null);
+      setChonThanhToan(null);
+      setChonThuoc(null);
       setPayData(null);
       setPayosLoi(false);
       setDaThanhToan(false);
     }
   }, [isOpen, hoaDon?.id]);
 
-  // Tạo mã QR PayOS sau khi có số tiền chính xác; tạo lại khi số tiền đổi (vd. đổi lựa chọn mua thuốc)
-  const soTienQr = detailHd && detailHd.trangThai === 'cho_thanh_toan' ? Number(detailHd.thucThu || 0) : null;
+  // Chỉ tạo mã QR PayOS khi bệnh nhân đã xác nhận chuyển khoản (số tiền đã chốt)
+  const soTienQr = detailHd && detailHd.trangThai === 'cho_thanh_toan' && detailHd.luaChonThanhToan === 'chuyen_khoan'
+    ? Number(detailHd.thucThu || 0)
+    : null;
   useEffect(() => {
     if (!isOpen || !hoaDon?.id || !soTienQr) return;
     let active = true;
@@ -153,23 +160,42 @@ export default function ThanhToanVienPhiModal({
     setTimeout(() => setCopiedField(null), 2500);
   };
 
-  // Bệnh nhân đổi lựa chọn: Mua thuốc tại phòng khám hoặc tự mua bên ngoài
-  const handleChangeMedicineChoice = async (luaChonMua) => {
-    if (!currentHd?.id) return;
-    setUpdatingMedicine(true);
+  const donThuoc = currentHd.donThuoc || [];
+  const coDonThuoc = donThuoc.length > 0;
+  const tienThuoc = donThuoc.reduce((sum, dt) => sum + Number(dt.tongTien || 0), 0);
+  const daXacNhan = Boolean(currentHd.luaChonThanhToan);
+  const luaChonThuocDaLuu = coDonThuoc && donThuoc.every((dt) => dt.luaChonMua === 'mua_ngoai')
+    ? 'mua_ngoai'
+    : coDonThuoc && donThuoc.every((dt) => dt.luaChonMua === 'mua_tai_benh_vien') ? 'mua_tai_benh_vien' : null;
+  const thuocDangChon = daXacNhan ? luaChonThuocDaLuu : chonThuoc;
+  const hinhThuc = daXacNhan ? currentHd.luaChonThanhToan : chonThanhToan;
+
+  // Gửi lựa chọn một lần duy nhất
+  const handleXacNhan = async () => {
+    if (!chonThanhToan || (coDonThuoc && !chonThuoc)) {
+      setErrorMsg(coDonThuoc ? 'Vui lòng chọn nơi mua thuốc và hình thức thanh toán' : 'Vui lòng chọn hình thức thanh toán');
+      return;
+    }
+    setDangXacNhan(true);
     setErrorMsg('');
     try {
-      const res = await apiPatch(`/thanh-toan/hoa-don/${currentHd.id}/lua-chon-thuoc`, { luaChonMua });
-      if (res?.data) {
-        setDetailHd(res.data);
-        onSuccess?.();
-      }
+      const res = await apiPatch(`/thanh-toan/hoa-don/${currentHd.id}/xac-nhan-lua-chon`, {
+        luaChonThanhToan: chonThanhToan,
+        ...(coDonThuoc ? { luaChonMua: chonThuoc } : {}),
+      });
+      if (res?.data) setDetailHd(res.data);
+      onSuccess?.();
     } catch (err) {
-      setErrorMsg(err?.response?.data?.message || err?.message || 'Không thể cập nhật lựa chọn nhận thuốc');
+      setErrorMsg(err?.error?.message || err?.message || 'Không xác nhận được lựa chọn');
+      fetchDetailHoaDon(currentHd.id);
     } finally {
-      setUpdatingMedicine(false);
+      setDangXacNhan(false);
     }
   };
+
+  const theChon = (active) => `p-2.5 rounded-xl border text-left transition ${
+    active ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-300' : 'border-gray-200 bg-white'
+  } ${daXacNhan ? 'cursor-default opacity-90' : 'cursor-pointer hover:border-emerald-300'}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
@@ -205,56 +231,28 @@ export default function ThanhToanVienPhiModal({
             </div>
           )}
 
-          {/* 1. KHỐI TÙY CHỌN NHẬN ĐƠN THUỐC (NẾU CÓ ĐƠN THUỐC TRONG CA KHÁM) */}
-          {currentHd.donThuoc && currentHd.donThuoc.length > 0 && currentHd.trangThai !== 'da_thanh_toan' && (
-            <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/80 to-blue-50/50 p-3.5 space-y-2">
-              <div className="flex items-center justify-between flex-wrap gap-1">
-                <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
-                  <Pill className="h-4 w-4 text-indigo-600" /> Tùy chọn mua đơn thuốc:
-                </span>
-                <span className="text-[11px] text-indigo-700 font-medium">
-                  {updatingMedicine ? 'Đang cập nhật...' : 'Bệnh nhân có thể tùy chọn trước khi thanh toán'}
-                </span>
-              </div>
-              <p className="text-[11px] text-indigo-900 leading-relaxed">
-                Đơn thuốc luôn được lưu đầy đủ trong hồ sơ y tế. Bạn có thể chọn lấy thuốc ngay tại Nhà thuốc phòng khám hoặc nhận đơn để tự mua bên ngoài:
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                <button
-                  type="button"
-                  disabled={updatingMedicine}
-                  onClick={() => handleChangeMedicineChoice('mua_tai_benh_vien')}
-                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                    currentHd.donThuoc.every((dt) => dt.luaChonMua === 'mua_tai_benh_vien')
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-950 shadow-xs ring-2 ring-emerald-300'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50/30'
-                  }`}
-                >
-                  <div className="font-bold text-xs flex items-center gap-1.5 text-emerald-900">
-                    🟢 Mua thuốc tại phòng khám
-                  </div>
-                  <div className="text-[10px] text-gray-600 mt-0.5">
-                    Tính tiền thuốc vào viện phí & cấp phát tại Nhà thuốc phòng khám
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={updatingMedicine}
-                  onClick={() => handleChangeMedicineChoice('mua_ngoai')}
-                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
-                    currentHd.donThuoc.every((dt) => dt.luaChonMua === 'mua_ngoai')
-                      ? 'border-amber-500 bg-amber-50 text-amber-950 shadow-xs ring-2 ring-amber-300'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-amber-300 hover:bg-amber-50/30'
-                  }`}
-                >
-                  <div className="font-bold text-xs flex items-center gap-1.5 text-amber-900">
-                    🟡 Tự mua thuốc bên ngoài
-                  </div>
-                  <div className="text-[10px] text-gray-600 mt-0.5">
-                    Không tính tiền thuốc vào viện phí. Nhận đơn thuốc để tự mua bên ngoài
-                  </div>
-                </button>
+          {/* 1. NƠI MUA THUỐC (nếu có đơn) — chỉ chọn trên máy, gửi khi bấm Xác nhận */}
+          {coDonThuoc && !hoaDonDaThanhToan && (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 space-y-2">
+              <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                <Pill className="h-4 w-4 text-indigo-600" /> Nơi mua thuốc
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  ['mua_tai_benh_vien', 'Mua tại nhà thuốc phòng khám', `Cộng ${formatCurrency(tienThuoc)} tiền thuốc vào viện phí`],
+                  ['mua_ngoai', 'Tự mua bên ngoài', 'Không tính tiền thuốc, nhận đơn để tự mua'],
+                ].map(([value, label, moTa]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={daXacNhan}
+                    onClick={() => setChonThuoc(value)}
+                    className={theChon(thuocDangChon === value)}
+                  >
+                    <div className="font-bold text-xs text-gray-900">{label}</div>
+                    <div className="text-[10px] text-gray-600 mt-0.5">{moTa}</div>
+                  </button>
+                ))}
               </div>
             </div>
           )}
@@ -348,7 +346,9 @@ export default function ThanhToanVienPhiModal({
               )}
 
               <div className="flex justify-between items-center text-sm font-bold text-gray-900 pt-1.5 border-t border-gray-200">
-                <span className="uppercase text-xs tracking-wider text-gray-700">Số tiền bệnh nhân thanh toán:</span>
+                <span className="uppercase text-xs tracking-wider text-gray-700">
+                  {coDonThuoc && !daXacNhan && !hoaDonDaThanhToan && luaChonThuocDaLuu !== 'mua_tai_benh_vien' ?'Tạm tính (chưa gồm thuốc):' : 'Số tiền bệnh nhân thanh toán:'}
+                </span>
                 <span className="text-xl font-black text-emerald-600 font-mono">
                   {formatCurrency(thucThu)}
                 </span>
@@ -356,36 +356,46 @@ export default function ThanhToanVienPhiModal({
             </div>
           </div>
 
-          {/* 3. BỘ CHUYỂN TAB PHƯƠNG THỨC THANH TOÁN */}
-          <div className="flex rounded-xl bg-gray-100 p-1 border border-gray-200 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setActiveTab('qr')}
-              className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
-                activeTab === 'qr'
-                  ? 'bg-white text-emerald-700 shadow-2xs font-bold'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <QrCode className="h-4 w-4" />
-              <span>Chuyển khoản VietQR (Nhanh nhất)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('cash')}
-              className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
-                activeTab === 'cash'
-                  ? 'bg-white text-emerald-700 shadow-2xs font-bold'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <Banknote className="h-4 w-4" />
-              <span>Tiền mặt tại Quầy Thu ngân</span>
-            </button>
-          </div>
+          {/* 3. HÌNH THỨC THANH TOÁN + NÚT XÁC NHẬN */}
+          {!hoaDonDaThanhToan && (
+            <div className="rounded-xl border border-gray-200 p-3.5 space-y-2.5">
+              <span className="text-xs font-bold text-gray-900">Hình thức thanh toán</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  ['chuyen_khoan', <QrCode key="i" className="h-4 w-4" />, 'Chuyển khoản (quét QR)'],
+                  ['tai_quay', <Banknote key="i" className="h-4 w-4" />, 'Thanh toán tại quầy thu ngân'],
+                ].map(([value, icon, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={daXacNhan}
+                    onClick={() => setChonThanhToan(value)}
+                    className={`${theChon(hinhThuc === value)} flex items-center gap-2 text-xs font-bold text-gray-900`}
+                  >
+                    {icon} {label}
+                  </button>
+                ))}
+              </div>
+              {daXacNhan ? (
+                <p className="text-[11px] text-gray-600 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  Đã xác nhận. Muốn đổi lựa chọn, vui lòng liên hệ quầy thu ngân.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={dangXacNhan || loadingDetail}
+                  onClick={handleXacNhan}
+                  className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-bold transition cursor-pointer"
+                >
+                  {dangXacNhan ? 'Đang xác nhận...' : 'Xác nhận'}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* TAB 1: CHUYỂN KHOẢN VIETQR */}
-          {activeTab === 'qr' && hoaDonDaThanhToan && (
+          {hoaDonDaThanhToan && (
             <div className="p-5 rounded-xl bg-emerald-50 border border-emerald-200 text-center space-y-2">
               <CheckCircle2 className="h-12 w-12 text-emerald-600 mx-auto" />
               <p className="font-bold text-emerald-900 text-sm">Đã nhận thanh toán viện phí</p>
@@ -395,7 +405,7 @@ export default function ThanhToanVienPhiModal({
             </div>
           )}
 
-          {activeTab === 'qr' && !hoaDonDaThanhToan && (
+          {daXacNhan && hinhThuc === 'chuyen_khoan' && !hoaDonDaThanhToan && (
             <div className="space-y-3.5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
                 {/* Mã QR */}
@@ -498,7 +508,7 @@ export default function ThanhToanVienPhiModal({
           )}
 
           {/* TAB 2: TIỀN MẶT TẠI QUẦY THU NGÂN */}
-          {activeTab === 'cash' && (
+          {daXacNhan && hinhThuc === 'tai_quay' && !hoaDonDaThanhToan && (
             <div className="space-y-3.5 text-xs">
               <div className="rounded-xl bg-amber-50/80 border border-amber-200 p-4 space-y-3 text-amber-950">
                 <div className="flex items-center gap-2">

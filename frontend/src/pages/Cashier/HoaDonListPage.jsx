@@ -701,6 +701,11 @@ export default function HoaDonListPage() {
                               📌 {hd.laPhiCls ? 'Phí cận lâm sàng (thu trước)' : isTamUngQuay ? 'Tạm ứng tại quầy' : `Tạm ứng đặt lịch${hd.maLichHen ? ` • ${hd.maLichHen}` : ''}`}
                             </span>
                           )}
+                          {hd.trangThai === 'cho_thanh_toan' && hd.luaChonThanhToan && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
+                              BN chọn: {hd.luaChonThanhToan === 'chuyen_khoan' ? 'Chuyển khoản' : 'Tại quầy'}
+                            </span>
+                          )}
                           {hd.khauTruTamUng && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200">
                               ✓ Đã trừ tạm ứng {formatCurrency(hd.khauTruTamUng.soTien)}

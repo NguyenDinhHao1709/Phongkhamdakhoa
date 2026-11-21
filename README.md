@@ -18,11 +18,11 @@ Python ML: https://phongkham-python-ml.onrender.com/health
 
 | Vai trò | Chức năng |
 |---|---|
-| **Bệnh nhân** (web, app Expo) | Đăng ký/OTP; đặt lịch trực tiếp hoặc tư vấn video; đóng cọc qua PayOS; hủy lịch và nhận hoàn cọc; theo dõi số thứ tự, thời gian chờ; hồ sơ bệnh án điện tử; chatbot AI |
+| **Bệnh nhân** (web, app Expo) | Đăng ký/OTP; đặt lịch trực tiếp hoặc tư vấn video; đóng cọc qua PayOS; cuối lượt khám xác nhận một lần hình thức thanh toán (chuyển khoản / tại quầy) và nơi mua thuốc; hủy lịch và nhận hoàn cọc; theo dõi số thứ tự, thời gian chờ; hồ sơ bệnh án điện tử; chatbot AI |
 | **Lễ tân / Kiosk** | Tiếp nhận, check-in lịch hẹn, cấp số A/B theo ngày; chọn đối tượng ưu tiên; hàng đợi thời gian thực; qua lượt; chuyển bác sĩ khi bác sĩ chậm; màn hình gọi số và TV |
 | **Bác sĩ** | Hàng đợi phòng khám; sinh hiệu, khám, chẩn đoán ICD-10; chỉ định cận lâm sàng; kê đơn; in phiếu khám và đơn thuốc; tư vấn video |
 | **Kỹ thuật viên** | Nhận chỉ định, lấy mẫu, nhập kết quả, tải ảnh kết quả |
-| **Thu ngân** | Thu tạm ứng phí khám trước khi khám; quyết toán có BHYT đúng/trái tuyến; hoàn tạm ứng dư, hoàn cọc; phiếu chi; chốt ca |
+| **Thu ngân** | Thu tạm ứng trước khi khám (thu ngân tự nhập số tiền, phần dư tự cấn trừ phí CLS); quyết toán có BHYT đúng/trái tuyến; hoàn tạm ứng dư, hoàn cọc; phiếu chi; chốt ca |
 | **Dược sĩ** | Kho thuốc theo lô (FEFO); cấp phát khi đã thanh toán; mua hàng, nhập kho, công nợ nhà cung cấp; dự báo nhu cầu bằng ML |
 | **Ban giám đốc / Quản trị** | Cấu hình phí khám, cọc, suất mỗi buổi, BHYT; bảng giá; nhân sự, lịch làm việc, chấm công; dashboard, báo cáo; sao lưu, nhật ký |
 
