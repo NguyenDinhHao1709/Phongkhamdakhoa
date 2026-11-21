@@ -21,10 +21,10 @@ Outpatient clinic management system (graduation thesis). Workflow follows QĐ 13
 | `mobile-patient/` (Expo) | `npm start` | — |
 | `zalo-mini-app/` (Zalo Mini App, zmp-sdk + Vite) | `npm run dev` (browser, Zalo APIs stubbed) / `npm start` (zmp simulator) | `npm run build` (outputs to `www/`), `zmp deploy` |
 
-- There is no JS unit-test suite. Verify Node changes with `npm run build` (that is what CI runs, [.github/workflows/ci.yml](.github/workflows/ci.yml)); API test cases are in `scripts/*.postman_collection.json`.
+- There is no JS unit-test suite. Verify Node changes with `npm run build`; API test cases are in `scripts/*.postman_collection.json`. CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) builds all four Node projects, runs python-ml `pytest`, and validates `deploy/docker-compose.staging.yml`.
 - Frontend `npm run build` runs `prebuild` = eslint with `--max-warnings 0` first, so any lint warning fails the build.
 - backend/ai-service/office-service are separate npm projects (no root workspace); ai/office `start:dev` does not watch — rebuild after each edit.
-- python-ml cannot run in the local Windows venv (Application Control blocks scikit-learn/statsmodels DLLs) — run/test it in Docker.
+- python-ml cannot run in the local Windows venv (Application Control blocks scikit-learn/statsmodels DLLs) — run/test it in Docker. The image doesn't contain `tests/`, so mount the folder: `docker build -t python-ml python-ml` then `docker run --rm -v "$PWD/python-ml:/app" python-ml sh -c "pip install -q pytest httpx && python -m pytest tests -q"`.
 
 ## Architecture
 
@@ -41,6 +41,7 @@ Outpatient clinic management system (graduation thesis). Workflow follows QĐ 13
 
 ## Database & deployment
 
+- Local DB: base schema `database/phong_kham.sql` (MySQL 8), or `database/phong_kham_full_test_data.sql` for schema + sample data; then apply any dated migrations it doesn't include yet. (`database/README_import.md` still refers to an old `schema.sql` that no longer exists.)
 - TypeORM runs with `synchronize: false`. Schema changes = a new dated file `database/YYYYMMDD_<name>.sql` (`*.sql` is git-ignored → `git add -f`). Write plain `ALTER TABLE` statements: the Clever Cloud user cannot read `information_schema`.
 - Production: backend + ai/office/python-ml on Render (auto-deploy on push to `main`), frontend on cPanel (upload `frontend/dist`, keep `.htaccess`), MySQL on Clever Cloud. Migrations are run by hand in phpMyAdmin **before** pushing code that uses new columns.
 
