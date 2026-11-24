@@ -25,6 +25,7 @@ import * as https from 'https';
 import { uploadToCloudinary } from '../../common/utils/cloudinary-upload.util';
 import { Aes256Transformer } from '../../common/transformers/aes-256.transformer';
 import { assertBacSiPhuTrach } from '../../common/utils/bac-si-phu-trach.util';
+import { caDangDienRa } from '../../common/utils/ca-lam-viec.util';
 
 // Đối tượng ưu tiên khám theo Luật Khám bệnh, chữa bệnh (cấp cứu luôn trước nhất)
 export const DOI_TUONG_UU_TIEN = ['cap_cuu', 'tre_em_duoi_6', 'nguoi_cao_tuoi', 'phu_nu_co_thai', 'khuyet_tat_nang', 'nguoi_co_cong'];
@@ -295,12 +296,15 @@ export class TiepNhanService implements OnModuleInit {
     if (!doctors.length) return [];
     const now = new Date();
     const today = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+    const homQua = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const ngayHomQua = `${homQua.getFullYear()}-${pad2(homQua.getMonth() + 1)}-${pad2(homQua.getDate())}`;
     const bayGio = gioHienTai(now);
-    const shifts = await this.lichLamViecRepo.find({ where: { ngayLam: today }, relations: ['caLamViec'] });
+    // Gồm cả ca qua đêm phân cho hôm qua còn kéo sang sáng nay
+    const shifts = await this.lichLamViecRepo.find({ where: { ngayLam: In([today, ngayHomQua]) }, relations: ['caLamViec'] });
     return doctors.filter((doctor) => shifts.some((shift) =>
       shift.nhanVienId === doctor.nhanVienId &&
-      shift.caLamViec.gioBatDau <= bayGio &&
-      shift.caLamViec.gioKetThuc > bayGio
+      shift.caLamViec &&
+      caDangDienRa(shift.caLamViec, bayGio, String(shift.ngayLam).slice(0, 10) === today ? 'homNay' : 'homQua')
     ));
   }
 

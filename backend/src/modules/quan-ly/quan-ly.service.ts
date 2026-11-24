@@ -33,7 +33,9 @@ import { BaoCaoBoPhan } from './entities/bao-cao-bo-phan.entity';
 import { CauHinhTienCoc } from './entities/cau-hinh-tien-coc.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { MemoryCacheService } from '../../common/cache/memory-cache.service';
-import { CACHE_DS_CA, THOI_LUONG_MAC_DINH, gioTrongCa, nhanCa, sinhSlotCa, timCaCuaGio } from '../../common/utils/ca-lam-viec.util';
+import {
+  CACHE_DS_CA, THOI_LUONG_MAC_DINH, gioKetThucTrongNgay, gioTrongCa, nhanCa, phutKetThucCa, sinhSlotCa, timCaCuaGio,
+} from '../../common/utils/ca-lam-viec.util';
 import { QUYEN_CACHE_PREFIX } from '../../common/guards/roles.guard';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -2244,8 +2246,9 @@ export class QuanLyService implements OnModuleInit {
     const thoiLuong = Number(body?.thoiLuongPhut) || THOI_LUONG_MAC_DINH;
     const gioHopLe = /^([01]\d|2[0-3]):[0-5]\d$/;
     if (!tenCa || tenCa.length > 50) throw new BadRequestException('Tên ca bắt buộc, tối đa 50 ký tự');
-    if (!gioHopLe.test(tu) || !gioHopLe.test(den) || tu >= den) {
-      throw new BadRequestException({ code: 'GIO_CA_KHONG_HOP_LE', message: 'Giờ bắt đầu ca phải trước giờ kết thúc (định dạng HH:mm).' });
+    // Giờ kết thúc nhỏ hơn giờ bắt đầu = ca qua đêm, kết thúc vào sáng hôm sau (VD trực cấp cứu 17:00 - 08:00)
+    if (!gioHopLe.test(tu) || !gioHopLe.test(den) || tu === den) {
+      throw new BadRequestException({ code: 'GIO_CA_KHONG_HOP_LE', message: 'Giờ bắt đầu và kết thúc ca phải khác nhau (định dạng HH:mm).' });
     }
     if (!Number.isInteger(thoiLuong) || thoiLuong < 10 || thoiLuong > 240) {
       throw new BadRequestException('Thời lượng mỗi lượt khám phải từ 10 đến 240 phút');
@@ -2258,7 +2261,9 @@ export class QuanLyService implements OnModuleInit {
     const dsCa = await this.caLamViecRepo.find();
     const caCu = id ? dsCa.find((c) => c.id === id) : undefined;
     if (id && !caCu) throw new NotFoundException('Không tìm thấy ca làm việc');
-    const chongGio = dsCa.find((c) => c.id !== id && c.gioBatDau.slice(0, 5) < den && tu < c.gioKetThuc.slice(0, 5));
+    // So phần ca nằm trong ngày làm (khung đặt lịch); phần sau 0h của ca qua đêm không sinh lượt khám
+    const denTrongNgay = gioKetThucTrongNgay(caMoi);
+    const chongGio = dsCa.find((c) => c.id !== id && c.gioBatDau.slice(0, 5) < denTrongNgay && tu < gioKetThucTrongNgay(c));
     if (chongGio) {
       throw new ConflictException({ code: 'CA_CHONG_GIO', message: `Ca bị chồng giờ với ${nhanCa(chongGio)}.` });
     }
@@ -2272,7 +2277,7 @@ export class QuanLyService implements OnModuleInit {
            JOIN lich_lam_viec llv ON llv.nhan_vien_id = bs.nhan_vien_id AND llv.ngay_lam = lh.ngay_hen AND llv.ca_lam_viec_id = ?
           WHERE lh.ngay_hen >= CURDATE() AND lh.trang_thai NOT IN (?, ?)
             AND lh.gio_hen >= ? AND lh.gio_hen < ?`,
-        [id, TrangThaiLichHen.DA_HUY, TrangThaiLichHen.HOAN_THANH, caCu.gioBatDau, caCu.gioKetThuc],
+        [id, TrangThaiLichHen.DA_HUY, TrangThaiLichHen.HOAN_THANH, caCu.gioBatDau, `${gioKetThucTrongNgay(caCu)}:00`],
       );
       const ngoaiGio = lichHen.filter((lh) => !gioTrongCa(lh.gio, caMoi));
       if (ngoaiGio.length) {
@@ -2285,7 +2290,7 @@ export class QuanLyService implements OnModuleInit {
       const khungOnlineLech = await this.lichLamViecRepo
         .createQueryBuilder('llv')
         .where('llv.caLamViecId = :id AND llv.ngayLam >= CURDATE() AND llv.onlineTu IS NOT NULL', { id })
-        .andWhere('(llv.onlineTu < :tu OR llv.onlineDen > :den)', { tu: `${tu}:00`, den: `${den}:00` })
+        .andWhere('(llv.onlineTu < :tu OR llv.onlineDen > :den)', { tu: `${tu}:00`, den: `${denTrongNgay}:00` })
         .getCount();
       if (khungOnlineLech) {
         throw new ConflictException({
@@ -2421,7 +2426,7 @@ export class QuanLyService implements OnModuleInit {
     for (const ca of dsCa) {
       const ngay = toDateOnly(ca.ngayLam);
       const batDau = (ca.caLamViec?.gioBatDau || '00:00').slice(0, 5);
-      const ketThuc = (ca.caLamViec?.gioKetThuc || '23:59').slice(0, 5);
+      const ketThuc = ca.caLamViec ? gioKetThucTrongNgay(ca.caLamViec) : '24:00';
       const ten = `${ca.nhanVien?.hoTen} – ${ca.caLamViec?.tenCa} ${ngay}`;
 
       const bs = await this.bacSiRepo.findOne({ where: { nhanVienId: ca.nhanVienId } });
@@ -2628,7 +2633,8 @@ export class QuanLyService implements OnModuleInit {
     const caDb = await this.caLamViecRepo.find({ order: { gioBatDau: 'ASC' } });
     if (!caDb.length) throw new BadRequestException('Chưa cấu hình ca làm việc nào. Vui lòng thêm ca trước khi phân ca.');
     const phut = (g: string) => Number(g.slice(0, 2)) * 60 + Number(g.slice(3, 5));
-    const dsCa: CaXep[] = caDb.map((c) => ({ id: c.id, tenCa: c.tenCa, batDau: phut(c.gioBatDau), ketThuc: phut(c.gioKetThuc) }));
+    // Ca qua đêm: ketThuc > 1440 (tính từ 0h ngày làm) → số giờ làm và giờ nghỉ giữa hai ngày tính đúng
+    const dsCa: CaXep[] = caDb.map((c) => ({ id: c.id, tenCa: c.tenCa, batDau: phut(c.gioBatDau), ketThuc: phutKetThucCa(c) }));
     const caThemIds = dsCa.slice(2).map((c) => c.id);
 
     // Nhân sự chuyên môn (loại Ban Giám Đốc / quản trị)
@@ -2719,7 +2725,7 @@ export class QuanLyService implements OnModuleInit {
     const tongDen = denTheoGio.reduce((s: number, r: any) => s + Number(r.n), 0);
     for (const ca of dsCa) {
       const n = denTheoGio
-        .filter((r: any) => phut(r.gio) >= ca.batDau && phut(r.gio) < ca.ketThuc)
+        .filter((r: any) => [phut(r.gio), phut(r.gio) + 1440].some((p) => p >= ca.batDau && p < ca.ketThuc))
         .reduce((s: number, r: any) => s + Number(r.n), 0);
       tyLeCa.set(ca.id, tongDen ? n / tongDen : dsCa.indexOf(ca) < 2 ? 0.5 : 0);
     }

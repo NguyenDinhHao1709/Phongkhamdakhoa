@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { xuatExcel } from '../../utils/xuatFile';
-import { sinhSlotCa } from '../../utils/caLamViec';
+import { caQuaDem, hauToHomSau, sinhSlotCa } from '../../utils/caLamViec';
 import CauHinhCaModal from './CauHinhCaModal';
 import PhanCaThongMinhModal from './PhanCaThongMinhModal';
 import { apiGet, apiPost, apiDelete, apiPatch } from '../../services/api';
@@ -127,7 +127,12 @@ export default function XepLichLamViecPage() {
   const homNayStr = formatDateISO(new Date());
   const gioCa = (caId) => {
     const ca = caList.find((c) => Number(c.id) === Number(caId));
-    return { batDau: formatTimeShort(ca?.gioBatDau), ketThuc: formatTimeShort(ca?.gioKetThuc) };
+    // Khung online chỉ nằm trong ngày làm: ca qua đêm → tối đa đến 24:00
+    return {
+      batDau: formatTimeShort(ca?.gioBatDau),
+      ketThuc: caQuaDem(ca) ? '24:00' : formatTimeShort(ca?.gioKetThuc),
+      nhanGio: `${formatTimeShort(ca?.gioBatDau)}–${formatTimeShort(ca?.gioKetThuc)}${hauToHomSau(ca)}`,
+    };
   };
   const slotTrongCa = (caId) => sinhSlotCa(caList.find((c) => Number(c.id) === Number(caId)));
   const moKhungOnline = (shift, nv) => {
@@ -649,7 +654,7 @@ export default function XepLichLamViecPage() {
                         </div>
                         <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1 font-medium">
                           <Clock className="h-3 w-3 text-gray-400" />
-                          {formatTimeShort(c.gioBatDau)} - {formatTimeShort(c.gioKetThuc)}
+                          {formatTimeShort(c.gioBatDau)} - {formatTimeShort(c.gioKetThuc)}{hauToHomSau(c)}
                         </p>
                       </div>
                     );
@@ -768,7 +773,7 @@ export default function XepLichLamViecPage() {
       {/* ─── MODAL KHUNG TƯ VẤN ONLINE ─────────────── */}
       {khungOnline && (() => {
         const { shift, nv, tu, den, apDungTuan } = khungOnline;
-        const { batDau, ketThuc } = gioCa(shift.caLamViecId);
+        const { batDau, ketThuc, nhanGio } = gioCa(shift.caLamViecId);
         const tuOptions = slotTrongCa(shift.caLamViecId);
         const denOptions = [...tuOptions.filter((g) => g > tu), ketThuc];
         return (
@@ -780,7 +785,7 @@ export default function XepLichLamViecPage() {
                     <Video className="h-4 w-4 text-purple-600" /> Khung tư vấn online
                   </h3>
                   <p className="text-[11px] text-gray-500">
-                    {nv.hoTen} · {shift.tenCa} ({batDau}–{ketThuc}) · {normalizeDateOnly(shift.ngayLam)}
+                    {nv.hoTen} · {shift.tenCa} ({nhanGio}) · {normalizeDateOnly(shift.ngayLam)}
                   </p>
                 </div>
                 <button type="button" onClick={() => setKhungOnline(null)} className="text-gray-400 hover:text-gray-600 p-1">

@@ -1283,8 +1283,7 @@ export class LichHenService implements OnModuleInit {
       return schedules.some((schedule) =>
         schedule.nhanVienId === doctor.nhanVienId
         && schedule.caLamViec
-        && schedule.caLamViec.gioBatDau <= appointment.gioHen
-        && schedule.caLamViec.gioKetThuc > appointment.gioHen
+        && gioTrongCa(appointment.gioHen, schedule.caLamViec)
       );
     });
     // Prefer the published shift for that date. If no shift is configured yet,

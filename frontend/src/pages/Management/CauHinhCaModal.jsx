@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Clock, Plus, Save, Trash2, X } from 'lucide-react';
 import { apiPost, apiPut, apiDelete } from '../../services/api';
-import { sinhSlotCa } from '../../utils/caLamViec';
+import { caQuaDem, sinhSlotCa } from '../../utils/caLamViec';
 
 const CA_MOI = { id: null, key: null, tenCa: '', gioBatDau: '18:00', gioKetThuc: '21:00', thoiLuongPhut: 60 };
 
@@ -71,6 +71,7 @@ export default function CauHinhCaModal({ caList, onClose }) {
             </h3>
             <p className="text-[11px] text-gray-500">
               Áp dụng chung cho mọi nhân viên. Khung giờ bệnh nhân đặt lịch được chia từ giờ ca theo thời lượng mỗi lượt khám.
+              Giờ "Đến" nhỏ hơn giờ "Từ" là ca qua đêm, kết thúc sáng hôm sau (VD trực 17:00 – 08:00).
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
@@ -81,6 +82,7 @@ export default function CauHinhCaModal({ caList, onClose }) {
         <div className="space-y-2">
           {dsCa.map((ca) => {
             const slots = sinhSlotCa(ca);
+            const quaDem = caQuaDem(ca);
             return (
               <div key={ca.key} className="rounded-xl border border-gray-200 p-3 space-y-2">
                 <div className="grid grid-cols-2 sm:grid-cols-[1fr_auto_auto_auto_auto] gap-2 items-end">
@@ -99,7 +101,9 @@ export default function CauHinhCaModal({ caList, onClose }) {
                     <input type="time" value={ca.gioBatDau} onChange={(e) => sua(ca, 'gioBatDau', e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5" />
                   </label>
                   <label className="space-y-1">
-                    <span className="font-bold text-gray-700">Đến</span>
+                    <span className="font-bold text-gray-700">
+                      Đến{quaDem && <span className="ml-1 font-semibold text-indigo-600">(hôm sau)</span>}
+                    </span>
                     <input type="time" value={ca.gioKetThuc} onChange={(e) => sua(ca, 'gioKetThuc', e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5" />
                   </label>
                   <label className="space-y-1">
@@ -136,6 +140,7 @@ export default function CauHinhCaModal({ caList, onClose }) {
                 </div>
                 <p className="text-[11px] text-gray-500">
                   {slots.length ? `${slots.length} lượt khám: ${slots.join(', ')}` : 'Ca quá ngắn so với thời lượng mỗi lượt — chưa có lượt khám nào.'}
+                  {quaDem && slots.length > 0 && ' — ca qua đêm: bệnh nhân đặt lịch đến 24:00, sau 0h là trực (không nhận đặt lịch).'}
                 </p>
               </div>
             );

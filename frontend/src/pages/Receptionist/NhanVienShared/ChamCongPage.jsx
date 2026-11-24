@@ -4,6 +4,7 @@ import { Camera, CheckCircle2, XCircle, LogIn, LogOut, Clock, AlertTriangle, Wif
 import { apiGet, apiPost } from '../../../services/api';
 import useAuthStore from '../../../store/authStore';
 import { isWakingError } from '../../../utils/serviceWakeUp';
+import { hauToHomSau } from '../../../utils/caLamViec';
 
 // Thử thách nháy mắt (chống giả mạo bằng ảnh): nhìn thẳng và nháy mắt trong lúc quét.
 // Một lần nháy mắt chỉ ~0.1–0.2s nên phải chụp dày (8 khung/giây) để server bắt được khung đang nhắm mắt.
@@ -382,7 +383,7 @@ export default function ChamCongPage() {
               {trangThai?.danhSachCa && trangThai.danhSachCa.length > 0 ? (
                 trangThai.danhSachCa.map((ca) => (
                   <span key={ca.id} className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-white text-blue-700 border border-blue-200 shadow-sm">
-                    {ca.ten_ca}: {ca.gio_bat_dau?.slice(0, 5)} - {ca.gio_ket_thuc?.slice(0, 5)}
+                    {ca.ten_ca}: {ca.gio_bat_dau?.slice(0, 5)} - {ca.gio_ket_thuc?.slice(0, 5)}{hauToHomSau({ gioBatDau: ca.gio_bat_dau, gioKetThuc: ca.gio_ket_thuc })}
                   </span>
                 ))
               ) : (

@@ -7,6 +7,7 @@ import {
 import { apiGet } from '../../../services/api';
 import useAuthStore from '../../../store/authStore';
 import { getLocalDateString } from '../../../utils/formatDate';
+import { hauToHomSau } from '../../../utils/caLamViec';
 
 const DAYS_OF_WEEK = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ Nhật'];
 const SHORT_DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -441,7 +442,7 @@ export default function LichLamViecPage() {
                             {(sh.gioBatDau || sh.gioKetThuc) && (
                               <p className="text-[10px] text-emerald-700 font-medium flex items-center gap-1">
                                 <Clock className="h-2.5 w-2.5 text-emerald-600" />
-                                {formatTimeShort(sh.gioBatDau)} - {formatTimeShort(sh.gioKetThuc)}
+                                {formatTimeShort(sh.gioBatDau)} - {formatTimeShort(sh.gioKetThuc)}{hauToHomSau(sh)}
                               </p>
                             )}
 
@@ -532,7 +533,7 @@ export default function LichLamViecPage() {
                         </span>
                       </td>
                       <td className="py-2.5 px-3 font-medium text-gray-800 whitespace-nowrap">
-                        {sh.gioBatDau && sh.gioKetThuc ? `${formatTimeShort(sh.gioBatDau)} - ${formatTimeShort(sh.gioKetThuc)}` : 'Theo ca'}
+                        {sh.gioBatDau && sh.gioKetThuc ? `${formatTimeShort(sh.gioBatDau)} - ${formatTimeShort(sh.gioKetThuc)}${hauToHomSau(sh)}` : 'Theo ca'}
                       </td>
                       <td className="py-2.5 px-3 text-gray-700">
                         {cleanGhiChu(sh.ghiChu) ? (

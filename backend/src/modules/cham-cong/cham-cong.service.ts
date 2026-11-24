@@ -18,6 +18,7 @@ import { NhatKyHeThong, LoaiNhatKy } from '../quan-ly/entities/nhat-ky-he-thong.
 import { withColdStartRetry, isServiceWakingUp } from '../../common/utils/cold-start-retry.util';
 import { Aes256Transformer } from '../../common/transformers/aes-256.transformer';
 import { PYTHON_ML_URL } from '../../common/utils/python-ml-url.util';
+import { caQuaDem, phutCuaGio, phutKetThucCa } from '../../common/utils/ca-lam-viec.util';
 
 const PYTHON_ML_TIMEOUT_MS = 75000;
 const PYTHON_ML_HEADERS = { 'x-internal-key': process.env.AI_INTERNAL_KEY || '' };
@@ -46,6 +47,14 @@ function getVietnamNow(): { ngayCham: string; gio: string } {
     gio: `${values.hour}:${values.minute}:${values.second}`,
   };
 }
+
+/** Ngày liền trước (YYYY-MM-DD) */
+const ngayHomTruoc = (ngay: string) =>
+  new Date(Date.parse(`${ngay}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+// Ca qua đêm: vẫn cho check-out vào bản chấm công của hôm trước đến tối đa ngần ấy giờ sau giờ kết thúc ca
+const GIO_CHO_CHECKOUT_CA_QUA_DEM = 6;
+
+const caCuaDong = (s: any) => ({ gioBatDau: s.gio_bat_dau, gioKetThuc: s.gio_ket_thuc });
 
 @Injectable()
 export class ChamCongService implements OnModuleInit, OnModuleDestroy {
@@ -160,6 +169,27 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
        ORDER BY ca.gio_bat_dau ASC`,
       [nhanVienId, ngay],
     );
+  }
+
+  /**
+   * Ngày của bản chấm công đang mở: nếu hôm qua có ca qua đêm (VD 17:00 - 08:00), đã check-in mà chưa check-out
+   * và chưa quá giờ kết thúc ca + GIO_CHO_CHECKOUT_CA_QUA_DEM → check-out/trạng thái tính cho ngày hôm qua.
+   */
+  private async ngayChamDangMo(nhanVienId: number, ngayCham: string, gio: string): Promise<{ ngay: string; quaDem: boolean }> {
+    const homQua = ngayHomTruoc(ngayCham);
+    const caHomQua = (await this.timLichLamViecHomNay(nhanVienId, homQua)).filter((s) => caQuaDem(caCuaDong(s)));
+    const conHan = caHomQua.some(
+      (s) => phutCuaGio(gio) < Math.min(1440, phutCuaGio(s.gio_ket_thuc) + GIO_CHO_CHECKOUT_CA_QUA_DEM * 60),
+    );
+    if (conHan) {
+      const [banGhi, homNay] = await Promise.all([
+        this.chamCongRepo.findOneBy({ nhanVienId, ngayCham: homQua }),
+        this.chamCongRepo.findOneBy({ nhanVienId, ngayCham }),
+      ]);
+      // Đã check-in ca hôm nay thì bản chấm công hôm nay được ưu tiên
+      if (banGhi?.gioVao && !banGhi.gioRa && !homNay?.gioVao) return { ngay: homQua, quaDem: true };
+    }
+    return { ngay: ngayCham, quaDem: false };
   }
 
   // ─── Cấu hình WiFi ─────────────────────────────────────────────────────────
@@ -411,7 +441,10 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
 
   async checkOut(userId: number, clientIp: string, framesB64: string[]) {
     const nv = await this.layNhanVienTheoUserId(userId);
-    const { ngayCham, gio: gioRa } = getVietnamNow();
+    const bayGio = getVietnamNow();
+    const gioRa = bayGio.gio;
+    // Ca qua đêm: check-out sáng nay ghi vào bản chấm công của hôm qua
+    const { ngay: ngayCham, quaDem } = await this.ngayChamDangMo(nv.id, bayGio.ngayCham, gioRa);
 
     // 1. Phải xem hôm nay có lịch làm việc không
     const shifts = await this.timLichLamViecHomNay(nv.id, ngayCham);
@@ -439,13 +472,11 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
     if (!faceCheck.hopLe) throw new BadRequestException(faceCheck.lyDo);
 
     // 6. Tính thời gian về so với ca muộn nhất
-    const gioKetThucMuonNhat = shifts.reduce(
-      (max, s) => (s.gio_ket_thuc > max ? s.gio_ket_thuc : max),
-      shifts[0].gio_ket_thuc,
-    );
-    const [hKT, mKT] = gioKetThucMuonNhat.split(':').map(Number);
-    const [hRa, mRa] = gioRa.split(':').map(Number);
-    const diffOutMinutes = (hKT * 60 + mKT) - (hRa * 60 + mRa);
+    //    (phút tính từ 0h ngày chấm công: ca qua đêm và giờ ra sáng hôm sau cộng 1440)
+    const caMuonNhat = shifts.reduce((max, s) =>
+      (phutKetThucCa(caCuaDong(s)) > phutKetThucCa(caCuaDong(max)) ? s : max), shifts[0]);
+    const gioKetThucMuonNhat: string = caMuonNhat.gio_ket_thuc;
+    const diffOutMinutes = phutKetThucCa(caCuaDong(caMuonNhat)) - (phutCuaGio(gioRa) + (quaDem ? 1440 : 0));
 
     let extraNote = '';
     if (diffOutMinutes > 15) {
@@ -497,7 +528,9 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
     const nv = await this.nhanVienRepo.findOneBy({ nguoiDungId: userId });
     if (!nv) return null;
 
-    const { ngayCham } = getVietnamNow();
+    const bayGio = getVietnamNow();
+    // Đang trong ca qua đêm từ hôm qua (chưa check-out) → hiện bản chấm công của hôm qua để check-out
+    const { ngay: ngayCham } = await this.ngayChamDangMo(nv.id, bayGio.ngayCham, bayGio.gio);
 
     const chamCong = await this.chamCongRepo.findOne({
       where: { nhanVienId: nv.id, ngayCham },
