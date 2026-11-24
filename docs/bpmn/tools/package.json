@@ -1,0 +1,10 @@
+{
+  "name": "bpmn-tools",
+  "private": true,
+  "type": "module",
+  "description": "Sinh và xuất ảnh sơ đồ BPMN trong docs/bpmn",
+  "dependencies": {
+    "bpmn-js": "^18.33.1",
+    "puppeteer-core": "^25.18.1"
+  }
+}

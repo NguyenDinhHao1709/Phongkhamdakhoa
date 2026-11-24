@@ -8,7 +8,7 @@ Python ML: https://phongkham-python-ml.onrender.com/health
 | Tài liệu | Nội dung |
 |---|---|
 | [docs/QUY_TRINH_KHAM_BENH.md](docs/QUY_TRINH_KHAM_BENH.md) | Luồng khám bệnh chi tiết, quy tắc hàng đợi, BHYT, hoàn tiền |
-| [docs/bpmn/](docs/bpmn/) | Sơ đồ BPMN 2.0 (`.bpmn` + `.png`) |
+| [docs/bpmn/](docs/bpmn/) | Sơ đồ BPMN 2.0 (`.bpmn` + `.png`); sinh lại bằng `docs/bpmn/tools` |
 | [SRS.md](SRS.md) | Đặc tả yêu cầu phần mềm |
 | [deploy/README.md](deploy/README.md) | Triển khai staging bằng Docker Compose |
 

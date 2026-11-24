@@ -29,6 +29,7 @@ Outpatient clinic management system (graduation thesis). Workflow follows QĐ 13
 ## Architecture
 
 - **backend** is the only service the frontend/mobile talk to: REST under `/api` + Socket.IO. It proxies to `ai-service` (Gemini chatbot/RAG/triage), `office-service` (staff chat) and `python-ml` (visit forecast, specialty classifier, face verification). Render services cold-start, so calls to them go through `common/utils/cold-start-retry.util.ts` / `python-ml-url.util.ts`.
+- **Service-to-service auth:** downstream services trust only the backend. ai-service and python-ml check header `x-internal-key` = `AI_INTERNAL_KEY`; office-service checks `x-internal-token` = `OFFICE_INTERNAL_TOKEN` (`office-service/src/common/internal-auth.ts`) and trusts `x-user-id` only from the backend. Its Socket.IO authenticates with the backend's JWT (`JWT_SECRET`), and every room action checks membership. Set the same key on both sides, or calls fail with 401/503.
 - **Response envelope:** `ResponseTransformInterceptor` wraps every response, so the frontend reads `response.data.data`. Errors go through `HttpExceptionFilter`. `AuditLogInterceptor` (global) writes the audit log.
 - **Auth:** JWT access + refresh tokens with a per-user token version (revocation). Guards are applied per controller: `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(...)`; `@Public()` opts out. Patient endpoints must check ownership (`common/utils/benh-nhan-so-huu.util.ts`) to avoid IDOR.
 - **Sensitive columns** are encrypted with `Aes256Transformer` (`APP_ENCRYPTION_KEY`); ai-service has its own copy of the transformer — keep them in sync.
@@ -44,6 +45,16 @@ Outpatient clinic management system (graduation thesis). Workflow follows QĐ 13
 - Local DB: base schema `database/phong_kham.sql` (MySQL 8), or `database/phong_kham_full_test_data.sql` for schema + sample data; then apply any dated migrations it doesn't include yet. (`database/README_import.md` still refers to an old `schema.sql` that no longer exists.)
 - TypeORM runs with `synchronize: false`. Schema changes = a new dated file `database/YYYYMMDD_<name>.sql` (`*.sql` is git-ignored → `git add -f`). Write plain `ALTER TABLE` statements: the Clever Cloud user cannot read `information_schema`.
 - Production: backend + ai/office/python-ml on Render (auto-deploy on push to `main`), frontend on cPanel (upload `frontend/dist`, keep `.htaccess`), MySQL on Clever Cloud. Migrations are run by hand in phpMyAdmin **before** pushing code that uses new columns.
+
+## Viết tài liệu / báo cáo đồ án
+
+- Bổ sung vào tài liệu đã có ([SRS.md](SRS.md), [docs/QUY_TRINH_KHAM_BENH.md](docs/QUY_TRINH_KHAM_BENH.md), `docs/bpmn`), không viết lại từ đầu. Bản nháp đặt ở `docs/tai-lieu/` (`00_dan_y.md` = dàn ý, `00_mau.md` = mẫu cho mỗi luồng, `NN_<luong>.md` = từng luồng).
+- Viết theo hành trình bệnh nhân: `lich-hen` → `tiep-nhan`/`kiosk` → tạm ứng (`thanh-toan`, `payos`) → khám (`ho-so-benh-an`) → CLS (`xet-nghiem`) → kê đơn → thanh toán cuối → `nha-thuoc` → `thong-bao`/`danh-gia`; sau đó mới đến các phần hỗ trợ (`quan-ly`, `nhan-vien`, `cham-cong`, `office`, `ai`).
+- Mẫu mỗi luồng: mục đích, tác nhân, các bước, trạng thái (`trang_thai`), API + `@Roles`, bảng dữ liệu, quy tắc nghiệp vụ, sơ đồ sequence.
+- Code là chuẩn: mỗi khẳng định ghi kèm `file:dòng`. Chỗ code khác `QUY_TRINH_KHAM_BENH.md` thì ghi vào mục "Chênh lệch" cuối file, không tự sửa code hay quy trình.
+- Cấu trúc báo cáo: 1 Tổng quan · 2 Cơ sở lý thuyết và công nghệ · 3 Phân tích thiết kế (use case, activity/BPMN, sequence, ERD, sơ đồ trạng thái) · 4 Cài đặt và kiểm thử · 5 Kết luận.
+- Sơ đồ BPMN trong `docs/bpmn` được sinh từ `docs/bpmn/tools/gen_bpmn.py` (sửa nút/luồng trong `SPECS`, không sửa tay file `.bpmn`), xuất PNG bằng `node render.mjs` (cần `npm install` trong thư mục đó và Chrome). Sơ đồ khác viết bằng Mermaid/PlantUML. ERD lấy bằng Grep `CREATE TABLE`/`FOREIGN KEY` trong `database/phong_kham.sql`, không đọc cả file.
+- Tiết kiệm token: mỗi phiên một luồng rồi `/clear`; lấy thông tin bằng Grep (`@Get|@Post|@Roles|trang_thai`) thay vì đọc cả file, nhất là `quan-ly.service.ts` (hơn 4.000 dòng); viết Markdown, cuối cùng mới chuyển sang Word bằng `pandoc`.
 
 ## Working guidelines
 
@@ -114,7 +125,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 Việc lớn (sửa hơn 1 file) thì viết ra phương án rồi để tôi xác nhận mới làm; việc nhỏ làm luôn.
 Làm xong cái nào xóa code dư thừa ,tối ưu code 
 backend chạy trên render,frontend chạy trên cpanel ,database trên clever
-chỉ làm trên bản web còn app mobile chưa làm 
+chỉ làm trên bản web; `mobile-patient` và `zalo-mini-app` chỉ là hướng phát triển (ghi trong đồ án), không sửa và không đưa vào phạm vi tài liệu
 ## 5. Tiết kiệm token
 
 **Claude phải làm:**
