@@ -8,6 +8,9 @@ import { apiGet } from '../../services/api';
 import { BACKEND_URL, toBackendUrl } from '../../utils/backendUrl';
 import useHospitalStore from '../../store/hospitalStore';
 
+// Mỗi lần bấm gọi (kể cả gọi lại cùng bệnh nhân) có timestamp riêng → phát loa lại
+const khoaLuotGoi = (call) => `${call.id}-${call.timestamp ?? ''}`;
+
 /**
  * Phát tiếng chuông Ding-Dong y tế hai âm sắc bằng Web Audio API
  * Tần số: E5 (659.25Hz) -> C5 (523.25Hz) ngân vang ấm áp
@@ -77,7 +80,7 @@ export default function ManHinhGoiSoPage() {
       if (tvData && typeof tvData === 'object') {
         setData((prev) => {
           // Kiểm tra nếu có lượt gọi mới từ polling fallback
-          if (tvData.currentCall && tvData.currentCall.id !== lastCalledIdRef.current) {
+          if (tvData.currentCall && khoaLuotGoi(tvData.currentCall) !== lastCalledIdRef.current) {
             triggerCallVoice(tvData.currentCall);
           }
           return {
@@ -144,8 +147,8 @@ export default function ManHinhGoiSoPage() {
 
   // 4. Hàm phát loa giọng nói tiếng Việt
   const triggerCallVoice = (call) => {
-    if (!call || call.id === lastCalledIdRef.current) return;
-    lastCalledIdRef.current = call.id;
+    if (!call || khoaLuotGoi(call) === lastCalledIdRef.current) return;
+    lastCalledIdRef.current = khoaLuotGoi(call);
 
     // Kích hoạt hiệu ứng nhấp nháy phát sáng trên màn hình
     setIsCallingAnim(true);
