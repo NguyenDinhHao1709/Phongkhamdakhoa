@@ -1190,7 +1190,7 @@ export class ThanhToanService {
 
   /** Trình Ban Giám Đốc duyệt hủy hóa đơn của dịch vụ đã thực hiện (duyệt ở trang Phê duyệt đơn) */
   private async trinhDuyetHuyHoaDon(hd: HoaDon, lyDo: string, chungTu: string | undefined, nhanVienId: number | null, nguoiThucHien: string) {
-    const soTien = `${Number(hd.thucThu || hd.tongTien || 0).toLocaleString('vi-VN')} đ`;
+    const soTien = `${Number(hd.thucThu || 0).toLocaleString('vi-VN')} đ`;
     const don = await this.hoaDonRepo.manager.getRepository(DonGui).save({
       nguoiGuiId: nhanVienId ?? 1, // tài khoản không gắn nhân viên: ghi theo nhân viên mặc định như đơn hoàn cọc
       loaiDon: LOAI_DON_DUYET_HUY_HOA_DON,
@@ -1255,8 +1255,10 @@ export class ThanhToanService {
     const isTamUng = Boolean(
       hd.maHoaDon?.startsWith('HDT') || hd.ghiChu?.includes('[TẠM ỨNG ĐẶT LỊCH]')
     );
+    // Chỉ hoàn tiền thực thu trên chính hóa đơn này. Phần cấn trừ tạm ứng không chi lại: hủy xong nó tự về số dư tạm ứng,
+    // tiền ra quầy chỉ khi hoàn phiếu tạm ứng (có chốt chặn duyệt riêng). Cọc đặt lịch giữ cách tính cũ.
     // Hoàn cọc theo đúng số tiền trong yêu cầu "chờ hoàn" (có thể chỉ một phần theo % quy định)
-    const daThu = Number(hd.thucThu || hd.tongTien || 0);
+    const daThu = Number(isTamUng ? hd.thucThu || hd.tongTien || 0 : hd.thucThu || 0);
     const yeuCauHoan = hd.ghiChu?.match(/\[CHỜ HOÀN CỌC ([\d.,]+)/);
     const soTienHoan = isTamUng && yeuCauHoan ? Math.min(daThu, Number(yeuCauHoan[1].replace(/\D/g, ''))) : daThu;
     const hoanMotPhan = isTamUng && soTienHoan < daThu;
@@ -1312,7 +1314,7 @@ export class ThanhToanService {
     const daThuTien = hd.trangThai === 'da_thanh_toan' && soTienHoan > 0;
     if (hoanMotPhan) hd.tienHoanTra = soTienHoan;
     else hd.trangThai = 'huy' as any;
-    hd.ghiChu = `[ĐÃ HỦY / HOÀN TIỀN] ${isTamUng ? `[ĐÃ HOÀN CỌC THÀNH CÔNG] (${soTienHoanText}) ` : ''}Lúc ${ngayHuy.toLocaleString('vi-VN')} bởi ${nguoiThucHien}. Lý do: ${lyDo}${dto.ghiChu ? ` - Chứng từ: ${dto.ghiChu}` : ''}. ${hd.ghiChu ? `(Cũ: ${hd.ghiChu.replace(/\[CHỜ HOÀN CỌC[^\]]*\]/gi, '').trim()})` : ''}`;
+    hd.ghiChu = `[ĐÃ HỦY / HOÀN TIỀN] ${isTamUng ? `[ĐÃ HOÀN CỌC THÀNH CÔNG] (${soTienHoanText}) ` : ''}Lúc ${ngayHuy.toLocaleString('vi-VN')} bởi ${nguoiThucHien}. Lý do: ${lyDo}${dto.ghiChu ? ` - Chứng từ: ${dto.ghiChu}` : ''}. ${hd.ghiChu ? `(Cũ: ${hd.ghiChu.replace(/\[CHỜ HOÀN CỌC[^\]]*\]/gi, '').split(MARKER_BGD_DUYET_HUY).join('').trim()})` : ''}`;
 
     const updated = await this.hoaDonRepo.save(hd);
 

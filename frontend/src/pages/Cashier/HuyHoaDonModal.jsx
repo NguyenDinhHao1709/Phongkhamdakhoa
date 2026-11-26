@@ -48,7 +48,11 @@ export default function HuyHoaDonModal({ hoaDon, onClose, onSuccess }) {
     hoaDon?.choHoanCoc;
   const infoHoan = hoaDon?.thongTinHoanCoc || null;
   // Số tiền chờ hoàn do backend tính (có thể chỉ một phần theo quy định hủy)
-  const soTienHoan = Number(hoaDon?.soTienChoHoan || hoaDon?.thucThu || hoaDon?.tongTien || 0);
+  // Viện phí / tạm ứng / phí CLS: chỉ hoàn tiền thực thu của chính phiếu; phần cấn trừ tạm ứng không chi lại
+  const soTienHoan = Number(
+    isTamUng ? hoaDon?.soTienChoHoan || hoaDon?.thucThu || hoaDon?.tongTien || 0 : hoaDon?.thucThu || 0
+  );
+  const phanCanTru = isTamUng ? 0 : Math.max(0, Number(hoaDon?.tongTien || 0) - soTienHoan);
   const soTienHoanText = formatCurrency(soTienHoan);
 
   const [lyDoHuy, setLyDoHuy] = useState(
@@ -177,6 +181,11 @@ export default function HuyHoaDonModal({ hoaDon, onClose, onSuccess }) {
                 {formatCurrency(soTienHoan)}
               </span>
             </div>
+            {phanCanTru > 0 && (
+              <p className="text-[11px] font-semibold text-amber-700 text-right">
+                {formatCurrency(phanCanTru)} còn lại (cấn trừ tạm ứng / BHYT / giảm trừ) KHÔNG chi tiền: phần cấn trừ tự trả về số dư tạm ứng.
+              </p>
+            )}
             <div className="flex justify-between items-center text-xs">
               <span className="text-gray-500">Phương thức đã thu ban đầu:</span>
               <span className="font-semibold text-gray-700 capitalize">
