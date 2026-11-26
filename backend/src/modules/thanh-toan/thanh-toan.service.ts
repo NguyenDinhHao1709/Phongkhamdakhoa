@@ -1190,7 +1190,7 @@ export class ThanhToanService {
 
   /** Trình Ban Giám Đốc duyệt hủy hóa đơn của dịch vụ đã thực hiện (duyệt ở trang Phê duyệt đơn) */
   private async trinhDuyetHuyHoaDon(hd: HoaDon, lyDo: string, chungTu: string | undefined, nhanVienId: number | null, nguoiThucHien: string) {
-    const soTien = `${Number(hd.thucThu || 0).toLocaleString('vi-VN')} đ`;
+    const soTien = `${Number(hd.thucThu || hd.tongTien || 0).toLocaleString('vi-VN')} đ`;
     const don = await this.hoaDonRepo.manager.getRepository(DonGui).save({
       nguoiGuiId: nhanVienId ?? 1, // tài khoản không gắn nhân viên: ghi theo nhân viên mặc định như đơn hoàn cọc
       loaiDon: LOAI_DON_DUYET_HUY_HOA_DON,
@@ -1297,7 +1297,7 @@ export class ThanhToanService {
 
     // Dịch vụ đã thực hiện (khách đã khám / đã lấy mẫu CLS): thu ngân không tự hủy được, phải trình Ban Giám Đốc duyệt
     if (
-      !isTamUng && hd.trangThai === 'da_thanh_toan' && Number(hd.thucThu || 0) > 0 &&
+      !isTamUng && hd.trangThai === 'da_thanh_toan' && daThu > 0 &&
       !hd.ghiChu?.includes(MARKER_BGD_DUYET_HUY) && !VAI_TRO_TU_HUY_HOA_DON.includes(vaiTro || '') &&
       (await this.dichVuDaThucHien(hd.maHoaDon, hd.luotTiepNhanId))
     ) {

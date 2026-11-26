@@ -329,6 +329,12 @@ export default function HuyHoaDonModal({ hoaDon, onClose, onSuccess }) {
           {/* Cảnh báo kế toán ERP */}
           <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-[11px] text-amber-800 leading-relaxed">
             ⚠️ <b>Quy định kiểm soát tài chính ERP:</b> Thu ngân thực hiện chuyển khoản hoàn tiền vào STK của bệnh nhân (hoặc chi tiền mặt), sau đó bấm xác nhận bên dưới. Hệ thống sẽ ghi nhận phiếu hoàn tiền, trừ khỏi thực thu ca trực và gửi thông báo hoàn tất cho bệnh nhân.
+            {!isTamUng && (
+              <>
+                <br />
+                🔒 <b>Khách đã sử dụng dịch vụ</b> (bác sĩ đã khám / CLS đã lấy mẫu): bấm xác nhận chỉ <b>trình Ban Giám Đốc duyệt</b>, chưa hủy và <b>chưa được chi tiền</b>. Được duyệt rồi mới bấm Hủy / Hoàn lần nữa.
+              </>
+            )}
           </div>
 
           {/* Actions */}
