@@ -6,7 +6,7 @@ import {
   FileText, Clock, MapPin, Award, BookOpen, UserCheck, X,
   Video, Building2, Ticket, ChevronRight, Check, Pill,
   Layers, FlaskConical, Sparkles, MessageCircle, Bot, Zap,
-  Menu, Edit3, ClipboardList, Home, Sun, Moon
+  Menu, Edit3, ClipboardList, Home, Sun, Moon, MonitorSmartphone
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import useHospitalStore from '../../store/hospitalStore';
@@ -866,6 +866,12 @@ export default function HomePage() {
                   className="flex items-center gap-2 px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs sm:text-sm transition-all whitespace-nowrap flex-shrink-0"
                 >
                   <Ticket className="h-4 w-4 sm:h-4.5 sm:w-4.5 text-primary-600" /> Tra Cứu Lịch & STT
+                </button>
+                <button
+                  onClick={() => navigate('/kiosk')}
+                  className="flex items-center gap-2 px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs sm:text-sm transition-all whitespace-nowrap flex-shrink-0"
+                >
+                  <MonitorSmartphone className="h-4 w-4 sm:h-4.5 sm:w-4.5 text-primary-600" /> Kiosk Lấy Số
                 </button>
               </div>
             </div>

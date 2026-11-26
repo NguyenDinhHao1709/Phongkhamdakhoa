@@ -94,7 +94,7 @@ export default function KioskPage() {
       const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res?.data?.data) ? res.data.data : []);
 
       if (!list || list.length === 0) {
-        setErrorMsg('Không tìm thấy lịch hẹn phù hợp với thông tin đã nhập. Quý khách vui lòng kiểm tra lại số điện thoại hoặc chọn "Đăng ký khám mới".');
+        setErrorMsg('Không có lịch hẹn HÔM NAY cho thông tin đã nhập. Kiosk chỉ cấp số cho lịch hẹn đúng ngày khám; lịch ngày khác vui lòng quay lại đúng ngày hẹn, hoặc chọn "Đăng ký khám mới" để khám hôm nay.');
         setFoundAppointments([]);
         return;
       }
@@ -336,7 +336,7 @@ export default function KioskPage() {
                 Xác Nhận Lịch Hẹn Đã Đặt
               </h3>
               <p className="text-sm text-slate-500">
-                Vui lòng nhập Số điện thoại hoặc Mã lịch hẹn đã đăng ký
+                Nhập Số điện thoại hoặc Mã lịch hẹn của lịch khám HÔM NAY
               </p>
             </div>
 
