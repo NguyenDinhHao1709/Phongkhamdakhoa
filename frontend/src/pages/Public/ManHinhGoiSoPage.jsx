@@ -5,7 +5,7 @@ import {
   Building2, Users, ArrowRight, CheckCircle2, BellRing, Sparkles
 } from 'lucide-react';
 import { apiGet } from '../../services/api';
-import { BACKEND_URL } from '../../utils/backendUrl';
+import { BACKEND_URL, toBackendUrl } from '../../utils/backendUrl';
 import useHospitalStore from '../../store/hospitalStore';
 
 /**
@@ -161,7 +161,7 @@ export default function ManHinhGoiSoPage() {
     // Đợi chuông ngân xong 650ms rồi bắt đầu phát thanh tiếng Việt
     setTimeout(() => {
       // ƯU TIÊN 1: Phát giọng đọc tiếng Việt chuẩn tự nhiên 100% qua TTS MP3
-      const audioUrl = `/api/tiep-nhan/tts?text=${encodeURIComponent(text)}`;
+      const audioUrl = toBackendUrl(`/api/tiep-nhan/tts?text=${encodeURIComponent(text)}`);
       const audio = new Audio(audioUrl);
 
       audio.play().catch((err) => {
@@ -213,7 +213,7 @@ export default function ManHinhGoiSoPage() {
         // Thử phát chuông và giọng chào tiếng Việt để mở khóa toàn bộ Audio context
         playHospitalChime();
         const testAudio = new Audio(
-          `/api/tiep-nhan/tts?text=${encodeURIComponent('Hệ thống loa gọi số tự động phòng khám đã sẵn sàng')}`
+          toBackendUrl(`/api/tiep-nhan/tts?text=${encodeURIComponent('Hệ thống loa gọi số tự động phòng khám đã sẵn sàng')}`)
         );
         testAudio.play().catch((e) => console.log('Audio test unblock:', e));
       } else {

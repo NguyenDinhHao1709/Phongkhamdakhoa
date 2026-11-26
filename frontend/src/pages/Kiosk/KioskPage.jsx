@@ -567,7 +567,7 @@ export default function KioskPage() {
 
         {/* VIEW 4: PHIẾU KHÁM BỆNH ĐIỆN TỬ CHUẨN Y TẾ */}
         {mode === 've_stt' && ticketData && (
-          <div className="max-w-md w-full mx-auto bg-white text-slate-900 rounded-3xl p-8 shadow-xl border border-slate-200 space-y-6 text-center animate-fadeIn print:border-none print:shadow-none print:p-0">
+          <div id="print-section" className="max-w-md w-full mx-auto bg-white text-slate-900 rounded-3xl p-8 shadow-xl border border-slate-200 space-y-6 text-center animate-fadeIn print:border-none print:shadow-none print:p-0">
             {/* Header phiếu */}
             <div className="border-b border-dashed border-slate-300 pb-4 space-y-1">
               <span className="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-wider">
