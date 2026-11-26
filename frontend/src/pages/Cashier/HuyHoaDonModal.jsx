@@ -105,12 +105,15 @@ export default function HuyHoaDonModal({ hoaDon, onClose, onSuccess }) {
     setSubmitting(true);
     setErrorMsg('');
     try {
-      await apiPatch(`/thanh-toan/hoa-don/${hoaDon.id}/huy`, {
+      const res = await apiPatch(`/thanh-toan/hoa-don/${hoaDon.id}/huy`, {
         lyDoHuy: finalLyDo,
         ghiChu: ghiChu.trim() || undefined,
       });
+      // Khách đã sử dụng dịch vụ: backend chỉ trình Ban Giám Đốc duyệt, chưa hủy / chưa hoàn tiền
       alert(
-        isTamUng
+        res?.choDuyet
+          ? res.message
+          : isTamUng
           ? `Đã xác nhận hoàn trả ${soTienHoanText} cho bệnh nhân thành công!`
           : 'Đã hủy hóa đơn và ghi nhận hoàn tiền thành công!'
       );

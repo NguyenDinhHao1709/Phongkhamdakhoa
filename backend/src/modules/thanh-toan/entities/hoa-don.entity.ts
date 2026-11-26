@@ -7,6 +7,11 @@ import { LuotTiepNhan } from '../../tiep-nhan/entities/tiep-nhan.entity';
 import { NhanVien } from '../../nhan-vien/entities/nhan-vien.entity';
 import { HoaDonChiTiet } from './hoa-don-chi-tiet.entity';
 
+/** Đơn trình Ban Giám Đốc duyệt hủy hóa đơn của dịch vụ đã thực hiện (bảng don_gui) */
+export const LOAI_DON_DUYET_HUY_HOA_DON = 'Duyệt hủy hóa đơn đã thu';
+/** Ghi vào hoa_don.ghi_chu khi Ban Giám Đốc đã duyệt: thu ngân được hủy & hoàn tiền */
+export const MARKER_BGD_DUYET_HUY = '[BGĐ ĐÃ DUYỆT HỦY]';
+
 @Entity('hoa_don')
 export class HoaDon {
   @PrimaryGeneratedColumn()

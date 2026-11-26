@@ -879,14 +879,16 @@ export default function HoaDonListPage() {
 
                               <button
                                 onClick={() => setCancellingInvoice(hd)}
-                                disabled={hd.choDuyetHoan}
+                                disabled={hd.choDuyetHoan || Boolean(hd.daQuyetToanVao)}
                                 className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold rounded-xl transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                                   hd.choHoanCoc
                                     ? 'text-white bg-rose-600 hover:bg-rose-700 shadow-xs'
                                     : 'text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200'
                                 }`}
                                 title={
-                                  hd.choDuyetHoan
+                                  hd.daQuyetToanVao
+                                    ? `Đã khấu trừ vào hóa đơn quyết toán ${hd.daQuyetToanVao} — hủy / hoàn tiền trên hóa đơn đó`
+                                    : hd.choDuyetHoan
                                     ? 'Khoản hoàn chờ Ban Giám Đốc duyệt, chưa được chi'
                                     : hd.choHoanCoc
                                     ? `Xem STK / Mã QR của bệnh nhân và xác nhận hoàn ${formatCurrency(hd.soTienChoHoan ?? hd.thucThu)}`
@@ -908,13 +910,23 @@ export default function HoaDonListPage() {
                               <span>{hd.laPhiCls ? 'Thu phí CLS' : 'Thu tạm ứng'}</span>
                             </button>
                           ) : (
-                            <button
-                              onClick={() => setSelectedHoaDonId(hd.id)}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs shadow-emerald-600/20 transition-all active:scale-95 cursor-pointer"
-                            >
-                              <Wallet className="h-3.5 w-3.5" />
-                              <span>Thu tiền</span>
-                            </button>
+                            hd.tienHoanTra > 0 && !(hd.thucThu > 0) ? (
+                              <button
+                                onClick={() => setSelectedHoaDonId(hd.id)}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs shadow-rose-600/20 transition-all active:scale-95 cursor-pointer"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                <span>Hoàn tiền</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setSelectedHoaDonId(hd.id)}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs shadow-emerald-600/20 transition-all active:scale-95 cursor-pointer"
+                              >
+                                <Wallet className="h-3.5 w-3.5" />
+                                <span>Thu tiền</span>
+                              </button>
+                            )
                           )}
                         </div>
                       </td>

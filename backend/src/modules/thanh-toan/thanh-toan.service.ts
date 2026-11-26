@@ -14,6 +14,8 @@ import { ChiDinhCanLamSang, TrangThaiChiDinh } from '../xet-nghiem/entities/xet-
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
 import { LichHenService } from '../lich-hen/lich-hen.service';
 import { MARKER_CHO_DUYET_HOAN } from '../lich-hen/entities/lich-hen.entity';
+import { DonGui, TrangThaiDonGui } from '../nhan-vien/entities/don-gui.entity';
+import { LOAI_DON_DUYET_HUY_HOA_DON, MARKER_BGD_DUYET_HUY } from './entities/hoa-don.entity';
 import { ThongBaoService } from '../thong-bao/thong-bao.service';
 import { YeuCauNhapKho } from '../nha-thuoc/entities/yeu-cau-nhap-kho.entity';
 import { PhieuChiHoatDong } from './entities/phieu-chi-hoat-dong.entity';
@@ -24,6 +26,8 @@ import { khoangNgayVN, ngayVN } from '../../common/utils/khoang-ngay-vn.util';
 export const MA_TAM_UNG_QUAY = 'TU';
 // Phiếu thu phí cận lâm sàng trước khi thực hiện: mã = 'CLS' + id chỉ định (luot_tiep_nhan_id để NULL)
 export const MA_PHI_CLS = 'CLS';
+// Được hủy hóa đơn của dịch vụ đã thực hiện mà không cần trình duyệt
+const VAI_TRO_TU_HUY_HOA_DON = ['ban_giam_doc', 'quan_tri_vien_cap_cao'];
 /** Phiếu thu trước tại quầy (tạm ứng phí khám TU…, phí cận lâm sàng CLS…): thu qua "Thu tạm ứng", khấu trừ khi quyết toán */
 export const laPhieuThuTruoc = (ma?: string | null) => Boolean(ma?.startsWith(MA_TAM_UNG_QUAY) || ma?.startsWith(MA_PHI_CLS));
 /**
@@ -138,6 +142,16 @@ export class ThanhToanService {
 
     const list = await qb.getMany();
 
+    // Phiếu thu trước → mã hóa đơn quyết toán đã khấu trừ nó (để khóa Hủy / Hoàn trên phiếu đó)
+    const quyetToanCua = new Map<string, string>();
+    for (const h of list) {
+      if (h.trangThai === 'huy' || !h.luotTiepNhanId) continue;
+      const moTa = h.chiTiet?.find((c) => c.loaiPhi === 'tam_ung')?.moTa;
+      for (const ma of (moTa?.match(/\(([^)]+)\)\s*$/)?.[1] || '').split(',')) {
+        if (ma.trim()) quyetToanCua.set(ma.trim(), h.maHoaDon);
+      }
+    }
+
     return {
       message: 'Lấy danh sách hóa đơn thành công',
       data: list.map((hd) => {
@@ -168,7 +182,7 @@ export class ThanhToanService {
           hd.trangThai === 'da_thanh_toan' &&
           Boolean(hd.ghiChu?.includes('[CHỜ HOÀN CỌC'));
         // Lễ tân ghi lỗi phía phòng khám: chờ Ban Giám Đốc duyệt mới được chi
-        const choDuyetHoan = choHoanCoc && Boolean(hd.ghiChu?.includes(MARKER_CHO_DUYET_HOAN));
+        const choDuyetHoan = hd.trangThai !== 'huy' && Boolean(hd.ghiChu?.includes(MARKER_CHO_DUYET_HOAN));
         // Số tiền chờ hoàn: theo yêu cầu ghi trong ghi chú (có thể hoàn một phần), không vượt số đã thu
         const daThuHd = Number(hd.thucThu || hd.tongTien || 0);
         const yeuCauHoanMatch = hd.ghiChu?.match(/\[CHỜ HOÀN CỌC ([\d.,]+)/);
@@ -213,6 +227,7 @@ export class ThanhToanService {
           luotTiepNhanId: hd.luotTiepNhanId,
           luaChonThanhToan: hd.luaChonThanhToan,
           khauTruTamUng,
+          daQuyetToanVao: quyetToanCua.get(hd.maHoaDon) ?? null,
           thuNgan: hd.thuNgan
             ? hd.thuNgan.hoTen
             : isTamUng && !isTamUngQuay
@@ -1147,11 +1162,70 @@ export class ThanhToanService {
   /**
    * UC-EXT: Hủy hóa đơn & Hoàn tiền viện phí (Refund / Void Invoice)
    */
-  async huyHoaDon(id: number, userId: number, dto: { lyDoHuy: string; ghiChu?: string }) {
-    return this.withLock(`invoice:pay:${id}`, () => this.thucHienHuyHoaDon(id, userId, dto));
+  /** Mã hóa đơn quyết toán (chưa hủy) đã khấu trừ phiếu thu trước này; dòng khấu trừ có mô tả "Khấu trừ … (TU1, CLS2)" */
+  private async hoaDonQuyetToanCuaPhieu(maPhieu?: string | null): Promise<string | null> {
+    if (!maPhieu || !(laPhieuThuTruoc(maPhieu) || maPhieu.startsWith('HDT'))) return null;
+    const rows: Array<{ ma_hoa_don: string; mo_ta: string }> = await this.hoaDonRepo.manager.query(
+      `SELECT h.ma_hoa_don, ct.mo_ta FROM hoa_don_chi_tiet ct JOIN hoa_don h ON h.id = ct.hoa_don_id
+        WHERE ct.loai_phi = 'tam_ung' AND h.trang_thai != 'huy' AND h.ma_hoa_don != ? AND ct.mo_ta LIKE ?`,
+      [maPhieu, `%${maPhieu}%`],
+    );
+    const khop = rows.find((r) =>
+      (r.mo_ta.match(/\(([^)]+)\)\s*$/)?.[1] || '').split(',').some((ma) => ma.trim() === maPhieu),
+    );
+    return khop?.ma_hoa_don ?? null;
   }
 
-  private async thucHienHuyHoaDon(id: number, userId: number, dto: { lyDoHuy: string; ghiChu?: string }) {
+  /** Khách đã được phục vụ: phiếu CLS đã lấy mẫu trở đi; phiếu TU / hóa đơn lượt khám khi bác sĩ đã bắt đầu khám */
+  private async dichVuDaThucHien(maHoaDon: string, luotTiepNhanId?: number | null): Promise<boolean> {
+    if (maHoaDon?.startsWith(MA_PHI_CLS)) {
+      const cd = await this.clsRepo.findOne({ where: { id: Number(maHoaDon.slice(MA_PHI_CLS.length)) } });
+      return Boolean(cd && ![TrangThaiChiDinh.CHO_LAY_MAU, TrangThaiChiDinh.HUY].includes(cd.trangThai));
+    }
+    const luotId = luotTiepNhanId ?? (maHoaDon?.startsWith(MA_TAM_UNG_QUAY) ? Number(maHoaDon.slice(MA_TAM_UNG_QUAY.length)) : null);
+    if (!luotId) return false;
+    const luot = await this.tiepNhanRepo.findOne({ where: { id: luotId } });
+    return Boolean(luot && ![TrangThaiTiepNhan.CHO_KHAM, TrangThaiTiepNhan.DA_HUY].includes(luot.trangThai));
+  }
+
+  /** Trình Ban Giám Đốc duyệt hủy hóa đơn của dịch vụ đã thực hiện (duyệt ở trang Phê duyệt đơn) */
+  private async trinhDuyetHuyHoaDon(hd: HoaDon, lyDo: string, chungTu: string | undefined, nhanVienId: number | null, nguoiThucHien: string) {
+    const soTien = `${Number(hd.thucThu || 0).toLocaleString('vi-VN')} đ`;
+    const don = await this.hoaDonRepo.manager.getRepository(DonGui).save({
+      nguoiGuiId: nhanVienId ?? 1, // tài khoản không gắn nhân viên: ghi theo nhân viên mặc định như đơn hoàn cọc
+      loaiDon: LOAI_DON_DUYET_HUY_HOA_DON,
+      noiDung: `[HD_HUY: ${hd.id}] ${nguoiThucHien} đề nghị hủy hóa đơn ${hd.maHoaDon} (${soTien}) của bệnh nhân ${hd.benhNhan?.hoTen || ''} — dịch vụ ĐÃ THỰC HIỆN. Lý do: ${lyDo}${chungTu ? `. Chứng từ: ${chungTu}` : ''}. Duyệt: thu ngân được hủy & hoàn tiền; từ chối: giữ nguyên hóa đơn.`,
+      trangThai: TrangThaiDonGui.CHO_XU_LY,
+    });
+    await this.hoaDonRepo.update(hd.id, { ghiChu: `${hd.ghiChu || ''} ${MARKER_CHO_DUYET_HOAN}`.trim() });
+    await this.thongBaoService.taoThongBaoTheoRole('ban_giam_doc', {
+      tieuDe: `Duyệt hủy hóa đơn: ${hd.maHoaDon}`,
+      noiDung: `${nguoiThucHien} đề nghị hủy hóa đơn ${hd.maHoaDon} (${soTien}) của khách đã khám. Lý do: ${lyDo}.`,
+      loai: 'don_tu',
+      doiTuongBang: 'don_gui',
+      doiTuongId: don.id,
+    }).catch((e) => console.warn('Lỗi báo giám đốc duyệt hủy hóa đơn:', e?.message));
+    return {
+      success: true,
+      choDuyet: true,
+      message: `Khách đã sử dụng dịch vụ: đã trình Ban Giám Đốc duyệt hủy hóa đơn ${hd.maHoaDon}. Chỉ hủy & hoàn tiền sau khi được duyệt.`,
+      data: null,
+    };
+  }
+
+  /** Báo bệnh nhân (trong app + email) khi hóa đơn đã thu bị hủy / hoàn tiền: khách tự đối chiếu đã nhận tiền chưa */
+  private async baoBenhNhanHuyHoaDon(hd: HoaDon, soTienHoanText: string, nguoiThucHien: string, lyDo: string) {
+    const tieuDe = `Hóa đơn ${hd.maHoaDon} đã được hủy và hoàn ${soTienHoanText}`;
+    const noiDung = `Quầy thu ngân (${nguoiThucHien}) đã hủy hóa đơn ${hd.maHoaDon} và ghi nhận hoàn trả ${soTienHoanText} cho bạn. Lý do: ${lyDo}. Nếu bạn CHƯA nhận được số tiền này, vui lòng liên hệ ngay hotline phòng khám.`;
+    await this.baoBenhNhan(hd.benhNhanId, { tieuDe, noiDung, loai: 'thanh_toan', doiTuongBang: 'hoa_don', doiTuongId: hd.id });
+    if (hd.benhNhan?.email) this.lichHenService.guiEmailBenhNhan(hd.benhNhan.email, tieuDe, noiDung);
+  }
+
+  async huyHoaDon(id: number, userId: number, dto: { lyDoHuy: string; ghiChu?: string }, vaiTro?: string) {
+    return this.withLock(`invoice:pay:${id}`, () => this.thucHienHuyHoaDon(id, userId, dto, vaiTro));
+  }
+
+  private async thucHienHuyHoaDon(id: number, userId: number, dto: { lyDoHuy: string; ghiChu?: string }, vaiTro?: string) {
     const hd = await this.hoaDonRepo.findOne({
       where: { id },
       relations: ['benhNhan', 'thuNgan', 'chiTiet'],
@@ -1163,7 +1237,15 @@ export class ThanhToanService {
       throw new BadRequestException('Hóa đơn này đã được hủy trước đó');
     }
     if (hd.ghiChu?.includes(MARKER_CHO_DUYET_HOAN)) {
-      throw new BadRequestException('Khoản hoàn cọc này đang chờ Ban Giám Đốc duyệt (lễ tân ghi lỗi phía phòng khám), chưa được chi.');
+      throw new BadRequestException('Khoản hủy / hoàn tiền này đang chờ Ban Giám Đốc duyệt, chưa được chi.');
+    }
+
+    const hdQuyetToan = await this.hoaDonQuyetToanCuaPhieu(hd.maHoaDon);
+    if (hdQuyetToan) {
+      throw new BadRequestException({
+        code: 'PHIEU_DA_QUYET_TOAN',
+        message: `Phiếu ${hd.maHoaDon} đã được khấu trừ vào hóa đơn quyết toán ${hdQuyetToan}. Hủy / hoàn tiền trên hóa đơn ${hdQuyetToan}, không hủy riêng phiếu này.`,
+      });
     }
 
     const nv = await this.nhanVienRepo.findOne({ where: { nguoiDungId: userId } });
@@ -1213,16 +1295,30 @@ export class ThanhToanService {
       }
     }
 
+    // Dịch vụ đã thực hiện (khách đã khám / đã lấy mẫu CLS): thu ngân không tự hủy được, phải trình Ban Giám Đốc duyệt
+    if (
+      !isTamUng && hd.trangThai === 'da_thanh_toan' && Number(hd.thucThu || 0) > 0 &&
+      !hd.ghiChu?.includes(MARKER_BGD_DUYET_HUY) && !VAI_TRO_TU_HUY_HOA_DON.includes(vaiTro || '') &&
+      (await this.dichVuDaThucHien(hd.maHoaDon, hd.luotTiepNhanId))
+    ) {
+      return this.trinhDuyetHuyHoaDon(hd, lyDo, dto.ghiChu, nv?.id ?? null, nguoiThucHien);
+    }
+
     if (nv?.id && !hd.thuNganId) {
       hd.thuNganId = nv.id;
     }
 
     // Hoàn một phần: phần giữ lại vẫn là doanh thu, phần hoàn ghi vào tiền hoàn trả
+    const daThuTien = hd.trangThai === 'da_thanh_toan' && soTienHoan > 0;
     if (hoanMotPhan) hd.tienHoanTra = soTienHoan;
     else hd.trangThai = 'huy' as any;
     hd.ghiChu = `[ĐÃ HỦY / HOÀN TIỀN] ${isTamUng ? `[ĐÃ HOÀN CỌC THÀNH CÔNG] (${soTienHoanText}) ` : ''}Lúc ${ngayHuy.toLocaleString('vi-VN')} bởi ${nguoiThucHien}. Lý do: ${lyDo}${dto.ghiChu ? ` - Chứng từ: ${dto.ghiChu}` : ''}. ${hd.ghiChu ? `(Cũ: ${hd.ghiChu.replace(/\[CHỜ HOÀN CỌC[^\]]*\]/gi, '').trim()})` : ''}`;
 
     const updated = await this.hoaDonRepo.save(hd);
+
+    if (!isTamUng && daThuTien) {
+      await this.baoBenhNhanHuyHoaDon(hd, soTienHoanText, nguoiThucHien, lyDo).catch(() => {});
+    }
 
     if (isTamUng) {
       const matchMaLh = hd.ghiChu?.match(/\[MÃ_LỊCH_HẸN:\s*([^\]]+)\]/i);

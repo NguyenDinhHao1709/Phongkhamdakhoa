@@ -45,6 +45,10 @@ Python ML: https://phongkham-python-ml.onrender.com/health
 - **Suất tối đa mỗi buổi:** chừa sẵn khung trống để bác sĩ bù giờ.
 - **BHYT:** tính mức hưởng theo mã thẻ, kiểm tra hạn thẻ, đúng/trái tuyến, giấy chuyển tuyến và ngưỡng chi phí được BHYT trả 100%.
 - **Tư vấn trực tuyến:** ghi nhận người đã vào phòng gọi, làm căn cứ hoàn phí khi ca không diễn ra.
+- **Hủy / hoàn hóa đơn đã thu:**
+  - phiếu tạm ứng / phí CLS đã khấu trừ vào hóa đơn quyết toán thì không hủy riêng, chỉ hủy trên hóa đơn quyết toán;
+  - dịch vụ đã thực hiện (bác sĩ đã bắt đầu khám, CLS đã lấy mẫu): thu ngân chỉ trình được, Ban Giám Đốc duyệt ở trang Phê duyệt đơn rồi thu ngân mới hủy & hoàn;
+  - mỗi lần hủy hóa đơn đã thu, bệnh nhân được báo (trong app + email) số tiền hoàn và tên người hủy.
 - **An toàn khi chạy nhiều instance backend:** khóa MySQL và bộ đếm mã nằm trong CSDL.
 
 ---

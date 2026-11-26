@@ -25,7 +25,8 @@ import { HoaDon } from '../thanh-toan/entities/hoa-don.entity';
 import { HoaDonChiTiet } from '../thanh-toan/entities/hoa-don-chi-tiet.entity';
 import { ChiDinhCanLamSang, DichVuXetNghiem } from '../xet-nghiem/entities/xet-nghiem.entity';
 import { DonThuoc } from '../nha-thuoc/entities/don-thuoc.entity';
-import { LichHen, TrangThaiLichHen, LOAI_DON_DUYET_HOAN_COC } from '../lich-hen/entities/lich-hen.entity';
+import { LichHen, TrangThaiLichHen, LOAI_DON_DUYET_HOAN_COC, MARKER_CHO_DUYET_HOAN } from '../lich-hen/entities/lich-hen.entity';
+import { LOAI_DON_DUYET_HUY_HOA_DON, MARKER_BGD_DUYET_HUY } from '../thanh-toan/entities/hoa-don.entity';
 import { LichHenService } from '../lich-hen/lich-hen.service';
 import { NhatKyHeThong, LoaiNhatKy } from './entities/nhat-ky-he-thong.entity';
 import { auditModuleLabel } from '../../common/audit/audit-log.config';
@@ -1837,6 +1838,28 @@ export class QuanLyService implements OnModuleInit {
     }));
   }
 
+  /**
+   * Ban Giám Đốc duyệt / từ chối hủy hóa đơn của dịch vụ đã thực hiện.
+   * Duyệt: gỡ dấu chờ, gắn dấu đã duyệt → thu ngân bấm Hủy / Hoàn lần nữa là thực hiện được. Từ chối: giữ nguyên hóa đơn.
+   */
+  private async xuLyDuyetHuyHoaDon(hoaDonId: number, duyet: boolean, ghiChuXuLy: string) {
+    const [hd]: any[] = await this.donGuiRepo.manager.query('SELECT id, ma_hoa_don, ghi_chu FROM hoa_don WHERE id = ? LIMIT 1', [hoaDonId]);
+    if (!hd?.ghi_chu?.includes(MARKER_CHO_DUYET_HOAN)) return;
+    const yKien = (ghiChuXuLy || '').replace(/[[\]]/g, '');
+    const boDauCho = String(hd.ghi_chu).split(MARKER_CHO_DUYET_HOAN).map((x) => x.trim()).filter(Boolean).join(' ');
+    const ghiChu = duyet ? `${boDauCho} ${MARKER_BGD_DUYET_HUY} (${yKien})` : `${boDauCho} [BGĐ từ chối hủy: ${yKien}]`;
+    await this.donGuiRepo.manager.query('UPDATE hoa_don SET ghi_chu = ? WHERE id = ?', [ghiChu.trim(), hd.id]);
+    await this.thongBaoService.taoThongBaoTheoRole('thu_ngan', {
+      tieuDe: `${duyet ? 'Đã duyệt' : 'Từ chối'} hủy hóa đơn ${hd.ma_hoa_don}`,
+      noiDung: duyet
+        ? `Ban Giám Đốc đã duyệt hủy hóa đơn ${hd.ma_hoa_don}. Bấm Hủy / Hoàn trên hóa đơn để hoàn tiền cho bệnh nhân.`
+        : `Ban Giám Đốc không duyệt hủy hóa đơn ${hd.ma_hoa_don}: ${yKien}. Hóa đơn giữ nguyên.`,
+      loai: 'thanh_toan',
+      doiTuongBang: 'hoa_don',
+      doiTuongId: hd.id,
+    }).catch(() => {});
+  }
+
   async duyetDonTu(id: number, action: 'duyet' | 'tu_choi', ghiChuXuLy?: string) {
     const don = await this.donGuiRepo.findOne({ where: { id } });
     if (!don) throw new NotFoundException('Không tìm thấy đơn yêu cầu');
@@ -1857,6 +1880,14 @@ export class QuanLyService implements OnModuleInit {
       if (lichHenId) {
         await this.lichHenService.xuLyDuyetHoanCoc(lichHenId, action === 'duyet', don.ghiChuXuLy)
           .catch((err) => console.error('Lỗi xử lý duyệt hoàn cọc:', err));
+      }
+    }
+
+    if (don.loaiDon === LOAI_DON_DUYET_HUY_HOA_DON) {
+      const hoaDonId = Number(don.noiDung?.match(/\[HD_HUY:\s*(\d+)\]/)?.[1]);
+      if (hoaDonId) {
+        await this.xuLyDuyetHuyHoaDon(hoaDonId, action === 'duyet', don.ghiChuXuLy)
+          .catch((err) => console.error('Lỗi xử lý duyệt hủy hóa đơn:', err));
       }
     }
 

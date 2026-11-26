@@ -273,9 +273,10 @@ export class ThanhToanController {
   huyHoaDon(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser('id') userId: number,
+    @CurrentUser('maVaiTro') vaiTro: string,
     @Body() dto: { lyDoHuy: string; ghiChu?: string },
   ) {
-    return this.thanhToanService.huyHoaDon(id, userId || 1, dto);
+    return this.thanhToanService.huyHoaDon(id, userId || 1, dto, vaiTro);
   }
 
   @Post('chot-ca')
