@@ -1,0 +1,181 @@
+@startuml usecase_tong_quat
+' Sơ đồ use case tổng quát – Hệ thống quản lý phòng khám đa khoa (bản web)
+' Tác nhân lấy theo PrivateRoute allowedRoles trong frontend/src/App.jsx
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #F5F9FF
+  BorderColor #3A6EA5
+}
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+actor "Khách vãng lai" as Khach
+actor "Bệnh nhân" as BN
+actor "Nhân viên" as NV
+actor "Lễ tân" as LT
+actor "Bác sĩ" as BS
+actor "Kỹ thuật viên" as KTV
+actor "Thu ngân" as TN
+actor "Nhân viên nhà thuốc" as NT
+actor "Quản trị viên" as QTV
+actor "Ban giám đốc" as BGD
+
+actor "PayOS" as PayOS <<hệ thống>>
+actor "Gemini AI" as AI <<hệ thống>>
+actor "Python ML" as ML <<hệ thống>>
+
+BN -up-|> Khach
+LT -up-|> NV
+BS -up-|> NV
+KTV -up-|> NV
+TN -up-|> NV
+NT -up-|> NV
+QTV -up-|> NV
+BGD -up-|> NV
+
+rectangle "Hệ thống quản lý phòng khám đa khoa" {
+
+  package "Chung" {
+    usecase "Đăng nhập / Đăng xuất" as UC_Login
+    usecase "Xem trang chủ, bảng giá, bài viết" as UC_Home
+    usecase "Chatbot AI tư vấn / phân luồng" as UC_Chat
+    usecase "Đặt lịch khám" as UC_DatLich
+    usecase "Lấy số tại Kiosk" as UC_Kiosk
+  }
+
+  package "Bệnh nhân" {
+    usecase "Đăng ký tài khoản" as UC_DangKy
+    usecase "Quản lý lịch hẹn cá nhân" as UC_LichHenBN
+    usecase "Theo dõi tiến độ khám" as UC_TienDo
+    usecase "Xem hồ sơ y tế, đơn thuốc, KQ xét nghiệm" as UC_HoSoBN
+    usecase "Thanh toán trực tuyến" as UC_TTOnline
+    usecase "Đánh giá dịch vụ" as UC_DanhGia
+  }
+
+  package "Nhân viên" {
+    usecase "Chấm công (xác thực khuôn mặt)" as UC_ChamCong
+    usecase "Xem lịch làm việc" as UC_LichLV
+    usecase "Gửi đơn lên giám đốc" as UC_GuiDon
+    usecase "Chat nội bộ (Office)" as UC_Office
+    usecase "Cập nhật thông tin cá nhân" as UC_CaNhan
+  }
+
+  package "Tiếp nhận" {
+    usecase "Quản lý lịch hẹn" as UC_LichHen
+    usecase "Quản lý bệnh nhân" as UC_BenhNhan
+    usecase "Tiếp nhận bệnh nhân (BHYT)" as UC_TiepNhan
+    usecase "Quản lý hàng đợi, gọi số" as UC_HangDoi
+  }
+
+  package "Khám bệnh" {
+    usecase "Khám bệnh, lập hồ sơ bệnh án" as UC_Kham
+    usecase "Chỉ định cận lâm sàng" as UC_ChiDinh
+    usecase "Kê đơn thuốc" as UC_KeDon
+    usecase "Khám trực tuyến" as UC_KhamTT
+  }
+
+  package "Cận lâm sàng" {
+    usecase "Thực hiện xét nghiệm, nhập kết quả" as UC_XetNghiem
+  }
+
+  package "Thu ngân" {
+    usecase "Thu tạm ứng" as UC_TamUng
+    usecase "Thanh toán, xuất hóa đơn" as UC_HoaDon
+    usecase "Hoàn / hủy hóa đơn" as UC_Huy
+    usecase "Lập phiếu chi, chốt ca" as UC_ChotCa
+  }
+
+  package "Nhà thuốc" {
+    usecase "Cấp phát thuốc theo đơn" as UC_CapPhat
+    usecase "Quản lý kho thuốc, nhập kho" as UC_Kho
+    usecase "Mua hàng thuốc" as UC_MuaHang
+  }
+
+  package "Quản trị" {
+    usecase "Quản lý nhân viên, phân quyền" as UC_NhanVien
+    usecase "Quản lý tài khoản bệnh nhân" as UC_TKBN
+    usecase "Quản lý danh mục, bảng giá dịch vụ" as UC_DanhMuc
+    usecase "Quản lý bài viết" as UC_BaiViet
+    usecase "Cài đặt chấm công, xếp lịch làm việc" as UC_XepLich
+    usecase "Nhật ký hệ thống, sao lưu dữ liệu" as UC_SaoLuu
+  }
+
+  package "Điều hành" {
+    usecase "Phê duyệt đơn" as UC_PheDuyet
+    usecase "Báo cáo thống kê, tài chính" as UC_BaoCao
+    usecase "Dự báo lượng khám" as UC_DuBao
+  }
+}
+
+' --- Chung ---
+Khach --> UC_Home
+Khach --> UC_Chat
+Khach --> UC_DatLich
+Khach --> UC_Kiosk
+Khach --> UC_DangKy
+NV --> UC_Login
+BN --> UC_Login
+
+' --- Bệnh nhân ---
+BN --> UC_LichHenBN
+BN --> UC_TienDo
+BN --> UC_HoSoBN
+BN --> UC_TTOnline
+BN --> UC_DanhGia
+
+' --- Nhân viên (kế thừa cho mọi vai trò nội bộ) ---
+NV --> UC_ChamCong
+NV --> UC_LichLV
+NV --> UC_GuiDon
+NV --> UC_Office
+NV --> UC_CaNhan
+
+' --- Nghiệp vụ theo vai trò ---
+LT --> UC_LichHen
+LT --> UC_BenhNhan
+LT --> UC_TiepNhan
+LT --> UC_HangDoi
+
+BS --> UC_Kham
+BS --> UC_KhamTT
+BS --> UC_HangDoi
+UC_Kham <.. UC_ChiDinh : <<extend>>
+UC_Kham <.. UC_KeDon : <<extend>>
+
+KTV --> UC_XetNghiem
+
+TN --> UC_TamUng
+TN --> UC_HoaDon
+TN --> UC_Huy
+TN --> UC_ChotCa
+
+NT --> UC_CapPhat
+NT --> UC_Kho
+NT --> UC_MuaHang
+
+QTV --> UC_NhanVien
+QTV --> UC_TKBN
+QTV --> UC_DanhMuc
+QTV --> UC_BaiViet
+QTV --> UC_XepLich
+QTV --> UC_SaoLuu
+
+BGD --> UC_PheDuyet
+BGD --> UC_BaoCao
+BGD --> UC_DuBao
+BGD --> UC_XepLich
+
+' --- Quan hệ include ---
+UC_TiepNhan ..> UC_TamUng : <<include>>\n(tạm ứng trước khám)
+UC_TiepNhan ..> UC_HangDoi : <<include>>
+UC_Kiosk ..> UC_HangDoi : <<include>>
+
+' --- Hệ thống ngoài ---
+UC_TTOnline --> PayOS
+UC_TamUng --> PayOS
+UC_Chat --> AI
+UC_DuBao --> ML
+UC_ChamCong --> ML
+@enduml
