@@ -718,7 +718,7 @@ export function evaluatePrescriptionSafety(input: {
 
   // DDI 2: NSAID hoặc Corticoid chưa có PPI bảo vệ dạ dày
   if ((hasNsaid || hasCorticoid) && !hasPpi) {
-    const involved = [...(groupMap['NSAID'] || []), ...(groupMap['CORTICOID'] || [])];
+    const involved = [...(groupMap['NSAID'] || []), ...(groupMap['ASPIRIN'] || []), ...(groupMap['CORTICOID'] || [])];
     alerts.push({
       loaiCanhBao: 'TUONG_TAC_THUOC',
       mucDo: 'trung_binh',
@@ -731,13 +731,30 @@ export function evaluatePrescriptionSafety(input: {
 
   // DDI 3: NSAID + Thuốc hạ áp ACEi/ARB
   if (hasNsaid && hasAceArb) {
-    const involved = [...(groupMap['NSAID'] || []), ...(groupMap['ANTIHYPERTENSIVE_ACE_ARB'] || [])];
+    const involved = [
+      ...(groupMap['NSAID'] || []),
+      ...(groupMap['ASPIRIN'] || []),
+      ...(groupMap['ANTIHYPERTENSIVE_ACE_ARB'] || []),
+    ];
     alerts.push({
       loaiCanhBao: 'TUONG_TAC_THUOC',
       mucDo: 'trung_binh',
       tieuDe: '⚠️ Tương tác Thuốc: NSAID + Thuốc hạ áp (ACEi/ARB)',
       moTaChiTiet: `${involved.join(' + ')}: NSAID làm co tiểu động mạch đến cầu thận, làm giảm hiệu quả hạ huyết áp của nhóm ACEi/ARB và tăng nguy cơ suy thận cấp.`,
       khuyenNghiXuTri: 'Ưu tiên dùng Paracetamol để giảm đau ở bệnh nhân đang điều trị Tăng huyết áp, và theo dõi sát huyết áp + Creatinine.',
+      thuocLienQuan: involved,
+    });
+  }
+
+  // DDI 3b: NSAID + Aspirin (nhóm ASPIRIN tách riêng nên không bị bắt ở bước trùng lặp nhóm)
+  if (groupMap['NSAID']?.length && groupMap['ASPIRIN']?.length) {
+    const involved = [...groupMap['NSAID'], ...groupMap['ASPIRIN']];
+    alerts.push({
+      loaiCanhBao: 'TUONG_TAC_THUOC',
+      mucDo: 'trung_binh',
+      tieuDe: '⚠️ Tương tác Thuốc: NSAID + Aspirin (Tăng nguy cơ xuất huyết tiêu hóa)',
+      moTaChiTiet: `${involved.join(' + ')}: phối hợp làm tăng nguy cơ loét và xuất huyết tiêu hóa; Ibuprofen còn làm giảm tác dụng chống kết tập tiểu cầu của Aspirin liều thấp.`,
+      khuyenNghiXuTri: 'Tránh phối hợp; nếu cần giảm đau dùng Paracetamol. Nếu bắt buộc dùng NSAID, uống Aspirin trước NSAID ít nhất 30 phút và kê kèm PPI.',
       thuocLienQuan: involved,
     });
   }
@@ -829,6 +846,19 @@ export function evaluatePrescriptionSafety(input: {
         thuocLienQuan: nephrotoxicMeds,
       });
     }
+  }
+
+  // 5. Thuốc ngoài danh mục dược lý của engine: không kết luận "an toàn" cho các thuốc này
+  const chuaNhanDien = identified.filter((i) => !i.profile).map((i) => i.tenThuoc);
+  if (chuaNhanDien.length > 0) {
+    alerts.push({
+      loaiCanhBao: 'TUONG_TAC_THUOC',
+      mucDo: 'luu_y',
+      tieuDe: `ℹ️ Chưa có dữ liệu tương tác cho: ${chuaNhanDien.join(', ')}`,
+      moTaChiTiet: 'Các thuốc này nằm ngoài danh mục dược lý của hệ thống nên chưa được đối chiếu tương tác, dị ứng chéo và chức năng gan/thận.',
+      khuyenNghiXuTri: 'Bác sĩ tự kiểm tra tương tác của các thuốc này (Dược thư Quốc gia / tờ hướng dẫn sử dụng).',
+      thuocLienQuan: chuaNhanDien,
+    });
   }
 
   // Tính điểm an toàn đơn thuốc (Safety Score: 0 -> 100)

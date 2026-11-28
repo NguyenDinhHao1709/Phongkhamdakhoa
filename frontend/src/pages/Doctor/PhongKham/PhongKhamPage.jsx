@@ -943,6 +943,7 @@ function KhamBenhPanel({ luot, initialTab, onComplete, onUpdateLuot }) {
           benhAnKhamId={activeBenhAnId}
           chanDoan={form.chanDoanXacDinh || form.chanDoanSoBo}
           diUng={bn.diUng}
+          phacDo={docPhacDoDaGoiY(luot.id)}
           onClose={() => setShowDonThuocModal(false)}
           onSuccess={() => {
             qc.invalidateQueries(['don-thuoc-benh-an', activeBenhAnId]);
@@ -1394,31 +1395,73 @@ function TaoChiDinhModal({ benhAnKhamId, luotId, onClose, onSuccess }) {
   );
 }
 
+/** Phác đồ mà panel AI gợi ý gần nhất cho lượt khám (panel lưu ở sessionStorage) */
+function docPhacDoDaGoiY(luotId) {
+  try {
+    const top = JSON.parse(sessionStorage.getItem(`phong_kham_rag_${luotId}`) || 'null')?.topProtocol;
+    return top?.phacDoDieuTri?.thuocDauTay?.length ? top : null;
+  } catch {
+    return null;
+  }
+}
+
+// Chữ thường, bỏ dấu, bỏ "e" cuối: "Amlodipine" khớp tên kho "Amlodipin"
+const chuanHoaHoatChat = (s) =>
+  (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim().replace(/e$/, '');
+
+/** "Amlodipine 5mg hoặc Losartan 50mg / Perindopril 5mg" → ['Amlodipine', 'Losartan', 'Perindopril'] */
+function tachHoatChat(text) {
+  return [
+    ...new Set(
+      (text || '')
+        .split(/\s+hoặc\s+|[/;,+()±]/i)
+        .map((p) => p.trim().replace(/^hoặc\s+/i, '').split(/\s+\d/)[0].trim())
+        .filter((p) => p.length >= 4 && !/^\d/.test(p)),
+    ),
+  ];
+}
+
 /* ──── MODAL KÊ ĐƠN THUỐC ĐIỆN TỬ (LẤY THUỐC TỪ CSDL KHO DƯỢC + AI DDI SAFETY) ──── */
-function KeDonThuocModal({ benhAnKhamId, chanDoan, diUng, onClose, onSuccess }) {
+function KeDonThuocModal({ benhAnKhamId, chanDoan, diUng, phacDo, onClose, onSuccess }) {
   const [selectedItems, setSelectedItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [ghiChu, setGhiChu] = useState('');
   const [loading, setLoading] = useState(false);
   const [aiSafetyResult, setAiSafetyResult] = useState(null);
   const [checkingSafety, setCheckingSafety] = useState(false);
+  const [safetyError, setSafetyError] = useState(false);
 
   // Lấy danh mục thuốc từ CSDL Nhà Thuốc
   const { data: thuocData, isLoading } = useQuery({
     queryKey: ['thuoc-list-doctor', searchTerm],
     queryFn: () => apiGet(`/nha-thuoc/thuoc?search=${encodeURIComponent(searchTerm)}`),
   });
+  const listThuoc = thuocData?.data || [];
 
-  const listThuoc = thuocData?.data || [
-    { id: 1, maThuoc: 'TH001', tenThuoc: 'Paracetamol 500mg', donViTinh: 'Viên', giaBan: 2000 },
-    { id: 2, maThuoc: 'TH002', tenThuoc: 'Amoxicillin 500mg', donViTinh: 'Viên', giaBan: 5000 },
-    { id: 3, maThuoc: 'TH003', tenThuoc: 'Omeprazole 20mg', donViTinh: 'Viên', giaBan: 4500 },
-  ];
+  // Toàn bộ kho (dùng chung cache với danh sách lúc chưa tìm kiếm) để đối chiếu thuốc gợi ý theo phác đồ
+  const { data: khoData } = useQuery({
+    queryKey: ['thuoc-list-doctor', ''],
+    queryFn: () => apiGet('/nha-thuoc/thuoc?search='),
+    enabled: !!phacDo,
+  });
+  const goiYTheoPhacDo = (phacDo?.phacDoDieuTri?.thuocDauTay || []).map((nhom) => ({
+    ...nhom,
+    hoatChat: tachHoatChat(nhom.hoatChatGoiY).map((ten) => {
+      const key = chuanHoaHoatChat(ten);
+      return {
+        ten,
+        thuocTrongKho: (khoData?.data || []).filter((t) =>
+          [t.tenHoatChat, t.tenThuoc].some((s) => chuanHoaHoatChat(s).includes(key)),
+        ),
+      };
+    }),
+  }));
 
   // Tự động kiểm tra tương tác thuốc, dị ứng chéo và chức năng Gan/Thận theo thời gian thực
   useEffect(() => {
     if (selectedItems.length === 0) {
       setAiSafetyResult(null);
+      setSafetyError(false);
       return;
     }
     const timer = setTimeout(async () => {
@@ -1431,8 +1474,12 @@ function KeDonThuocModal({ benhAnKhamId, chanDoan, diUng, onClose, onSuccess }) 
           medications: selectedItems,
         });
         setAiSafetyResult(res?.data || null);
+        setSafetyError(!res?.data);
       } catch (e) {
         console.warn('Không thể kiểm tra tương tác thuốc AI:', e);
+        // Không giữ kết quả của đơn trước, không báo "an toàn" khi chưa kiểm tra được
+        setAiSafetyResult(null);
+        setSafetyError(true);
       } finally {
         setCheckingSafety(false);
       }
@@ -1440,7 +1487,7 @@ function KeDonThuocModal({ benhAnKhamId, chanDoan, diUng, onClose, onSuccess }) 
     return () => clearTimeout(timer);
   }, [selectedItems, benhAnKhamId, chanDoan, diUng]);
 
-  const handleAddThuoc = (thuoc) => {
+  const handleAddThuoc = (thuoc, lieuDung = 'Uống 1v x 2 lần/ngày sau ăn') => {
     if (selectedItems.some((i) => i.thuocId === thuoc.id)) return;
     const stock = Number(thuoc.tonKhoKhaDung ?? thuoc.tonKhoTong ?? 0);
     if (stock <= 0 || thuoc.trangThai === 'ngung_kinh_doanh') {
@@ -1456,7 +1503,7 @@ function KeDonThuocModal({ benhAnKhamId, chanDoan, diUng, onClose, onSuccess }) 
         donViTinh: thuoc.donViTinh,
         tonKhoKhaDung: stock,
         soLuong: defaultQty,
-        lieuDung: 'Uống 1v x 2 lần/ngày sau ăn',
+        lieuDung,
         soNgayDung: 5,
       },
     ]);
@@ -1539,6 +1586,53 @@ function KeDonThuocModal({ benhAnKhamId, chanDoan, diUng, onClose, onSuccess }) 
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+          {/* Gợi ý thuốc theo phác đồ AI vừa tra cứu ở form khám */}
+          {phacDo ? (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 space-y-2 text-xs">
+              <p className="font-bold text-indigo-900 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-indigo-600" />
+                Gợi ý thuốc theo phác đồ: {phacDo.tenBenh} ({phacDo.quyetDinhByt})
+              </p>
+              {goiYTheoPhacDo.map((nhom, idx) => (
+                <div key={idx} className="space-y-1">
+                  <p className="text-gray-700">
+                    <span className="font-semibold">{nhom.nhomThuoc}</span> — {nhom.lieuDungChuan}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {nhom.hoatChat.map((hc) =>
+                      hc.thuocTrongKho.length === 0 ? (
+                        <span key={hc.ten} className="px-2 py-0.5 rounded-full border border-gray-200 bg-white text-gray-400">
+                          {hc.ten} (kho không có)
+                        </span>
+                      ) : (
+                        hc.thuocTrongKho.map((t) => {
+                          const stock = Number(t.tonKhoKhaDung ?? t.tonKhoTong ?? 0);
+                          const daChon = selectedItems.some((i) => i.thuocId === t.id);
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              disabled={daChon || stock <= 0 || t.trangThai === 'ngung_kinh_doanh'}
+                              onClick={() => handleAddThuoc(t, nhom.lieuDungChuan)}
+                              className="px-2 py-0.5 rounded-full border border-indigo-300 bg-white text-indigo-700 font-semibold hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {daChon ? '✓' : '+'} {t.tenThuoc} ({stock > 0 ? `còn ${stock}` : 'hết'})
+                            </button>
+                          );
+                        })
+                      ),
+                    )}
+                  </div>
+                  {nhom.luuY && <p className="text-amber-700">⚠ {nhom.luuY}</p>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-500 italic">
+              Mẹo: bấm gợi ý phác đồ AI ở form khám trước để có gợi ý thuốc theo phác đồ Bộ Y tế.
+            </p>
+          )}
+
           {/* Ô tìm kiếm thuốc */}
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Tìm & chọn thuốc từ kho dược:</label>
@@ -1751,6 +1845,12 @@ function KeDonThuocModal({ benhAnKhamId, chanDoan, diUng, onClose, onSuccess }) 
                     </div>
                   ))}
                 </div>
+              ) : safetyError ? (
+                !checkingSafety && (
+                  <p className="text-amber-800 font-semibold">
+                    ⚠ Chưa kiểm tra được tương tác thuốc (dịch vụ AI đang khởi động hoặc lỗi). Bác sĩ tự rà soát đơn trước khi lưu.
+                  </p>
+                )
               ) : (
                 !checkingSafety && (
                   <p className="text-emerald-800">
