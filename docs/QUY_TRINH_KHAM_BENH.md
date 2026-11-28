@@ -59,7 +59,7 @@ Các con số (15 phút, 3 lần, 24 giờ…) là giá trị trong mã nguồn 
 | Phía bệnh nhân (xin hủy, không đến, bỏ về) | `da_huy` (chưa check-in) / `vang_mat` (đã check-in) | **Theo quy định hủy của giám đốc**, giống bệnh nhân tự hủy online: chưa check-in và còn cách giờ hẹn ≥ thời hạn hủy → hoàn % cấu hình; sát giờ hơn hoặc đã check-in → không hoàn | Chờ hoàn **chỉ khi chưa khám** (bác sĩ chưa lập phiếu khám); đã khám → không hoàn |
 | Tiếp nhận nhầm (chỉ khi đã check-in) | Giữ nguyên `da_xac_nhan`, check-in lại được | Giữ nguyên | Chờ hoàn (lượt mới lập phiếu mới) |
 
-- **Chống tự ý hủy:** bệnh nhân luôn được thông báo (trong app + email) kèm lý do, tên người hủy và số tiền hoàn, để khiếu nại nếu bị ghi sai. Mọi lần hủy ghi vào nhật ký `nhat_ky_huy_lich`; Ban Giám Đốc xem ở **Lịch hủy tại quầy** (tổng hợp theo nhân viên và lỗi bên nào).
+- **Chống tự ý hủy:** bệnh nhân luôn được thông báo (trong app + email) kèm lý do, tên người hủy và số tiền hoàn, để khiếu nại nếu bị ghi sai. Mọi lần hủy ghi vào nhật ký `nhat_ky_huy_lich`; Ban Giám Đốc xem ở **Lịch hủy tại quầy** (tổng hợp theo nhân viên và lỗi bên nào). Lượt bị hủy vì vắng mặt (gọi quá số lần, hoặc hệ thống dọn lượt dở cuối ngày) cũng ghi vào nhật ký với loại `vang_mat`.
 
 ---
 

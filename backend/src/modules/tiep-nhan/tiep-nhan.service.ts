@@ -734,7 +734,7 @@ export class TiepNhanService implements OnModuleInit {
    * Hủy lượt vì bệnh nhân vắng mặt / bỏ về: dọn CLS, đơn thuốc chờ, hóa đơn nháp; lịch hẹn → vắng mặt (chưa khám) hoặc hủy
    * (đã khám dở); tạm ứng chỉ hoàn khi chưa khám.
    */
-  private async huyLuotVangMat(luot: LuotTiepNhan, lyDo: string) {
+  private async huyLuotVangMat(luot: LuotTiepNhan, lyDo: string, nguoiHuy = { nhanVienId: null as number | null, ten: 'Hệ thống (dọn cuối ngày)' }) {
     const kq = await this.luotRepo.update(
       { id: luot.id, trangThai: In(LUOT_HUY_DUOC) },
       { trangThai: TrangThaiTiepNhan.DA_HUY, ghiChu: `${luot.ghiChu || ''} [Vắng mặt: ${lyDo}]`.trim() },
@@ -749,6 +749,7 @@ export class TiepNhanService implements OnModuleInit {
       );
     }
     await this.thanhToanService.xuLyTamUngKhiHuyLuot(luot, `Vắng mặt: ${lyDo}`, !daKham);
+    await this.ghiNhatKyHuy({ lichHenId: luot.lichHenId ?? null, luotId: luot.id, nguoiHuy, loaiHuy: 'vang_mat', lyDo, soTien: 0, trangThaiHoan: 'khong_hoan' });
   }
 
   /**
@@ -1393,7 +1394,7 @@ export class TiepNhanService implements OnModuleInit {
     for (const r of chiTiet) {
       r.soTienHoan = Number(r.soTienHoan);
       const key = String(r.nhanVienId ?? r.tenNguoiHuy);
-      const nv = theoNhanVien.get(key) ?? { nhanVienId: r.nhanVienId, tenNguoiHuy: r.tenNguoiHuy, tong: 0, phong_kham: 0, benh_nhan: 0, nham: 0, tienHoan: 0 };
+      const nv = theoNhanVien.get(key) ?? { nhanVienId: r.nhanVienId, tenNguoiHuy: r.tenNguoiHuy, tong: 0, phong_kham: 0, benh_nhan: 0, nham: 0, vang_mat: 0, tienHoan: 0 };
       nv.tong += 1;
       nv[r.loaiHuy] = (nv[r.loaiHuy] || 0) + 1;
       if (r.trangThaiHoan !== 'tu_choi') nv.tienHoan += r.soTienHoan;
@@ -1414,7 +1415,7 @@ export class TiepNhanService implements OnModuleInit {
 
   private async ghiNhatKyHuy(d: {
     lichHenId: number | null; luotId: number | null; nguoiHuy: { nhanVienId: number | null; ten: string };
-    loaiHuy: LoaiHuy; lyDo: string; soTien: number; trangThaiHoan: 'khong_hoan' | 'cho_duyet' | 'tu_dong';
+    loaiHuy: LoaiHuy | 'vang_mat'; lyDo: string; soTien: number; trangThaiHoan: 'khong_hoan' | 'cho_duyet' | 'tu_dong';
   }) {
     await this.luotRepo.manager.query(
       `INSERT INTO nhat_ky_huy_lich (lich_hen_id, luot_tiep_nhan_id, nhan_vien_id, ten_nguoi_huy, loai_huy, ly_do, so_tien_hoan_coc, trang_thai_hoan)
@@ -1677,7 +1678,7 @@ export class TiepNhanService implements OnModuleInit {
     let message: string;
     if (soLan >= SO_LAN_QUA_LUOT_TOI_DA) {
       await this.luotRepo.update(luotId, { soLanQuaLuot: soLan });
-      await this.huyLuotVangMat(luot, `gọi ${soLan} lần không có mặt`);
+      await this.huyLuotVangMat(luot, `gọi ${soLan} lần không có mặt`, await this.nguoiHuy(user));
       message = `${luot.maSoThuTu} vắng mặt ${soLan} lần: đã hủy lượt khám. Tạm ứng đã đóng sẽ được thu ngân hoàn lại.`;
     } else {
       await this.luotRepo.update(luotId, { trangThai: TrangThaiTiepNhan.CHO_KHAM, quaLuotLuc: new Date(), soLanQuaLuot: soLan });

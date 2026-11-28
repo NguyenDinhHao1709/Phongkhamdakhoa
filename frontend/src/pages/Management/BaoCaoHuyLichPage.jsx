@@ -7,6 +7,7 @@ const LOAI_HUY = {
   phong_kham: { label: 'Lỗi phòng khám', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
   benh_nhan: { label: 'Lỗi bệnh nhân', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   nham: { label: 'Tiếp nhận nhầm', cls: 'bg-gray-50 text-gray-700 border-gray-200' },
+  vang_mat: { label: 'Vắng mặt', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
 };
 const TRANG_THAI_HOAN = {
   khong_hoan: 'Không hoàn',
@@ -23,7 +24,7 @@ export default function BaoCaoHuyLichPage() {
   const [tuNgay, setTuNgay] = useState(`${homNay.slice(0, 8)}01`);
   const [denNgay, setDenNgay] = useState(homNay);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['bao-cao-huy-lich', tuNgay, denNgay],
     queryFn: () => apiGet('/tiep-nhan/bao-cao/huy-lich', { tuNgay, denNgay }).then((r) => r?.data),
   });
@@ -35,7 +36,7 @@ export default function BaoCaoHuyLichPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Lịch hủy tại quầy</h1>
-          <p className="text-xs text-gray-500">Lễ tân hủy lịch hẹn / lượt khám: người hủy, lỗi bên nào và số tiền cọc được hoàn</p>
+          <p className="text-xs text-gray-500">Lễ tân hủy lịch hẹn / lượt khám và lượt hủy do vắng mặt: người hủy, lỗi bên nào và số tiền cọc được hoàn</p>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <input type="date" value={tuNgay} onChange={(e) => setTuNgay(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1" />
@@ -48,6 +49,8 @@ export default function BaoCaoHuyLichPage() {
         <h2 className="mb-3 text-sm font-bold text-gray-800">Theo nhân viên</h2>
         {isLoading ? (
           <p className="text-sm text-gray-500">Đang tải…</p>
+        ) : error ? (
+          <p className="text-sm text-rose-600">Không tải được báo cáo: {error.response?.data?.message || error.message}</p>
         ) : theoNhanVien.length === 0 ? (
           <p className="text-sm text-gray-500">Không có lần hủy nào trong khoảng thời gian này.</p>
         ) : (
@@ -59,6 +62,7 @@ export default function BaoCaoHuyLichPage() {
                 <th className="py-2 text-right">Lỗi phòng khám</th>
                 <th className="py-2 text-right">Lỗi bệnh nhân</th>
                 <th className="py-2 text-right">Nhầm</th>
+                <th className="py-2 text-right">Vắng mặt</th>
                 <th className="py-2 text-right">Tiền cọc hoàn</th>
               </tr>
             </thead>
@@ -70,6 +74,7 @@ export default function BaoCaoHuyLichPage() {
                   <td className="py-2 text-right text-rose-700">{nv.phong_kham || 0}</td>
                   <td className="py-2 text-right text-amber-700">{nv.benh_nhan || 0}</td>
                   <td className="py-2 text-right text-gray-600">{nv.nham || 0}</td>
+                  <td className="py-2 text-right text-sky-700">{nv.vang_mat || 0}</td>
                   <td className="py-2 text-right">{tien(nv.tienHoan)}</td>
                 </tr>
               ))}

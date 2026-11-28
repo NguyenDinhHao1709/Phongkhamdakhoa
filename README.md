@@ -39,7 +39,7 @@ Python ML: https://phongkham-python-ml.onrender.com/health
   - lỗi phía bệnh nhân: hoàn theo quy định hủy của giám đốc;
   - tiếp nhận nhầm: chỉ hủy lượt, giữ lịch để check-in lại.
 
-  Tạm ứng đã đóng tại quầy luôn được hoàn. Bệnh nhân luôn được thông báo, và Ban Giám Đốc xem báo cáo "Lịch hủy tại quầy".
+  Tạm ứng đã đóng tại quầy luôn được hoàn. Bệnh nhân luôn được thông báo, và Ban Giám Đốc xem báo cáo "Lịch hủy tại quầy" (gồm cả lượt bị hủy do vắng mặt).
 - **Số thứ tự** chỉ cấp khi check-in. Vé hẹn điện tử dùng mã lịch hẹn, mã QR quét được ở kiosk.
 - **Bác sĩ chậm giờ:** báo trễ ở mốc 15 phút; đến 30 phút thì gợi ý chuyển sang bác sĩ khác.
 - **Suất tối đa mỗi buổi:** chừa sẵn khung trống để bác sĩ bù giờ.
