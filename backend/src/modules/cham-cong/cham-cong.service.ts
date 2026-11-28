@@ -319,9 +319,14 @@ export class ChamCongService implements OnModuleInit, OnModuleDestroy {
       frames_b64: framesB64,
     };
     let data: any;
+    // Một hạn chót chung cho mọi lần thử: proxy Render cắt request ~100s (trình duyệt báo lỗi CORS do thiếu header)
+    const hetHan = Date.now() + PYTHON_ML_TIMEOUT_MS;
     try {
       const response = await withColdStartRetry(() => firstValueFrom(
-        this.httpService.post(`${PYTHON_ML_URL}/verify-face`, body, { timeout: PYTHON_ML_TIMEOUT_MS, headers: PYTHON_ML_HEADERS }),
+        this.httpService.post(`${PYTHON_ML_URL}/verify-face`, body, {
+          timeout: Math.max(hetHan - Date.now(), 1000),
+          headers: PYTHON_ML_HEADERS,
+        }),
       ));
       data = response.data;
     } catch (err) {
